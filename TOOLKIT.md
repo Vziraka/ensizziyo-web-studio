@@ -2,6 +2,18 @@
 
 Research catalog, not an installation manifest. Updated October 12, 2026. None of the entries below was installed by this setup. Availability can differ between agent sessions.
 
+## Upstream ownership and updates
+
+Creators' repositories remain the source of truth for their skills. Keep links and brief task-routing notes here; do not vendor their skill text, maintain a parallel instruction library, or fork it without a demonstrated customization need.
+
+- Reference guidance: read the current relevant upstream skill when needed. Recheck its fit rather than assuming its instructions have not changed.
+- Installed capabilities, if adopted later: record the exact tested release or commit, installation scope, dependencies, and verification. Pin reproducible versions where supported. Retain a known-good version for rollback.
+- Review updates at project kickoff, when a capability becomes relevant, or when a relevant fix/security advisory appears. Do not check every repository on every task.
+- Before adopting an update, review changes to behavior, permissions, dependencies, model assumptions, and cost; test it on a branch or disposable example. Avoid silently auto-updating production/client workflows. If the installer cannot control updates, document that limitation before choosing it.
+- Keep our preferences in our own workflow. Add only brief compatibility notes when needed rather than copying upstream rules.
+
+Current decision: link and consult upstream only. Do not install skills, plugins, or catalog software yet. Future adoption requires a subsequent user decision.
+
 ## How agents use this catalog
 
 1. Match the task to a row below; the catalog is a starting point, not an exhaustive allowlist.

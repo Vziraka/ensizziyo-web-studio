@@ -39,4 +39,6 @@ When requirements, commands, architecture, or integrations change, update affect
 
 These are adapted working practices. Neither repository is installed or adopted wholesale, and their model-routing or multi-agent automation is not enabled by this document.
 
+Upstream creators maintain their skill instructions. Our toolkit links to them; it does not mirror their contents. Reference guidance is read when relevant. Any future installation uses the controlled update and version-recording process in TOOLKIT.md. No installation is currently authorized.
+
 Sources reviewed October 12, 2026: https://github.com/mattpocock/skills and https://github.com/cursor/plugins/tree/main/pstack
