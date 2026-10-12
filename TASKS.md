@@ -47,7 +47,7 @@ Requested outcome: broaden the same eight premium previews to websites and landi
 - [x] Make Let's talk the primary action; ask what the owner wants to improve without requiring a technical brief or chosen service.
 - [x] Clearly label concept work and distinguish local interface demonstrations from proposed integration, automation and AI scope. Retain unapproved review placements; invent no results or delivery claims.
 - [x] Refresh all eight desktop/mobile comparison captures; inspect the expanded content, navigation and inquiry validation on desktop and mobile. The [experiment record](prototypes/w1/round-2/README.md#executed-verification--positioning-revision) records 32 homepage checks, 88 supporting-page layouts and the inquiry journey.
-- [ ] Record separate requirements/engineering reviews and update the existing draft PR. Production remains unstarted pending the design choice.
+- [x] Record separate requirements/engineering reviews and update the existing [draft PR #3](https://github.com/Vziraka/ensizziyo-web-studio/pull/3). Production remains unstarted pending the design choice.
 
 ## Commercial launch work
 1. Choose the first service-business category by reviewing a small sample of local businesses and their inquiry journeys. Capture observed problems, not assumptions about revenue.
