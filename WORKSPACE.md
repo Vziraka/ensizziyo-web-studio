@@ -9,7 +9,7 @@ Local implementation folder: `C:\Users\zvent\Projects\ensizziyo-web-studio`
 
 ## Setup checkpoint — October 12, 2026
 
-Repository is private. Workflow revisions are on docs/evolving-workflow for review before merging into main.
+Repository is private. The initial workflow revision merged through [PR #1](https://github.com/Vziraka/ensizziyo-web-studio/pull/1) into main at commit 1e31576. Use Git/PR state for subsequent revision status.
 
 Google connector reads and writes succeeded after the latest reconnect. Verified the operating plan belongs to the studio folder; created Sales inside it and imported the native prospect tracker there. Existing Clients and Brand and Assets folders remain available.
 

@@ -6,15 +6,26 @@
 - [x] Create Drive workspace and publish business operating plan.
 - [x] Create native Google Sheets prospect tracker and verify it.
 
-## First launch cycle
+## Website milestones
+
+Current next task is W1. No website implementation has started. The commercial launch work below can progress alongside design; the final brand/domain does not block a prototype.
+
+| ID | Deliverable | Depends on | Complete when |
+| --- | --- | --- | --- |
+| W1 | Homepage message and two interactive design directions | Existing brief | Realistic draft copy explains audience, offer, and next step. Two structurally different hero/supporting-section layouts and stubbed inquiry interactions run in a preview. Desktop/mobile evidence, tradeoffs, and a recommendation are presented. |
+| W2 | Record selected direction and production approach | W1 and Ensizziyo's design choice | Brief/task records the chosen direction, rationale, experiment reference, and production acceptance checks. Stack, editing needs, inquiry destination, and relevant costs are resolved or clearly assigned as blockers. |
+| W3 | Build the selected studio page and inquiry journey | W2 | Page content and responsive layout work; invalid submissions show useful errors, valid ones reach the designated test destination, and delivery failures do not show false success. Relevant tests, CI, and an executed runtime verification recipe exist. |
+| W4 | Add the concept demonstration and complete launch review | W3 | Demonstration is reviewable; BRIEF.md acceptance criteria pass, open limitations are recorded, and hosting ownership, cost, and rollback are documented. Deployment/domain actions follow their separate authorization. |
+
+Mark milestones complete only with their evidence linked from the task or PR. Break implementation into smaller complete behaviors as needed under WORKFLOW.md.
+
+## Commercial launch work
 1. Choose the first service-business category by reviewing a small sample of local businesses and their inquiry journeys. Capture observed problems, not assumptions about revenue.
 2. Finalize a one-page starter offer: deliverables, exclusions, revisions, timeline, payment milestones, client inputs, handover, and optional care. Price remains a hypothesis until scope is set.
 3. Choose public business name and check domain availability; purchase only with explicit authorization. Continue prototypes under the internal working name.
-4. Draft site copy and compare two visual directions for the hero plus one supporting section.
-5. Build the studio site and one clearly labelled demonstration of the page-to-inquiry journey.
-6. Research an initial 20 qualified prospects in Sheets while the site is built. Draft a small personalized batch for Ensizziyo to review and send.
-7. Prepare discovery questions and a concise proposal template before calls. Set delivery capacity before accepting simultaneous work.
-8. Launch after functional and visual checks. Track sent messages, replies, qualified conversations, proposals, wins, and cash received separately.
+4. Research an initial 20 qualified prospects in Sheets while the site is built. Draft a small personalized batch for Ensizziyo to review and send.
+5. Prepare discovery questions and a concise proposal template before calls. Set delivery capacity before accepting simultaneous work.
+6. After website launch review, track sent messages, replies, qualified conversations, proposals, wins, and cash received separately.
 
 ## Later, after a repeatable manual process
 - Optional care plan with bounded tasks and response times.

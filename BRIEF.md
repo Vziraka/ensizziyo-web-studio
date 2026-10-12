@@ -21,7 +21,7 @@ Quality references for our own site:
 
 Use deliberate typography, strong spacing, professional imagery, and restrained motion. References establish a quality standard; do not copy their assets, brand, or distinctive page wholesale. Each client gets an audience-appropriate design. Mobile usability, readability, accessibility, and reduced-motion behavior take priority over decorative animation.
 
-Compare two focused directions before building the full site. Browser prototypes are sufficient; a canvas tool is optional. The proposed free Paper alternative is awaiting a link and assessment.
+The first design comparison asks which layout and information hierarchy best explains the offer and makes the next step clear while meeting our visual standard. Compare two structurally different directions, each showing the hero, one supporting section, and the primary inquiry interaction with realistic draft copy. Use a stubbed interaction in the prototype. Show working desktop and mobile previews, explain the tradeoffs, and record Ensizziyo's selected direction and rationale before production implementation. Follow WORKFLOW.md for prototype isolation and handoff. Browser prototypes are sufficient; a canvas tool is optional. The proposed free Paper alternative is awaiting a link and assessment.
 
 ## Technical decisions
 
