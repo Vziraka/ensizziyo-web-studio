@@ -10,7 +10,7 @@ Optional, separately scoped services: ongoing website care, campaign landing pag
 
 ## First site
 
-Build a focused studio site with offer, services, a clearly labelled concept demonstration, process, founder introduction, FAQ, and one primary inquiry action. Agency partnerships can have a secondary section/contact route. Start with the minimum page count needed to make this understandable.
+Build a focused studio site with a compact homepage and distinct About, Services, and Work pages, following the annotated design review. Work introduces clearly labelled design studies until real client projects are available. Process, founder introduction and practical project questions belong on the relevant supporting pages. Use “Let's talk” for the primary inquiry action; agency partnerships can share that route. Client reviews and business metrics require approved, verifiable content before publication.
 
 ## Design
 
@@ -21,7 +21,11 @@ Quality references for our own site:
 
 Use deliberate typography, strong spacing, professional imagery, and restrained motion. References establish a quality standard; do not copy their assets, brand, or distinctive page wholesale. Each client gets an audience-appropriate design. Mobile usability, readability, accessibility, and reduced-motion behavior take priority over decorative animation.
 
-The first design comparison asks which layout and information hierarchy best explains the offer and makes the next step clear while meeting our visual standard. Compare two structurally different directions, each showing the hero, one supporting section, and the primary inquiry interaction with realistic draft copy. Use a stubbed interaction in the prototype. Show working desktop and mobile previews, explain the tradeoffs, and record Ensizziyo's selected direction and rationale before production implementation. Follow WORKFLOW.md for prototype isolation and handoff. Browser prototypes are sufficient; a canvas tool is optional. The proposed free Paper alternative is awaiting a link and assessment.
+The first comparison supplied two isolated directions. Ensizziyo's review requests a second round of eight original studio previews before choosing. The new reference is https://nexstudio.demos.tailgrids.com/: clear work/contact actions, separate About/Services/Work pages, service breadth, supporting proof, and restrained interaction. Keep the first experiment as historical evidence.
+
+The second round leads with a literal service description, uses sans-serif typography and intentional space, and removes slogan-led headlines, green status dots, numbered section labels, and unrelated decorative icons. Premium authority and effortless navigation take priority. Show more ambitious UI, animation, and layering through clearly labelled original design studies in the work section. Include compact client-review and metric placements, without inventing clients, quotes, ratings, revenue, or delivery figures. Missing proof remains visibly unapproved in the experiment and must be omitted from production until verified.
+
+Compare meaningful structural alternatives using realistic copy and simulated inquiries. Show desktop/mobile previews, explain the tradeoffs, and record Ensizziyo's selected direction and rationale before production implementation. Follow WORKFLOW.md for prototype isolation and handoff. Browser prototypes are sufficient; a canvas tool is optional. The proposed free Paper alternative is awaiting a link and assessment.
 
 ## Technical decisions
 

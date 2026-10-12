@@ -2,6 +2,8 @@
 
 October 12, 2026. Throwaway experiment on `feature/w1-design-prototypes`, based on main `c7f8e5a15b45e6224c713024c7321a4b64897b84`. Main was fetched and matched the clean checkout before editing. There was no application or existing user change to preserve.
 
+**Historical first round.** Ensizziyo's annotated feedback requested a new exploration, not a selection of A. [Round two](round-2/README.md) and its [eight-preview comparison](http://127.0.0.1:4173/round-2/) supersede this recommendation. The original source and captures below are retained as evidence of the first review.
+
 ## Decision being tested
 
 Which hierarchy best introduces a custom website service to owner-operated local businesses in Fairfax and the DMV and makes the first inquiry clear: an offer-led split layout, or an example-led panorama?
