@@ -3,8 +3,8 @@
 ## Setup
 - [x] Consolidate website audience, offer hypothesis, design direction, and verification criteria.
 - [x] Create and verify private GitHub remote.
-- [x] Create Drive workspace and publish business operating plan (folder move readback pending).
-- [ ] Create native Google Sheets prospect tracker and verify it.
+- [x] Create Drive workspace and publish business operating plan.
+- [x] Create native Google Sheets prospect tracker and verify it.
 
 ## First launch cycle
 1. Choose the first service-business category by reviewing a small sample of local businesses and their inquiry journeys. Capture observed problems, not assumptions about revenue.

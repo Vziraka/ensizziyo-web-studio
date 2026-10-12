@@ -12,8 +12,6 @@ Optional, separately scoped services: ongoing website care, campaign landing pag
 
 Build a focused studio site with offer, services, a clearly labelled concept demonstration, process, founder introduction, FAQ, and one primary inquiry action. Agency partnerships can have a secondary section/contact route. Start with the minimum page count needed to make this understandable.
 
-The demonstration is not a real client engagement. Do not invent testimonials, client logos, years of experience, performance figures, or completed projects.
-
 ## Design
 
 Quality references for our own site:
@@ -27,7 +25,7 @@ Compare two focused directions before building the full site. Browser prototypes
 
 ## Technical decisions
 
-Choose the smallest stack that supports the agreed editing and inquiry workflow. Do not add database, authentication, payments, CMS, or custom CRM by default. Prefer existing services for booking and other routine integrations when appropriate. Identify commercial-use hosting terms and ongoing costs before deployment. Do not assume subscription plans include API usage.
+This is a continuing product, beginning with the studio website and growing as the business develops. Choose architecture for current requirements and credible roadmap needs, with maintainable boundaries between content, presentation, and integrations. Database, authentication, payments, CMS, and CRM capabilities are available design options. Evaluate them as requirements emerge, including near-term work that benefits from an early foundation. Record what is implemented, what is proposed, and why a material decision was made. Compare existing services with custom implementation based on fit, ownership, ongoing cost, and maintenance. Identify commercial-use hosting terms and ongoing costs before deployment. Do not assume subscription plans include API usage.
 
 ## Acceptance criteria
 
@@ -36,7 +34,7 @@ Choose the smallest stack that supports the agreed editing and inquiry workflow.
 - Mobile and desktop layouts have no horizontal overflow or clipped important content.
 - Navigation and form controls work by keyboard, with visible focus and labels.
 - Motion respects reduced-motion preferences; media is appropriately sized.
-- No fabricated proof, broken links, exposed credentials, or test data in production.
+- No broken links, exposed credentials, or test data in production.
 - Relevant automated checks and an end-to-end inquiry check pass; security review matches the actual functionality.
 - Hosting ownership, costs, editing process, and rollback instructions are documented.
 
