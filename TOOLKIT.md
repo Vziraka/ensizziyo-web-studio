@@ -64,3 +64,5 @@ The upstream workflows differ. Matt's orchestration skills can require setup, ex
 ## Adoption record
 
 No catalog packages installed yet. When adopting one, record: task served, installation scope, exact version/commit, setup location, verification performed, ongoing cost, and update trigger. Never record credentials here.
+
+W1 consultation on October 12, 2026: read Matt's prototype SKILL.md and UI.md at `49dd158d1076134a641b33efb035946536778336`, and pstack's prototype playbook at `1b6d44ff26d4e242f4e8f68c391e6d2f7ca16def`. Applied the project's two-direction, isolated HTML/CSS/JS comparison and existing browser tools. [Experiment and compatibility notes](prototypes/w1/README.md#references-consulted-without-installation). These are consulted source revisions, not installed versions; no catalog software, skills, or plugins were installed.

@@ -8,7 +8,7 @@
 
 ## Website milestones
 
-Current next task is W1. No website implementation has started. The commercial launch work below can progress alongside design; the final brand/domain does not block a prototype.
+W1 is complete for design review: [draft homepage copy, two interactive directions, evidence, and recommendation](prototypes/w1/README.md) on `feature/w1-design-prototypes`. Current next task is W2, awaiting Ensizziyo's design choice. No production website implementation has started. The commercial launch work below can progress alongside design; the final brand/domain does not block a prototype.
 
 | ID | Deliverable | Depends on | Complete when |
 | --- | --- | --- | --- |
@@ -18,6 +18,16 @@ Current next task is W1. No website implementation has started. The commercial l
 | W4 | Add the concept demonstration and complete launch review | W3 | Demonstration is reviewable; BRIEF.md acceptance criteria pass, open limitations are recorded, and hosting ownership, cost, and rollback are documented. Deployment/domain actions follow their separate authorization. |
 
 Mark milestones complete only with their evidence linked from the task or PR. Break implementation into smaller complete behaviors as needed under WORKFLOW.md.
+
+### W1 review checkpoint — October 12, 2026
+
+- [x] Draft realistic homepage copy covering the audience, offer, next step, concept, process, founder introduction, FAQ, and agency route.
+- [x] Build two structurally different, isolated browser prototypes with simulated inquiries: A, service-first editorial split with a short modal; B, example-first panorama with a guided inline brief.
+- [x] Inspect desktop/mobile layouts and drive the interactions; retain screenshots and verification limits in the [experiment record](prototypes/w1/README.md#verification-evidence).
+- [x] Present the tradeoffs and recommendation: A is the proposed fit for the first local-business audience; this is not a selected direction or a conversion result.
+- [ ] Ensizziyo chooses A, B, or a specified combination. Record that decision in W2 before production implementation.
+
+Experiment branch is for preservation and review, not a production merge. W2 still needs the actual design choice, stack/editing decisions, inquiry destination, and relevant ownership/cost decisions. Do not assume a production destination or send real inquiries from this experiment.
 
 ## Commercial launch work
 1. Choose the first service-business category by reviewing a small sample of local businesses and their inquiry journeys. Capture observed problems, not assumptions about revenue.

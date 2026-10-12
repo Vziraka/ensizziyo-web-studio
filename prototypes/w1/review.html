@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow">
+  <title>W1 · Compare the homepage directions</title>
+  <link rel="icon" href="assets/mark.svg" type="image/svg+xml">
+  <style>
+    @font-face{font-family:DM Sans;src:url('assets/DMSans.ttf') format('truetype');font-weight:100 1000;font-display:swap}
+    *{box-sizing:border-box}body{margin:0;background:#e9eae4;color:#263d32;font-family:'DM Sans','Segoe UI',sans-serif;line-height:1.6}header,main,footer{width:min(1440px,calc(100% - 48px));margin:auto}header{padding:28px 0}header>p{font-size:11px;letter-spacing:.12em;margin:0}h1{font-size:28px;font-weight:500;letter-spacing:-1px;margin:8px 0}header>div{display:flex;align-items:center;justify-content:space-between;gap:20px}header>div>p{font-size:13px;max-width:640px;margin:0}button{font:inherit;cursor:pointer;background:transparent;color:inherit;border:1px solid #7f927f;border-radius:3px;padding:10px 16px;font-size:12px;min-height:44px}button[aria-pressed=true]{background:#265542;color:#fff;border-color:#265542}button:focus-visible,a:focus-visible{outline:3px solid #a94d22;outline-offset:4px}.devices{display:flex;gap:7px;flex-shrink:0}.comparison{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}.comparison article{min-width:0}.direction-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px}h2{font-size:17px;letter-spacing:-.4px;margin:0;font-weight:550}a{color:inherit;text-decoration:underline;text-underline-offset:4px;font-size:11px}.direction-heading a{white-space:nowrap}.viewport{position:relative;overflow:hidden;width:100%;background:#fff;border:1px solid #a7b3a3;border-radius:4px;box-shadow:0 9px 25px #263d3210;margin:auto}iframe{border:0;transform-origin:top left;display:block}.tradeoff{font-size:12px;margin:15px 0 0;max-width:600px}.tradeoff b{font-weight:600}footer{font-size:11px;padding:25px 0 35px;color:#51624e}footer a{font-size:11px}body[data-device=mobile] .viewport{max-width:390px;border:6px solid #2e3d36;border-radius:23px}body[data-device=mobile] iframe{border-radius:16px}body[data-device=mobile] .tradeoff{max-width:390px;margin-inline:auto}@media(max-width:850px){.comparison{grid-template-columns:1fr;gap:30px}header>div{display:block}.devices{margin-top:20px}header,main,footer{width:calc(100% - 30px)}h1{font-size:25px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+  </style>
+</head>
+<body data-device="desktop">
+  <header><p>ENSIZZIYO / W1 DESIGN REVIEW</p><h1>Two ways to introduce the studio.</h1><div><p>Explore both pages, open the inquiries, and compare the hierarchy. Draft copy, fictional concept work, and simulated submissions throughout.</p><div class="devices" role="group" aria-label="Preview viewport"><button data-device="desktop" aria-pressed="true">Desktop · 1440</button><button data-device="mobile" aria-pressed="false">Mobile · 390</button></div></div></header>
+  <main class="comparison">
+    <article><div class="direction-heading"><h2>A / The local studio</h2><a href="./?variant=a" target="_blank" rel="noopener">Open full preview ↗</a></div><div class="viewport"><iframe src="./?variant=a" title="Direction A, desktop preview"></iframe></div><p class="tradeoff"><b>Service first.</b> A warm split hero, a compact concept, and a short inquiry dialog. Clear and approachable; less of a portfolio statement.</p></article>
+    <article><div class="direction-heading"><h2>B / The digital atelier</h2><a href="./?variant=b" target="_blank" rel="noopener">Open full preview ↗</a></div><div class="viewport"><iframe src="./?variant=b" title="Direction B, desktop preview"></iframe></div><p class="tradeoff"><b>Example first.</b> A panoramic interactive concept, an explorable process, and a guided inline brief. More expressive; longer to scan and more dependent on strong work.</p></article>
+  </main>
+  <footer>Recommendation: A for the first local-business audience. Design choice is pending. The device control uses real iframe viewports; desktop is scaled to fit this comparison. Scroll inside either preview. <a href="README.md">Read draft copy and verification notes</a>.</footer>
+  <script>
+    const frames = [...document.querySelectorAll('iframe')];
+    function sizeFrames() {
+      const mobile = document.body.dataset.device === 'mobile';
+      const width = mobile ? 390 : 1440;
+      const height = mobile ? 1100 : 1200;
+      frames.forEach(frame => {
+        const shell = frame.parentElement;
+        const scale = shell.clientWidth / width;
+        frame.width = width;
+        frame.height = height;
+        frame.style.transform = `scale(${scale})`;
+        shell.style.height = `${height * scale + (mobile ? 12 : 2)}px`;
+        frame.title = `Direction ${frame.src.includes('variant=a') ? 'A' : 'B'}, ${mobile ? 'mobile' : 'desktop'} preview`;
+      });
+    }
+    document.querySelectorAll('[data-device]').forEach(button => {
+      if (button.tagName !== 'BUTTON') return;
+      button.addEventListener('click', () => {
+        document.body.dataset.device = button.dataset.device;
+        document.querySelectorAll('button[data-device]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+        sizeFrames();
+      });
+    });
+    new ResizeObserver(sizeFrames).observe(document.querySelector('.comparison'));
+    sizeFrames();
+  </script>
+</body>
+</html>
