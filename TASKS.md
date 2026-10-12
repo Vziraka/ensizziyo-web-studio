@@ -12,9 +12,9 @@ W1 round two is ready for design review: [eight original studio previews, deskto
 
 | ID | Deliverable | Depends on | Complete when |
 | --- | --- | --- | --- |
-| W1 | Homepage message and interactive design exploration | Existing brief and annotated feedback | First A/B comparison is preserved. Eight original round-two previews use direct service headings, separate page navigation, work studies and simulated inquiries. Desktop/mobile evidence, tradeoffs and a recommendation are presented. |
+| W1 | Homepage message and interactive design exploration | Existing brief and annotated feedback | First A/B comparison is preserved. Eight original round-two previews use direct service headings covering all four service areas, concrete business problems, separate page navigation, labelled concept studies and a simulated improvement-led inquiry. Desktop/mobile evidence, tradeoffs and a recommendation are presented. |
 | W2 | Record selected direction and production approach | W1 and Ensizziyo's design choice | Brief/task records the chosen direction, rationale, experiment reference, and production acceptance checks. Stack, editing needs, inquiry destination, and relevant costs are resolved or clearly assigned as blockers. |
-| W3 | Build the selected studio page and inquiry journey | W2 | Page content and responsive layout work; invalid submissions show useful errors, valid ones reach the designated test destination, and delivery failures do not show false success. Relevant tests, CI, and an executed runtime verification recipe exist. |
+| W3 | Build the selected studio site and inquiry journey | W2 | Homepage, About, Services, Work and inquiry content and responsive layouts work; invalid submissions show useful errors, valid ones reach the designated test destination, and delivery failures do not show false success. Relevant tests, CI, and an executed runtime verification recipe exist. |
 | W4 | Add the concept demonstration and complete launch review | W3 | Demonstration is reviewable; BRIEF.md acceptance criteria pass, open limitations are recorded, and hosting ownership, cost, and rollback are documented. Deployment/domain actions follow their separate authorization. |
 
 Mark milestones complete only with their evidence linked from the task or PR. Break implementation into smaller complete behaviors as needed under WORKFLOW.md.
@@ -38,6 +38,16 @@ Experiment branch is for preservation and review, not a production merge. W2 sti
 - [x] Check all eight homepages at 1440, 768, 390 and 320 CSS pixels; inspect supporting page families, navigation/history, filters, project controls, invalid/valid inquiries and keyboard focus. Evidence and limitations are in the round-two record.
 - [x] Recommend Studio for the clearest service hierarchy, with Surface's interactive work presentation as a possible combination.
 - [ ] Record Ensizziyo's choice in W2 before production work.
+
+### W1 positioning revision — October 12, 2026
+
+Requested outcome: broaden the same eight premium previews to websites and landing pages, business systems and integrations, practical automation and AI, and marketing support. Keep About, Services and Work as separate page views. No visual direction is selected by this content revision.
+
+- [x] Align every homepage, About, Services, Work and inquiry with the broader positioning and concrete owner problems.
+- [x] Make Let's talk the primary action; ask what the owner wants to improve without requiring a technical brief or chosen service.
+- [x] Clearly label concept work and distinguish local interface demonstrations from proposed integration, automation and AI scope. Retain unapproved review placements; invent no results or delivery claims.
+- [x] Refresh all eight desktop/mobile comparison captures; inspect the expanded content, navigation and inquiry validation on desktop and mobile. The [experiment record](prototypes/w1/round-2/README.md#executed-verification--positioning-revision) records 32 homepage checks, 88 supporting-page layouts and the inquiry journey.
+- [ ] Record separate requirements/engineering reviews and update the existing draft PR. Production remains unstarted pending the design choice.
 
 ## Commercial launch work
 1. Choose the first service-business category by reviewing a small sample of local businesses and their inquiry journeys. Capture observed problems, not assumptions about revenue.

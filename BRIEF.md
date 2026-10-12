@@ -1,16 +1,18 @@
 # Website implementation brief
 
-## Audience and offer
+## Audience and positioning
 
 Primary: owner-operated and small local service businesses in Fairfax and the DMV. Secondary: small agencies needing a development partner. The first outreach pilot should focus on one service-business category, selected from observed demand and reachable owners.
 
-Offer hypothesis: polished custom websites and landing pages that make services clear and make requesting an estimate or booking easier. Starting project-price hypothesis: $1,500–$2,000+, with a written scope before quoting. No guaranteed lead or revenue claims.
+Position the studio around four service areas: websites and landing pages; business systems and integrations; practical automation and AI; and marketing support. Explain each through an owner's concrete problem: unclear service pages, enquiries and bookings spread across tools, repeat admin and follow-ups, or a campaign needing content and a destination. Lead with clear service descriptions and ask what the owner wants to improve.
 
-Optional, separately scoped services: ongoing website care, campaign landing pages, advertising creative, campaign management, and business-system integrations. Advertising spend, subscriptions, and ongoing maintenance are distinct from the build price. Custom systems require a defined workflow, data requirements, acceptance criteria, support expectations, and separate estimate.
+Website-build starting-price hypothesis: $1,500–$2,000+, with a written scope before quoting. This is not a price for all four service areas. Ongoing care, advertising spend, subscriptions, campaign work and custom systems have separate scopes and estimates. No guaranteed lead, time-saving or revenue claims.
+
+Present systems, integrations, automation and AI as work to assess and scope, not already delivered capabilities or an included package. Define the workflow, users, tool access, data ownership, acceptance checks, failure handling, support needs and running costs before agreeing a build. AI-assisted drafts need an agreed human-review step. Existing concept interfaces demonstrate local design interactions only; they do not establish working CRM connections, automation or AI delivery.
 
 ## First site
 
-Build a focused studio site with a compact homepage and distinct About, Services, and Work pages, following the annotated design review. Work introduces clearly labelled design studies until real client projects are available. Process, founder introduction and practical project questions belong on the relevant supporting pages. Use “Let's talk” for the primary inquiry action; agency partnerships can share that route. Client reviews and business metrics require approved, verifiable content before publication.
+Build a focused studio site with a compact homepage and distinct About, Services, and Work pages, following the annotated design review. Work introduces clearly labelled concept studies until real client projects are available. Process, founder introduction and practical project questions belong on the relevant supporting pages. Use “Let's talk” for the primary inquiry action, with Explore work secondary; agency partnerships can share the inquiry route. Ask “What would you like to improve?” and accept a plain description without requiring a technical solution or chosen service. Client reviews and business metrics require approved, verifiable content before publication.
 
 ## Design
 
@@ -23,7 +25,7 @@ Use deliberate typography, strong spacing, professional imagery, and restrained 
 
 The first comparison supplied two isolated directions. Ensizziyo's review requests a second round of eight original studio previews before choosing. The new reference is https://nexstudio.demos.tailgrids.com/: clear work/contact actions, separate About/Services/Work pages, service breadth, supporting proof, and restrained interaction. Keep the first experiment as historical evidence.
 
-The second round leads with a literal service description, uses sans-serif typography and intentional space, and removes slogan-led headlines, green status dots, numbered section labels, and unrelated decorative icons. Premium authority and effortless navigation take priority. Show more ambitious UI, animation, and layering through clearly labelled original design studies in the work section. Include compact client-review and metric placements, without inventing clients, quotes, ratings, revenue, or delivery figures. Missing proof remains visibly unapproved in the experiment and must be omitted from production until verified.
+The second round leads with a literal service description, uses sans-serif typography and intentional space, and removes slogan-led headlines, green status dots, numbered section labels, and unrelated decorative icons. Preserve these premium visual principles and all eight comparison structures while broadening the service copy. Premium authority and effortless navigation take priority. Show more ambitious UI, animation, and layering through clearly labelled original concept studies in the work section. Include compact client-review and metric placements, without inventing clients, quotes, ratings, revenue, or delivery figures. Missing proof remains visibly unapproved in the experiment and must be omitted from production until verified. No specific layout has yet been selected.
 
 Compare meaningful structural alternatives using realistic copy and simulated inquiries. Show desktop/mobile previews, explain the tradeoffs, and record Ensizziyo's selected direction and rationale before production implementation. Follow WORKFLOW.md for prototype isolation and handoff. Browser prototypes are sufficient; a canvas tool is optional. The proposed free Paper alternative is awaiting a link and assessment.
 

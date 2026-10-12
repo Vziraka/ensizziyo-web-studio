@@ -1,12 +1,12 @@
 const previews = [
   ['Studio','Centered introduction · asymmetric work grid','The clearest service-first introduction; familiar to a business owner.','Less expressive in the hero; the project material carries the ambition.'],
-  ['Focus','Split introduction · overlapping project surfaces','Shows depth and more than one capability at first glance.','The layered samples need more space and careful mobile composition.'],
+  ['Focus','Split introduction · overlapping project surfaces','Shows depth and more than one type of concept work at first glance.','The layered samples need more space and careful mobile composition.'],
   ['Index','Typographic introduction · browsable work rows','Compact, precise and quick to scan.','The work needs strong imagery; the rows show less of each study.'],
   ['Gallery','Dark canvas · selectable project stage','A deliberate portfolio presence with a controlled visual peak.','Feels more like a design studio; contrast and project quality carry more weight.'],
   ['Frame','Broad introduction · one architectural project','Gives one example enough space to be understood.','The renovation study may make the studio seem more specialized than intended.'],
   ['Ledger','Desktop sidebar · compact working canvas','About, Services and Work stay close to the content.','The sidebar is less familiar and reduces the available desktop canvas.'],
-  ['Surface','Live work selector · interactive interface','Makes website, interface and product capability tangible.','More interaction and more information in the first screen.'],
-  ['Common','Quiet asymmetry · direct studio introduction','Approachable, measured and personal without decorative motifs.','A slower portfolio introduction; advanced capability appears further down.']
+  ['Surface','Live concept selector · interactive interface','Makes the website, business interface and product concepts easy to explore.','More interaction and more information in the first screen.'],
+  ['Common','Quiet asymmetry · direct studio introduction','Approachable, measured and personal without decorative motifs.','A slower portfolio introduction; the interactive concepts appear further down.']
 ];
 const grid = document.querySelector('#preview-grid');
 previews.forEach((p,index) => {

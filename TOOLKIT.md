@@ -63,6 +63,8 @@ The upstream workflows differ. Matt's orchestration skills can require setup, ex
 
 ## Adoption record
 
+W1 positioning revision, October 12, 2026: re-read Matt's prototype/UI guidance and consult [Humanizer](https://github.com/blader/humanizer/blob/main/SKILL.md) for plain, specific copy without inflated claims. Preserve the existing eight structures and prototype isolation; apply the user's broader service scope through owner problems and an improvement-led inquiry. Guidance is reference only; no installation, new package or orchestration is adopted.
+
 W1 round-two consultation, October 12, 2026: re-read Matt's prototype/UI references and read [Scrollcraft's current skill](https://github.com/nateherkai/scroll-craft/blob/main/plugins/nateherk-design/skills/scroll-craft/SKILL.md), [taste reference](https://github.com/nateherkai/scroll-craft/blob/main/plugins/nateherk-design/skills/scroll-craft/references/taste.md), and [hero-depth guidance](https://github.com/nateherkai/scroll-craft/blob/main/plugins/nateherk-design/skills/scroll-craft/references/hero-depth.md). Reference-only adaptation: distinct structures, deliberate type/space, overlap and offset shadows, short controlled transitions, and responsive/reduced-motion behavior. Ensizziyo explicitly requested eight original previews, overriding upstream's smaller variant cap. No Scrollcraft engine, video tooling, orchestration or package was installed or adopted. [Round-two record](prototypes/w1/round-2/README.md) describes the actual scope and browser verification.
 
 No catalog packages installed yet. When adopting one, record: task served, installation scope, exact version/commit, setup location, verification performed, ongoing cost, and update trigger. Never record credentials here.
