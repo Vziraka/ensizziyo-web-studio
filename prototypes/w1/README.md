@@ -143,7 +143,7 @@ Final ImageGen prompt:
 
 ## Verification evidence
 
-Browser checks use the available in-app Chromium browser and invented inputs. The desktop captures show a 1440 × 1200 CSS viewport; mobile overview captures use 390 × 1400 to show more of the composition. Normal phone interactions were also checked at 390 × 844, with narrow-layout checks at 320 × 740. The comparison uses actual iframe widths, not screenshots presented as live pages.
+Browser checks use the available in-app Chromium browser and invented inputs. The desktop captures show a 1440 × 1200 CSS viewport; mobile overview captures use 390 × 1400 to show more of the composition. Normal phone interactions were also checked at 390 × 844, with narrow-layout checks at 320 × 740 and an additional 768-pixel layout check. The comparison uses actual iframe widths, not screenshots presented as live pages.
 
 | Check | Result / evidence |
 | --- | --- |
@@ -151,6 +151,7 @@ Browser checks use the available in-app Chromium browser and invented inputs. Th
 | JavaScript syntax | Passed: `node --check prototypes/w1/prototype.js` |
 | Desktop layouts and assets | Passed: both directions inspected, no horizontal overflow, all images loaded |
 | Mobile / narrow layouts | Passed: both directions at 390 and 320 CSS pixels; no horizontal overflow or controls outside the viewport |
+| Live comparison | Passed: real 1440/390 iframe viewports and both device controls; repaired the desktop grid's intrinsic iframe overflow and verified the review page fits |
 | A inquiry | Passed: missing name and invalid email block submission; valid invented details produce the explicit demo confirmation; reset works |
 | A keyboard | Passed: Tab enters the labelled form with a visible outline; Escape closes the native modal and returns focus to its trigger |
 | B inquiry | Passed: no project choice blocks Continue; radio arrow keys select a project without switching variants; Back preserves the choice; invalid email blocks; valid details produce the explicit demo confirmation |
@@ -159,8 +160,16 @@ Browser checks use the available in-app Chromium browser and invented inputs. Th
 | Reduced motion | CSS inspected: scrolling is immediate; transitions are disabled and the specimen rotation is removed under `prefers-reduced-motion: reduce`; OS preference emulation not performed |
 | Transport / persistence | Source inspected: all forms use prevented browser submissions; no network or storage APIs exist in prototype scripts |
 
-Overview captures: [A desktop](evidence/a-desktop.jpg), [B desktop](evidence/b-desktop.jpg), [A mobile](evidence/a-mobile.jpg), [B mobile](evidence/b-mobile.jpg). Inquiry evidence: [A mobile confirmation](evidence/a-mobile-inquiry.jpg), [B mobile confirmation](evidence/b-mobile-inquiry.jpg), [B concept interaction](evidence/b-mobile-concept.jpg).
+Review boards: [desktop comparison](evidence/comparison-desktop.jpg), [mobile comparison](evidence/comparison-mobile.jpg). Overview captures: [A desktop](evidence/a-desktop.jpg), [B desktop](evidence/b-desktop.jpg), [A mobile](evidence/a-mobile.jpg), [B mobile](evidence/b-mobile.jpg). Supporting/inquiry evidence: [A mobile service rows](evidence/a-mobile-support.jpg), [A mobile confirmation](evidence/a-mobile-inquiry.jpg), [B mobile confirmation](evidence/b-mobile-inquiry.jpg), [B concept interaction](evidence/b-mobile-concept.jpg).
 
 Repeat the important journey checks through the visible controls: open A's inquiry, attempt it empty and with an invalid email, then submit invented valid details and close with Escape. In B, switch the concept view, submit a fictional concept request, explore the three process controls, and complete the two-step studio brief including Back and an invalid email. Refresh between directions when a fresh demo is needed. No server-side state needs cleanup.
 
 This prototype has no production stack, build pipeline, test suite, live destination, persistent data, or deployed hosting. These belong to W2/W3 once the design is selected. Safari, Firefox, physical-device behavior, screen-reader behavior, actual reduced-motion preference emulation, production security, and real delivery remain unverified. Prototype source is a design reference, not production-ready code.
+
+## Review passes
+
+Both passes examined the same change, base `c7f8e5a15b45e6224c713024c7321a4b64897b84` to prototype snapshot `ce2a5c43b867ce928aa14614494fccec6fddf2ae`. This later documentation update records the results without changing the runnable source or assets.
+
+**Requirements pass:** Compared BRIEF.md, W1's completion criteria, and the request with the copy and actual browser experience. Both directions contain the service/audience/next step, a distinct hero and supporting hierarchy, and a simulated primary inquiry. Desktop/mobile evidence, tradeoffs, and a recommendation are linked. Concept claims are labelled, the price and biography remain draft, installation was avoided, and production work waits for the user's choice. No W1 requirement is left outstanding.
+
+**Engineering-quality pass:** Reviewed the HTML, event handlers, form state, CSS breakpoints, asset references, and preview boundaries. Browser checks confirmed the navigation-state repair, grid overflow repair, keyboard handling, and demo confirmations. User text is never inserted as HTML; there is no delivery or persistence boundary to expose. The preview binds to loopback and serves only the experiment directory. JavaScript syntax, local references, SVG parsing, and Git whitespace checks passed. No unresolved issue blocks design review; production verification remains a separate milestone.
