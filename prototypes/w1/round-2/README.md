@@ -21,7 +21,7 @@ The checkout was clean on main `c7f8e5a15b45e6224c713024c7321a4b64897b84`, match
 | 7. Surface | Live website/interface/product tabs inside the hero | Does an immediately usable sample explain advanced capability? |
 | 8. Common | Warm, quiet asymmetry and direct studio introduction | Can a more personal tone still feel precise and premium? |
 
-All previews share the same actual service scope. Work examples are original fictional design studies, not completed client work. The review and client-metric area is a visible content placeholder, with no invented testimonial or number. The public name and founder biography still need approval. Forms use invented details and simulate success without transport or persistence.
+All previews share the same actual service scope. Work examples are original fictional design studies, not completed client work. The review area is a visible content placeholder; the proof strip uses only facts about the design studies, with no invented client testimonial or metric. The public name and founder biography still need approval. Forms use invented details and simulate success without transport or persistence.
 
 ## Run
 
@@ -90,3 +90,11 @@ Journey evidence: [full Studio mobile page](evidence/studio-mobile-full.jpg), [r
 To repeat: open a preview, use Menu on mobile, visit About/Services/Work, filter to Interfaces, open Arc and choose Schedule. Use header Let's talk, submit empty, then with an invalid email, then `Alex Example` / `alex@example.com`. Confirm explicit simulated success and Try again. In Surface, select Product experience and Ink, then Service website and View room detail. Refresh resets local state. No server-side test data needs cleanup.
 
 Limitations: these are eight homepage structures with shared supporting-page implementations styled by direction, not eight finished production sites. No real client quote/metric, delivery, persistence, production stack, hosting or security boundary is implemented. Safari, Firefox, real devices, screen readers and an actual reduced-motion preference remain unverified. Keep this branch unmerged and obtain the design choice before production.
+
+## Separate review passes
+
+Both passes reviewed the same feedback change: base `e86bef0c6259b1eb97014a159a151574df5fec94` to runnable snapshot `3c924e69f18bb2c91e68f8158d8ee01f4a824668`. The main base remains `c7f8e5a15b45e6224c713024c7321a4b64897b84`; the earlier A/B passes are in their historical record. This later record changes documentation only.
+
+**Requirements pass:** Checked the annotations, original-preview answer, amended brief/tasks, gallery and actual browser layouts. All eight explore different hero/work arrangements; copy explains the service and audience directly. About/Services/Work are separate views, contact language is inviting, and the removed motifs do not appear in this round. Review placement, service breadth, expressive work studies, desktop/mobile evidence, tradeoffs and a recommendation are supplied. No choice, client claim, installation or production work is assumed. No outstanding requirement blocks review.
+
+**Engineering-quality pass:** Examined both scripts, their HTML callers, styles, breakpoints, asset paths, route/history state, control semantics and form boundaries against the recorded browser checks. Confirmed the three overflow fixes in their original scenarios. Route/project inputs are selected from fixed lists; rendered HTML contains only authored content; inquiry input is cleared and never interpolated or transported. Separate local-reference checks covered 48 document links, all 16 direction screenshots and shared assets, with no missing target. Syntax, browser-log and Git whitespace checks passed. The implementation remains deliberately buildless and isolated; real delivery, production verification and the documented browser/device limitations remain future work.
