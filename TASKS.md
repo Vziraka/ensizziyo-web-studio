@@ -2,8 +2,8 @@
 
 ## Setup
 - [x] Consolidate website audience, offer hypothesis, design direction, and verification criteria.
-- [ ] Create and verify private GitHub remote.
-- [ ] Create Drive workspace and publish business operating plan.
+- [x] Create and verify private GitHub remote.
+- [x] Create Drive workspace and publish business operating plan (folder move readback pending).
 - [ ] Create native Google Sheets prospect tracker and verify it.
 
 ## First launch cycle
