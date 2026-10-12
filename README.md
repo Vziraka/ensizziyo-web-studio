@@ -10,8 +10,8 @@ This private repository owns the studio website and its implementation decisions
 - [Launch tasks](TASKS.md): next deliverables and current status.
 - [Workspace links](WORKSPACE.md): business plan, Drive, prospect tracker.
 - [Agent instructions](AGENTS.md): how to work in this repository.
-- [Development workflow](WORKFLOW.md): branches, implementation, test suite, review, and evolving documentation.
-- [Tool catalog](TOOLKIT.md): task-based selection from the researched repositories and tools.
+- [Development workflow](WORKFLOW.md): task completion criteria, prototypes, implementation, verification, and PR review.
+- [Tool catalog](TOOLKIT.md): task-based upstream references, reviewed revisions, compatibility, and adoption policy.
 
 ## Current state
 
