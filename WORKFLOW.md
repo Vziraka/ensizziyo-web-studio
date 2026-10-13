@@ -23,7 +23,7 @@ Present tradeoffs and a recommendation. Record the selected direction and why in
 
 ## Test suite and CI
 
-With the first application implementation, select test tools that fit the actual stack and add executable commands to README.md and CI. No application or test suite exists yet; this document describes the intended setup.
+Select tests that fit the affected implementation and keep executable commands in README.md and CI. The controlled research runner uses Node's built-in test runner and syntax checks; see [pipeline/README.md](pipeline/README.md). Website checks follow its implementation stage.
 
 - Static checks: formatting/linting, type checks where applicable, and production build.
 - Unit tests: meaningful business rules, transformations, and validation.
@@ -76,6 +76,6 @@ Keep each rule in one authoritative place and use task-specific pointers elsewhe
 
 These are adapted working practices. Neither repository is installed or adopted wholesale, and their model-routing or multi-agent automation is not enabled by this document.
 
-Upstream creators maintain their skill instructions. Our toolkit links to them; it does not mirror their contents. Reference guidance is read when relevant. Any future installation uses the controlled update and version-recording process in TOOLKIT.md. No installation is currently authorized.
+Upstream creators maintain their skill instructions. Our toolkit links to them; it does not mirror their contents. Read reference guidance when relevant. Installations follow the authorization, scope and version-recording process in TOOLKIT.md; implementing the controlled research runner does not authorize unrelated catalog installation.
 
 Specific source files, reviewed revisions, and compatibility decisions are recorded in TOOLKIT.md under Detailed workflow references.

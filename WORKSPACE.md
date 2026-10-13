@@ -27,6 +27,12 @@ Ownership of information:
 
 Keep personal job-search outreach separate from this business pipeline.
 
+## Research proof checkpoint — October 13, 2026
+
+The accepted local-runner route has a connected controlled proof in [pipeline/README.md](pipeline/README.md). The live tracker's **Research proof** tab holds four benchmark execution records, source summaries and review notes. These are one public business used for worker/recovery comparison, excluded from the Prospects pipeline and C2. Existing Prospects/Guide content was preserved.
+
+Real proof state, source snapshots and process receipts are under `C:\Users\zvent\Documents\Codex\2026-10-13\studio-pipeline-proof`; the dedicated Google credential is in separate protected local storage. Neither belongs in Git. The runner uses existing subscription logins and Sheets transport; no outreach or recurring task is active. The operating plan and TASKS.md identify remaining Dot coordination, unattended recovery, capacity and account-cutover work. Use the runner README for exact verification and safe recovery commands.
+
 ## Work and Codex handoff
 
 ChatGPT project: Web Studio. Local Codex project: Web-studios, using the implementation folder above. Verified in the app on October 12, 2026. Their conversation histories are separate; do not assume the other chat has seen a decision merely because both projects relate to this business.
