@@ -1,6 +1,6 @@
 # Task-based tool catalog
 
-Research catalog, not an installation manifest. Updated October 12, 2026. None of the entries below was installed by this setup. Availability can differ between agent sessions.
+Research catalog, not an installation manifest. Updated October 13, 2026. No catalog skill or software package was installed by this setup. The separately user-installed Apollo connector is recorded below. Availability can differ between agent sessions.
 
 ## Upstream ownership and updates
 
@@ -12,7 +12,7 @@ Creators' repositories remain the source of truth for their skills. Keep links a
 - Before adopting an update, review changes to behavior, permissions, dependencies, model assumptions, and cost; test it on a branch or disposable example. Avoid silently auto-updating production/client workflows. If the installer cannot control updates, document that limitation before choosing it.
 - Keep our preferences in our own workflow. Add only brief compatibility notes when needed rather than copying upstream rules.
 
-Current decision: link and consult upstream only. Do not install skills, plugins, or catalog software yet. Future adoption requires a subsequent user decision.
+Current catalog decision: link and consult upstream only. Do not install skills, plugins, or catalog software yet. Future adoption requires a subsequent user decision. The user's Apollo connector installation is a specific exception, not authorization to install other catalog capabilities.
 
 ## How agents use this catalog
 
@@ -36,6 +36,9 @@ Current decision: link and consult upstream only. Do not install skills, plugins
 | Programmatic marketing video | [Hyperframes](https://github.com/heygen-com/hyperframes) | Evaluate for a scoped animation/video deliverable; not required for every website. |
 | Copy editing | [Humanizer](https://github.com/blader/humanizer) | Optional editing pass. Writing heuristics do not establish factual accuracy or marketing performance. |
 | Google Workspace automation | [Google Workspace CLI](https://github.com/googleworkspace/cli) | Candidate for repeatable Drive/Sheets operations when existing connectors are unsuitable. Verify authentication and actual write access. |
+| Small Google workflow connections | [Apps Script overview](https://developers.google.com/apps-script/overview), [quotas](https://developers.google.com/apps-script/guides/services/quotas) | Preferred custom fallback only after native connections leave a demonstrated gap in validation, synchronization, templates, logs or health checks. Decide owner accounts, quota handling, retries and maintenance before implementation. |
+| Existing prospecting and outbound service | [Apollo API](https://knowledge.apollo.io/hc/en-us/articles/4416173158541-Use-Apollo-API), [AI research](https://knowledge.apollo.io/hc/en-us/articles/29193277882125-AI-Research-Overview) | Assess the existing Professional account's endpoints, credits, sequence and mailbox access. One outbound executor; no duplicate follow-up engine. |
+| Existing recurring research agent | [Grok Bot](https://x.ai/bot), [plans](https://cursor.com/help/grok-bot/plans) | Assess bounded research and available connections under the existing allowance. Public documentation does not establish this user's connected accounts or remaining usage. |
 | Prospect research / extraction | [Apify MCP](https://github.com/apify/apify-mcp-server) | Evaluate a specific actor after defining data needed, source suitability, and runtime budget. |
 | Search optimization research | [OpenSEO](https://github.com/every-app/open-seo) | Evaluate when SEO research is a scoped deliverable; verify provider access and operating costs. |
 | Database and authentication | [Supabase agent skills](https://github.com/supabase/agent-skills) | Read relevant guidance when designing persistence, access policies, or Supabase integration. |
@@ -63,4 +66,8 @@ The upstream workflows differ. Matt's orchestration skills can require setup, ex
 
 ## Adoption record
 
-No catalog packages installed yet. When adopting one, record: task served, installation scope, exact version/commit, setup location, verification performed, ongoing cost, and update trigger. Never record credentials here.
+A1 architecture consultation, October 13, 2026: read Matt's codebase-design guidance and pstack's design-red-flags reference. Apply clear ownership, explicit integration inputs/outputs, recovery behaviour and one executor for each action. Review official Apollo, Google, Grok Bot, OpenAI and Claude documentation to distinguish subscription tools from runtime options. Following the dependency/upkeep question, assess native connections before adding a runtime and choose one research operator; development/review subscriptions need not all become live dependencies. Apollo's new Sheets imports are a selective beta, not proof of full activity/reply synchronization. Google personal-to-Workspace file ownership and trigger-owner constraints require a verified cutover plan. The operating plan holds the source links, proposed stack and cost/upkeep assumptions. No package, script, paid service or live routine was installed or activated by this assessment.
+
+Apollo connector, user-installed and read-verified October 13, 2026: account-level OAuth connection in app settings, which displayed connector version 5.0.0. Verification used the connector's tool discovery followed by profile/credit, sending-mailbox-list and sequence-metadata reads. Account details and balances stay in the private operating plan. No enrollment, sending, sequence edits or purchases were performed. Existing Apollo plan/credit costs apply; this check added no subscription. Hosted connector updates are provider-controlled rather than pinned here. Recheck authentication and required operations when permissions, provider behaviour or the connector version changes. This connection does not establish standalone API or Grok Bot access.
+
+No catalog packages installed yet. When adopting another capability, record: task served, installation scope, exact version/commit, setup location, verification performed, ongoing cost, and update trigger. Never record credentials here.
