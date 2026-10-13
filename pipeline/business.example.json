@@ -1,0 +1,6 @@
+{
+  "business_name": "Example Cleaning",
+  "website": "https://example.com/",
+  "seed_urls": ["https://example.com/", "https://example.com/services"],
+  "as_of": "REPLACE_WITH_UTC_DATE_YYYY-MM-DD"
+}

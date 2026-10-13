@@ -1,0 +1,4 @@
+{
+  "spreadsheetId": "REPLACE_WITH_TRACKER_ID",
+  "keyFile": "C:/private/pipeline-secrets/google-service-account.json"
+}

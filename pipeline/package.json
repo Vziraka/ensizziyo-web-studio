@@ -1,0 +1,15 @@
+{
+  "name": "studio-research-proof",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check proof.mjs && node --check workers.mjs && node --check google.mjs && node --check engine.mjs && node --check schemas.mjs && node --check sources.mjs"
+  },
+  "dependencies": {
+    "google-auth-library": "11.3.0"
+  }
+}
