@@ -5,10 +5,15 @@ import { invokeCLI } from './workers.mjs';
 import { GoogleQueue } from './google.mjs';
 import { validateJob } from './sources.mjs';
 import { publishJob, executeJob, watchJob } from './runner.mjs';
+import { backupJob, restoreBackup } from './backup.mjs';
 
 const directory = await privateStateDirectory(process.env.STUDIO_STATE_DIR);
-await mkdir(directory, { recursive: true });
 const [command, jobId, worker] = process.argv.slice(2);
+if (command === 'restore') {
+  console.log(JSON.stringify(await restoreBackup({ input: jobId, destination: directory })));
+  process.exit(0);
+}
+await mkdir(directory, { recursive: true });
 let queue;
 try { queue = new GoogleQueue(await readJson(join(directory, 'google-config.json'))); }
 catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -33,6 +38,8 @@ if (command === 'prepare') {
   if (!/^[a-z0-9-]{1,60}$/.test(jobId ?? '')) throw Error('Invalid job ID');
   await publish(jobId);
   console.log(JSON.stringify({ job_id: jobId, google_receipt: 'verified' }));
+} else if (command === 'backup') {
+  console.log(JSON.stringify(await backupJob({ directory, jobId, output: worker })));
 } else if (command === 'run' || command === 'watch') {
   if (!/^[a-z0-9-]{1,60}$/.test(jobId ?? '')) throw Error('Invalid job ID');
   const controller = new AbortController();
@@ -56,6 +63,12 @@ if (command === 'prepare') {
       if (process.argv.includes('--interrupt-assessment') && event.event === 'worker_started' && event.phase === 'assess') interruptionTimer = setTimeout(interrupt, 2000);
     };
     const options = { directory, queue, jobId, worker, revisionNotes, invoke: invokeCLI, signal: controller.signal, onEvent };
+    const fallbackIndex = process.argv.indexOf('--fallback');
+    if (fallbackIndex !== -1) {
+      const value = process.argv[fallbackIndex + 1];
+      if (!value || value.startsWith('--')) throw Error('Name the allowed subscription fallback workers');
+      options.fallbackWorkers = value.split(',');
+    }
     const timeoutIndex = process.argv.indexOf('--timeout-seconds');
     if (timeoutIndex !== -1) {
       const seconds = Number(process.argv[timeoutIndex + 1]);
@@ -69,4 +82,4 @@ if (command === 'prepare') {
     console.error(error.message); process.exitCode = error.name === 'AbortError' ? 130 : 1;
   }
   finally { clearTimeout(interruptionTimer); process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt); }
-} else { throw Error('Usage: node proof.mjs prepare | google-probe | sync <job-id> | run <job-id> <cursor|claude|codex> [--interrupt-assessment|--revise] | watch <job-id> [--timeout-seconds 900]'); }
+} else { throw Error('Usage: node proof.mjs prepare | google-probe | sync <job-id> | run <job-id> <cursor|claude|codex> [--interrupt-assessment|--revise] [--fallback claude,cursor] | watch <job-id> [--timeout-seconds 900] [--fallback claude,cursor] | backup <job-id> <private-output.json> | restore <backup.json> (STUDIO_STATE_DIR must be new)'); }

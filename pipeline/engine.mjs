@@ -46,7 +46,7 @@ export async function acquireLock(directory) {
   }
 }
 
-export async function runJob({ directory, worker, invoke, signal, revisionNotes, collectSources = collectPublicSources, onEvent = () => {}, beforeStart = () => {}, lockDirectory = directory }) {
+export async function runJob({ directory, worker, invoke, signal, revisionNotes, collectSources = collectPublicSources, onEvent = () => {}, beforeStart = () => {}, beforeComplete = () => {}, beforeFailure = () => {}, lockDirectory = directory }) {
   if (!['cursor', 'claude', 'codex'].includes(worker)) throw Error('Unknown research worker');
   const release = await acquireLock(lockDirectory);
   const statePath = join(directory, 'state.json');
@@ -69,6 +69,7 @@ export async function runJob({ directory, worker, invoke, signal, revisionNotes,
     if (state.attempts.at(-1)?.status === 'Running') { state.attempts.at(-1).status = 'Interrupted'; state.attempts.at(-1).ended_at = new Date().toISOString(); }
     const attempt = { id: randomUUID(), worker, status: 'Running', started_at: new Date().toISOString() };
     state = { ...state, status: 'Running', worker, attempt_id: attempt.id, child_pid: null, attempts: [...state.attempts, attempt] };
+    delete state.error;
     ownsAttempt = true;
     await saveJson(statePath, state);
     const persist = async event => {
@@ -82,6 +83,7 @@ export async function runJob({ directory, worker, invoke, signal, revisionNotes,
     if (!snapshots) {
       await persist({ event: 'sources_started' });
       snapshots = validateSnapshots(await collectSources(job, { signal }), job);
+      signal?.throwIfAborted();
       await saveJson(join(directory, 'sources.json'), snapshots);
       await persist({ event: 'sources_saved', source_count: snapshots.sources.length });
     }
@@ -90,6 +92,7 @@ export async function runJob({ directory, worker, invoke, signal, revisionNotes,
     if (!checkpoint) {
       await persist({ event: 'collect_started' });
       checkpoint = validateEvidence(await invoke({ worker, phase: 'collect', job, snapshots, directory, attempt_id: attempt.id, signal, onEvent: persist }), job, false, snapshots);
+      signal?.throwIfAborted();
       await saveJson(join(directory, 'checkpoint.json'), checkpoint);
       state.child_pid = null;
       await persist({ event: 'checkpoint_saved', source_count: checkpoint.sources.length });
@@ -97,6 +100,9 @@ export async function runJob({ directory, worker, invoke, signal, revisionNotes,
     signal?.throwIfAborted();
     await persist({ event: 'assess_started' });
     const report = validateEvidence(await invoke({ worker, phase: 'assess', job, checkpoint, snapshots, feedback: revisionNotes, directory, attempt_id: attempt.id, signal, onEvent: persist }), job, true, snapshots);
+    signal?.throwIfAborted();
+    await beforeComplete();
+    signal?.throwIfAborted();
     const resultUrls = new Set(report.sources.map(s => s.url));
     if (checkpoint.sources.some(s => !resultUrls.has(s.url))) throw Error('Completed report dropped saved evidence');
     await saveJson(join(directory, 'report.json'), report);
@@ -108,10 +114,12 @@ export async function runJob({ directory, worker, invoke, signal, revisionNotes,
     return { state, report };
   } catch (error) {
     if (ownsAttempt && state?.status === 'Running') {
-      state.status = error.name === 'AbortError' ? 'Interrupted' : 'Failed';
+      await beforeFailure();
+      const reason = signal?.reason?.code ?? error.code;
+      state.status = reason === 'QUEUE_PAUSED' ? 'Paused' : reason === 'QUEUE_BLOCKED' ? 'Blocked' : reason === 'WORKER_QUOTA' ? 'Quota' : error.name === 'AbortError' ? 'Interrupted' : 'Failed';
       state.attempts.at(-1).status = state.status;
       state.attempts.at(-1).ended_at = new Date().toISOString();
-      state.error = error.name;
+      state.error = reason ?? error.name;
       // Preserve a live PID so a new invocation cannot start over an orphaned worker.
       if (!state.child_pid || !alive(state.child_pid)) state.child_pid = null;
       await saveJson(statePath, state);

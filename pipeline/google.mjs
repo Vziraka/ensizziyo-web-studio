@@ -64,14 +64,30 @@ export class GoogleQueue {
     if (requestedWorker && (values[4] !== requestedWorker || values[6] !== job.purpose)) throw Error('Queue worker/purpose changed before reservation');
     if (requestedWorker && (values[9] || (values[7] && values[7] !== 'Ready'))) throw Error('Existing queue reservation/status requires manual reconciliation');
   }
+  async checkActive(job, attemptId, requestedWorker) {
+    const { values } = await this.row(job.id);
+    if (values[5] === 'Pause') throw Object.assign(Error('Queue job paused by owner'), { code: 'QUEUE_PAUSED' });
+    if (values[5] !== 'Ready' || values[7] !== 'Running' || values[9] !== attemptId) throw Object.assign(Error('Queue control/reservation changed; execution blocked'), { code: 'QUEUE_BLOCKED' });
+    if (values[1] !== job.business_name || values[2] !== job.website || JSON.stringify((values[3] ?? '').split(/\r?\n/).filter(Boolean)) !== JSON.stringify(job.seed_urls) || (requestedWorker && (values[4] !== requestedWorker || values[6] !== job.purpose))) throw Object.assign(Error('Queue scope changed; execution blocked'), { code: 'QUEUE_BLOCKED' });
+  }
+  async checkRecovery(job, previousAttempt, requestedWorker) {
+    await this.checkInputs(job);
+    const { values } = await this.row(job.id);
+    if (values[7] !== 'Quota' || values[9] !== previousAttempt || (requestedWorker && (values[4] !== requestedWorker || values[6] !== job.purpose))) throw Error('Quota handoff requires the verified previous reservation and unchanged scope');
+  }
   async publish(jobId, state, checkpoint, report, review) {
     const { row, values } = await this.row(jobId);
     if (values[9] && values[9] !== state.attempt_id && !state.attempts.some(a => a.id === values[9] && a.ended_at)) throw Error('Queue belongs to a different attempt; refusing a stale update');
     const encoded = report ? JSON.stringify(report) : '';
     if (encoded.length > 48_000) throw Error('Report exceeds bounded proof cell size');
     const quality = review?.attempt_id === state.attempt_id ? `${review.verdict}: ${review.notes.join(' ')}` : 'Source-quality review pending.';
-    await this.write(`'Research proof'!H${row}:P${row}`, [[state.status, state.worker ?? '', state.attempt_id ?? '', checkpoint ? 'Evidence saved' : '', checkpoint?.sources.length ?? 0, report?.recommendation ?? '', encoded, new Date().toISOString(), `CONTROLLED PROOF. Excluded from C2 and outreach. ${quality}`]]);
-    const receipt = (await this.values(`'Research proof'!H${row}:J${row}`))[0];
-    if (receipt?.[0] !== state.status || receipt?.[2] !== (state.attempt_id ?? '')) throw Error('Uncertain Google write: reconcile this job before retrying');
+    const range = `'Research proof'!H${row}:P${row}`;
+    const output = [state.status, state.worker ?? '', state.attempt_id ?? '', checkpoint ? 'Evidence saved' : '', checkpoint?.sources.length ?? 0, report?.recommendation ?? '', encoded, new Date().toISOString(), `CONTROLLED PROOF. Excluded from C2 and outreach. ${quality}`];
+    let reconciled = false;
+    try { await this.write(range, [output]); } catch { reconciled = true; }
+    let receipt;
+    try { receipt = (await this.values(range))[0] ?? []; } catch { throw Object.assign(Error('Uncertain Google write: reconcile this job before retrying'), { code: 'RECONCILIATION_REQUIRED' }); }
+    if (output.some((v, i) => String(receipt[i] ?? '') !== String(v))) throw Object.assign(Error('Uncertain Google write: reconcile this job before retrying'), { code: 'RECONCILIATION_REQUIRED' });
+    return { reconciled };
   }
 }

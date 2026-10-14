@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -8,7 +8,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { runJob } from './engine.mjs';
-import { subscriptionEnvironment } from './workers.mjs';
+import { subscriptionEnvironment, workerFailure } from './workers.mjs';
 import { GoogleQueue } from './google.mjs';
 import { collectPublicSources } from './sources.mjs';
 
@@ -20,6 +20,13 @@ const checkpoint = { schema_version: 1, job_id: job.id, business_name: job.busin
   { url: 'https://example.com/services', checked_at: job.as_of, content_sha256: pageHash, facts: ['Offers recurring cleaning.', 'Lists move-out cleaning.'] }
 ], unknowns: ['Response time is unknown.'] };
 const report = { ...checkpoint, checkpoint_reused: true, observations: checkpoint.sources.flatMap(s => s.facts.map(fact => ({ fact, source_urls: [s.url] }))), opportunities: [{ observed_basis: 'Has a request form.', possible_effect: 'Response delays could affect inquiries; unconfirmed.', proposed_solution: 'Discuss inquiry tracking if the owner confirms a gap.', service_area: 'systems', confidence: 'hypothesis', owner_question: 'How do you track and respond to requests?' }], public_contact_routes: ['https://example.com/'], recommendation: 'Needs review' };
+
+test('only terminal provider quota envelopes enable handoff; research text and transient events do not', () => {
+  for (const event of [{ type: 'turn.failed', error: { code: 'usage_limit_reached', message: 'Limit reached' } }, { type: 'result', is_error: true, result: "You've hit your limit" }, { type: 'error', message: 'Monthly usage limit exceeded' }]) assert.equal(workerFailure(JSON.stringify(event)).code, 'WORKER_QUOTA');
+  assert.equal(workerFailure(JSON.stringify({ type: 'result', result: JSON.stringify({ fact: "You've hit your limit" }) })), undefined);
+  assert.equal(workerFailure(JSON.stringify({ type: 'system', subtype: 'api_retry', error: 'rate_limit' })), undefined);
+  assert.equal(workerFailure(JSON.stringify({ type: 'error', message: 'Authentication failed' })).code, 'WORKER_FAILED');
+});
 
 async function fixture() {
   const directory = await mkdtemp(join(tmpdir(), 'studio-proof-test-'));
@@ -157,4 +164,43 @@ test('completed report cannot cite a page the runner did not retrieve', async ()
   const invented = { ...report, sources: report.sources.map(s => ({ ...s, content_sha256: 'c'.repeat(64) })) };
   await assert.rejects(runJob({ directory, worker: 'codex', invoke: async ({ phase }) => phase === 'collect' ? checkpoint : invented }), /does not match retrieved evidence/);
   await assert.rejects(readFile(join(directory, 'report.json')), { code: 'ENOENT' });
+});
+
+test('private backup restores completed evidence without credentials, logs, overwrite or model calls', async () => {
+  const { backupJob, restoreBackup } = await import('./backup.mjs');
+  const original = await fixture(), root = await mkdtemp(join(tmpdir(), 'studio-backup-'));
+  await runJob({ directory: original, worker: 'codex', invoke: async ({ phase }) => phase === 'collect' ? checkpoint : report });
+  await rename(original, join(root, job.id));
+  await writeFile(join(root, 'google-config.json'), 'PRIVATE CONFIG');
+  await writeFile(join(root, job.id, 'worker.jsonl'), 'PRIVATE RAW OUTPUT');
+  const output = join(root, 'backup.json'), destination = join(root, 'restored');
+  await backupJob({ directory: root, jobId: job.id, output });
+  const bytes = await readFile(output, 'utf8');
+  assert.ok(!bytes.includes('PRIVATE'));
+  await restoreBackup({ input: output, destination });
+  const result = await runJob({ directory: join(destination, job.id), worker: 'claude', invoke: async () => assert.fail('Restoring completed evidence must not invoke a model') });
+  assert.equal(result.state.status, 'Complete');
+  assert.equal(await readFile(join(destination, job.id, 'sources.json'), 'utf8'), await readFile(join(root, job.id, 'sources.json'), 'utf8'));
+  await assert.rejects(restoreBackup({ input: output, destination }), /exist/i);
+  await assert.rejects(backupJob({ directory: root, jobId: job.id, output }), /exist/i);
+  for (const mutate of [bundle => { bundle.files['sources.json'].content += ' '; }, bundle => { bundle.files['../google-config.json'] = bundle.files['job.json']; }]) {
+    const invalid = JSON.parse(bytes); mutate(invalid);
+    const bad = join(root, 'bad.json'); await writeFile(bad, JSON.stringify(invalid));
+    await assert.rejects(restoreBackup({ input: bad, destination: join(root, 'invalid') }), /checksum|file/i);
+    await assert.rejects(readFile(join(root, 'invalid', job.id, 'state.json')), { code: 'ENOENT' });
+  }
+});
+
+test('backup refuses an executing or unresolved process and restores nothing into Git', async () => {
+  const { backupJob, restoreBackup } = await import('./backup.mjs');
+  const root = await mkdtemp(join(tmpdir(), 'studio-backup-')), original = await fixture();
+  await rename(original, join(root, job.id));
+  for (const state of [{ job_id: job.id, status: 'Running', child_pid: null, attempts: [] }, { job_id: job.id, status: 'Paused', child_pid: process.pid, attempts: [] }]) {
+    await writeFile(join(root, job.id, 'state.json'), JSON.stringify(state));
+    await assert.rejects(backupJob({ directory: root, jobId: job.id, output: join(root, 'backup.json') }), /stopped|Running/i);
+  }
+  await writeFile(join(root, job.id, 'state.json'), JSON.stringify({ job_id: job.id, status: 'Ready', attempts: [] }));
+  const output = join(root, 'backup.json'); await backupJob({ directory: root, jobId: job.id, output });
+  const checkout = join(root, 'checkout'); await mkdir(checkout); await mkdir(join(checkout, '.git'));
+  await assert.rejects(restoreBackup({ input: output, destination: join(checkout, 'private') }), /outside every Git/);
 });
