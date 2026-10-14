@@ -118,11 +118,16 @@ export async function watchJob({ directory, queue, jobId, invoke, signal, collec
   if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 3_600_000 || !Number.isFinite(pollMs) || pollMs < 1 || pollMs > 60_000) throw Error('Queue wait must be bounded');
   const deadline = clock() + timeoutMs;
   let intakeReady = !intakeResearch;
+  let researchVersion = qualityResearch ? 2 : undefined;
   await onEvent({ job_id: jobId, event: 'listener_started', max_jobs: 1, timeout_ms: timeoutMs });
   while (clock() < deadline) {
     signal?.throwIfAborted();
-    if (!intakeReady) intakeReady = Boolean(await intakeSharedCandidate({ directory, queue, jobId, now }));
-    const pending = intakeReady ? await queue.pendingJob(jobId, now().toISOString().slice(0, 10), qualityResearch || intakeResearch) : null;
+    if (!intakeReady) {
+      const intake = await intakeSharedCandidate({ directory, queue, jobId, now, collectSources, signal });
+      intakeReady = Boolean(intake);
+      if (intake) researchVersion = intake.research_version;
+    }
+    const pending = intakeReady ? await queue.pendingJob(jobId, now().toISOString().slice(0, 10), researchVersion ?? (qualityResearch || intakeResearch)) : null;
     if (pending) {
       await snapshotJob(directory, pending.job);
       await onEvent({ job_id: jobId, event: 'queue_selected', worker: pending.worker });

@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "recheck_of": "discovery-example-20261014",
+  "job": {
+    "id": "recheck-example-20261014",
+    "business_name": "Example Cakes — fictional",
+    "website": "",
+    "seed_urls": ["https://www.instagram.com/examplecakes/"],
+    "as_of": "2026-10-14",
+    "research_version": 3
+  },
+  "worker": "codex",
+  "discovery": {
+    "channel": "Referral",
+    "query": "Recheck the prior approved fictional identity",
+    "category": "Custom cakes",
+    "area": "Fairfax, VA",
+    "source_url": "https://www.instagram.com/examplecakes/",
+    "website_check": {
+      "status": "No verified site found",
+      "searches": ["Replace with the actual bounded website checks"],
+      "note": "Fictional example only. Replace all data; no website absence or current operation is established."
+    }
+  },
+  "captures": {
+    "reviewed_by": "Replace with the actual source reviewer",
+    "http_urls": [],
+    "sources": [{
+      "url": "https://www.instagram.com/examplecakes/",
+      "checked_at": "2026-10-14",
+      "fetched_at": "2026-10-14T12:00:00Z",
+      "text": "DM to order\nFriday pickup",
+      "kind": "social",
+      "capture_method": "reviewed_page",
+      "coverage": "partial",
+      "coverage_reason": "FICTIONAL EXAMPLE ONLY. Replace with the actual inspected scope and limits; never submit this example live.",
+      "identity_note": "Replace with the actual business-name, location and linked-identity checks.",
+      "reviewed_context": {
+        "reviewed_by": "Replace with the actual source reviewer",
+        "inspected_at": "2026-10-14T12:00:00Z",
+        "scope": "FICTIONAL public bio and one ordering caption only. Private messages, archive and linked forms were not inspected.",
+        "facts": [{
+          "id": "ordering-route",
+          "statement": "The inspected bio asks customers to order by direct message; other ordering routes are unverified.",
+          "excerpt": "DM to order",
+          "published_at": null
+        }, {
+          "id": "pickup-window",
+          "statement": "The inspected caption offers Friday pickup; current availability and other days are unverified.",
+          "excerpt": "Friday pickup",
+          "published_at": null
+        }]
+      }
+    }],
+    "failures": []
+  }
+}
