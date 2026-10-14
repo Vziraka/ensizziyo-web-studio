@@ -5,10 +5,14 @@ import { createHash } from 'node:crypto';
 const host = value => new URL(value).hostname.replace(/^www\./, '').toLowerCase();
 export function validateJob(job) {
   if (!/^[a-z0-9-]{1,60}$/.test(job.id ?? '') || !job.business_name?.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(job.as_of ?? '')) throw Error('Invalid job identity/date');
-  if (!Array.isArray(job.seed_urls) || job.seed_urls.length < 2 || job.seed_urls.length > 4 || new Set(job.seed_urls).size !== job.seed_urls.length) throw Error('Provide 2-4 distinct approved seed URLs');
-  for (const value of [job.website, ...job.seed_urls]) {
+  const quality = job.research_version === 2;
+  if (job.research_version !== undefined && !quality) throw Error('Unknown research version');
+  if (typeof job.website !== 'string' || (!quality && !job.website)) throw Error('Website must be explicit; version 2 permits an unverified blank');
+  if (quality && job.website && /(?:^|\.)(?:facebook\.com|instagram\.com|fb\.com)$/.test(host(job.website))) throw Error('A social profile is not a verified standalone website; leave website blank and use seed URLs');
+  if (!Array.isArray(job.seed_urls) || job.seed_urls.length < (quality ? 1 : 2) || job.seed_urls.length > 4 || job.seed_urls.some(url => typeof url !== 'string' || !url.trim()) || new Set(job.seed_urls).size !== job.seed_urls.length) throw Error('Provide distinct approved seed URLs (legacy: 2-4; version 2: 1-4)');
+  for (const value of [job.website, ...job.seed_urls].filter(Boolean)) {
     const url = new URL(value);
-    if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash || isIP(url.hostname) || !url.hostname.includes('.') || /(?:^|\.)(?:localhost|local|internal|test|invalid)$/.test(url.hostname) || host(value) !== host(job.website)) throw Error('Job requires public HTTPS URLs on the approved business host');
+    if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash || isIP(url.hostname) || !url.hostname.includes('.') || /(?:^|\.)(?:localhost|local|internal|test|invalid)$/.test(url.hostname) || (!quality && host(value) !== host(job.website))) throw Error('Job requires approved public HTTPS URLs');
   }
 }
 
@@ -35,15 +39,22 @@ function textFromHtml(html) {
 }
 
 export function validateSnapshots(snapshot, job) {
-  if (!Array.isArray(snapshot?.sources) || snapshot.sources.length < 2 || new Set(snapshot.sources.map(s => s.url)).size !== snapshot.sources.length) throw Error('Missing or duplicate retrieved sources');
+  const quality = job.research_version === 2;
+  if (!Array.isArray(snapshot?.sources) || snapshot.sources.length < (quality ? 1 : 2) || snapshot.sources.length > 4 || new Set(snapshot.sources.map(s => s.url)).size !== snapshot.sources.length) throw Error('Missing or duplicate retrieved sources');
   for (const source of snapshot.sources) {
-    if (!job.seed_urls.includes(source.url) || source.checked_at !== job.as_of || !source.fetched_at?.startsWith(`${job.as_of}T`) || typeof source.text !== 'string' || source.text.length < 200 || source.text.length > 20_000 || createHash('sha256').update(source.text).digest('hex') !== source.content_sha256) throw Error('Retrieved source integrity check failed');
+    if (!job.seed_urls.includes(source.url) || source.checked_at !== job.as_of || !source.fetched_at?.startsWith(`${job.as_of}T`) || !Number.isFinite(Date.parse(source.fetched_at)) || typeof source.text !== 'string' || source.text.length < (quality ? 50 : 200) || source.text.length > 20_000 || createHash('sha256').update(source.text).digest('hex') !== source.content_sha256) throw Error('Retrieved source integrity check failed');
+    if (quality) {
+      if (!['business', 'social', 'directory'].includes(source.kind) || !['http', 'reviewed_page', 'search_snippet'].includes(source.capture_method) || !['full', 'partial'].includes(source.coverage) || typeof source.identity_note !== 'string' || source.identity_note.trim().length < 20) throw Error('Source capture/coverage/identity review is required');
+      if ((source.capture_method === 'search_snippet' || source.truncated) && source.coverage !== 'partial') throw Error('Snippets and truncated text require partial coverage');
+      if (/^(?:log in to (?:facebook|instagram)|login required|sign in to continue|access denied|just a moment|checking your browser)/i.test(source.text.trim())) throw Error('Blocked/login text cannot be business evidence');
+    }
   }
   return snapshot;
 }
 
 export async function collectPublicSources(job, { request = fetch, resolveHost = name => lookup(name, { all: true }), now = () => new Date(), signal } = {}) {
   validateJob(job);
+  if (job.research_version === 2 && (!job.website || job.seed_urls.some(url => host(url) !== host(job.website)))) throw Error('External/social sources require explicitly reviewed capture import before execution');
   const fetched_at = now().toISOString();
   if (fetched_at.slice(0, 10) !== job.as_of) throw Error('Job date is stale; prepare a new dated job');
   const sources = [], failures = [];
@@ -68,14 +79,15 @@ export async function collectPublicSources(job, { request = fetch, resolveHost =
       for await (const chunk of response.body) { size += chunk.length; if (size > 512_000) throw Error('Source exceeds proof size bound'); chunks.push(chunk); }
       const raw = Buffer.concat(chunks).toString('utf8');
       const fullText = /text\/html/i.test(type) ? textFromHtml(raw) : raw.trim();
-      if (fullText.length < 200 || /just a moment|checking your browser|access denied/i.test(fullText.slice(0, 300))) throw Error('Source content is unavailable or blocked');
+      if (fullText.length < 200 || /just a moment|checking your browser|access denied|log in to (?:facebook|instagram)|login required/i.test(fullText.slice(0, 300))) throw Error('Source content is unavailable or blocked');
       const text = fullText.slice(0, 20_000);
-      sources.push({ url: original, final_url: current, fetched_at, checked_at: job.as_of, truncated: fullText.length > text.length, content_sha256: createHash('sha256').update(text).digest('hex'), text });
+      const quality = job.research_version === 2 ? { kind: 'business', capture_method: 'http', coverage: fullText.length > text.length ? 'partial' : 'full', identity_note: 'Caller-approved business website host; identity still requires source review.' } : {};
+      sources.push({ url: original, final_url: current, fetched_at, checked_at: job.as_of, truncated: fullText.length > text.length, content_sha256: createHash('sha256').update(text).digest('hex'), text, ...quality });
     } catch (error) {
       signal?.throwIfAborted();
       failures.push({ url: original, reason: error.message });
     }
   }
-  if (sources.length < 2) throw Error('Fewer than two successfully retrieved public sources; no research checkpoint accepted');
+  if (sources.length < (job.research_version === 2 ? 1 : 2)) throw Error('Fewer than two successfully retrieved public sources for legacy proof, or none for version 2; no research checkpoint accepted');
   return validateSnapshots({ sources, failures }, job);
 }

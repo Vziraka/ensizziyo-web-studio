@@ -31,7 +31,7 @@ function validateBundle(bundle) {
   validateJob(job);
   if (job.id !== bundle.job_id || state?.job_id !== job.id || !statuses.includes(state.status) || state.child_pid || !Array.isArray(state.attempts) || state.attempts.some(a => !statuses.includes(a.status))) throw Error('Backup requires a stopped, consistent job; Running attempts cannot be restored');
   // Only operational fields belong in these files; configuration and credentials are separate.
-  if (Object.keys(job).some(key => !['id', 'business_name', 'website', 'seed_urls', 'as_of', 'purpose'].includes(key)) || Object.keys(state).some(key => !['job_id', 'status', 'attempts', 'worker', 'attempt_id', 'child_pid', 'updated_at', 'error'].includes(key))) throw Error('Unexpected configuration in backup files');
+  if (Object.keys(job).some(key => !['id', 'business_name', 'website', 'seed_urls', 'as_of', 'purpose', 'research_version'].includes(key)) || Object.keys(state).some(key => !['job_id', 'status', 'attempts', 'worker', 'attempt_id', 'child_pid', 'updated_at', 'error'].includes(key))) throw Error('Unexpected configuration in backup files');
   const snapshots = values['sources.json'];
   if (snapshots) validateSnapshots(snapshots, job);
   for (const name of ['checkpoint.json', 'report.json']) if (values[name]) {
