@@ -33,6 +33,8 @@ The accepted local-runner route has a connected controlled proof in [pipeline/RE
 
 Real proof state, source snapshots and process receipts are under `C:\Users\zvent\Documents\Codex\2026-10-13\studio-pipeline-proof`; the dedicated Google credential is in separate protected local storage. Neither belongs in Git. The runner uses existing subscription logins and Sheets transport; no outreach or recurring task is active. The operating plan and TASKS.md identify remaining Dot coordination, unattended recovery, capacity and account-cutover work. Use the runner README for exact verification and safe recovery commands.
 
+The one-job listener is implemented in draft [PR #12](https://github.com/Vziraka/ensizziyo-web-studio/pull/12), with 21 passing synthetic tests and CI. The owner's Dot independently read the queue and identified the empty test row. Its write-triggered automatic run is pending direct owner confirmation requested in that Dot chat; do not claim that live proof has passed. The private proof directory retains the bounded-listener event log and confirmation screenshot. The operating plan was updated without changing its other paragraphs, source links or opaque equations.
+
 ## Work and Codex handoff
 
 ChatGPT project: Web Studio. Local Codex project: Web-studios, using the implementation folder above. Verified in the app on October 12, 2026. Their conversation histories are separate; do not assume the other chat has seen a decision merely because both projects relate to this business.
