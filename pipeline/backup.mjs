@@ -4,8 +4,9 @@ import { createHash } from 'node:crypto';
 import { acquireLock, privateStateDirectory } from './engine.mjs';
 import { validateJob, validateSnapshots } from './sources.mjs';
 import { validateEvidence } from './schemas.mjs';
+import { validateIntakeRecord, validateDecision } from './prospects.mjs';
 
-const names = ['job.json', 'sources.json', 'checkpoint.json', 'report.json', 'review.json', 'state.json'];
+const names = ['job.json', 'sources.json', 'checkpoint.json', 'report.json', 'review.json', 'state.json', 'intake.json', 'qualification.json'];
 const statuses = ['Ready', 'Complete', 'Paused', 'Blocked', 'Quota', 'Interrupted', 'Failed'];
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const idValid = id => /^[a-z0-9-]{1,60}$/.test(id ?? '');
@@ -41,6 +42,13 @@ function validateBundle(bundle) {
   if (state.status === 'Complete' && (!values['report.json'] || !values['checkpoint.json'])) throw Error('Completed backup is missing evidence');
   const review = values['review.json'];
   if (review && (!state.attempts.some(a => a.id === review.attempt_id) || !['Accepted', 'Needs review'].includes(review.verdict) || !Array.isArray(review.notes) || review.notes.some(note => typeof note !== 'string'))) throw Error('Invalid saved quality review');
+  if (values['intake.json']) validateIntakeRecord(values['intake.json'], job, snapshots);
+  if (values['qualification.json']) {
+    if (!values['intake.json'] || state.status !== 'Complete') throw Error('Qualification backup requires completed discovery evidence');
+    const decision = values['qualification.json'];
+    if (!Number.isFinite(Date.parse(decision.reviewed_at))) throw Error('Invalid qualification review date');
+    validateDecision(decision, { job, snapshots, state, report: values['report.json'], report_sha256: bundle.files['report.json'].sha256, sources_sha256: bundle.files['sources.json'].sha256 }, () => new Date(decision.reviewed_at));
+  }
   return values;
 }
 

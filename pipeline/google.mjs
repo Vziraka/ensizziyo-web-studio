@@ -23,8 +23,81 @@ export class GoogleQueue {
       throw Error(`Google request failed (${error.response?.status ?? error.code ?? 'configuration/network'}); inspect access and API setup without printing credentials`);
     }
   }
-  async values(range) { return (await this.request('GET', `/values/${encodeURIComponent(range)}`)).values ?? []; }
+  async values(range, render = 'FORMATTED_VALUE') { return (await this.request('GET', `/values/${encodeURIComponent(range)}?valueRenderOption=${render}`)).values ?? []; }
   async write(range, values) { return this.request('PUT', `/values/${encodeURIComponent(range)}?valueInputOption=RAW`, { range, values }); }
+  async writeVerified(range, output) {
+    let reconciled = false;
+    try { await this.write(range, [output]); } catch { reconciled = true; }
+    let receipt;
+    try { receipt = (await this.values(range))[0] ?? []; } catch { throw Object.assign(Error('Uncertain Google write: reconcile this job before retrying'), { code: 'RECONCILIATION_REQUIRED' }); }
+    if (output.some((v, i) => String(receipt[i] ?? '') !== String(v))) throw Object.assign(Error('Uncertain Google write: reconcile this job before retrying'), { code: 'RECONCILIATION_REQUIRED' });
+    return { reconciled };
+  }
+  async pendingIntake(jobId) {
+    if (!/^[a-z0-9-]{1,60}$/.test(jobId ?? '')) throw Error('Invalid intake ID');
+    const matches = (await this.values("'Discovery intake'!A2:K1000")).filter(r => r[0] === jobId);
+    if (matches.length > 1) throw Error('Duplicate discovery intake IDs');
+    if (!matches.length || matches[0][6] !== 'Ready') return null;
+    const row = matches[0];
+    if (row[8] === 'Queued') return null;
+    if (row[8]) throw Error('Intake already has an unresolved handoff');
+    if (typeof row[7] !== 'string' || row[7].length > 48_000) throw Error('Discovery packet exceeds bounded Sheet cell');
+    let packet;
+    try { packet = JSON.parse(row[7]); } catch { throw Error('Discovery packet is not valid JSON'); }
+    if (packet.job?.id !== row[0] || packet.job?.business_name !== row[1] || packet.discovery?.category !== row[2] || packet.discovery?.area !== row[3] || packet.discovery?.channel !== row[4] || packet.worker !== row[5]) throw Error('Discovery packet differs from visible intake fields');
+    return { packet, inputs: row.slice(0, 8) };
+  }
+  async acknowledgeIntake(jobId, inputs) {
+    const rows = await this.values("'Discovery intake'!A2:K1000");
+    const matches = rows.map((r, i) => ({ r, row: i + 2 })).filter(v => v.r[0] === jobId);
+    if (matches.length !== 1 || inputs.some((v, i) => matches[0].r[i] !== v)) throw Error('Intake changed during handoff; reconcile before execution');
+    return this.writeVerified(`'Discovery intake'!I${matches[0].row}:K${matches[0].row}`, ['Queued', new Date().toISOString(), jobId]);
+  }
+  async publishIntakeReview(jobId, decision, nextAction) {
+    const rows = await this.values("'Discovery intake'!A2:M1000");
+    const matches = rows.map((r, i) => ({ r, row: i + 2 })).filter(v => v.r[0] === jobId);
+    if (!matches.length) return; // Operator-file intake has no inbox row.
+    if (matches.length !== 1 || matches[0].r[8] !== 'Queued' || matches[0].r[10] !== jobId) throw Error('Intake review requires its verified handoff');
+    const output = [decision, nextAction], current = matches[0].r.slice(11, 13);
+    if (output.every((v, i) => current[i] === v)) return;
+    if (current.some(v => v)) throw Error('Existing intake review changed; reconcile before replacing it');
+    await this.writeVerified(`'Discovery intake'!L${matches[0].row}:M${matches[0].row}`, output);
+  }
+  async intakeJob(job, worker) {
+    validateJob(job);
+    if (!['cursor', 'claude', 'codex'].includes(worker)) throw Error('Unknown requested research worker');
+    const rows = await this.values("'Research proof'!A2:P1000");
+    const existing = rows.filter(r => r[0] === job.id);
+    const inputs = [job.id, job.business_name, job.website, job.seed_urls.join('\n'), worker, 'Ready', job.purpose];
+    if (existing.length) {
+      if (existing.length !== 1 || inputs.some((v, i) => String(existing[0][i] ?? '') !== v)) throw Error('Queue discovery inputs changed or duplicated; reconcile using a new job ID');
+      return { queue: 'already present' };
+    }
+    if (rows.some(r => r[6] === job.purpose && (r[1]?.trim().toLowerCase() === job.business_name.trim().toLowerCase() || (r[3] ?? '').split('\n').some(url => job.seed_urls.includes(url))))) throw Error('Possible duplicate discovered business; reconcile before adding another job');
+    const last = rows.findLastIndex(r => r.some(v => v !== ''));
+    const row = last + 3;
+    if (row > 1000) throw Error('Controlled research queue is full');
+    const range = `'Research proof'!A${row}:P${row}`;
+    if ((await this.values(range, 'FORMULA')).some(r => r.some(v => v !== ''))) throw Error('Selected queue row is no longer empty');
+    const receipt = await this.writeVerified(range, [...inputs, '', '', '', '', '', '', '', '', 'Prospect research. Qualification pending; no sending.']);
+    return { queue: 'verified', row, ...receipt };
+  }
+  async addProspect(output) {
+    const headers = ['Prospect ID', 'Business', 'Route', 'Website / source', 'Area / service', 'Observed opportunity', 'Contact / channel', 'Stage', 'Last contact', 'Next action', 'Next action date', 'Do not contact', 'Draft / proposal link', 'Quoted amount (USD)', 'Cash received (USD)', 'Notes'];
+    const rows = await this.values("'Prospects'!A1:P101", 'FORMULA');
+    if (headers.some((h, i) => rows[0]?.[i] !== h) || output.length !== 16 || output[2] !== 'Business owner' || output[7] !== 'Research' || [8, 10, 12, 13, 14].some(i => output[i] !== '') || output[11] !== 'No') throw Error('Prospect schema changed or attempted a commercial state mutation');
+    const matches = rows.slice(1).filter(r => r[0] === output[0]);
+    if (matches.length) {
+      if (matches.length !== 1 || output.some((v, i) => String(matches[0][i] ?? '') !== String(v))) throw Error('Existing prospect changed; refusing to overwrite user or commercial data');
+      return { record: 'already present' };
+    }
+    if (rows.slice(1).some(r => r[1]?.trim().toLowerCase() === output[1].trim().toLowerCase() || r[3] === output[3])) throw Error('Possible duplicate prospect; reconcile before promotion');
+    const row = rows.findLastIndex(r => r.some(v => v !== '')) + 2;
+    if (row > 101) throw Error('Prospect table capacity reached; expand its native table before adding records');
+    const range = `'Prospects'!A${row}:P${row}`;
+    if ((await this.values(range, 'FORMULA')).some(r => r.some(v => v !== ''))) throw Error('Selected prospect row is no longer empty');
+    return { record: 'verified', row, ...await this.writeVerified(range, output) };
+  }
   async probe() {
     const metadata = await this.request('GET', '?fields=spreadsheetId,sheets(properties(sheetId,title))');
     if (!metadata.sheets.some(s => s.properties.title === 'Research proof')) throw Error('Controlled proof tab is missing');
@@ -75,19 +148,15 @@ export class GoogleQueue {
     const { values } = await this.row(job.id);
     if (values[7] !== 'Quota' || values[9] !== previousAttempt || (requestedWorker && (values[4] !== requestedWorker || values[6] !== job.purpose))) throw Error('Quota handoff requires the verified previous reservation and unchanged scope');
   }
-  async publish(jobId, state, checkpoint, report, review) {
+  async publish(jobId, state, checkpoint, report, review, prospecting = false) {
     const { row, values } = await this.row(jobId);
     if (values[9] && values[9] !== state.attempt_id && !state.attempts.some(a => a.id === values[9] && a.ended_at)) throw Error('Queue belongs to a different attempt; refusing a stale update');
     const encoded = report ? JSON.stringify(report) : '';
     if (encoded.length > 48_000) throw Error('Report exceeds bounded proof cell size');
     const quality = review?.attempt_id === state.attempt_id ? `${review.verdict}: ${review.notes.join(' ')}` : 'Source-quality review pending.';
     const range = `'Research proof'!H${row}:P${row}`;
-    const output = [state.status, state.worker ?? '', state.attempt_id ?? '', checkpoint ? 'Evidence saved' : '', checkpoint?.sources.length ?? 0, report?.recommendation ?? '', encoded, new Date().toISOString(), `CONTROLLED PROOF. Excluded from C2 and outreach. ${quality}`];
-    let reconciled = false;
-    try { await this.write(range, [output]); } catch { reconciled = true; }
-    let receipt;
-    try { receipt = (await this.values(range))[0] ?? []; } catch { throw Object.assign(Error('Uncertain Google write: reconcile this job before retrying'), { code: 'RECONCILIATION_REQUIRED' }); }
-    if (output.some((v, i) => String(receipt[i] ?? '') !== String(v))) throw Object.assign(Error('Uncertain Google write: reconcile this job before retrying'), { code: 'RECONCILIATION_REQUIRED' });
-    return { reconciled };
+    const prefix = prospecting ? 'Prospect research. No sending authorized.' : 'CONTROLLED PROOF. Excluded from C2 and outreach.';
+    const output = [state.status, state.worker ?? '', state.attempt_id ?? '', checkpoint ? 'Evidence saved' : '', checkpoint?.sources.length ?? 0, report?.recommendation ?? '', encoded, new Date().toISOString(), `${prefix} ${quality}`];
+    return this.writeVerified(range, output);
   }
 }

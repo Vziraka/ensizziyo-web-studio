@@ -1,4 +1,4 @@
-import { mkdir, readFile, appendFile } from 'node:fs/promises';
+import { mkdir, readFile, appendFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { readJson, saveJson, privateStateDirectory } from './engine.mjs';
 import { invokeCLI } from './workers.mjs';
@@ -7,6 +7,7 @@ import { validateJob } from './sources.mjs';
 import { publishJob, executeJob, watchJob } from './runner.mjs';
 import { backupJob, restoreBackup } from './backup.mjs';
 import { readReviewedSources } from './captures.mjs';
+import { intakeCandidate, reviewTemplate, reviewCandidate, readPrivateJson } from './prospects.mjs';
 
 const directory = await privateStateDirectory(process.env.STUDIO_STATE_DIR);
 const [command, jobId, worker] = process.argv.slice(2);
@@ -31,6 +32,14 @@ if (command === 'prepare') {
     await saveJson(join(jobDirectory, 'job.json'), job);
   }
   console.log('Prepared four controlled jobs outside Git.');
+} else if (command === 'intake') {
+  console.log(JSON.stringify(await intakeCandidate({ directory, queue, packet: await readPrivateJson(jobId) })));
+} else if (command === 'review-template') {
+  const output = await privateStateDirectory(worker);
+  await writeFile(output, JSON.stringify(await reviewTemplate({ directory, jobId }), null, 2), { flag: 'wx', mode: 0o600 });
+  console.log(JSON.stringify({ job_id: jobId, review_template: 'saved privately; complete all fields before review' }));
+} else if (command === 'review') {
+  console.log(JSON.stringify(await reviewCandidate({ directory, queue, jobId, decision: await readPrivateJson(worker) })));
 } else if (command === 'google-probe') {
   if (!queue) throw Error('Dedicated Google credential/configuration is not set up');
   console.log(JSON.stringify(await queue.probe()));
@@ -68,6 +77,10 @@ if (command === 'prepare') {
       if (command !== 'watch') throw Error('Use --quality when picking up a new job; named runs retain their saved version');
       options.qualityResearch = true;
     }
+    if (process.argv.includes('--intake')) {
+      if (command !== 'watch' || process.argv.includes('--sources')) throw Error('Shared intake requires watch without a separate sources file');
+      options.intakeResearch = true;
+    }
     const sourcesIndex = process.argv.indexOf('--sources');
     if (sourcesIndex !== -1) {
       const path = process.argv[sourcesIndex + 1];
@@ -93,4 +106,4 @@ if (command === 'prepare') {
     console.error(error.message); process.exitCode = error.name === 'AbortError' ? 130 : 1;
   }
   finally { clearTimeout(interruptionTimer); process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt); }
-} else { throw Error('Usage: node proof.mjs prepare | google-probe | sync <job-id> | run <job-id> <cursor|claude|codex> [--interrupt-assessment|--revise] [--fallback claude,cursor] [--sources private.json] | watch <job-id> [--quality] [--sources private.json] [--timeout-seconds 900] [--fallback claude,cursor] | backup <job-id> <private-output.json> | restore <backup.json> (STUDIO_STATE_DIR must be new)'); }
+} else { throw Error('Usage: node proof.mjs prepare | google-probe | sync <job-id> | intake <private-packet.json> | review-template <job-id> <private-review.json> | review <job-id> <private-review.json> | run <job-id> <cursor|claude|codex> [--interrupt-assessment|--revise] [--fallback claude,cursor] [--sources private.json] | watch <job-id> [--quality|--intake] [--sources private.json] [--timeout-seconds 900] [--fallback claude,cursor] | backup <job-id> <private-output.json> | restore <backup.json> (STUDIO_STATE_DIR must be new)'); }

@@ -4,6 +4,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { runJob, readJson } from './engine.mjs';
 import { validateEvidence } from './schemas.mjs';
 import { validateJob, validateSnapshots } from './sources.mjs';
+import { validateIntakeRecord, digest, intakeSharedCandidate } from './prospects.mjs';
+import { readFile } from 'node:fs/promises';
 
 export async function publishJob(directory, queue, id) {
   if (!queue) return;
@@ -23,7 +25,11 @@ export async function publishJob(directory, queue, id) {
     if (checkpoint) validateEvidence(checkpoint, job, false, snapshots);
     if (report) validateEvidence(report, job, true, snapshots);
   }
-  await queue.publish(id, state, checkpoint, state.status === 'Complete' ? report : undefined, review);
+  let intake;
+  try { intake = validateIntakeRecord(await readJson(join(jobDirectory, 'intake.json')), job, await readJson(join(jobDirectory, 'sources.json'))); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (intake && review && (!report || review.report_sha256 !== digest(await readFile(join(jobDirectory, 'report.json'))) || review.sources_sha256 !== digest(await readFile(join(jobDirectory, 'sources.json'))))) review = undefined;
+  await queue.publish(id, state, checkpoint, state.status === 'Complete' ? report : undefined, review, Boolean(intake));
 }
 
 async function executeAttempt({ directory, queue, jobId, worker, requestedWorker, previousAttempt, invoke, signal: parentSignal, revisionNotes, collectSources, onEvent = () => {}, controlPollMs = 5000 }) {
@@ -106,15 +112,17 @@ async function snapshotJob(directory, job) {
   } finally { await handle?.close(); }
 }
 
-export async function watchJob({ directory, queue, jobId, invoke, signal, collectSources, qualityResearch = false, fallbackWorkers, controlPollMs, onEvent = () => {}, timeoutMs = 900_000, pollMs = 5000, wait = delay, clock = () => performance.now(), now = () => new Date() }) {
+export async function watchJob({ directory, queue, jobId, invoke, signal, collectSources, qualityResearch = false, intakeResearch = false, fallbackWorkers, controlPollMs, onEvent = () => {}, timeoutMs = 900_000, pollMs = 5000, wait = delay, clock = () => performance.now(), now = () => new Date() }) {
   if (!queue) throw Error('Automatic pickup requires the dedicated Google connection');
   if (!/^[a-z0-9-]{1,60}$/.test(jobId ?? '')) throw Error('Invalid job ID');
   if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 3_600_000 || !Number.isFinite(pollMs) || pollMs < 1 || pollMs > 60_000) throw Error('Queue wait must be bounded');
   const deadline = clock() + timeoutMs;
+  let intakeReady = !intakeResearch;
   await onEvent({ job_id: jobId, event: 'listener_started', max_jobs: 1, timeout_ms: timeoutMs });
   while (clock() < deadline) {
     signal?.throwIfAborted();
-    const pending = await queue.pendingJob(jobId, now().toISOString().slice(0, 10), qualityResearch);
+    if (!intakeReady) intakeReady = Boolean(await intakeSharedCandidate({ directory, queue, jobId, now }));
+    const pending = intakeReady ? await queue.pendingJob(jobId, now().toISOString().slice(0, 10), qualityResearch || intakeResearch) : null;
     if (pending) {
       await snapshotJob(directory, pending.job);
       await onEvent({ job_id: jobId, event: 'queue_selected', worker: pending.worker });
