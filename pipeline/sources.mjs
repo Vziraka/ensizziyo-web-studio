@@ -9,7 +9,7 @@ export function validateJob(job) {
   if (job.research_version !== undefined && !quality) throw Error('Unknown research version');
   if (typeof job.website !== 'string' || (!quality && !job.website)) throw Error('Website must be explicit; version 2 permits an unverified blank');
   if (quality && job.website && /(?:^|\.)(?:facebook\.com|instagram\.com|fb\.com)$/.test(host(job.website))) throw Error('A social profile is not a verified standalone website; leave website blank and use seed URLs');
-  if (!Array.isArray(job.seed_urls) || job.seed_urls.length < (quality ? 1 : 2) || job.seed_urls.length > 4 || new Set(job.seed_urls).size !== job.seed_urls.length) throw Error('Provide distinct approved seed URLs (legacy: 2-4; version 2: 1-4)');
+  if (!Array.isArray(job.seed_urls) || job.seed_urls.length < (quality ? 1 : 2) || job.seed_urls.length > 4 || job.seed_urls.some(url => typeof url !== 'string' || !url.trim()) || new Set(job.seed_urls).size !== job.seed_urls.length) throw Error('Provide distinct approved seed URLs (legacy: 2-4; version 2: 1-4)');
   for (const value of [job.website, ...job.seed_urls].filter(Boolean)) {
     const url = new URL(value);
     if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash || isIP(url.hostname) || !url.hostname.includes('.') || /(?:^|\.)(?:localhost|local|internal|test|invalid)$/.test(url.hostname) || (!quality && host(value) !== host(job.website))) throw Error('Job requires approved public HTTPS URLs');

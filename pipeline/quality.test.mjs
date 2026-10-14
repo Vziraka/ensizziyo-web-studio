@@ -25,6 +25,7 @@ test('version 2 accepts a blank website and explicitly reviewed partial social e
   validateEvidence(checkpoint, job, false, snapshots);
   assert.equal(validateEvidence(report, job, true, snapshots).recommendation, 'Insufficient evidence');
   assert.throws(() => validateJob({ ...job, website: 'https://www.facebook.com/examplebakery/' }), /standalone website/i);
+  assert.throws(() => validateJob({ ...job, seed_urls: [''] }), /approved seed URLs/i);
 });
 
 test('invented evidence excerpts and uncaptured contact routes cannot pass the quality contract', () => {
