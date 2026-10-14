@@ -43,6 +43,8 @@ Run only one dispatcher on one computer; do not sort, delete or move queue rows 
 
 Private `sources.json` retains successful page text, retrieval times, final URLs, hashes and failed-read reasons. `checkpoint.json` retains extracted evidence. `state.json` retains attempts and process IDs; per-attempt prompts/results/logs and `events.jsonl` retain execution history. Reports must cite retrieved URLs/hashes and source dates. Failed reads cannot count as facts. Every commercial effect remains a hypothesis. Checksums establish provenance and integrity, not factual accuracy; compare claims and absence statements against the actual pages.
 
+For policy claims, check what each interval or condition measures before calling it inconsistent; a response-time promise and a reporting deadline can both apply. Execution Complete and source-review Accepted are separate checks, and neither establishes outreach eligibility.
+
 For a reviewed result, save private `review.json` with the current `attempt_id`, `verdict` (`Accepted` or `Needs review`), `reviewed_at` and an array of `notes`. Sync it to show the review in Sheets. To correct a completed assessment:
 
 ```powershell
@@ -50,6 +52,14 @@ node proof.mjs run proof-claude claude --revise
 ```
 
 This requires current review feedback, creates a new attempt and reuses the saved evidence. Prior raw outputs remain in their attempt logs. A correction can fix a checkpoint summary in the report without rewriting the original checkpoint.
+
+## Executed automatic pickup recipe
+
+On October 13, Dot used its own Google plugin to submit/read back one fresh Ready record while `watch <job-id>` was already listening. The runner reserved it before retrieval, ran the existing ChatGPT-authenticated Codex CLI and saved four dated sources/five observations in about 46 seconds after pickup. Dot independently read Complete from Sheets. This was one new queue job, not a manual `run` invocation or another Dot-created task.
+
+Source review then corrected a policy-timing interpretation through one separate assessment. Both retained evidence-file hashes stayed unchanged. The reviewed report has no strong public case and stays excluded from C2/outreach. The full Sheet report matched private JSON; every recorded worker PID was stopped and the global lock was absent. The tracker and private `dot-queue-receipt.json` hold the actual IDs, source dates, timings and hashes.
+
+To repeat: run `google-probe`, choose a new unused ID, start its bounded `watch`, then have Dot verify an empty row and submit/read back A:G as described above. Confirm the reservation precedes worker launch, compare the final H:P result/report with retained private state, review claims against snapshots and sync the review. Verify Dot's own final lookup, stopped PIDs and lock release. The listener exits after the one job; preserve private evidence and pause the row when retiring it. This recipe activates no recurring schedule.
 
 ## Executed recovery recipe
 
