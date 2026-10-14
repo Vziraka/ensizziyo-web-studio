@@ -1,6 +1,7 @@
 import { GoogleAuth } from 'google-auth-library';
 import { randomUUID } from 'node:crypto';
 import { readJson } from './engine.mjs';
+import { validateJob } from './sources.mjs';
 
 export class GoogleQueue {
   constructor({ spreadsheetId, keyFile, request }) {
@@ -32,16 +33,36 @@ export class GoogleQueue {
     if ((await this.values("'Research proof'!P7"))[0]?.[0] !== receipt) throw Error('Google write/read receipt did not match');
     return { read: true, write: true, readback: true, receipt };
   }
-  async row(jobId) {
+  async matches(jobId) {
+    if (!/^[a-z0-9-]{1,60}$/.test(jobId ?? '')) throw Error('Invalid job ID');
     // shortcut: controlled proof has one writer and no row sorting/deletion during a run; add robust row addressing before unattended rollout.
-    const matches = (await this.values("'Research proof'!A2:P1000")).map((values, i) => ({ values, row: i + 2 })).filter(item => item.values[0] === jobId);
+    return (await this.values("'Research proof'!A2:P1000")).map((values, i) => ({ values, row: i + 2 })).filter(item => item.values[0] === jobId);
+  }
+  async row(jobId) {
+    const matches = await this.matches(jobId);
     if (matches.length !== 1) throw Error('Expected exactly one queue row for this job');
     return matches[0];
   }
-  async checkInputs(job) {
+  async pendingJob(jobId, asOf) {
+    const matches = await this.matches(jobId);
+    if (matches.length > 1) throw Error('Duplicate queue IDs; reconcile before dispatch');
+    if (!matches.length) return null;
+    const { values } = matches[0];
+    if (values[5] !== 'Ready' || values[7] === 'Complete') return null;
+    if (values[9] || (values[7] && values[7] !== 'Ready')) throw Error('Existing queue reservation/status requires manual reconciliation');
+    const worker = values[4];
+    if (!['cursor', 'claude', 'codex'].includes(worker)) throw Error('Unknown requested research worker');
+    const job = { id: jobId, business_name: values[1], website: values[2], seed_urls: (values[3] ?? '').split(/\r?\n/).filter(Boolean), purpose: values[6], as_of: asOf };
+    validateJob(job);
+    if (typeof job.purpose !== 'string' || !job.purpose.trim() || job.purpose.length > 500) throw Error('A bounded job purpose is required');
+    return { job, worker };
+  }
+  async checkInputs(job, requestedWorker) {
     const { values } = await this.row(job.id);
     if (values[5] !== 'Ready') throw Error('Queue request is paused or not ready');
-    if (values[1] !== job.business_name || values[2] !== job.website || JSON.stringify(values[3].split(/\r?\n/).filter(Boolean)) !== JSON.stringify(job.seed_urls)) throw Error('Queue inputs differ from saved job; use a new job ID for changed scope');
+    if (values[1] !== job.business_name || values[2] !== job.website || JSON.stringify((values[3] ?? '').split(/\r?\n/).filter(Boolean)) !== JSON.stringify(job.seed_urls)) throw Error('Queue inputs differ from saved job; use a new job ID for changed scope');
+    if (requestedWorker && (values[4] !== requestedWorker || values[6] !== job.purpose)) throw Error('Queue worker/purpose changed before reservation');
+    if (requestedWorker && (values[9] || (values[7] && values[7] !== 'Ready'))) throw Error('Existing queue reservation/status requires manual reconciliation');
   }
   async publish(jobId, state, checkpoint, report, review) {
     const { row, values } = await this.row(jobId);
