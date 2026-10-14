@@ -106,7 +106,7 @@ async function snapshotJob(directory, job) {
   } finally { await handle?.close(); }
 }
 
-export async function watchJob({ directory, queue, jobId, invoke, signal, collectSources, fallbackWorkers, controlPollMs, onEvent = () => {}, timeoutMs = 900_000, pollMs = 5000, wait = delay, clock = () => performance.now(), now = () => new Date() }) {
+export async function watchJob({ directory, queue, jobId, invoke, signal, collectSources, qualityResearch = false, fallbackWorkers, controlPollMs, onEvent = () => {}, timeoutMs = 900_000, pollMs = 5000, wait = delay, clock = () => performance.now(), now = () => new Date() }) {
   if (!queue) throw Error('Automatic pickup requires the dedicated Google connection');
   if (!/^[a-z0-9-]{1,60}$/.test(jobId ?? '')) throw Error('Invalid job ID');
   if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 3_600_000 || !Number.isFinite(pollMs) || pollMs < 1 || pollMs > 60_000) throw Error('Queue wait must be bounded');
@@ -114,7 +114,7 @@ export async function watchJob({ directory, queue, jobId, invoke, signal, collec
   await onEvent({ job_id: jobId, event: 'listener_started', max_jobs: 1, timeout_ms: timeoutMs });
   while (clock() < deadline) {
     signal?.throwIfAborted();
-    const pending = await queue.pendingJob(jobId, now().toISOString().slice(0, 10));
+    const pending = await queue.pendingJob(jobId, now().toISOString().slice(0, 10), qualityResearch);
     if (pending) {
       await snapshotJob(directory, pending.job);
       await onEvent({ job_id: jobId, event: 'queue_selected', worker: pending.worker });
