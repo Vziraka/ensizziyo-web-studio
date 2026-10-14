@@ -7,7 +7,19 @@ export function subscriptionEnvironment(source = process.env) {
   return Object.fromEntries(Object.entries(source).filter(([key]) => !/(API_KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)/i.test(key) && !key.startsWith('STUDIO_') && (!key.startsWith('CODEX_') || key === 'CODEX_HOME')));
 }
 
+export function workerFailure(raw) {
+  const events = raw.split(/\r?\n/).flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } });
+  const failure = events.findLast(e => e.type === 'error' || e.type === 'turn.failed' || e.is_error === true);
+  if (!failure) return;
+  const code = failure.error?.code ?? failure.code;
+  const message = failure.error?.message ?? failure.message ?? failure.result ?? '';
+  const quota = ['usage_limit_reached', 'usage_limit_exceeded', 'rate_limit_exceeded', 'quota_exceeded'].includes(code) || (typeof message === 'string' && /you(?:'|’)?ve hit your (?:usage )?limit|(?:usage|subscription|weekly|monthly) (?:quota|limit) (?:has been |is )?(?:reached|exceeded|exhausted)|insufficient (?:usage )?credits/i.test(message));
+  return Object.assign(Error(quota ? 'Subscription worker reported a quota or usage limit' : 'Worker reported a terminal error; inspect private logs'), { code: quota ? 'WORKER_QUOTA' : 'WORKER_FAILED' });
+}
+
 export function parseWorkerOutput(raw) {
+  const failure = workerFailure(raw);
+  if (failure) throw failure;
   const parse = value => { if (typeof value !== 'string') return value; return JSON.parse(value.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '').trim()); };
   try {
     const value = JSON.parse(raw);
@@ -99,6 +111,8 @@ export async function invokeCLI({ worker, phase, job, checkpoint, snapshots, fee
   if (timedOut) throw Error('Worker exceeded bounded timeout');
   if (bytes > 8_000_000) throw Error('Worker exceeded output limit');
   if (spawnError || logError) throw Error('Worker launch/logging failed; inspect private state');
+  const failure = workerFailure(raw);
+  if (failure) throw failure;
   if (code !== 0) throw Error(`Worker exited with code ${code}; inspect private stderr/result logs`);
   if (worker === 'codex') raw = await readFile(resultPath, 'utf8');
   return parseWorkerOutput(raw);

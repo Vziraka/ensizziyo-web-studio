@@ -39,7 +39,7 @@ function sheetFixture(initialRows = []) {
     }
     if (range.endsWith('A2:P1000')) return { data: { values: rows } };
     const row = Number(range.match(/!H(\d+)/)[1]) - 2;
-    return { data: { values: [rows[row].slice(7, 10)] } };
+    return { data: { values: [rows[row].slice(7, range.endsWith(`J${row + 2}`) ? 10 : 16)] } };
   } });
   return { queue, rows, writes };
 }
@@ -85,7 +85,7 @@ test('an uncertain reservation receipt stops before page retrieval or any subscr
   const directory = await mkdtemp(join(tmpdir(), 'studio-queue-test-'));
   const sheet = sheetFixture([inputs]);
   const originalValues = sheet.queue.values.bind(sheet.queue);
-  sheet.queue.values = async range => range.endsWith('H2:J2') ? [['Running', 'codex', 'different-attempt']] : originalValues(range);
+  sheet.queue.values = async range => range.endsWith('H2:P2') ? [['Running', 'codex', 'different-attempt']] : originalValues(range);
   await assert.rejects(watchJob({ directory, queue: sheet.queue, jobId: inputs[0], collectSources: async () => assert.fail('No fetching before reservation'), invoke: async () => assert.fail('No model before reservation') }), /Uncertain Google write/);
   assert.equal(sheet.writes.length, 1, 'Do not retry an uncertain write automatically');
   assert.equal(JSON.parse(await readFile(join(directory, inputs[0], 'state.json'))).status, 'Failed');
@@ -118,9 +118,92 @@ test('a worker failure is saved once and stops the listener without retry or fal
   const directory = await mkdtemp(join(tmpdir(), 'studio-queue-test-'));
   const sheet = sheetFixture([inputs]);
   let calls = 0;
-  await assert.rejects(watchJob({ directory, queue: sheet.queue, jobId: inputs[0], collectSources: async job => evidenceFor(job).snapshots, invoke: async () => { calls++; throw Error('Subscription unavailable'); } }), /Subscription unavailable/);
+  await assert.rejects(watchJob({ directory, queue: sheet.queue, jobId: inputs[0], fallbackWorkers: ['claude'], collectSources: async job => evidenceFor(job).snapshots, invoke: async () => { calls++; throw Error('Subscription unavailable'); } }), /Subscription unavailable/);
   assert.equal(calls, 1);
   assert.equal(sheet.rows[0][7], 'Failed');
   assert.equal(JSON.parse(await readFile(join(directory, inputs[0], 'state.json'))).attempts.length, 1);
   await assert.rejects(readFile(join(directory, '.runner.lock')), { code: 'ENOENT' });
+});
+
+test('Pause during assessment stops work, preserves evidence and allows an explicit resume', async () => {
+  const { watchJob, executeJob } = await import('./runner.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'studio-pause-test-')), sheet = sheetFixture([inputs]);
+  let stopped = false, evidence;
+  await assert.rejects(watchJob({ directory, queue: sheet.queue, jobId: inputs[0], controlPollMs: 5,
+    collectSources: async job => { evidence = evidenceFor(job); return evidence.snapshots; },
+    invoke: async ({ phase, signal }) => {
+      if (phase === 'collect') return evidence.checkpoint;
+      sheet.rows[0][5] = 'Pause';
+      await new Promise((resolve, reject) => signal.addEventListener('abort', () => { stopped = true; reject(new DOMException('Stopped', 'AbortError')); }, { once: true }));
+    }
+  }), /[Pp]aus|Stopped/);
+  assert.equal(stopped, true);
+  assert.equal(sheet.rows[0][7], 'Paused');
+  const saved = await readFile(join(directory, inputs[0], 'checkpoint.json'), 'utf8');
+  sheet.rows[0][5] = 'Ready';
+  const phases = [];
+  const result = await executeJob({ directory, queue: sheet.queue, jobId: inputs[0], worker: 'claude', controlPollMs: 5, invoke: async ({ phase }) => { phases.push(phase); return evidence.report; } });
+  assert.deepEqual(phases, ['assess']);
+  assert.equal(result.state.status, 'Complete');
+  assert.equal(await readFile(join(directory, inputs[0], 'checkpoint.json'), 'utf8'), saved);
+  assert.equal(result.state.error, undefined, 'The resumed attempt must not retain the old Pause error');
+});
+
+test('lost queue control stops the active worker and blocks automatic handoff', async () => {
+  const { watchJob } = await import('./runner.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'studio-pause-test-')), sheet = sheetFixture([inputs]);
+  let evidence, calls = 0, lostControl = false;
+  const checkActive = sheet.queue.checkActive.bind(sheet.queue);
+  sheet.queue.checkActive = async (...args) => { if (lostControl) throw Error('Control unavailable'); return checkActive(...args); };
+  await assert.rejects(watchJob({ directory, queue: sheet.queue, jobId: inputs[0], controlPollMs: 5, fallbackWorkers: ['claude'],
+    collectSources: async job => { evidence = evidenceFor(job); return evidence.snapshots; },
+    invoke: async ({ phase, signal }) => { calls++; if (phase === 'collect') return evidence.checkpoint; lostControl = true; await new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })); }
+  }), /[Cc]ontrol|[Aa]bort/);
+  assert.equal(calls, 2, 'Control is lost during assessment, after both phases started');
+  assert.equal(JSON.parse(await readFile(join(directory, inputs[0], 'state.json'))).status, 'Blocked');
+});
+
+test('a recognized quota failure hands the saved checkpoint to one named subscription fallback', async () => {
+  const { watchJob } = await import('./runner.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'studio-quota-test-')), sheet = sheetFixture([inputs]);
+  let evidence; const calls = [];
+  const result = await watchJob({ directory, queue: sheet.queue, jobId: inputs[0], fallbackWorkers: ['claude'], controlPollMs: 5,
+    collectSources: async job => { evidence = evidenceFor(job); return evidence.snapshots; },
+    invoke: async ({ worker, phase }) => {
+      calls.push(`${worker}:${phase}`);
+      if (phase === 'collect') return evidence.checkpoint;
+      if (worker === 'codex') throw Object.assign(Error('Subscription quota reached'), { code: 'WORKER_QUOTA' });
+      return evidence.report;
+    }
+  });
+  assert.deepEqual(calls, ['codex:collect', 'codex:assess', 'claude:assess']);
+  assert.equal(result.state.attempts[0].status, 'Quota');
+  assert.equal(result.state.worker, 'claude');
+  assert.equal(result.state.attempts.length, 2);
+  assert.equal(sheet.rows[0][7], 'Complete');
+});
+
+test('a committed write with a lost response is reconciled without repeating the write', async () => {
+  const sheet = sheetFixture([inputs]), request = sheet.queue.requestOverride;
+  let puts = 0;
+  sheet.queue.requestOverride = async options => {
+    const result = await request(options);
+    if (options.method === 'PUT' && ++puts === 1) throw Error('Connection dropped after commit');
+    return result;
+  };
+  const result = await sheet.queue.publish(inputs[0], { status: 'Running', worker: 'codex', attempt_id: 'fixture-attempt', attempts: [] });
+  assert.equal(puts, 1);
+  assert.equal(result.reconciled, true);
+  assert.equal(sheet.rows[0][9], 'fixture-attempt');
+});
+
+test('an uncertain quota status write blocks fallback and requires explicit reconciliation', async () => {
+  const { watchJob } = await import('./runner.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'studio-quota-test-')), sheet = sheetFixture([inputs]);
+  const publish = sheet.queue.publish.bind(sheet.queue); const calls = [];
+  sheet.queue.publish = async (id, state, ...args) => { if (state.status === 'Quota') throw Error('Receipt unavailable'); return publish(id, state, ...args); };
+  await assert.rejects(watchJob({ directory, queue: sheet.queue, jobId: inputs[0], fallbackWorkers: ['claude'], collectSources: async job => evidenceFor(job).snapshots,
+    invoke: async ({ worker }) => { calls.push(worker); throw Object.assign(Error('Quota'), { code: 'WORKER_QUOTA' }); }
+  }), { code: 'RECONCILIATION_REQUIRED' });
+  assert.deepEqual(calls, ['codex']);
 });
