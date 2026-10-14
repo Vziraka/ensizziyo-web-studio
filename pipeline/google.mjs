@@ -63,7 +63,7 @@ export class GoogleQueue {
     if (current.some(v => v)) throw Error('Existing intake review changed; reconcile before replacing it');
     await this.writeVerified(`'Discovery intake'!L${matches[0].row}:M${matches[0].row}`, output);
   }
-  async intakeJob(job, worker) {
+  async intakeJob(job, worker, recheckOf) {
     validateJob(job);
     if (!['cursor', 'claude', 'codex'].includes(worker)) throw Error('Unknown requested research worker');
     const rows = await this.values("'Research proof'!A2:P1000");
@@ -73,7 +73,11 @@ export class GoogleQueue {
       if (existing.length !== 1 || inputs.some((v, i) => String(existing[0][i] ?? '') !== v)) throw Error('Queue discovery inputs changed or duplicated; reconcile using a new job ID');
       return { queue: 'already present' };
     }
-    if (rows.some(r => r[6] === job.purpose && (r[1]?.trim().toLowerCase() === job.business_name.trim().toLowerCase() || (r[3] ?? '').split('\n').some(url => job.seed_urls.includes(url))))) throw Error('Possible duplicate discovered business; reconcile before adding another job');
+    const duplicates = rows.filter(r => r[6] === job.purpose && (r[1]?.trim().toLowerCase() === job.business_name.trim().toLowerCase() || (r[3] ?? '').split('\n').some(url => job.seed_urls.includes(url))));
+    if (recheckOf !== undefined) {
+      // shortcut: one uniquely matched completed prior discovery; reconcile longer histories before another recheck.
+      if (job.research_version !== 3 || !/^[a-z0-9-]{1,60}$/.test(recheckOf) || recheckOf === job.id || duplicates.length !== 1 || duplicates[0][0] !== recheckOf || duplicates[0][7] !== 'Complete' || duplicates[0][1]?.trim().toLowerCase() !== job.business_name.trim().toLowerCase()) throw Error('Recheck requires one completed prior discovery for the same business; reconcile duplicates first');
+    } else if (duplicates.length) throw Error('Possible duplicate discovered business; reconcile before adding another job');
     const last = rows.findLastIndex(r => r.some(v => v !== ''));
     const row = last + 3;
     if (row > 1000) throw Error('Controlled research queue is full');
@@ -125,7 +129,7 @@ export class GoogleQueue {
     if (values[9] || (values[7] && values[7] !== 'Ready')) throw Error('Existing queue reservation/status requires manual reconciliation');
     const worker = values[4];
     if (!['cursor', 'claude', 'codex'].includes(worker)) throw Error('Unknown requested research worker');
-    const job = { id: jobId, business_name: values[1], website: values[2] ?? '', seed_urls: (values[3] ?? '').split(/\r?\n/).filter(Boolean), purpose: values[6], as_of: asOf, ...(qualityResearch ? { research_version: 2 } : {}) };
+    const job = { id: jobId, business_name: values[1], website: values[2] ?? '', seed_urls: (values[3] ?? '').split(/\r?\n/).filter(Boolean), purpose: values[6], as_of: asOf, ...(qualityResearch ? { research_version: typeof qualityResearch === 'number' ? qualityResearch : 2 } : {}) };
     validateJob(job);
     if (typeof job.purpose !== 'string' || !job.purpose.trim() || job.purpose.length > 500) throw Error('A bounded job purpose is required');
     return { job, worker };

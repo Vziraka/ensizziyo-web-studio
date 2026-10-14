@@ -1,3 +1,5 @@
+import { quotedWordCount } from './sources.mjs';
+
 const text = { type: 'string', minLength: 1 };
 const array = (items, minItems = 0) => ({ type: 'array', items, minItems });
 const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
@@ -17,14 +19,24 @@ export const qualityReportSchema = object({ ...qualityCommon, checkpoint_reused:
   opportunities: boundedArray(object({ ...reportSchema.properties.opportunities.items.properties, existing_alternatives: boundedArray(text, 0, 3), validation_needed: text }), 0, 2),
   public_contact_routes: boundedArray(text, 0, 4), recommendation: { type: 'string', enum: ['Suitable to discuss', 'No strong public case', 'Needs review', 'Insufficient evidence'] }
 });
-const primarySource = s => ['business', 'social'].includes(s.kind) && s.capture_method !== 'search_snippet' && s.coverage === 'full';
+export const journeyAreas = ['discovery', 'offer', 'enquiry_or_ordering', 'trust_and_activity', 'follow_up'];
+const detailedCommon = { ...qualityCommon, schema_version: { type: 'integer', const: 3 } };
+const detailedCheckpointSchema = object(detailedCommon);
+const detailedReportSchema = object({ ...qualityReportSchema.properties, ...detailedCommon,
+  observations: boundedArray(object({ ...qualityReportSchema.properties.observations.items.properties,
+    evidence: boundedArray(object({ url: text, excerpt: { ...text, maxLength: 160 }, context_id: { type: 'string', maxLength: 40 } }), 1, 2)
+  }), 1, 10),
+  journey_checks: boundedArray(object({ area: { type: 'string', enum: journeyAreas }, status: { type: 'string', enum: ['Observed', 'Unknown', 'Blocked'] }, finding: { ...text, maxLength: 600 }, observation_indexes: boundedArray({ type: 'integer' }, 0, 10), owner_question: { ...text, maxLength: 400 } }), 5, 5)
+});
+export const primarySupport = (s, job, contextId) => ['business', 'social'].includes(s.kind) && s.capture_method !== 'search_snippet' && (s.coverage === 'full' || (job.research_version === 3 && s.reviewed_context?.facts.some(f => contextId === undefined || f.id === contextId)));
 export function schemasFor(job, snapshots) {
-  if (job.research_version !== 2) return { checkpoint: checkpointSchema, report: reportSchema };
-  const limited = snapshots && !snapshots.sources.some(primarySource);
-  const report = limited ? { ...qualityReportSchema, properties: { ...qualityReportSchema.properties,
-    recommendation: { type: 'string', const: 'Insufficient evidence' }, opportunities: { ...qualityReportSchema.properties.opportunities, maxItems: 0 }
-  } } : qualityReportSchema;
-  return { checkpoint: qualityCheckpointSchema, report };
+  if (![2, 3].includes(job.research_version)) return { checkpoint: checkpointSchema, report: reportSchema };
+  const base = job.research_version === 3 ? detailedReportSchema : qualityReportSchema;
+  const limited = snapshots && !snapshots.sources.some(s => primarySupport(s, job));
+  const report = limited ? { ...base, properties: { ...base.properties,
+    recommendation: { type: 'string', const: 'Insufficient evidence' }, opportunities: { ...base.properties.opportunities, maxItems: 0 }
+  } } : base;
+  return { checkpoint: job.research_version === 3 ? detailedCheckpointSchema : qualityCheckpointSchema, report };
 }
 
 export function validate(value, schema, path = 'result') {
@@ -54,7 +66,7 @@ export function validateEvidence(value, job, report = false, snapshots) {
   const urls = new Set();
   for (const source of value.sources) {
     const url = new URL(source.url);
-    if (url.protocol !== 'https:' || url.username || url.password || (job.research_version === 2 ? !job.seed_urls.includes(source.url) : host(source.url) !== host(job.website))) throw Error('Source outside approved business evidence');
+    if (url.protocol !== 'https:' || url.username || url.password || ([2, 3].includes(job.research_version) ? !job.seed_urls.includes(source.url) : host(source.url) !== host(job.website))) throw Error('Source outside approved business evidence');
     if (source.checked_at !== job.as_of) throw Error('Source check date does not match job');
     if (!/^[a-f0-9]{64}$/.test(source.content_sha256)) throw Error('Source content hash is missing or invalid');
     if (snapshots && !snapshots.sources.some(s => s.url === source.url && s.content_sha256 === source.content_sha256 && s.checked_at === source.checked_at)) throw Error('Source does not match retrieved evidence');
@@ -65,28 +77,40 @@ export function validateEvidence(value, job, report = false, snapshots) {
   if (report) {
     for (const observation of value.observations) if (observation.source_urls.some(url => !urls.has(url))) throw Error('Observation references missing evidence');
     for (const opportunity of value.opportunities) if (!value.observations.some(o => o.fact === opportunity.observed_basis)) throw Error('Opportunity has no recorded observation');
-    for (const route of value.public_contact_routes) if (new URL(route).protocol !== 'https:' || (job.research_version === 2 ? !snapshots?.sources.some(s => s.url === route) : host(route) !== host(job.website))) throw Error('Contact route outside captured sources');
-    if (job.research_version === 2) {
+    for (const route of value.public_contact_routes) if (new URL(route).protocol !== 'https:' || ([2, 3].includes(job.research_version) ? !snapshots?.sources.some(s => s.url === route) : host(route) !== host(job.website))) throw Error('Contact route outside captured sources');
+    if ([2, 3].includes(job.research_version)) {
       if (!snapshots) throw Error('Quality reports require captured evidence');
       const normalize = text => text.replace(/\s+/g, ' ').trim();
       const excerpts = new Map();
       for (const observation of value.observations) {
         for (const evidence of observation.evidence) {
           const capture = snapshots.sources.find(s => s.url === evidence.url);
-          if (!observation.source_urls.includes(evidence.url) || !urls.has(evidence.url) || !capture || !normalize(capture.text).includes(normalize(evidence.excerpt))) throw Error('Observation excerpt is not present in its captured source');
+          if (!observation.source_urls.includes(evidence.url) || !urls.has(evidence.url) || !capture || !quotedWordCount(evidence.excerpt) || !normalize(capture.text).includes(normalize(evidence.excerpt))) throw Error('Observation excerpt is not present in its captured source');
+          if (job.research_version === 3) {
+            if (capture.reviewed_context && evidence.context_id !== '') {
+              const fact = capture.reviewed_context.facts.find(f => f.id === evidence.context_id);
+              if (!fact || normalize(fact.excerpt) !== normalize(evidence.excerpt)) throw Error('Observation must cite the specific reviewed context fact and its exact anchor');
+            } else if (evidence.context_id !== '') throw Error('Raw captured text has no reviewed context ID');
+          }
           const saved = excerpts.get(evidence.url) ?? new Set(); saved.add(normalize(evidence.excerpt)); excerpts.set(evidence.url, saved);
         }
         if (observation.source_urls.some(url => !observation.evidence.some(e => e.url === url))) throw Error('Each observation source requires an evidence excerpt');
       }
-      for (const saved of excerpts.values()) if ([...saved].join(' ').split(/\s+/).length > 25) throw Error('Evidence excerpts exceed the short-quote budget per source');
-      const adequate = snapshots.sources.some(primarySource);
+      for (const saved of excerpts.values()) if (quotedWordCount([...saved].join(' ')) > 25) throw Error('Evidence excerpts exceed the short-quote budget per source');
+      const adequate = snapshots.sources.some(s => primarySupport(s, job));
       if (!adequate && (value.recommendation !== 'Insufficient evidence' || value.opportunities.length)) throw Error('Limited/directory-only evidence cannot qualify a business or support opportunities');
       for (const opportunity of value.opportunities) {
         const basis = value.observations.find(o => o.fact === opportunity.observed_basis);
-        if (!basis.evidence.some(e => snapshots.sources.some(s => s.url === e.url && primarySource(s)))) throw Error('An opportunity requires a directly supported primary observation');
+        if (!basis.evidence.some(e => snapshots.sources.some(s => s.url === e.url && primarySupport(s, job, e.context_id)))) throw Error('An opportunity requires a directly supported primary observation');
       }
       if (['No strong public case', 'Insufficient evidence'].includes(value.recommendation) && value.opportunities.length) throw Error('Recommendation conflicts with recorded opportunities');
       if (value.recommendation === 'Suitable to discuss' && !value.opportunities.length) throw Error('A discussion recommendation requires an observed opportunity');
+      if (job.research_version === 3) {
+        if (new Set(value.journey_checks.map(c => c.area)).size !== journeyAreas.length) throw Error('Review all five distinct journey areas');
+        for (const c of value.journey_checks) {
+          if (new Set(c.observation_indexes).size !== c.observation_indexes.length || c.observation_indexes.some(i => !Number.isInteger(i) || i < 0 || i >= value.observations.length) || (c.status === 'Observed' ? !c.observation_indexes.length : c.observation_indexes.length)) throw Error('Observed journey findings require valid observation references; unknown/blocked checks cannot claim observed evidence');
+        }
+      }
     }
   }
   return value;

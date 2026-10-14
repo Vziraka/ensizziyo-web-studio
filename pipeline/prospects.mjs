@@ -2,8 +2,8 @@ import { lstat, readFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { acquireLock, privateStateDirectory, readJson, saveJson } from './engine.mjs';
-import { validateJob, validateSnapshots } from './sources.mjs';
-import { validateEvidence } from './schemas.mjs';
+import { validateJob, validateSnapshots, sourceContentHash, collectPublicSources } from './sources.mjs';
+import { validateEvidence, primarySupport } from './schemas.mjs';
 
 export const prospectPurpose = 'Prospect discovery; review required; no outreach.';
 export const digest = value => createHash('sha256').update(value).digest('hex');
@@ -23,7 +23,8 @@ export async function readPrivateJson(path) {
 }
 
 export function validateIntakeRecord(record, job, snapshots) {
-  if (record?.schema_version !== 1 || !same(record.job, job) || job.research_version !== 2 || job.purpose !== prospectPurpose || !['cursor', 'claude', 'codex'].includes(record.worker)) throw Error('Invalid discovery intake identity');
+  if (record?.schema_version !== 1 || !same(record.job, job) || ![2, 3].includes(job.research_version) || job.purpose !== prospectPurpose || !['cursor', 'claude', 'codex'].includes(record.worker)) throw Error('Invalid discovery intake identity');
+  if (job.research_version === 3 && (!/^[a-f0-9]{64}$/.test(record.packet_sha256 ?? '') || (record.recheck_of !== undefined && (!/^[a-z0-9-]{1,60}$/.test(record.recheck_of) || record.recheck_of === job.id)))) throw Error('Detailed intake needs a packet hash and a valid distinct recheck ID when supplied');
   validateJob(job);
   const d = record.discovery;
   if (!['Google Search', 'Google Maps', 'Instagram', 'Facebook', 'Local directory', 'Referral'].includes(d?.channel)) throw Error('Unknown discovery channel');
@@ -46,7 +47,7 @@ async function writeOnce(path, value) {
   }
 }
 
-export async function intakeCandidate({ directory, queue, packet, now = () => new Date() }) {
+export async function intakeCandidate({ directory, queue, packet, now = () => new Date(), collectSources = collectPublicSources, signal, beforePublish }) {
   if (!queue) throw Error('Discovery intake requires the dedicated Google connection');
   if (packet?.schema_version !== 1) throw Error('Unknown discovery packet version');
   const p = packet.job;
@@ -58,12 +59,14 @@ export async function intakeCandidate({ directory, queue, packet, now = () => ne
   if (!Array.isArray(captures.sources)) throw Error('Reviewed captures are required');
   const sources = captures.sources.map(s => {
     text(s.text, 'captured text', 20_000);
-    const hash = digest(s.text);
-    if (s.content_sha256 && s.content_sha256 !== hash) throw Error('Provided source checksum does not match text');
+    const hash = sourceContentHash(s);
+    if (s.content_sha256 && s.content_sha256 !== hash) throw Error('Provided source checksum does not match captured text/context');
     return { ...s, content_sha256: hash };
   });
-  const snapshots = validateSnapshots({ reviewed_by: captures.reviewed_by, sources, failures: captures.failures ?? [] }, job);
-  const record = validateIntakeRecord({ schema_version: 1, job, worker: packet.worker, discovery: packet.discovery, sources_sha256: digest(JSON.stringify(snapshots)) }, job, snapshots);
+  const httpUrls = captures.http_urls ?? [];
+  const host = url => new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+  if (!Array.isArray(httpUrls) || new Set(httpUrls).size !== httpUrls.length || httpUrls.length > 4 || httpUrls.some(url => job.research_version !== 3 || !job.website || !job.seed_urls.includes(url) || host(url) !== host(job.website) || sources.some(s => s.url === url))) throw Error('HTTP collection requires distinct approved website-host URLs without overlapping supplied captures');
+  if (sources.length) validateSnapshots({ sources, failures: captures.failures ?? [] }, job);
   directory = await privateStateDirectory(directory);
   await mkdir(directory, { recursive: true });
   const release = await acquireLock(directory);
@@ -71,11 +74,32 @@ export async function intakeCandidate({ directory, queue, packet, now = () => ne
     const target = join(directory, job.id);
     await mkdir(target, { recursive: true });
     if ((await lstat(target)).isSymbolicLink()) throw Error('Discovery job directory cannot be a symlink');
+    let snapshots, record;
+    if (job.research_version === 3) {
+      try {
+        record = await readPrivateJson(join(target, 'intake.json'));
+        snapshots = await readPrivateJson(join(target, 'sources.json'));
+        validateIntakeRecord(record, job, snapshots);
+        if (record.packet_sha256 !== digest(JSON.stringify(packet))) throw Error('Saved detailed packet changed; use a new job ID');
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+        if (record) throw Error('Partial detailed intake requires reconciliation before retry');
+        try { await lstat(join(target, 'sources.json')); throw Error('Partial detailed intake requires reconciliation before retry'); } catch (missing) { if (missing.code !== 'ENOENT') throw missing; }
+      }
+    }
+    if (!snapshots) {
+      signal?.throwIfAborted();
+      const fetched = httpUrls.length ? await collectSources({ ...job, seed_urls: httpUrls }, { now, signal }) : { sources: [], failures: [] };
+      snapshots = validateSnapshots({ reviewed_by: captures.reviewed_by, sources: [...sources, ...fetched.sources], failures: [...(captures.failures ?? []), ...fetched.failures] }, job);
+      record = validateIntakeRecord({ schema_version: 1, job, worker: packet.worker, discovery: packet.discovery, sources_sha256: digest(JSON.stringify(snapshots)), ...(job.research_version === 3 ? { packet_sha256: digest(JSON.stringify(packet)), ...(packet.recheck_of !== undefined ? { recheck_of: packet.recheck_of } : {}) } : {}) }, job, snapshots);
+    }
     await writeOnce(join(target, 'job.json'), job);
     await writeOnce(join(target, 'sources.json'), snapshots);
     await writeOnce(join(target, 'intake.json'), record);
-    const receipt = await queue.intakeJob(job, packet.worker);
-    return { job_id: job.id, ...receipt, evidence_sources: sources.length, execution: 'not started' };
+    signal?.throwIfAborted();
+    await beforePublish?.();
+    const receipt = await queue.intakeJob(job, packet.worker, record.recheck_of);
+    return { job_id: job.id, research_version: job.research_version, ...receipt, evidence_sources: snapshots.sources.length, execution: 'not started' };
   } finally { await release(); }
 }
 
@@ -98,7 +122,8 @@ export async function reviewTemplate({ directory, jobId }) {
   const f = await reviewFiles(directory, jobId);
   return { schema_version: 1, job_id: jobId, attempt_id: f.state.attempt_id, report_sha256: f.report_sha256, sources_sha256: f.sources_sha256,
     reviewed_by: '', decision: 'Hold', observations: f.report.observations.map((_, index) => ({ index, supported: false, note: '' })), identity_note: '', operating_status: 'Unverified', operating_evidence: null,
-    opportunity_index: null, contact: { url: '', email: '' }, rationale: '', next_action: '' };
+    opportunity_index: null, contact: { url: '', email: '' }, rationale: '', next_action: '',
+    ...(f.job.research_version === 3 ? { journey_checks: f.report.journey_checks.map((c, index) => ({ index, area: c.area, supported: false, note: '' })) } : {}) };
 }
 
 export function validateDecision(d, f, now = () => new Date()) {
@@ -107,13 +132,17 @@ export function validateDecision(d, f, now = () => new Date()) {
   if (!['Research-qualified', 'Hold', 'Pass'].includes(d.decision) || !['Active', 'Unverified', 'Paused or closed'].includes(d.operating_status)) throw Error('Invalid qualification or operating decision');
   if (!Array.isArray(d.observations) || d.observations.length !== f.report.observations.length || d.observations.some((o, i) => o.index !== i || typeof o.supported !== 'boolean')) throw Error('Review every observation once in report order');
   d.observations.forEach(o => text(o.note, 'observation review note'));
+  if (f.job.research_version === 3) {
+    if (!Array.isArray(d.journey_checks) || d.journey_checks.length !== f.report.journey_checks.length || d.journey_checks.some((c, i) => c.index !== i || c.area !== f.report.journey_checks[i].area || typeof c.supported !== 'boolean')) throw Error('Review every detailed journey finding once in report order');
+    d.journey_checks.forEach(c => text(c.note, 'journey review note'));
+  }
   if (d.decision !== 'Research-qualified') return d;
-  if (f.report.recommendation !== 'Suitable to discuss' || d.observations.some(o => !o.supported) || d.operating_status !== 'Active') throw Error('Qualification requires supported observations, an active business and a discussion recommendation');
+  if (f.report.recommendation !== 'Suitable to discuss' || d.observations.some(o => !o.supported) || d.journey_checks?.some(c => !c.supported) || d.operating_status !== 'Active') throw Error('Qualification requires supported observations/journey findings, an active business and a discussion recommendation');
   const age = now() - new Date(`${f.job.as_of}T00:00:00Z`);
   if (age < 0 || age > 14 * 86_400_000) throw Error('Qualification evidence is stale; research a new dated job');
   const e = d.operating_evidence, normalize = value => value.replace(/\s+/g, ' ').trim();
   text(e?.excerpt, 'current-operation evidence', 160);
-  if (!f.snapshots.sources.some(s => s.url === e.url && ['business', 'social'].includes(s.kind) && s.coverage === 'full' && s.capture_method !== 'search_snippet' && normalize(s.text).includes(normalize(e.excerpt)))) throw Error('Current operation needs captured primary evidence');
+  if (!f.snapshots.sources.some(s => s.url === e.url && primarySupport(s, f.job, e.context_id) && normalize(s.text).includes(normalize(e.excerpt)) && (!s.reviewed_context || s.reviewed_context.facts.some(c => c.id === e.context_id && normalize(c.excerpt) === normalize(e.excerpt))))) throw Error('Current operation needs captured primary evidence and a specific context citation when used');
   if (!Number.isInteger(d.opportunity_index) || !f.report.opportunities[d.opportunity_index]) throw Error('Choose an existing supported opportunity');
   const contactSource = f.snapshots.sources.find(s => s.url === d.contact?.url);
   if (!f.report.public_contact_routes.includes(d.contact?.url) || !contactSource || !['business', 'social'].includes(contactSource.kind) || contactSource.capture_method === 'search_snippet') throw Error('Choose a captured first-party public business contact route');
@@ -137,7 +166,7 @@ export async function reviewCandidate({ directory, queue, jobId, decision, now =
     const record = { ...decision, reviewed_at: saved?.reviewed_at ?? now().toISOString() };
     await writeOnce(path, record);
     const review = { attempt_id: f.state.attempt_id, reviewed_at: record.reviewed_at, reviewed_by: decision.reviewed_by, report_sha256: f.report_sha256, sources_sha256: f.sources_sha256,
-      verdict: decision.observations.every(o => o.supported) ? 'Accepted' : 'Needs review', notes: [`${decision.decision}. ${decision.rationale}`, `Next: ${decision.next_action}`] };
+      verdict: decision.observations.every(o => o.supported) && (!decision.journey_checks || decision.journey_checks.every(c => c.supported)) ? 'Accepted' : 'Needs review', notes: [`${decision.decision}. ${decision.rationale}`, `Next: ${decision.next_action}`] };
     const reviewPath = join(f.target, 'review.json');
     let priorReview;
     try { priorReview = await readPrivateJson(reviewPath); } catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -159,10 +188,13 @@ export async function reviewCandidate({ directory, queue, jobId, decision, now =
   } finally { await release(); }
 }
 
-export async function intakeSharedCandidate({ directory, queue, jobId, now }) {
+export async function intakeSharedCandidate({ directory, queue, jobId, now, collectSources, signal }) {
   const pending = await queue.pendingIntake(jobId);
   if (!pending) return false;
-  const result = await intakeCandidate({ directory, queue, packet: pending.packet, now });
+  const result = await intakeCandidate({ directory, queue, packet: pending.packet, now, collectSources, signal, beforePublish: async () => {
+    const current = await queue.pendingIntake(jobId);
+    if (!current || !same(current.inputs, pending.inputs)) throw Error('Intake changed during source collection; no research job dispatched');
+  } });
   await queue.acknowledgeIntake(jobId, pending.inputs);
   return result;
 }
