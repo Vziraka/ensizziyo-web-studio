@@ -46,7 +46,7 @@ export async function acquireLock(directory) {
   }
 }
 
-export async function runJob({ directory, worker, invoke, signal, revisionNotes, collectSources = collectPublicSources, onEvent = () => {}, lockDirectory = directory }) {
+export async function runJob({ directory, worker, invoke, signal, revisionNotes, collectSources = collectPublicSources, onEvent = () => {}, beforeStart = () => {}, lockDirectory = directory }) {
   if (!['cursor', 'claude', 'codex'].includes(worker)) throw Error('Unknown research worker');
   const release = await acquireLock(lockDirectory);
   const statePath = join(directory, 'state.json');
@@ -57,6 +57,8 @@ export async function runJob({ directory, worker, invoke, signal, revisionNotes,
     try { state = await readJson(statePath); } catch (error) { if (error.code !== 'ENOENT') throw error; state = { job_id: job.id, status: 'Ready', attempts: [] }; }
     if (state.job_id !== job.id) throw Error('State does not match job');
     if (state.child_pid && alive(state.child_pid)) throw Error('Previous worker is still alive; recovery requires its confirmed exit');
+    signal?.throwIfAborted();
+    await beforeStart(job);
     let snapshots;
     try { snapshots = await readJson(join(directory, 'sources.json')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
     if (snapshots) validateSnapshots(snapshots, job);
@@ -76,6 +78,7 @@ export async function runJob({ directory, worker, invoke, signal, revisionNotes,
       await saveJson(statePath, state);
       await onEvent({ job_id: job.id, attempt_id: attempt.id, ...event });
     };
+    await persist({ event: 'reserved' });
     if (!snapshots) {
       await persist({ event: 'sources_started' });
       snapshots = validateSnapshots(await collectSources(job, { signal }), job);

@@ -46,6 +46,14 @@ Choose the public business name and check domain availability as part of C4; pur
 
 ## System build stages
 
+### Current increment: Dot-to-queue controlled job
+
+Outcome: Dot submits one new controlled research job through its own Google plugin; a bounded local listener picks up that exact ID, reserves it, runs one existing subscription worker and saves a verified result without a manual `run` command. No recurring schedule or outreach is enabled.
+
+Interface/ownership: Dot owns A:G inputs in Research proof; the runner owns H:P execution/results and immutable private snapshots. `watch <job-id>` waits for at most one fresh Ready job, reads its requested worker and exits after completion or failure. Unknown workers, duplicate IDs, changed scope, foreign reservations and uncertain writes fail closed. Completed/paused rows never start a new assessment. The existing process lock remains the execution guard; this controlled proof retains one dispatcher and no row sorting/deletion during execution.
+
+Acceptance: meaningful synthetic selection/reservation/replay/failure checks pass; Dot's own Google read/write is observed; a fresh ID travels Dot → Sheet → subscription CLI → retained evidence/result → Sheet readback. Record actual evidence and any blocked Dot access without substituting this chat's plugin access. Dependency: identify/reach the owner's Dot. Later active pause, quota recovery, backup/restore and production cutover remain separate S1 work.
+
 The operating plan owns tool roles, cost assumptions and upkeep details. S1 has a working controlled proof; the stages below still require their full acceptance evidence.
 
 | ID | Depends on | Complete when |
