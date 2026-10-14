@@ -7,7 +7,7 @@
   },
   "scripts": {
     "test": "node --test",
-    "check": "node --check proof.mjs && node --check workers.mjs && node --check google.mjs && node --check engine.mjs && node --check schemas.mjs && node --check sources.mjs && node --check runner.mjs && node --check backup.mjs && node --check captures.mjs"
+    "check": "node --check proof.mjs && node --check workers.mjs && node --check google.mjs && node --check engine.mjs && node --check schemas.mjs && node --check sources.mjs && node --check runner.mjs && node --check backup.mjs && node --check captures.mjs && node --check prospects.mjs"
   },
   "dependencies": {
     "google-auth-library": "11.3.0"

@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "job": {
+    "id": "discovery-example-20261014",
+    "business_name": "Example Cakes — fictional",
+    "website": "",
+    "seed_urls": ["https://www.instagram.com/examplecakes/"],
+    "as_of": "2026-10-14",
+    "research_version": 2
+  },
+  "worker": "codex",
+  "discovery": {
+    "channel": "Instagram",
+    "query": "Fairfax custom cakes",
+    "category": "Custom cakes",
+    "area": "Fairfax, VA",
+    "source_url": "https://www.instagram.com/examplecakes/",
+    "website_check": {
+      "status": "No verified site found",
+      "searches": ["Exact business name and location", "Public bio and linked ordering destinations"],
+      "note": "Replace with actual bounded checks. This does not confirm that no website exists."
+    }
+  },
+  "captures": {
+    "reviewed_by": "Replace with the actual source reviewer",
+    "sources": [{
+      "url": "https://www.instagram.com/examplecakes/",
+      "checked_at": "2026-10-14",
+      "fetched_at": "2026-10-14T12:00:00Z",
+      "text": "FICTIONAL EXAMPLE ONLY. Replace with observed public business text. Do not submit this example to the live workbook.",
+      "kind": "social",
+      "capture_method": "reviewed_page",
+      "coverage": "partial",
+      "coverage_reason": "Only the public bio was checked; linked content and operating status remain unknown.",
+      "identity_note": "Replace with the specific name, location and linked-identity checks actually performed."
+    }],
+    "failures": []
+  }
+}
