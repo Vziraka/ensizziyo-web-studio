@@ -135,6 +135,18 @@ test('a specific primary-context problem can support discussion, with separate o
   assert.throws(() => validateDecision(unsupported, f, () => new Date(`${job.as_of}T13:00:00Z`)), /supported|journey/i);
 });
 
+test('a working sales route can support a complementary enhancement without confirmed pain or buying interest', () => {
+  const candidate = structuredClone(report);
+  candidate.recommendation = 'Suitable to discuss';
+  candidate.opportunities = [{ observed_basis: candidate.observations[0].fact, possible_effect: 'An optional menu/request page could give customers another place to review the Friday pickup offering.', proposed_solution: 'Enhancement: discuss a small branded menu/request page alongside the existing DM route.', service_area: 'websites', confidence: 'hypothesis', owner_question: 'Would a separate place for menus and pickup requests support your goals, or do your existing tools already cover this?', existing_alternatives: ['Existing DM ordering and Friday pickup'], validation_needed: 'Confirm existing links/tools and owner goals; no failed ordering process, missing website or buying interest is established.' }];
+  validateEvidence(candidate, job, true, snapshots);
+  const f = { job, snapshots, report: candidate, state: { attempt_id: 'enhancement-attempt' }, report_sha256: 'a'.repeat(64), sources_sha256: 'b'.repeat(64) };
+  const decision = { schema_version: 1, job_id: job.id, attempt_id: f.state.attempt_id, report_sha256: f.report_sha256, sources_sha256: f.sources_sha256, reviewed_by: 'Source reviewer', decision: 'Research-qualified', identity_note: 'The fictional identity and location match the approved test evidence.', operating_status: 'Active', operating_evidence: { url: source.url, excerpt: 'Friday pickup', context_id: 'pickup' }, opportunity_index: 0, contact: { url: source.url, email: '' }, rationale: 'A tailored addition supports a discovery conversation; goals, budget and interest remain unknown.', next_action: 'Prepare one enhancement idea and a short goals question when launch prerequisites are ready.', observations: [{ index: 0, supported: true, note: 'The observed DM/pickup context supports the basis without an allegation of failure.' }], journey_checks: candidate.journey_checks.map((c, index) => ({ index, area: c.area, supported: true, note: 'The finding is either scoped to the captured route or explicitly unknown.' })) };
+  validateDecision(decision, f, () => new Date(`${job.as_of}T13:00:00Z`));
+  assert.throws(() => validateDecision({ ...decision, operating_status: 'Unverified' }, f, () => new Date(`${job.as_of}T13:00:00Z`)), /active/i);
+  assert.throws(() => validateDecision({ ...decision, contact: { url: 'https://uncaptured.example/', email: '' } }, f, () => new Date(`${job.as_of}T13:00:00Z`)), /contact/i);
+});
+
 test('a paused or changed inbox during website collection cannot dispatch a worker', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'studio-detailed-pause-')), fake = sheet();
   const p = structuredClone(packet);

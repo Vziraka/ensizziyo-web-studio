@@ -4,6 +4,8 @@
 
 Primary: owner-operated and small local service businesses in Fairfax and the DMV. Secondary: small agencies needing a development partner. The first outreach pilot should focus on one service-business category, selected from observed demand and reachable owners.
 
+Commercial research includes enhancements to working businesses across websites, systems/integrations, practical automation/AI and marketing. An observed offering or customer journey can support a tailored digital-product hypothesis without a visible failure or expressed buying interest. Benefits and owner fit are validated in conversation. The [research playbook](pipeline/RESEARCH.md) owns targeting and decision criteria; the first ten-business sample compares cleaners, food vendors/home bakeries and independent home-service trades before selecting an outreach focus.
+
 Offer hypothesis: polished custom websites and landing pages that make services clear and make requesting an estimate or booking easier. Starting project-price hypothesis: $1,500–$2,000+, with a written scope before quoting. No guaranteed lead or revenue claims.
 
 Optional, separately scoped services: ongoing website care, campaign landing pages, advertising creative, campaign management, and business-system integrations. Advertising spend, subscriptions, and ongoing maintenance are distinct from the build price. Custom systems require a defined workflow, data requirements, acceptance criteria, support expectations, and separate estimate.
