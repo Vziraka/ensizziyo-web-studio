@@ -56,7 +56,7 @@ test('an allowance protocol timeout closes only its own process and dispatches n
 });
 
 test('explicit models reach all three CLI argument lists; only Codex receives its documented effort setting', () => {
-  assert.deepEqual(modelArguments('codex', { model: 'gpt-6-luna', effort: 'low' }), ['--model', 'gpt-6-luna', '-c', 'model_reasoning_effort="low"']);
+  assert.deepEqual(modelArguments('codex', { model: 'gpt-6-luna', effort: 'high' }), ['--model', 'gpt-6-luna', '-c', 'model_reasoning_effort="high"']);
   assert.deepEqual(modelArguments('claude', { model: 'sonnet', effort: 'high' }), ['--model', 'sonnet']);
   assert.deepEqual(modelArguments('cursor', { model: 'composer-2.5' }), ['--model', 'composer-2.5']);
   assert.throws(() => modelArguments('codex', { model: '--bad-model' }), /model/i);
