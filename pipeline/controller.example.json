@@ -15,8 +15,8 @@
       "daily_calls": 6,
       "model": "gpt-6-luna",
       "review_model": "gpt-6.1-sol",
-      "effort": "low",
-      "review_effort": "medium",
+      "effort": "high",
+      "review_effort": "high",
       "included_usage_only_confirmed": false,
       "usage_source": "codex",
       "reserve_percent": 30
