@@ -40,6 +40,11 @@ export function schemasFor(job, snapshots) {
 }
 
 export function validate(value, schema, path = 'result') {
+  if (schema.anyOf) {
+    for (const candidate of schema.anyOf) { try { return validate(value, candidate, path); } catch {} }
+    throw Error(`${path}: no permitted alternative`);
+  }
+  if (schema.type === 'null') { if (value !== null) throw Error(`${path}: expected null`); return value; }
   if (schema.type === 'object') {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error(`${path}: expected object`);
     for (const key of schema.required) if (!(key in value)) throw Error(`${path}: missing ${key}`);

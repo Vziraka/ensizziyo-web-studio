@@ -7,6 +7,10 @@ Local implementation folder: `C:\Users\zvent\Projects\ensizziyo-web-studio`
 - Operating plan: https://docs.google.com/document/d/1VpdPBWCjokoTHm3mSw9ytVTJEUjIODgyX3Rs4lPP6Ws/edit
 - Prospect tracker: https://docs.google.com/spreadsheets/d/1QKorp30lNPe9Pww1OUoZ27OQohiIDg9VaJefJJMu0Xg/edit
 
+## Controller checkpoint — October 15, 2026
+
+Implementation checkpoint — October 15, 2026: the [subscription controller](pipeline/CONTROLLER.md) passed local fictional verification, syntax and all 87 account-free tests. Its private configuration/control defaults are disabled, and no live tracker/operating-plan edit, new sample, subscription inference or schedule is part of this increment. Root `controller-state.json` owns persistent controller budgets/attempts across campaigns; it must stay private alongside existing evidence and must be preserved separately from legacy per-job bundles. SOSA remains discovery/progress owner; new controller-to-SOSA scheduling and live compatibility require a later bounded verification. Git/PR status and TASKS.md own implementation completion; the cloud plan's previous ten-business checkpoint is preserved.
+
 ## Setup checkpoint — October 12, 2026
 
 Repository is private. The initial workflow revision merged through [PR #1](https://github.com/Vziraka/ensizziyo-web-studio/pull/1) into main at commit 1e31576. Use Git/PR state for subsequent revision status.
