@@ -136,6 +136,7 @@ export function validateDecision(d, f, now = () => new Date()) {
     if (!Array.isArray(d.journey_checks) || d.journey_checks.length !== f.report.journey_checks.length || d.journey_checks.some((c, i) => c.index !== i || c.area !== f.report.journey_checks[i].area || typeof c.supported !== 'boolean')) throw Error('Review every detailed journey finding once in report order');
     d.journey_checks.forEach(c => text(c.note, 'journey review note'));
   }
+  if (d.opportunity_index != null && (!Number.isInteger(d.opportunity_index) || !f.report.opportunities[d.opportunity_index])) throw Error('Choose an existing supported opportunity');
   if (d.decision !== 'Research-qualified') return d;
   if (f.report.recommendation !== 'Suitable to discuss' || d.observations.some(o => !o.supported) || d.journey_checks?.some(c => !c.supported) || d.operating_status !== 'Active') throw Error('Qualification requires supported observations/journey findings, an active business and a discussion recommendation');
   const age = now() - new Date(`${f.job.as_of}T00:00:00Z`);

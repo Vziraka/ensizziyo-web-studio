@@ -135,6 +135,28 @@ test('hold decisions stay out of Prospects, and existing commercial edits are ne
   assert.equal(accepted.fake.prospects[1][11], 'Yes'); assert.equal(accepted.fake.prospects[1][15], 'Owner declined.');
 });
 
+test('Hold and Pass reject a missing selected opportunity before saving any review', async () => {
+  for (const outcome of ['Hold', 'Pass']) {
+    const { directory, fake, decision } = await assessed();
+    const target = join(directory, packet.job.id);
+    const report = JSON.parse(await readFile(join(target, 'report.json')));
+    report.opportunities = []; report.recommendation = 'No strong public case';
+    await writeFile(join(target, 'report.json'), JSON.stringify(report));
+    fake.rows[0][13] = JSON.stringify(report);
+    const fresh = await reviewTemplate({ directory, jobId: packet.job.id });
+    const reviewed = { ...decision, report_sha256: fresh.report_sha256, decision: outcome, operating_status: 'Unverified', operating_evidence: null };
+    const writes = fake.writes.length;
+    for (const opportunity_index of [0, -1, 1.5, '0']) {
+      await assert.rejects(reviewCandidate({ directory, queue: fake.queue, jobId: packet.job.id, decision: { ...reviewed, opportunity_index }, now }), /existing supported opportunity/);
+      for (const name of ['qualification.json', 'review.json']) await assert.rejects(readFile(join(target, name)), { code: 'ENOENT' });
+      assert.equal(fake.writes.length, writes);
+      assert.equal(fake.prospects.length, 1);
+    }
+    await reviewCandidate({ directory, queue: fake.queue, jobId: packet.job.id, decision: { ...reviewed, opportunity_index: null }, now });
+    assert.equal(fake.prospects.length, 1, 'An unselected Hold/Pass remains valid without adding a prospect');
+  }
+});
+
 test('private restore retains discovery and qualification without a new worker or prospect write', async () => {
   const { directory, fake, decision } = await assessed();
   await reviewCandidate({ directory, queue: fake.queue, jobId: packet.job.id, decision, now });
