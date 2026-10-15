@@ -103,7 +103,7 @@ export async function intakeCandidate({ directory, queue, packet, now = () => ne
   } finally { await release(); }
 }
 
-async function reviewFiles(directory, jobId) {
+export async function reviewFiles(directory, jobId) {
   if (!/^[a-z0-9-]{1,60}$/.test(jobId ?? '')) throw Error('Invalid job ID');
   directory = await privateStateDirectory(directory);
   const target = join(directory, jobId);
@@ -137,7 +137,13 @@ export function validateDecision(d, f, now = () => new Date()) {
     d.journey_checks.forEach(c => text(c.note, 'journey review note'));
   }
   if (d.opportunity_index != null && (!Number.isInteger(d.opportunity_index) || !f.report.opportunities[d.opportunity_index])) throw Error('Choose an existing supported opportunity');
+  if (d.opportunity_checks !== undefined) {
+    if (!Array.isArray(d.opportunity_checks) || d.opportunity_checks.length !== f.report.opportunities.length || d.opportunity_checks.some((c, i) => c.index !== i || typeof c.supported !== 'boolean')) throw Error('Review every opportunity once in report order');
+    d.opportunity_checks.forEach(c => text(c.note, 'opportunity review note'));
+  }
+  if (d.other_claims_supported !== undefined) { if (typeof d.other_claims_supported !== 'boolean') throw Error('Review remaining report claims explicitly'); text(d.other_claims_note, 'remaining claims review note'); }
   if (d.decision !== 'Research-qualified') return d;
+  if (d.opportunity_checks?.some(c => !c.supported) || d.other_claims_supported === false) throw Error('Qualification requires supported opportunities and remaining report claims');
   if (f.report.recommendation !== 'Suitable to discuss' || d.observations.some(o => !o.supported) || d.journey_checks?.some(c => !c.supported) || d.operating_status !== 'Active') throw Error('Qualification requires supported observations/journey findings, an active business and a discussion recommendation');
   const age = now() - new Date(`${f.job.as_of}T00:00:00Z`);
   if (age < 0 || age > 14 * 86_400_000) throw Error('Qualification evidence is stale; research a new dated job');
@@ -167,7 +173,7 @@ export async function reviewCandidate({ directory, queue, jobId, decision, now =
     const record = { ...decision, reviewed_at: saved?.reviewed_at ?? now().toISOString() };
     await writeOnce(path, record);
     const review = { attempt_id: f.state.attempt_id, reviewed_at: record.reviewed_at, reviewed_by: decision.reviewed_by, report_sha256: f.report_sha256, sources_sha256: f.sources_sha256,
-      verdict: decision.observations.every(o => o.supported) && (!decision.journey_checks || decision.journey_checks.every(c => c.supported)) ? 'Accepted' : 'Needs review', notes: [`${decision.decision}. ${decision.rationale}`, `Next: ${decision.next_action}`] };
+      verdict: decision.observations.every(o => o.supported) && (!decision.journey_checks || decision.journey_checks.every(c => c.supported)) && (!decision.opportunity_checks || decision.opportunity_checks.every(c => c.supported)) && decision.other_claims_supported !== false ? 'Accepted' : 'Needs review', notes: [`${decision.decision}. ${decision.rationale}`, `Next: ${decision.next_action}`] };
     const reviewPath = join(f.target, 'review.json');
     let priorReview;
     try { priorReview = await readPrivateJson(reviewPath); } catch (error) { if (error.code !== 'ENOENT') throw error; }

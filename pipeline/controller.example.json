@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "campaign": "replace-with-new-campaign",
+  "job_ids": [],
+  "max_run_minutes": 60,
+  "poll_seconds": 30,
+  "max_calls_per_job": 7,
+  "max_repairs": 1,
+  "max_recoveries": 1,
+  "fallback_order": ["codex", "claude", "cursor"],
+  "review_order": ["claude", "codex", "cursor"],
+  "providers": {
+    "codex": {
+      "enabled": false,
+      "daily_calls": 6,
+      "model": "gpt-6-luna",
+      "review_model": "gpt-6.1-sol",
+      "effort": "low",
+      "review_effort": "medium",
+      "included_usage_only_confirmed": false,
+      "usage_source": "codex",
+      "reserve_percent": 30
+    },
+    "claude": {
+      "enabled": false,
+      "daily_calls": 6,
+      "model": "sonnet",
+      "review_model": "sonnet",
+      "included_usage_only_confirmed": false,
+      "usage_source": "call-cap",
+      "reserve_percent": 30
+    },
+    "cursor": {
+      "enabled": false,
+      "daily_calls": 6,
+      "model": "composer-2.5",
+      "review_model": "composer-2.5",
+      "included_usage_only_confirmed": false,
+      "usage_source": "call-cap",
+      "reserve_percent": 30
+    }
+  }
+}

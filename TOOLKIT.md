@@ -1,6 +1,10 @@
 # Task-based tool catalog
 
-Research catalog, not an installation manifest. Updated October 13, 2026. No catalog skill pack was installed. The user-installed Apollo connector and the project dependency needed for the authorized research proof are recorded below. Availability can differ between agent sessions.
+Research catalog, not an installation manifest. Updated October 15, 2026. No catalog skill pack was installed. The user-installed Apollo connector and the project dependency needed for the authorized research proof are recorded below. Availability can differ between agent sessions.
+
+## Subscription controller checkpoint
+
+Subscription controller — October 15, 2026: the existing Node/Google/CLI route now has a disabled controller with persistent call caps, priority control, automatic claim-review prompts and bounded checkpoint recovery. No dependency, install, new account connection or model API was added. The Codex metadata reader follows the official [app-server account protocol](https://learn.chatgpt.com/docs/app-server); local 0.148.0 app-server help required explicit feature restrictions because it does not support `--ignore-user-config`. Model argument lists use the already inspected [Codex noninteractive](https://learn.chatgpt.com/docs/non-interactive-mode), [Claude headless](https://code.claude.com/docs/en/headless) and [Cursor headless](https://cursor.com/docs/cli/headless) contracts. Only Codex has a documented percentage reader here; Claude/Cursor use conservative local caps pending verified telemetry. Google pacing follows its [quota reference](https://developers.google.com/workspace/sheets/api/limits). Account-free tests cover metadata RPC, exact claims, priority, budgets, repair, handoff and reconciliation; new live model/protocol compatibility and billing behavior remain unverified. See [controller operation](pipeline/CONTROLLER.md) before activation. Installed CLIs/accounts were not changed.
 
 ## Upstream ownership and updates
 

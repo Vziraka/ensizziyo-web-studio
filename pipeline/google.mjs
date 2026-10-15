@@ -2,16 +2,24 @@ import { GoogleAuth } from 'google-auth-library';
 import { randomUUID } from 'node:crypto';
 import { readJson } from './engine.mjs';
 import { validateJob } from './sources.mjs';
+import { setTimeout as delay } from 'node:timers/promises';
 
 export class GoogleQueue {
-  constructor({ spreadsheetId, keyFile, request }) {
+  constructor({ spreadsheetId, keyFile, request, minRequestIntervalMs = 0 }) {
     if (!/^[A-Za-z0-9_-]+$/.test(spreadsheetId ?? '')) throw Error('Invalid spreadsheet ID');
+    if (!Number.isInteger(minRequestIntervalMs) || minRequestIntervalMs < 0 || minRequestIntervalMs > 5000) throw Error('Invalid Google request pacing');
     this.base = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`;
     this.keyFile = keyFile;
     this.requestOverride = request;
+    this.minRequestIntervalMs = minRequestIntervalMs;
+    this.requestTail = Promise.resolve(); this.lastRequestAt = -Infinity;
   }
   async request(method, suffix, data) {
+    const previous = this.requestTail; let release;
+    this.requestTail = new Promise(resolve => { release = resolve; }); await previous;
     try {
+      if (this.minRequestIntervalMs) await delay(Math.max(0, this.lastRequestAt + this.minRequestIntervalMs - performance.now()));
+      this.lastRequestAt = performance.now();
       if (!this.client && !this.requestOverride) {
         if ((await readJson(this.keyFile)).type !== 'service_account') throw Error('A dedicated service-account credential is required');
         this.client = await new GoogleAuth({ keyFile: this.keyFile, scopes: ['https://www.googleapis.com/auth/spreadsheets'] }).getClient();
@@ -21,7 +29,7 @@ export class GoogleQueue {
     } catch (error) {
       // Auth-library errors can contain request credentials; never propagate their full payload.
       throw Error(`Google request failed (${error.response?.status ?? error.code ?? 'configuration/network'}); inspect access and API setup without printing credentials`);
-    }
+    } finally { release(); }
   }
   async values(range, render = 'FORMATTED_VALUE') { return (await this.request('GET', `/values/${encodeURIComponent(range)}?valueRenderOption=${render}`)).values ?? []; }
   async write(range, values) { return this.request('PUT', `/values/${encodeURIComponent(range)}?valueInputOption=RAW`, { range, values }); }
@@ -151,6 +159,12 @@ export class GoogleQueue {
     await this.checkInputs(job);
     const { values } = await this.row(job.id);
     if (values[7] !== 'Quota' || values[9] !== previousAttempt || (requestedWorker && (values[4] !== requestedWorker || values[6] !== job.purpose))) throw Error('Quota handoff requires the verified previous reservation and unchanged scope');
+  }
+  async checkResume(job, previousAttempt, requestedWorker, status) {
+    if (!['Complete', 'Failed', 'Quota', 'Interrupted', 'Paused'].includes(status)) throw Error('Controller resume requires a known stopped status');
+    await this.checkInputs(job);
+    const { values } = await this.row(job.id);
+    if (values[7] !== status || values[9] !== previousAttempt || values[4] !== requestedWorker || values[6] !== job.purpose) throw Object.assign(Error('Controller reservation/scope changed; reconcile before resuming'), { code: 'RECONCILIATION_REQUIRED' });
   }
   async publish(jobId, state, checkpoint, report, review, prospecting = false) {
     const { row, values } = await this.row(jobId);

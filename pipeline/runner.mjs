@@ -32,7 +32,7 @@ export async function publishJob(directory, queue, id) {
   await queue.publish(id, state, checkpoint, state.status === 'Complete' ? report : undefined, review, Boolean(intake));
 }
 
-async function executeAttempt({ directory, queue, jobId, worker, requestedWorker, previousAttempt, invoke, signal: parentSignal, revisionNotes, collectSources, onEvent = () => {}, controlPollMs = 5000 }) {
+async function executeAttempt({ directory, queue, jobId, worker, requestedWorker, previousAttempt, resume, invoke, signal: parentSignal, revisionNotes, collectSources, onEvent = () => {}, controlPollMs = 5000 }) {
   if (!Number.isFinite(controlPollMs) || controlPollMs < 1 || controlPollMs > 60_000) throw Error('Control checks must be bounded');
   const controller = new AbortController(), monitorStop = new AbortController();
   const signal = AbortSignal.any([controller.signal, parentSignal].filter(Boolean));
@@ -53,7 +53,7 @@ async function executeAttempt({ directory, queue, jobId, worker, requestedWorker
   };
   try {
     const result = await runJob({ directory: join(directory, jobId), lockDirectory: directory, worker, invoke, signal, revisionNotes, collectSources,
-      beforeStart: async value => { job = value; if (previousAttempt) await queue?.checkRecovery(job, previousAttempt, requestedWorker); else await queue?.checkInputs(job, requestedWorker); },
+      beforeStart: async value => { job = value; if (resume) await queue?.checkResume(job, resume.attempt_id, requestedWorker, resume.status); else if (previousAttempt) await queue?.checkRecovery(job, previousAttempt, requestedWorker); else await queue?.checkInputs(job, requestedWorker); },
       beforeComplete: async () => { await stopMonitor(); await guard(); },
       beforeFailure: stopMonitor,
       onEvent: async event => {
@@ -87,7 +87,7 @@ export async function executeJob(options) {
   if (!Array.isArray(fallbacks) || new Set(fallbacks).size !== fallbacks.length || fallbacks.some(w => !['cursor', 'claude', 'codex'].includes(w) || w === options.worker)) throw Error('Fallbacks must name each other subscription worker at most once');
   let previousAttempt;
   for (const worker of [options.worker, ...fallbacks]) {
-    try { return await executeAttempt({ ...options, worker, previousAttempt }); }
+    try { return await executeAttempt({ ...options, worker, previousAttempt, resume: previousAttempt ? undefined : options.resume }); }
     catch (error) {
       if (error.code !== 'WORKER_QUOTA' || worker === [options.worker, ...fallbacks].at(-1)) throw error;
       const state = await readJson(join(options.directory, options.jobId, 'state.json'));

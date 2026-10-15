@@ -1,6 +1,6 @@
 import { mkdir, readFile, appendFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { readJson, saveJson, privateStateDirectory } from './engine.mjs';
+import { readJson, saveJson, privateStateDirectory, assertControllerOwner } from './engine.mjs';
 import { invokeCLI } from './workers.mjs';
 import { GoogleQueue } from './google.mjs';
 import { validateJob } from './sources.mjs';
@@ -10,6 +10,7 @@ import { readReviewedSources } from './captures.mjs';
 import { intakeCandidate, reviewTemplate, reviewCandidate, readPrivateJson } from './prospects.mjs';
 
 const directory = await privateStateDirectory(process.env.STUDIO_STATE_DIR);
+await assertControllerOwner(directory);
 const [command, jobId, worker] = process.argv.slice(2);
 if (command === 'restore') {
   console.log(JSON.stringify(await restoreBackup({ input: jobId, destination: directory })));

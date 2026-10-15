@@ -37,23 +37,30 @@ export function parseWorkerOutput(raw) {
     if (candidate) { try { return parse(candidate); } catch {} }
     for (const content of (event.message?.content ?? []).toReversed()) if (content.type === 'text') { try { return parse(content.text); } catch {} }
   }
-  throw Error('Worker returned no parseable structured result');
+  throw Object.assign(Error('Worker returned no parseable structured result'), { code: 'WORKER_OUTPUT_INVALID' });
 }
 
-async function workerCommand(worker, schemaPath, resultPath) {
+export function modelArguments(worker, { model, effort } = {}) {
+  if (model !== undefined && !/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,119}$/.test(model)) throw Error('Invalid explicit worker model');
+  if (effort !== undefined && !['low', 'medium', 'high'].includes(effort)) throw Error('Invalid worker effort');
+  return [...(model ? ['--model', model] : []), ...(worker === 'codex' && effort ? ['-c', `model_reasoning_effort="${effort}"`] : [])];
+}
+
+async function workerCommand(worker, schemaPath, resultPath, options) {
   if (process.platform !== 'win32') throw Error('Live CLI proof currently supports Windows only');
+  const selection = modelArguments(worker, options);
   if (worker === 'claude') return { command: join(process.env.APPDATA, 'npm/node_modules/@anthropic-ai/claude-code/bin/claude.exe'), args: [
     '-p', '--output-format', 'json', '--json-schema', await readFile(schemaPath, 'utf8'), '--no-session-persistence',
-    '--setting-sources', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--tools', ''
+    '--setting-sources', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--tools', '', ...selection
   ] };
   if (worker === 'cursor') {
     const versions = join(process.env.LOCALAPPDATA, 'cursor-agent/versions');
     const version = (await readdir(versions)).filter(v => /^\d{4}\.\d{1,2}\.\d{1,2}(-\d{2}-\d{2}-\d{2})?-[a-f0-9]+$/.test(v)).sort().at(-1);
     if (!version) throw Error('Cursor CLI installation not found');
     // The runner creates this proof workspace itself; trust is limited to that directory, with read-only ask mode.
-    return { command: join(versions, version, 'node.exe'), args: [join(versions, version, 'index.js'), '-p', '--mode', 'ask', '--trust', '--output-format', 'stream-json'] };
+    return { command: join(versions, version, 'node.exe'), args: [join(versions, version, 'index.js'), '-p', '--mode', 'ask', '--trust', '--output-format', 'stream-json', ...selection] };
   }
-  return { command: 'codex.exe', args: ['exec', '--ignore-user-config', '--disable', 'shell_tool', '--disable', 'apps', '--disable', 'plugins', '--disable', 'hooks', '--disable', 'browser_use', '--disable', 'computer_use', '-c', 'web_search="disabled"', '--sandbox', 'read-only', '--skip-git-repo-check', '--ephemeral', '--json', '--output-schema', schemaPath, '--output-last-message', resultPath, '-'] };
+  return { command: 'codex.exe', args: ['exec', '--ignore-user-config', '--disable', 'shell_tool', '--disable', 'apps', '--disable', 'plugins', '--disable', 'hooks', '--disable', 'browser_use', '--disable', 'computer_use', '-c', 'web_search="disabled"', '--sandbox', 'read-only', '--skip-git-repo-check', '--ephemeral', '--json', '--output-schema', schemaPath, '--output-last-message', resultPath, ...selection, '-'] };
 }
 
 export function researchPrompt({ phase, job, checkpoint, snapshots, feedback }) {
@@ -80,12 +87,13 @@ export function researchPrompt({ phase, job, checkpoint, snapshots, feedback }) 
   ].join('\n\n');
 }
 
-export async function invokeCLI({ worker, phase, job, checkpoint, snapshots, feedback, directory, attempt_id, signal, onEvent }) {
-  const schema = schemasFor(job, snapshots)[phase === 'collect' ? 'checkpoint' : 'report'];
+export async function invokeCLI({ worker, phase, job, checkpoint, snapshots, feedback, directory, attempt_id, signal, onEvent, model, effort, outputSchema, promptText }) {
+  if (!['collect', 'assess', 'review'].includes(phase) || (phase === 'review' && (!outputSchema || !promptText))) throw Error('Worker phase requires a trusted prompt and schema');
+  const schema = outputSchema ?? schemasFor(job, snapshots)[phase === 'collect' ? 'checkpoint' : 'report'];
   const base = join(directory, `${attempt_id}-${phase}`);
   const schemaPath = `${base}.schema.json`, resultPath = `${base}.result.json`;
   await writeFile(schemaPath, JSON.stringify(schema));
-  const prompt = researchPrompt({ phase, job, checkpoint, snapshots, feedback });
+  const prompt = promptText ?? researchPrompt({ phase, job, checkpoint, snapshots, feedback });
   await writeFile(`${base}.prompt.txt`, prompt, { mode: 0o600 });
   if (worker === 'cursor') {
     await mkdir(join(directory, '.cursor'), { recursive: true });
@@ -93,7 +101,7 @@ export async function invokeCLI({ worker, phase, job, checkpoint, snapshots, fee
       allow: [], deny: ['Shell(*)', 'Write(**)', 'Mcp(*:*)', 'Read(**)', 'WebFetch(*)']
     } }, null, 2));
   }
-  const { command, args } = await workerCommand(worker, schemaPath, resultPath);
+  const { command, args } = await workerCommand(worker, schemaPath, resultPath, { model, effort });
   signal?.throwIfAborted();
   const child = spawn(command, args, { cwd: directory, env: subscriptionEnvironment(), windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
   let raw = '', bytes = 0, aborted = false, timedOut = false, spawnError, logError;
@@ -122,7 +130,7 @@ export async function invokeCLI({ worker, phase, job, checkpoint, snapshots, fee
   finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); await logWrites; }
   await onEvent({ event: 'worker_stopped', worker, phase, exit_code: code });
   if (aborted) throw new DOMException('Controlled worker interruption', 'AbortError');
-  if (timedOut) throw Error('Worker exceeded bounded timeout');
+  if (timedOut) throw Object.assign(Error('Worker exceeded bounded timeout'), { code: 'WORKER_TIMEOUT' });
   if (bytes > 8_000_000) throw Error('Worker exceeded output limit');
   if (spawnError || logError) throw Error('Worker launch/logging failed; inspect private state');
   const failure = workerFailure(raw);

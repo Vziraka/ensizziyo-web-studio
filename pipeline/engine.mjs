@@ -1,6 +1,7 @@
 import { readFile, writeFile, rename, open, unlink, lstat, realpath } from 'node:fs/promises';
 import { join, resolve, dirname, relative } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { validateEvidence } from './schemas.mjs';
 import { validateJob, validateSnapshots, collectPublicSources } from './sources.mjs';
 
@@ -24,12 +25,25 @@ export async function privateStateDirectory(value) {
 export async function saveJson(path, value) {
   const temporary = `${path}.${randomUUID()}.tmp`;
   await writeFile(temporary, JSON.stringify(value, null, 2), { mode: 0o600 });
-  await rename(temporary, path);
+  // Windows can briefly deny replacement while a control monitor has the file open.
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try { await rename(temporary, path); break; }
+      catch (error) { if (!['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt === 5) throw error; await delay(8 * 2 ** attempt); }
+    }
+  } catch (error) { await unlink(temporary).catch(() => {}); throw error; }
 }
 export function alive(pid) {
   try { process.kill(pid, 0); return true; } catch (error) { return error.code !== 'ESRCH'; }
 }
+export async function assertControllerOwner(directory) {
+  try {
+    const controller = await readJson(join(directory, '.controller', '.runner.lock'));
+    if (controller.pid !== process.pid) throw Error('The controller owns this state directory; stop or reconcile it before using another runner');
+  } catch (error) { if (error.code !== 'ENOENT') throw error; }
+}
 export async function acquireLock(directory) {
+  await assertControllerOwner(directory);
   const path = join(directory, '.runner.lock');
   const token = randomUUID();
   try {

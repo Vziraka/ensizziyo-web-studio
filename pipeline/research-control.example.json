@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "enabled": false,
+  "priority": "website",
+  "quota_resumes": {}
+}
