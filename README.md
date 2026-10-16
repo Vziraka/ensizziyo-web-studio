@@ -1,6 +1,6 @@
 # Ensizziyo Web Studio
 
-EVZ Digital is the owner-selected working public name, with EVZ as the visual mark. The final domain is not selected or registered.
+EVZ Digital is the owner-selected working public name, with EVZ as the visual mark. `evzdigital.com` is the approved public domain choice; registration is pending.
 
 This private repository owns the studio website and its implementation decisions. Business owners are the primary audience; agency partnerships are secondary.
 
