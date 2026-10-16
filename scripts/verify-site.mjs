@@ -29,6 +29,7 @@ for (const page of pages) {
   const file = join(root, page, 'index.html');
   const html = await readFile(file, 'utf8');
   assert.match(html, /<meta name="robots" content="noindex,nofollow">/);
+  assert.match(html, /<link rel="icon" type="image\/svg\+xml" href="\/shared\/favicon\.svg">/);
   if (studioPages.includes(page)) {
     assert.match(html, /<form name="studio-inquiry" method="POST" data-netlify="true" hidden>/);
     assert.ok(html.includes(`<h1>${headings[page]}</h1>`), `Wrong static heading: ${page}`);

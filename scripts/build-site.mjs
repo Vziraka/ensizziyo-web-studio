@@ -43,7 +43,7 @@ for (const demo of demos) {
   const file = resolve(output, `${demo}-motion`, 'index.html');
   let html = await readFile(file, 'utf8');
   if (!html.includes('</body>')) throw new Error(`Missing closing body: ${file}`);
-  html = html.replace('</head>', '<meta name="robots" content="noindex,nofollow"></head>');
+  html = html.replace('</head>', '<link rel="icon" type="image/svg+xml" href="/shared/favicon.svg"><meta name="robots" content="noindex,nofollow"></head>');
   html = html.replace('</body>', '<script type="module" src="../shared/showreel.mjs"></script><script type="module" src="../shared/review-bridge.mjs"></script></body>');
   await writeFile(file, html);
 }
