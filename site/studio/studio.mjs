@@ -1,33 +1,13 @@
 import {mountShowcase} from './showcase.mjs';
+import {createViews,routeHref} from './views.mjs';
 import {validateInquiry,sendInquiry} from './inquiry.mjs';
 import {createScenes} from '../shared/scene-motion.mjs';
-import {$,$$,escapeHTML as esc,setupPreview,focusHeading,motion,openDialog} from '../shared/preview.mjs';
-const data=await fetch('data.json').then(r=>r.json());setupPreview({studio:true});let service='websites',filter='All',showIndex=1,reviewIndex=0,reviewsPlaying=true,reviewTimer=0,counterFrame=0,counted=false,page='home',observer=null,formData={description:'',name:'',email:'',business:'',website:'',context:''},reviewed=false,completed=false,returnState=null;const positions=new Map();
+import {$,$$,setupPreview,focusHeading,motion,openDialog} from '../shared/preview.mjs';
+const data=await fetch('data.json').then(r=>r.json());setupPreview({studio:true});let service='websites',filter='All',showIndex=1,reviewIndex=0,reviewsPlaying=true,reviewTimer=0,counterFrame=0,counted=false,page='home',observer=null,formData={description:'',name:'',email:'',business:'',website:'',context:''},reviewed=false,completed=false,returnState=null;
 try{returnState=JSON.parse(sessionStorage.getItem('studio-return')||'null');if(returnState){filter=returnState.filter||'All';service=returnState.service||'websites';showIndex=returnState.showIndex||0}}catch{}
-const samples=['Arc','Sola','Pulse','Fieldwork','Forma','Relay','Homekind','Juniper'].map(name=>data.samples.find(s=>s.name===name)),find=n=>samples.find(s=>s.name===n),categories=['All','Websites','Systems','Automation','Marketing'];
-const categoryLabels={All:'All projects',Websites:'Websites',Systems:'Business systems',Automation:'Automation & AI',Marketing:'Brand & campaigns'};
-let artId=0,showcase=null;
-function art(name,classes=''){const s=find(name),[iw,ih]=s.size,[x,y,w,h]=s.clip||[0,0,iw,ih],id='crop-'+artId++;return `<span class="art ${classes}" role="img" aria-label="${esc(name+' / '+s.description+' design preview')}"><svg viewBox="${x} ${y} ${w} ${h}" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><defs><clipPath id="${id}"><rect x="${x}" y="${y}" width="${w}" height="${h}"/></clipPath></defs><image href="${s.image}" width="${iw}" height="${ih}" clip-path="url(#${id})"/></svg></span>`}
-const sampleLink=(name,label,classes='text-link')=>`<a class="${classes}" href="${find(name).url}" data-sample="${name}">${label}</a>`;
-const cta=(title='What would you like to improve?',body=data.about.cta,link='Explore our top work',href='#work')=>`<section class="cta"><div><h2>${title}</h2><p>${body}</p></div><div><a class="primary" href="#inquiry">Let's talk <span>→</span></a><a class="text-link" href="${href}">${link}</a></div></section>`;
-function home(){return `
-<section class="horizon-hero">
-  <h1>We build digital products that help businesses grow.</h1>
-  <div class="horizon-intro"><p>We design and build websites, connect your business systems, set up practical automation and AI, and support your marketing - so you can move faster and focus on what matters.</p><a class="primary" href="#inquiry">Let's talk <span aria-hidden="true">↗</span></a><a class="text-link" href="#work">Explore our top work <span aria-hidden="true">→</span></a></div>
-  <p class="studio-note">Digital studio<br>for ambitious<br>businesses</p>
-</section>
-<section class="horizon-gallery" aria-label="Our top work"></section>
-<section class="horizon-services"><p class="section-label">Our services</p><div class="services-heading"><h2>From the first<br>impression to the everyday.</h2><p>Practical digital solutions that fit your business - with ongoing support when you need it.</p></div><div class="horizon-service-grid">${data.services.map((s,i)=>`<a href="#services/${s.id}"><h3>${['Websites','Connected business systems','Practical automation and AI','Marketing support'][i]}</h3><p>${['High-performing, easy to manage websites that make the right first impression.','Bring your tools and data together so everything works as one.','Save time, reduce manual work and unlock new possibilities without complexity.','Clear strategy and ongoing support so you stay visible and keep growing.'][i]}</p><span aria-hidden="true">↗</span></a>`).join('')}</div><a class="text-link" href="#services">Explore our services <span aria-hidden="true">→</span></a></section>
-<section class="social-proof"><p class="section-label">Built with businesses</p><h2 class="proof-title">Good work. Built together.</h2><div class="metrics" aria-label="Owner-reported figures"><div class="metric"><strong data-count="500">500+</strong><p>Clients</p></div><div class="metric"><strong data-count="1000">1,000+</strong><p>Projects delivered</p></div></div><section class="reviews" aria-label="Client reviews"><h2>Client perspectives</h2><div class="review-cards"></div><div class="review-controls"><span id="review-count"></span><button id="reviews-play">Pause motion</button><div class="arrows"><button class="round-control" id="review-prev" aria-label="Previous review">←</button><button class="round-control" id="review-next" aria-label="Next review">→</button></div></div></section></section>
-<section class="home-contact"><h2>What would you like to improve?</h2><div><p>A new website, a smoother workflow, or a clearer next step. Tell us what you have in mind.</p><a class="primary" href="#inquiry">Let's talk <span aria-hidden="true">↗</span></a></div></section>`}
-
-function about(){return `<section class="page about-page"><p class="eyebrow">About</p><section class="about-top"><div class="about-copy"><h1>Good work starts with<br>understanding your business.</h1><p>${data.about.intro}</p><div class="relationship"><h2>A practical working relationship.</h2><p>${data.about.relationship}</p></div></div><div class="about-examples"><h2>Examples of our work</h2><div class="about-art">${art('Fieldwork')}${art('Homekind')}</div><p>Fieldwork / Property website<br>Homekind / Home services</p></div></section><div class="principles">${data.about.principles.map(([h,p])=>`<article><h3>${h}</h3><p>${p}</p></article>`).join('')}</div><section class="audiences"><h2>A useful partner at any stage.</h2><div>${data.about.audiences.map(([h,p])=>`<article><h3>${h}</h3><p>${p}</p></article>`).join('')}</div></section><section class="handoff"><div><h2>Clarity you can<br>take forward.</h2><p>The decisions around the work matter as much as the finished design.</p></div><div>${data.about.handoff.map(([h,p])=>`<article><h3>${h}</h3><p>${p}</p></article>`).join('')}</div></section><section class="faq" aria-labelledby="faq-title"><h2 id="faq-title">Questions before we start</h2><div class="faq-list">${data.about.faq.map(([question,answer])=>`<details><summary>${esc(question)}</summary><p>${esc(answer)}</p></details>`).join('')}</div></section>${cta()}</section>`}
-function serviceBody(){const s=data.services.find(s=>s.id===service);return `<h2>An example of our work</h2>${sampleLink(s.sample,art(s.sample),'')}<p class="caption">${s.sample} / ${s.label}</p><h2 class="headline">${s.headline}</h2><p class="intro">${s.intro}</p><h2 class="scope-title">What we can help with</h2><div class="scope">${s.scope.map(([h,p])=>`<article><h3>${h}</h3><p>${p}</p></article>`).join('')}</div><a class="text-link" href="#work/${s.category}">${s.work_link} →</a>`}
-function services(){const s=data.services.find(s=>s.id===service);return `<section class="page services-page"><p class="eyebrow">Services</p><h1>What needs to work better?</h1><p class="page-intro">Start with the business problem. We will work out the right scope together.</p><div class="services-layout"><aside><div class="service-selector" aria-label="Service choices">${data.services.map(s=>`<button data-service="${s.id}" aria-pressed="${s.id===service}">${s.label}</button>`).join('')}</div><label class="mobile-selector">Service<select id="service-select">${data.services.map(s=>`<option value="${s.id}" ${s.id===service?'selected':''}>${s.label}</option>`).join('')}</select></label><div class="service-help"><h2>You can start with a conversation.</h2><p>No service or technical decision is needed before you get in touch.</p><a class="primary" href="#inquiry">Let's talk</a></div></aside><section class="service-content">${serviceBody()}</section></div><section class="agreement"><h2>What we agree together</h2><p>${s.agree}</p></section>${cta('Not sure which service fits?','Tell us what you would like to improve. You do not need to choose a service or know the technical solution before getting in touch.','How we work','#about')}</section>`}
-function work(){const rows=samples.filter(s=>filter==='All'||s.category===filter);return `<section class="page work-page"><p class="eyebrow">Work</p><div class="work-intro"><h1>Explore our work</h1><p>Independent demonstrations of websites, systems, automation and campaigns.</p></div><div class="work-filters" aria-label="Project categories">${categories.map(c=>`<button data-filter="${c}" aria-pressed="${c===filter}">${categoryLabels[c]}</button>`).join('')}</div><div class="work-grid ${rows.length===1?'single':''}">${rows.map(s=>`<article class="project">${sampleLink(s.name,art(s.name),'')}<div><div class="project-heading"><h2>${s.name}</h2><span>${categoryLabels[s.category]}</span></div><p>${rows.length===1?({Arc:'Investigate a change in sales, inspect an order and work through the next action in a sample workspace.',Relay:'Edit a prepared rule, follow sample data through the branches and review the draft output.',Sola:'Explore three botanical flavors through packaging, ingredients and a playful product story.'}[s.name]||s.description):s.description}</p>${sampleLink(s.name,'Open '+s.name+' →')}<p><a class="context-link" href="#inquiry/${s.name}">Discuss something like this</a></p></div></article>`).join('')}</div><div class="work-count"><span>${rows.length} ${rows.length===1?'sample':'samples'} / ${categoryLabels[filter]}</span>${filter==='All'?'':'<button data-filter="All">Clear filter / View all work</button>'}</div>${cta('Have something in mind?','Tell us what you would like to improve. We can work out the right scope together.','Explore services','#services')}</section>`}
-function inquiry(){return `<section class="page inquiry-page"><div class="inquiry-layout"><div class="inquiry-copy"><h1>Let's talk.</h1><h2>What would you like to improve?</h2><p>Tell us what happens today and what you would like to work better. You do not need to choose a service or know the technical solution.</p><section class="agency"><h3>Working with an agency?</h3><p>Use the same form. Tell us about the client, the work and where you need a development partner.</p></section><p class="required-copy">Only name, email and your description are required.</p></div><form id="inquiry-form" class="inquiry-form" name="studio-inquiry" method="POST" novalidate><input type="hidden" name="form-name" value="studio-inquiry"><input type="hidden" name="context" value="${esc(formData.context)}"><label class="wide">What would you like to improve?<textarea name="description" maxlength="3000" required aria-describedby="description-error">${esc(formData.description)}</textarea><span class="error" id="description-error"></span></label><label>Name<input name="name" maxlength="120" autocomplete="name" value="${esc(formData.name)}" required aria-describedby="name-error"><span class="error" id="name-error"></span></label><label>Email<input name="email" type="email" maxlength="254" autocomplete="email" value="${esc(formData.email)}" required aria-describedby="email-error"><span class="error" id="email-error"></span></label><label>Business (optional)<input name="business" maxlength="160" autocomplete="organization" aria-describedby="business-error" value="${esc(formData.business)}"><span class="error" id="business-error"></span></label><label>Website (optional)<input name="website" maxlength="500" inputmode="url" placeholder="https://" value="${esc(formData.website)}" aria-describedby="website-error"><span class="error" id="website-error"></span></label>${formData.context?`<div class="context wide"><span>Interested after viewing ${esc(formData.context)}</span><button type="button" id="remove-context">Remove</button></div>`:''}<div class="form-actions wide"><button class="primary">Review your inquiry →</button><p>Review your details before sending.</p></div></form></div></section>`}
-function review(){return `<section class="page inquiry-page"><h1>Does this capture it?</h1><div class="review-layout"><div><h2>What you want to improve</h2><p class="description">${esc(formData.description).replace(/\n/g,'<br>')}</p><dl class="review-details">${[['Name',formData.name],['Email',formData.email],['Business',formData.business||'Not provided'],['Website',formData.website||'Not provided'],['Sample context',formData.context||'None selected']].map(([k,v])=>`<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl><a href="#inquiry" class="text-link">Edit details</a></div><aside><div class="conversation"><h2>A conversation comes next.</h2><p>Your inquiry helps us understand the problem, ask useful questions and agree a next step. Scope, timing and costs would be discussed before a project starts.</p></div><p class="error" id="finish-error" role="alert"></p><div class="review-actions"><button class="primary" id="finish">Send inquiry</button><a href="#inquiry">Back</a></div><p>Your message will be sent when you select Send inquiry.</p></aside></div></section>`}
-function success(){return `<section class="page success"><h1>Thanks for getting in touch.</h1><p>Your inquiry was received. We will reply by email.</p><div class="recap"><strong>${esc(formData.name)}${formData.business?' / '+esc(formData.business):''}</strong><p>${esc(formData.email)}</p>${formData.context?`<p>Interested after viewing ${esc(formData.context)}</p>`:''}</div><div class="form-actions"><a class="primary" href="#work">Explore our top work →</a><a href="#inquiry" id="new-inquiry">Start another inquiry</a></div></section>`}
+const views=createViews(data,()=>({service,filter,formData}));
+const {samples,categories,categoryLabels,art}=views;
+let showcase=null;
 
 function updateReviews(animate=false){$('.review-cards').innerHTML=Array.from({length:3},(_,i)=>data.testimonials.reviews[(reviewIndex+i)%4]).map(r=>`<article class="review-card"><div class="stars" aria-label="5 stars">★★★★★</div><h3>${r.name}</h3><p>${r.comment}</p></article>`).join('');$('#review-count').textContent=innerWidth<=700?`${reviewIndex+1} of 4`:`Showing ${reviewIndex+1}, ${(reviewIndex+1)%4+1}, ${(reviewIndex+2)%4+1} of 4`;$('#reviews-play').textContent=reviewsPlaying&&motion()?'Ⅱ  Pause motion':'▷  Resume motion';if(animate&&motion())$('.review-cards').animate([{opacity:.35,transform:'translateX(10px)'},{opacity:1,transform:'none'}],{duration:400,easing:'ease-out'})}
 function timers(){clearInterval(reviewTimer);if(page!=='home'||document.hidden||!motion())return;if(reviewsPlaying)reviewTimer=setInterval(()=>{const r=$('.reviews')?.getBoundingClientRect();if(r&&r.top<innerHeight&&r.bottom>0){reviewIndex=(reviewIndex+1)%4;updateReviews(true)}},8000)}
@@ -35,10 +15,103 @@ function pauseReviews(){reviewsPlaying=false;clearInterval(reviewTimer);if($('#r
 function counters(){if(counted||!motion()){$$('[data-count]').forEach(e=>e.textContent=Number(e.dataset.count).toLocaleString('en-US')+'+');counted=true;return}counted=true;const start=performance.now();function frame(now){const p=Math.min(1,(now-start)/2000),ease=1-(1-p)**3;$$('[data-count]').forEach(e=>e.textContent=Math.round(Number(e.dataset.count)*ease).toLocaleString('en-US')+'+');if(p<1&&motion())counterFrame=requestAnimationFrame(frame);else $$('[data-count]').forEach(e=>e.textContent=Number(e.dataset.count).toLocaleString('en-US')+'+')}counterFrame=requestAnimationFrame(frame)}
 function attachHome(){showcase=mountShowcase($('.horizon-gallery'),samples,showIndex,i=>showIndex=i,art);updateReviews();$('.review-cards').addEventListener('mouseenter',pauseReviews);$('.review-cards').addEventListener('focusin',pauseReviews);if(!counted&&motion())$$('[data-count]').forEach(e=>e.textContent='0+');observer=new IntersectionObserver(entries=>{if(entries.some(e=>e.isIntersecting)){counters();observer?.disconnect()}},{threshold:.3});observer.observe($('.metrics'));timers()}
 
-function changeService(value){service=value;history.replaceState(null,'','#services/'+value);$$('[data-service]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.service===service)));$('#service-select').value=service;$('.service-content').innerHTML=serviceBody();$('.agreement p').textContent=data.services.find(s=>s.id===service).agree;if(motion())$('.service-content').animate([{opacity:.3},{opacity:1}],{duration:150});$('#announcement').textContent=data.services.find(s=>s.id===service).label+' selected.'}
-function render(){showcase?.destroy();showcase=null;clearInterval(reviewTimer);cancelAnimationFrame(counterFrame);observer?.disconnect();const [route,arg]=location.hash.slice(1).split('/');page=['about','services','work','inquiry','review','complete'].includes(route)?route:'home';if(page==='services'&&data.services.some(s=>s.id===arg))service=arg;if(page==='work'&&categories.includes(arg))filter=arg;if(page==='inquiry'&&samples.some(s=>s.name===arg))formData.context=arg;if(page==='review'&&!reviewed)page='inquiry';if(page==='complete'&&!completed)page='inquiry';if(['review','complete'].includes(route)&&page!==route)history.replaceState(null,'','#'+page);$('#main').innerHTML=({home,about,services,work,inquiry,review,complete:success}[page])();document.title=(page==='home'?'Websites. Systems. Automation. Marketing.':page.charAt(0).toUpperCase()+page.slice(1))+' — Ensizziyo';$$('.site-header nav a').forEach(a=>{a.removeAttribute('aria-current');if(a.hash==='#'+page)a.setAttribute('aria-current','page')});if($('#mobile-nav').open)$('#mobile-nav').close();const restore=returnState&&page===(returnState.page||'work')?returnState:null;scrollTo({top:restore?.scroll??0,behavior:'instant'});if(restore){requestAnimationFrame(()=>{$$('[data-sample]').find(a=>a.dataset.sample===restore.sample&&(a.classList.contains('text-link')||a.closest('.gallery-panel')))?.focus({preventScroll:true});scrollTo({top:restore.scroll||0,behavior:'instant'})});returnState=null;sessionStorage.removeItem('studio-return')}else focusHeading();document.body.dataset.page=page;if(page==='home')attachHome();if(page==='services')$('#service-select').onchange=e=>changeService(e.target.value);const form=$('#inquiry-form');if(form){const capture=()=>{const fd=new FormData(form);for(const key of ['description','name','email','business','website'])formData[key]=String(fd.get(key)||'');reviewed=false};form.oninput=capture;form.onsubmit=e=>{e.preventDefault();capture();const errors=validateInquiry(formData);for(const k of ['description','name','email','business','website']){const v=errors[k]||'';$('#'+k+'-error').textContent=v;if(v)form.elements[k].setAttribute('aria-invalid','true');else form.elements[k].removeAttribute('aria-invalid')}const first=Object.keys(errors).find(k=>errors[k]);if(first){form.elements[first].focus();return}reviewed=true;positions.set('review',0);location.hash='review'}}}
-async function submitReview(button){if(button.disabled)return;button.disabled=true;button.textContent='Sending…';$('#finish-error').textContent='';try{await sendInquiry(formData);completed=true;location.hash='complete'}catch{$('#finish-error').textContent='We could not send your inquiry. Your details are still here. Try again or return to edit them.';button.disabled=false;button.textContent='Try sending again'}}
-document.addEventListener('click',e=>{const el=e.target.closest('button,a');if(!el)return;if(el.matches('a[href^="#"]')){if(el.closest('#mobile-nav')&&$('#mobile-nav').open)$('#mobile-nav').close();if(el.hash===location.hash&&el.closest('.site-header,.site-footer,#mobile-nav')){scrollTo({top:0,behavior:'instant'});focusHeading()}positions.set(page,scrollY);if(el.closest('.site-header,.site-footer,#mobile-nav'))positions.set(el.hash.slice(1).split('/')[0],0)}if(el.dataset.sample){try{sessionStorage.setItem('studio-return',JSON.stringify({page,hash:location.hash,filter,service,showIndex,scroll:scrollY,sample:el.dataset.sample}))}catch{}return}if(el.classList.contains('menu-open'))openDialog($('#mobile-nav'),el);if(el.classList.contains('menu-close'))$('#mobile-nav').close();if(el.dataset.service)changeService(el.dataset.service);if(el.dataset.filter){filter=el.dataset.filter;history.replaceState(null,'','#work/'+filter);positions.set('work',0);render();$(`[data-filter="${filter}"]`)?.focus({preventScroll:true})}if(el.id==='reviews-play'){reviewsPlaying=!reviewsPlaying;updateReviews();timers()}if(el.id==='review-prev'||el.id==='review-next'){pauseReviews();reviewIndex=(reviewIndex+(el.id==='review-next'?1:3))%4;updateReviews(true)}if(el.id==='new-inquiry'){formData={description:'',name:'',email:'',business:'',website:'',context:''};reviewed=false;completed=false}if(el.id==='remove-context'){formData.context='';history.replaceState(null,'','#inquiry');render()}if(el.id==='finish')submitReview(el)});
-addEventListener('hashchange',render);document.addEventListener('visibilitychange',()=>{if(document.hidden){pauseReviews()}});document.addEventListener('motionchange',()=>{if(!motion()){pauseReviews();cancelAnimationFrame(counterFrame);if(page==='home')counters()}});addEventListener('resize',()=>{if(page==='home')updateReviews()});render();
+function changeService(value){
+  service=value;
+  history.replaceState(null,'',`/studio/services/?service=${encodeURIComponent(value)}`);
+  $$('[data-service]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.service===service)));
+  $('#service-select').value=service;
+  $('.service-content').innerHTML=views.serviceBody();
+  $('.agreement p').textContent=data.services.find(s=>s.id===service).agree;
+  if(motion())$('.service-content').animate([{opacity:.3},{opacity:1}],{duration:150});
+  $('#announcement').textContent=data.services.find(s=>s.id===service).label+' selected.';
+}
+
+function render(){
+  showcase?.destroy();showcase=null;clearInterval(reviewTimer);cancelAnimationFrame(counterFrame);observer?.disconnect();
+  if(/^#(home|about|services|work|inquiry)(\/|$)/.test(location.hash))history.replaceState(null,'',routeHref(location.hash));
+  const route=location.pathname.split('/').filter(Boolean)[1]||'home';
+  const params=new URLSearchParams(location.search);
+  page=['about','services','work','inquiry'].includes(route)?route:'home';
+  if(page==='services')service=data.services.some(s=>s.id===params.get('service'))?params.get('service'):'websites';
+  if(page==='work')filter=categories.includes(params.get('category'))?params.get('category'):'All';
+  if(page==='inquiry'){
+    const sample=params.get('sample');
+    if(samples.some(s=>s.name===sample))formData.context=sample;
+    if(location.hash==='#review'&&reviewed)page='review';
+    if(location.hash==='#complete'&&completed)page='complete';
+    if(['#review','#complete'].includes(location.hash)&&page==='inquiry')history.replaceState(null,'',location.pathname+location.search);
+  }
+  $('#main').innerHTML=views.render(page);
+  document.title=(page==='home'?'Websites. Systems. Automation. Marketing.':page.charAt(0).toUpperCase()+page.slice(1))+' — Ensizziyo';
+  const navPage=page==='review'||page==='complete'?'inquiry':page;
+  $$('.site-header nav a').forEach(a=>{
+    a.removeAttribute('aria-current');
+    if(a.pathname===(navPage==='home'?'/studio/':`/studio/${navPage}/`))a.setAttribute('aria-current','page');
+  });
+  if($('#mobile-nav').open)$('#mobile-nav').close();
+  const restore=returnState&&page===(returnState.page||'work')?returnState:null;
+  scrollTo({top:restore?.scroll??0,behavior:'instant'});
+  if(restore){
+    requestAnimationFrame(()=>{
+      $$('[data-sample]').find(a=>a.dataset.sample===restore.sample&&(a.classList.contains('text-link')||a.closest('.gallery-panel')))?.focus({preventScroll:true});
+      scrollTo({top:restore.scroll||0,behavior:'instant'});
+    });
+    returnState=null;sessionStorage.removeItem('studio-return');
+  }else focusHeading();
+  document.body.dataset.page=page;
+  if(page==='home')attachHome();
+  if(page==='services')$('#service-select').onchange=e=>changeService(e.target.value);
+  const form=$('#inquiry-form');
+  if(form){
+    const capture=()=>{const fd=new FormData(form);for(const key of ['description','name','email','business','website'])formData[key]=String(fd.get(key)||'');reviewed=false};
+    form.oninput=capture;
+    form.onsubmit=e=>{
+      e.preventDefault();capture();
+      const errors=validateInquiry(formData);
+      for(const k of ['description','name','email','business','website']){
+        const v=errors[k]||'';
+        $('#'+k+'-error').textContent=v;
+        if(v)form.elements[k].setAttribute('aria-invalid','true');else form.elements[k].removeAttribute('aria-invalid');
+      }
+      const first=Object.keys(errors).find(k=>errors[k]);
+      if(first){form.elements[first].focus();return}
+      reviewed=true;location.hash='review';
+    };
+  }
+}
+
+async function submitReview(button){
+  if(button.disabled)return;
+  button.disabled=true;button.textContent='Sending…';$('#finish-error').textContent='';
+  try{await sendInquiry(formData);completed=true;location.hash='complete'}
+  catch{$('#finish-error').textContent='We could not send your inquiry. Your details are still here. Try again or return to edit them.';button.disabled=false;button.textContent='Try sending again'}
+}
+
+document.addEventListener('click',e=>{
+  const el=e.target.closest('button,a');if(!el)return;
+  if(el.dataset.sample){
+    try{sessionStorage.setItem('studio-return',JSON.stringify({page,url:location.pathname+location.search,filter,service,showIndex,scroll:scrollY,sample:el.dataset.sample}))}catch{}
+    return;
+  }
+  if(el.classList.contains('menu-open'))openDialog($('#mobile-nav'),el);
+  if(el.classList.contains('menu-close'))$('#mobile-nav').close();
+  if(el.dataset.service)changeService(el.dataset.service);
+  if(el.dataset.filter){
+    filter=el.dataset.filter;
+    history.replaceState(null,'',filter==='All'?'/studio/work/':`/studio/work/?category=${encodeURIComponent(filter)}`);
+    render();$(`[data-filter="${filter}"]`)?.focus({preventScroll:true});
+  }
+  if(el.id==='reviews-play'){reviewsPlaying=!reviewsPlaying;updateReviews();timers()}
+  if(el.id==='review-prev'||el.id==='review-next'){pauseReviews();reviewIndex=(reviewIndex+(el.id==='review-next'?1:3))%4;updateReviews(true)}
+  if(el.id==='new-inquiry'){formData={description:'',name:'',email:'',business:'',website:'',context:''};reviewed=false;completed=false}
+  if(el.getAttribute('href')==='/studio/inquiry/#edit'){e.preventDefault();location.hash='edit'}
+  if(el.id==='remove-context'){formData.context='';history.replaceState(null,'','/studio/inquiry/');render()}
+  if(el.id==='finish')submitReview(el);
+});
+addEventListener('hashchange',render);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)pauseReviews()});
+document.addEventListener('motionchange',()=>{if(!motion()){pauseReviews();cancelAnimationFrame(counterFrame);if(page==='home')counters()}});
+addEventListener('resize',()=>{if(page==='home')updateReviews()});
+render();
 
 createScenes({entries:[['.horizon-hero h1','rise'],['.horizon-intro','rise'],['.services-heading','rise'],['.horizon-service-grid>a','rise'],['.home-contact','rise'],['.home-services>h2','rise'],['.service-row','slide'],['.campaign-example','curtain'],['.principles article','rise'],['.audiences article','slide'],['.handoff article','rise'],['.service-content','curtain'],['.scope article','slide'],['.project','curtain'],['.cta','rise'],['.success','rise']],tactile:['.project .art']});

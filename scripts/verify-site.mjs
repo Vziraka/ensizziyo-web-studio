@@ -2,15 +2,24 @@ import assert from 'node:assert/strict';
 import {readFile, stat} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve, sep} from 'node:path';
+import {routeHref} from '../site/studio/views.mjs';
 
 const root = fileURLToPath(new URL('../dist/', import.meta.url));
-const pages = ['studio', 'sola-motion', 'pulse-motion', 'fieldwork-motion', 'forma-motion', 'arc-motion', 'relay-motion', 'homekind-motion', 'juniper-motion'];
+const studioPages = ['studio', 'studio/about', 'studio/services', 'studio/work', 'studio/inquiry'];
+const headings = {
+  studio: 'We build digital products that help businesses grow.',
+  'studio/about': 'Good work starts with<br>understanding your business.',
+  'studio/services': 'What needs to work better?',
+  'studio/work': 'Explore our work',
+  'studio/inquiry': "Let's talk.",
+};
+const pages = [...studioPages, 'sola-motion', 'pulse-motion', 'fieldwork-motion', 'forma-motion', 'arc-motion', 'relay-motion', 'homekind-motion', 'juniper-motion'];
 
 async function expectAsset(pageFile, reference) {
   if (/^(?:https?:|mailto:|tel:|data:|#)/i.test(reference)) return;
   const path = decodeURIComponent(reference.split(/[?#]/)[0]);
   if (!path) return;
-  const asset = path.startsWith('/') ? resolve(root, `.${path}`) : resolve(dirname(pageFile), path);
+  const asset = path.startsWith('/') ? resolve(root, `.${path}`) : resolve(pageFile.includes(`${sep}studio${sep}`) ? join(root, 'studio') : dirname(pageFile), path);
   assert.ok(asset.startsWith(root.endsWith(sep) ? root : root + sep), `Reference outside site: ${reference}`);
   const info = await stat(asset);
   assert.ok(info.isFile() || info.isDirectory(), `Missing asset: ${reference}`);
@@ -20,8 +29,11 @@ for (const page of pages) {
   const file = join(root, page, 'index.html');
   const html = await readFile(file, 'utf8');
   assert.match(html, /<meta name="robots" content="noindex,nofollow">/);
-  if (page === 'studio') {
+  if (studioPages.includes(page)) {
     assert.match(html, /<form name="studio-inquiry" method="POST" data-netlify="true" hidden>/);
+    assert.ok(html.includes(`<h1>${headings[page]}</h1>`), `Wrong static heading: ${page}`);
+    assert.doesNotMatch(html, /href="#(?:home|about|services|work|inquiry)(?:\/|\")/);
+    assert.match(html, /<meta name="description" content="[^"]+">/);
   } else {
     assert.match(html, /shared\/showreel\.mjs/);
     assert.match(html, /shared\/review-bridge\.mjs/);
@@ -31,5 +43,9 @@ for (const page of pages) {
 
 assert.equal(await readFile(join(root, 'robots.txt'), 'utf8'), 'User-agent: *\nDisallow: /\n');
 assert.ok(!Object.hasOwn(JSON.parse(await readFile(join(root, 'studio', 'data.json'), 'utf8')), 'inquiry'), 'Synthetic studio inquiry data must not ship');
+assert.equal(routeHref('#services/systems'), '/studio/services/?service=systems');
+assert.equal(routeHref('#work/Systems'), '/studio/work/?category=Systems');
+assert.equal(routeHref('#inquiry/Arc'), '/studio/inquiry/?sample=Arc');
+assert.equal(routeHref('#edit'), '/studio/inquiry/#edit');
 await assert.rejects(stat(join(root, 'README.md')), {code: 'ENOENT'});
-console.log('Verified nine private review entry points and their static HTML assets.');
+console.log('Verified five studio pages, eight demonstrations and their static HTML assets.');
