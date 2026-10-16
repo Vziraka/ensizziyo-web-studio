@@ -6,6 +6,11 @@ Local implementation folder: `C:\Users\zvent\Projects\ensizziyo-web-studio`
 - Drive workspace: https://drive.google.com/drive/folders/1l3j5Lng7R-DB8x2ofdbjn7KdNMFksL0Y
 - Operating plan: https://docs.google.com/document/d/1VpdPBWCjokoTHm3mSw9ytVTJEUjIODgyX3Rs4lPP6Ws/edit
 - Prospect tracker: https://docs.google.com/spreadsheets/d/1QKorp30lNPe9Pww1OUoZ27OQohiIDg9VaJefJJMu0Xg/edit
+- Sales-kit draft: https://docs.google.com/document/d/1qybvO__qBf508RGSAnADSBjIhw1G_kIWIflqpF9ikkU (in the studio Sales folder)
+
+## Sales and outreach handoff — October 16, 2026
+
+The completed interview selects call-first outreach with a logged-outcome email handoff, a bounded two-call/two-email nonresponse cadence, a discovery-qualified clickable preview and a fixed quote after scope. The 50-business daily minimum includes due follow-ups. Apollo is the daily call/email workspace; Sheets retains research evidence and receives agreed operational status. The native draft above contains sales material; [the S2 workflow design](pipeline/OUTREACH.md) owns transitions, synchronization ownership, failure handling and future controlled checks. [TASKS.md](TASKS.md#sales-kit-and-callemail-workflow--october-16-2026) owns draft verification and implementation status. No Apollo/Sheet operational changes, research, sending or schedules occur in this document increment. Do not assume SOSA has received the sales workflow; its latest verified instructions remain the food-first targeting playbook with real research paused. Website inquiries remain a separate inbound path under [the launch decision](docs/studio-launch.md#inquiry-and-data-ownership).
 
 ## Targeting checkpoint — October 16, 2026
 
