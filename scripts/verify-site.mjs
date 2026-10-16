@@ -34,6 +34,8 @@ for (const page of pages) {
     assert.ok(html.includes(`<h1>${headings[page]}</h1>`), `Wrong static heading: ${page}`);
     assert.doesNotMatch(html, /href="#(?:home|about|services|work|inquiry)(?:\/|\")/);
     assert.match(html, /<meta name="description" content="[^"]+">/);
+    assert.match(html, /<title>[^<]+ — EVZ Digital<\/title>/);
+    assert.match(html, /<a class="wordmark" href="\/studio\/" aria-label="EVZ Digital home">EVZ<\/a>/);
   } else {
     assert.match(html, /shared\/showreel\.mjs/);
     assert.match(html, /shared\/review-bridge\.mjs/);
