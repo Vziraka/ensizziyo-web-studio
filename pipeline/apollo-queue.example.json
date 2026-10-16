@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "mode": "controlled-test",
+  "enabled": false,
+  "run_id": "studio-outreach-test-20261016-1234abcd",
+  "user_id": "REPLACE_WITH_OBSERVED_OWNER_ID",
+  "recipients": [],
+  "time_zone": "America/New_York",
+  "daily_queue": {
+    "enabled": false,
+    "cases": [
+      { "id": "no-answer", "outcome": "no_answer" },
+      { "id": "callback", "outcome": "callback", "callback_at": "2026-10-19T15:00:00Z" },
+      { "id": "decline", "outcome": "decline" }
+    ]
+  }
+}
