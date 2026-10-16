@@ -1,6 +1,6 @@
 # Ensizziyo Web Studio
 
-Ensizziyo Studio is the current launch recommendation. The final domain is not selected or registered.
+EVZ Digital is the owner-selected working public name, with EVZ as the visual mark. The final domain is not selected or registered.
 
 This private repository owns the studio website and its implementation decisions. Business owners are the primary audience; agency partnerships are secondary.
 
