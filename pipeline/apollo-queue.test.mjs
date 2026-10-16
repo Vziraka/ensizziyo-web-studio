@@ -197,3 +197,13 @@ test('lost fixture-completion response reconciles from saved outcome without rep
   assert.equal((await connection.prepare('lost-completion', 'fixture_complete', 'no-answer', 'fixture')).already_done, true);
   assert.equal((await connection.queueStatus()).records[0].verified_outcomes, 1);
 });
+
+test('provider changes to a callback time or priority cannot be adopted', async () => {
+  const { connection } = await fixture();
+  await outcome(connection, 'callback');
+  const saved = await task(connection, 'callback', 'handoff');
+  await connection.prepare('wrong-callback-time', 'task_show', 'callback', 'handoff');
+  await assert.rejects(connection.settle('wrong-callback-time', { task: { ...saved, due_at: '2026-10-19T16:00:00Z' } }), /Callback time/);
+  await connection.prepare('wrong-callback-priority', 'task_show', 'callback', 'handoff');
+  await assert.rejects(connection.settle('wrong-callback-priority', { task: { ...saved, priority: 'low' } }), /Callback time or priority/);
+});

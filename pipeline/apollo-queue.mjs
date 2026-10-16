@@ -72,8 +72,10 @@ export class ApolloCallQueue extends ApolloTestConnection {
       check(task.pending_send !== true && task.emailer_message?.status === 'drafted', 'Email task is no longer an unsent draft');
       if (task.standalone_outreach_task_message) check(apolloHash(task.standalone_outreach_task_message) === apolloHash(emailTaskMessage), 'Email task message changed');
     }
+    if (kind === 'handoff' && task.type === 'call') check(task.priority === 'high' && dated(task.due_at) &&
+      Date.parse(task.due_at) === Date.parse(scope.callback_at), 'Callback time or priority changed');
     return { id: task.id, title: task.title, type: task.type, status: task.status, user_id: owner,
-      contact_id: record.contact.id, account_id: record.account.id, due_at: task.due_at, note: task.note, completed_at: task.completed_at ?? previous?.completed_at,
+      contact_id: record.contact.id, account_id: record.account.id, due_at: task.due_at, priority: task.priority, note: task.note, completed_at: task.completed_at ?? previous?.completed_at,
       standalone_outreach_task_message: task.standalone_outreach_task_message };
   }
   async prepare(key, operation, caseId, kind = 'call') {
