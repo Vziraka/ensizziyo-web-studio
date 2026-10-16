@@ -15,7 +15,7 @@ This private repository owns the studio website and its implementation decisions
 
 ## Current state
 
-The approved Horizon/Manrope studio and eight interactive demonstrations are curated in [site](site/README.md). The first production path builds a private, noindex review site with a Netlify Forms inquiry, a privacy notice draft and [site CI](.github/workflows/site-check.yml). [Launch decisions and release checks](docs/studio-launch.md) describe the account, proof, accessibility, SEO and rollback work before public release. The domain is registered and its contact verified; hosting, the business inbox, website/email DNS and production deployment are not configured yet.
+The approved Horizon/Manrope studio and eight interactive demonstrations are curated in [site](site/README.md). The first production path builds a private, noindex review site with a Netlify Forms inquiry, a privacy notice draft and [site CI](.github/workflows/site-check.yml). [Launch decisions and release checks](docs/studio-launch.md) describe the account, proof, accessibility, SEO and rollback work before public release. The domain is registered and its contact verified. The [private Netlify project](https://app.netlify.com/projects/evz-digital-studio/overview) deploys `main` and has stored a synthetic inquiry; the business inbox, website/email DNS and public release remain open.
 
 From the repository root, with Node 24 and Python already available:
 
@@ -27,6 +27,8 @@ python -m http.server 4207 --bind 127.0.0.1 --directory dist
 ```
 
 Open `http://127.0.0.1:4207/studio/`. The readiness signal is Python's `Serving HTTP on 127.0.0.1 port 4207` line. Stop only this server with Ctrl+C in its terminal. Open `/studio/about/`, `/studio/services/`, `/studio/work/`, `/studio/inquiry/` and `/studio/privacy/` directly; check the headings and navigation, then choose a service and Work filter and follow a demo's return link. The built HTML contains the page content before JavaScript runs. In the inquiry, empty required fields should show errors; a synthetic `example.com` entry should reach review and retain its values on Edit. The local server rejects POST, so Send must keep details and show a retry message. This local check does not prove Netlify delivery. Use only synthetic details; no real contact data is needed. `dist/` is ignored by Git and can be rebuilt from `site/`.
+
+For the hosted check, sign in as the Netlify team owner and confirm production and Deploy Preview visibility are **Private** in the [project configuration](https://app.netlify.com/projects/evz-digital-studio/configuration/general). Check that the latest deploy is from `main` and that Forms lists `studio-inquiry`. Open the private `/studio/inquiry/` route, try empty required fields, then send clearly synthetic details and verify both the completion screen and the matching **Verified submissions** record. Record the successful deploy permalink for rollback; review and remove the synthetic record after its evidence is no longer needed. Mailbox delivery needs a separate test once `hello@evzdigital.studio` is active. The October 16 hosted test confirmed storage, not notification delivery or a full device review; [the launch decision](docs/studio-launch.md) tracks the remaining checks.
 
 A controlled research runner remains in [pipeline](pipeline/README.md), with subscription-backed Cursor, Claude and Codex assessments and Google Sheets result writes. It is separate from website inbound inquiries. Production scheduling and outreach are not active.
 

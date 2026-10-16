@@ -4,6 +4,8 @@ October 16 studio launch path: consulted the linked specification and architectu
 
 October 16 student-domain update: Name.com recognized the owner's GitHub student eligibility through GitHub sign-in, and the owner registered `evzdigital.studio` using that offer. Name.com shows the registrant contact verified. The displayed costs and verification limits are in [the launch decision](docs/studio-launch.md#identity-and-domain); the October 13 unverified-offer note below is historical.
 
+October 16 Netlify connection: the owner installed the official Netlify GitHub App on the personal GitHub account for **only** `Vziraka/ensizziyo-web-studio`. Its observed permissions are read access to code and metadata, read/write access to checks, commit statuses, issues and pull requests, and individual-user read access to email addresses. The EVZ Digital team uses Netlify Free (300 monthly credits, $0, no card saved). [The private project](https://app.netlify.com/projects/evz-digital-studio/overview) builds Node 24 source from `main`, with private production and previews. Form detection and one synthetic stored submission passed. No catalog skill or local software was installed for this connection; review app permissions and Netlify credit usage if scope or plan changes.
+
 Research catalog, not an installation manifest. Updated October 15, 2026. No catalog skill pack was installed. The user-installed Apollo connector and the project dependency needed for the authorized research proof are recorded below. Availability can differ between agent sessions.
 
 ## Subscription controller checkpoint
