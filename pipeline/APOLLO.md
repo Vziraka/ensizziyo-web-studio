@@ -2,22 +2,22 @@
 
 This first S2 increment connects private Node receipts to the existing authenticated Apollo app connector and a fictional Sheets projection. **Production is blocked; research remains paused.** It adds no dependency, API key, model API or recurring job. The [workflow](OUTREACH.md) owns full production requirements; the [controller](CONTROLLER.md) owns research separately.
 
-`apollo.mjs` owns record bounds, eligibility and receipts. `apollo-cli.mjs` prepares/settles requests. The Codex app invokes the returned Apollo tool and saves its exact response privately. Apollo owns email execution. This requires an active authenticated app session; it is not a standalone unattended transport or another follow-up scheduler.
+`apollo.mjs` owns record bounds, eligibility and receipts. `apollo-cli.mjs` prepares/settles requests and ingests verified Gmail reply readbacks. The Codex app invokes the existing Apollo and Gmail tools and saves their exact responses privately. Apollo owns email execution. This requires an active authenticated app session; it is not a standalone unattended transport or another follow-up scheduler.
 
 ## Executed verification — October 16, 2026
 
 | Check | Result and boundary |
 | --- | --- |
-| Profile/mailboxes | Connected profile read passed. No linked sender was returned at the last read. |
+| Profile/mailboxes | Connected profile read passed. After the owner completed mailbox consent, the selected owner-controlled Gmail was verified active and default. |
 | Fictional company/contact | One reserved `.invalid` company/contact created and read back. The contact has no phone. Apollo title-cases names; exact email, organization and account checks remain. |
 | Apollo tasks | One standalone test call and one fixture action item created/read back. The call was skipped without dialing; only the action item was completed after executing its local simulation. Final statuses were read back as skipped/completed. |
 | Call-first gate | Persisted skipped-call fixture stays ineligible. Separately labelled simulated no-answer permits the owner-only branch. Neither creates a real call or daily contact count. |
 | Restart/duplicates | Separate CLI processes reuse saved mappings. Repeated company/contact/task prepares return already-done without another provider mutation. |
 | Failure/recovery | Account-free tests cover lost task-create response reconciliation, uncertain receipts across reopening, foreign records, envelope mismatches, reply/decline holds, late events, caps and business-day expiry. Faults are injected; no real provider crash/quota exhaustion is claimed. |
 | Sheets | `Outreach test!A1:J2` contains the fictional mapping and explicitly simulated outcome. Native readback/rendered layout checked. `Prospects!A1:P101` matched its saved baseline exactly; original tabs retained. This is an app-assisted projection, not a polling synchronizer. |
-| Actual email/reply | Pending owner mailbox linking. One exact test message between owner-controlled inboxes is approved. No draft/send/enrollment/sequence activation occurred while the sender was missing. |
-| Pause | Private test configuration is disabled after record verification; a new draft request was rejected. Saved mappings and owner approval remain for a verified resume. |
-| Local checks | Syntax and all 106 account-free tests pass, including 19 Apollo tests. No subscription worker invoked; no active research runner found. |
+| Actual email/reply | One approved owner-only test email completed delivery. The owner confirmed arrival/reply; authenticated Gmail readback matched the sent original and incoming reply. Ingesting that receipt persisted `Reply review` and blocked further email. Reopening and ingesting again counted one reply. No sequence was enrolled or activated. |
+| Pause | Private test configuration is disabled after email/reply verification. Saved receipts remain; disabling outbound does not block ingestion of an already received reply. |
+| Local checks | Syntax and all 109 account-free tests pass, including 22 Apollo tests. No subscription worker invoked; no active research runner found. |
 
 Private evidence: `C:\Users\zvent\Documents\Codex\2026-10-16\apollo-controlled-proof`, outside Git with owner/SYSTEM access. Configuration, state, raw provider receipts, preserved tracker values and browser evidence stay there. Never commit or attach those files to a PR. The native view is a test log, not a prospect queue.
 
@@ -85,9 +85,24 @@ Read linked mailboxes first; sender address/ID must match. Before **creating the
 }
 ```
 
-Subjects/bodies must identify the test; unresolved merge placeholders block it. The fictional contact keeps its `.invalid` address; explicit recipients override it to the approved owner inbox. Draft readback must match the exact contact, sole To recipient, subject and HTML. Unexpected normalization or omitted fields holds the action for inspection; do not send an unverified envelope.
+Subjects/bodies must identify the test; unresolved merge placeholders block it. The fictional contact keeps its `.invalid` address; explicit recipients override it to the approved owner inbox. Draft readback must match the exact contact, sole To recipient, subject and HTML. Apollo's exact `<html><head></head><body>…</body></html>` wrapper is accepted only when the inner HTML is unchanged. Altered content, head content, extra recipients or a returned conflicting sender/mailbox hold the action. The existing mailbox signature was inherited for this owner-only test; production studio identity/footer still needs review.
 
 Only one send reservation is permitted per run. Scheduled/drafted counts zero. Poll the exact returned message ID at most four times, 10–20 seconds apart, as the connector requires. Unknown/failed is not delivery; failure holds the route. Repeated delivery receipts count once. Independently verify destination arrival. A local reply fixture does not prove real reply ingestion or queued-step cancellation.
+
+### Verified owner reply
+
+Use the existing Gmail connector to read its authenticated profile, search for this exact owner-to-owner test subject/route/date and read the matching thread with at most 20 messages. Save the unmodified tool results privately as `receipts/<key>.json`:
+
+```json
+{
+  "gmail_profile": "REPLACE_WITH_RAW_PROFILE_TOOL_RESULT_OBJECT",
+  "gmail_thread": "REPLACE_WITH_RAW_THREAD_TOOL_RESULT_OBJECT"
+}
+```
+
+Run `node apollo-cli.mjs reply <key>`. The profile must match the approved sender. A delivered test send and unchanged message confirmation are required. The thread root must be the matching SENT original within five minutes of the send reservation; replies must reverse the exact owner route, retain the subject and reference the original SMTP Message-ID through In-Reply-To. Duplicate/invalid headers and invalid chronology fail without changing state. This deliberately narrow timing window covers the immediate controlled proof; delayed sends and general production threading need a separate implementation.
+
+Matching messages create stable Gmail event IDs with `source: gmail_readback`, persist `Reply review` and retain zero real-business outreach. Repeated ingestion after reopening does not duplicate events. Message bodies cannot issue workflow commands. This is bounded readback ingestion, with no recurring poller, automatic response or proof of native queued-step cancellation.
 
 ## Recovery, upkeep and rollback
 
@@ -105,4 +120,4 @@ npm test
 node --test apollo.test.mjs
 ```
 
-The suite substitutes Apollo at the external boundary and makes no account request. Connected recipe: verify profile/exact test identity; create/read bounded records; execute skip/no-answer fixtures; check duplicate prepares after restart; complete only the fixture action item; verify Google projection/preservation. Add draft/send/arrival/reply checks after mailbox readiness. Record passed, failed and pending checks separately.
+The suite substitutes Apollo/Gmail at the external boundary and makes no account request. Connected recipe: verify profile/exact test identity; create/read bounded records; execute skip/no-answer fixtures; check duplicate prepares after restart; complete only the fixture action item. After sender readiness and concrete approval, verify the exact draft, send once, read delivery status, confirm arrival and ingest the authenticated reply thread. Reopen to check duplicate reply handling, disable outbound and verify the Google projection/preservation. Record actual delivery/reply separately from simulated calling; neither makes the fictional business a real outreach count. Record passed, failed and pending checks separately.

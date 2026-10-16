@@ -118,6 +118,40 @@ export class ApolloTestConnection {
   async event(event) {
     return this.change(state => { state.flow = applyTestEvent(state.flow, { ...event, source: 'fixture' }, this.now()); return state.flow; });
   }
+  async receiveReply(receipt) {
+    return this.change(state => {
+      const approved = this.config.approved_message, profile = receipt?.gmail_profile?.structuredContent, thread = receipt?.gmail_thread?.structuredContent;
+      check(!receipt?.gmail_profile?.isError && !receipt?.gmail_thread?.isError && profile && thread, 'Verified structured Gmail readbacks required');
+      check(approved && profile.email === approved.from, 'Gmail owner does not match the approved sender');
+      const sent = Object.values(state.actions).find(a => a.operation === 'send' && a.status === 'Done');
+      check(sent && state.records.message?.message_hash === apolloHash(approved) && state.flow.emails.some(e => e.id === `sent:${state.records.message.id}`), 'Verified original test send required');
+      check(id(thread.id) && Array.isArray(thread.messages) && thread.messages.length <= 20, 'Invalid or oversized Gmail thread');
+      const header = (message, name) => {
+        const found = (message.payload?.headers ?? []).filter(h => h.name?.toLowerCase() === name.toLowerCase());
+        check(found.length <= 1 && found.every(h => typeof h.value === 'string' && !/[\r\n]/.test(h.value)), 'Ambiguous or invalid Gmail header');
+        return found[0]?.value ?? '';
+      };
+      const address = value => {
+        const found = value.match(/[^\s<>\",;]+@[^\s<>\",;]+\.[^\s<>\",;]+/g) ?? [];
+        return found.length === 1 ? found[0].toLowerCase() : '';
+      };
+      const original = thread.messages.find(m => m.id === thread.id && m.thread_id === thread.id && m.label_ids?.includes('SENT') &&
+        address(header(m, 'From')) === approved.from.toLowerCase() && address(header(m, 'To')) === approved.to.toLowerCase() && header(m, 'Subject') === approved.subject);
+      check(original && Number.isFinite(Number(original.internal_date)) && Number(original.internal_date) >= +time(sent.prepared_at) &&
+        Number(original.internal_date) <= +time(sent.prepared_at) + 300000, 'Original Gmail message does not match the controlled send window');
+      const messageId = header(original, 'Message-ID'); check(messageId, 'Original SMTP message ID is missing');
+      const replies = thread.messages.filter(m => m.id !== original.id && m.thread_id === thread.id &&
+        address(header(m, 'From')) === approved.to.toLowerCase() && address(header(m, 'To')) === approved.from.toLowerCase() &&
+        header(m, 'Subject').replace(/^re:\s*/i, '') === approved.subject && header(m, 'In-Reply-To') === messageId);
+      check(replies.length, 'No matching reply to the original controlled message');
+      for (const reply of replies) {
+        check(id(reply.id) && Number.isFinite(Number(reply.internal_date)) && Number(reply.internal_date) >= Number(original.internal_date), 'Invalid reply identity or chronology');
+        state.flow = applyTestEvent(state.flow, { id: `gmail_reply:${reply.id}`, type: 'reply', at: new Date(Number(reply.internal_date)).toISOString(),
+          source: 'gmail_readback', gmail_thread_id: thread.id, gmail_message_id: reply.id }, this.now());
+      }
+      return { status: state.flow.status, verified_replies: replies.length, real_outreach: 0 };
+    });
+  }
   message(state) {
     const m = this.config.approved_message;
     check(m, 'Confirm the test mailbox, recipient, subject and body before drafting');
@@ -128,9 +162,13 @@ export class ApolloTestConnection {
   }
   verifyDraft(message, state) {
     const approved = this.config.approved_message;
-    check(message.contact_id === state.records.contact.id && message.subject === approved.subject && message.body_html === approved.body_html &&
+    // Apollo adds this exact empty document wrapper; compare the unchanged inner HTML.
+    const body = message.body_html?.replace(/^<html><head><\/head><body>([\s\S]*)<\/body><\/html>$/, '$1');
+    check(message.contact_id === state.records.contact.id && message.subject === approved.subject && body === approved.body_html &&
       Array.isArray(message.recipients) && message.recipients.length === 1 && message.recipients[0].email === approved.to &&
-      message.recipients[0].recipient_type_cd === 'to', 'Draft readback differs from the confirmed owner-only message; sending is held');
+      message.recipients[0].recipient_type_cd === 'to' && !message.cc_emails?.length && !message.bcc_emails?.length &&
+      (!message.from_email || message.from_email === approved.from) && (!message.send_from?.email || message.send_from.email === approved.from) &&
+      (!message.email_account_id || message.email_account_id === approved.mailbox_id), 'Draft readback differs from the confirmed owner-only message; sending is held');
   }
   build(state, operation, options) {
     const c = this.config, marker = `STUDIO TEST ${c.run_id}`, address = `${c.run_id}@example.invalid`;
