@@ -1,6 +1,6 @@
 # Food and beverage call and email workflow
 
-Owner decisions recorded October 16, 2026. **Design prepared; integration and activation are not complete.** Research, live outreach and schedules remain paused. The [sales kit](https://docs.google.com/document/d/1qybvO__qBf508RGSAnADSBjIhw1G_kIWIflqpF9ikkU) contains the offer, scripts, emails, discovery questions, prototype brief and proposal outline. The [research playbook](RESEARCH.md) owns prospect screening and evidence qualification. This guide owns the proposed S2 handoff, field ownership, failure behavior and acceptance checks.
+Owner decisions recorded October 16, 2026. **The first controlled connection increment is implemented; full integration and activation are not complete.** The [Apollo proof guide](APOLLO.md) owns executed test results and operation. Research, live outreach and schedules remain paused. The [sales kit](https://docs.google.com/document/d/1qybvO__qBf508RGSAnADSBjIhw1G_kIWIflqpF9ikkU) contains the offer, scripts, emails, discovery questions, prototype brief and proposal outline. The [research playbook](RESEARCH.md) owns prospect screening and evidence qualification. This guide owns the full S2 handoff, field ownership, failure behavior and acceptance checks.
 
 ## Selected operating rules
 
@@ -16,7 +16,7 @@ Owner decisions recorded October 16, 2026. **Design prepared; integration and ac
 
 ## Tool roles and record ownership
 
-Reuse the existing Google/Node/Apollo route. No new CRM, automation service, model API or dependency is selected. Native Apollo capabilities should perform outbound scheduling and execution. A narrow connection updates eligibility, maps events and reconciles records; it must not become a second email sender or follow-up scheduler. Its exact supported interface still needs verification before implementation.
+Reuse the existing Google/Node/Apollo route. No new CRM, automation service, model API or dependency is selected. Native Apollo capabilities should perform outbound scheduling and execution. The controlled connection uses the existing authenticated app tools for bounded record/task operations and a test message; it is not an unattended transport or another follow-up scheduler. Native call-event capture, reply/suppression synchronization and production interfaces still need verification. Its detailed limits are in the proof guide.
 
 | Information or action | Owner | Synchronization boundary |
 | --- | --- | --- |
@@ -80,7 +80,7 @@ Research and outreach need separate pause controls. Keeping the research control
 
 ## Controlled acceptance before activation
 
-These are required future scenarios, **not executed test results**. Use invented businesses and owner-controlled test inboxes/phone records; no prospect research or real enrollment during design.
+These are full-stage acceptance scenarios, **not a claim that S2 is complete**. The proof guide distinguishes executed checks from simulations and pending work. Use invented businesses and owner-controlled test inboxes/phone records; no real prospect enrollment or research during controlled verification.
 
 1. Reviewed eligible fictional record maps to exactly one Apollo company/contact/task; duplicate delivery and restart create no second action.
 2. Saved no-answer permits the truthful email branch; task completion alone, skip, auto-skip or a missing outcome does not.
