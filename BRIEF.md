@@ -14,7 +14,7 @@ Optional, separately scoped services: ongoing website care, campaign landing pag
 
 ## First site
 
-Build a focused studio site with offer, services, a clearly labelled concept demonstration, process, founder introduction, FAQ, and one primary inquiry action. Agency partnerships can have a secondary section/contact route. Start with the minimum page count needed to make this understandable.
+Build a focused studio site with offer, services, clearly labelled concept demonstrations, process, an About section, FAQ, and one primary inquiry action. The owner chose to keep the founder unnamed for the first public release. Agency partnerships can have a secondary section/contact route. Start with the minimum page count needed to make this understandable.
 
 ## Design
 

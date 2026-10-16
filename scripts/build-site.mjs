@@ -25,10 +25,11 @@ const studioPages = {
   services: ['studio/services', 'Services', 'Explore website, business system, automation and marketing services from EVZ Digital.'],
   work: ['studio/work', 'Work', 'Explore eight independent interactive demonstrations of websites, systems, automation and campaigns.'],
   inquiry: ['studio/inquiry', 'Inquiry', 'Tell EVZ Digital what you would like to improve and start a conversation about the right scope.'],
+  privacy: ['studio/privacy', 'Privacy', 'How EVZ Digital handles website inquiries, form submissions and privacy requests.'],
 };
 for (const [page, [folder, title, description]] of Object.entries(studioPages)) {
   const content = page === 'inquiry'
-    ? '<section class="page inquiry-page"><h1>Let\'s talk.</h1><p>Tell us what you would like to improve.</p></section>'
+    ? '<section class="page inquiry-page"><h1>Let\'s talk.</h1><p>Tell us what you would like to improve. <a href="/studio/privacy/">How we handle your details</a>.</p></section>'
     : views.render(page);
   let html = studioShell.replace('<main id="main"></main>', `<main id="main">${content}</main>`);
   html = html.replace('href="#main"', `href="/${folder}/#main"`);
@@ -49,4 +50,4 @@ for (const demo of demos) {
 }
 
 await writeFile(join(output, 'robots.txt'), 'User-agent: *\nDisallow: /\n');
-console.log('Built private review site with five studio pages and eight demonstrations.');
+console.log('Built private review site with six studio pages and eight demonstrations.');

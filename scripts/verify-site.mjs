@@ -5,13 +5,14 @@ import {dirname, join, resolve, sep} from 'node:path';
 import {routeHref} from '../site/studio/views.mjs';
 
 const root = fileURLToPath(new URL('../dist/', import.meta.url));
-const studioPages = ['studio', 'studio/about', 'studio/services', 'studio/work', 'studio/inquiry'];
+const studioPages = ['studio', 'studio/about', 'studio/services', 'studio/work', 'studio/inquiry', 'studio/privacy'];
 const headings = {
   studio: 'We build digital products that help businesses grow.',
   'studio/about': 'Good work starts with<br>understanding your business.',
   'studio/services': 'What needs to work better?',
   'studio/work': 'Explore our work',
   'studio/inquiry': "Let's talk.",
+  'studio/privacy': 'How we handle inquiries.',
 };
 const pages = [...studioPages, 'sola-motion', 'pulse-motion', 'fieldwork-motion', 'forma-motion', 'arc-motion', 'relay-motion', 'homekind-motion', 'juniper-motion'];
 
@@ -37,6 +38,7 @@ for (const page of pages) {
     assert.match(html, /<meta name="description" content="[^"]+">/);
     assert.match(html, /<title>[^<]+ — EVZ Digital<\/title>/);
     assert.match(html, /<a class="wordmark" href="\/studio\/" aria-label="EVZ Digital home">EVZ<\/a>/);
+    assert.match(html, /<a href="\/studio\/privacy\/">Privacy<\/a>/);
   } else {
     assert.match(html, /shared\/showreel\.mjs/);
     assert.match(html, /shared\/review-bridge\.mjs/);
@@ -50,5 +52,6 @@ assert.equal(routeHref('#services/systems'), '/studio/services/?service=systems'
 assert.equal(routeHref('#work/Systems'), '/studio/work/?category=Systems');
 assert.equal(routeHref('#inquiry/Arc'), '/studio/inquiry/?sample=Arc');
 assert.equal(routeHref('#edit'), '/studio/inquiry/#edit');
+assert.equal(routeHref('#privacy'), '/studio/privacy/');
 await assert.rejects(stat(join(root, 'README.md')), {code: 'ENOENT'});
-console.log('Verified five studio pages, eight demonstrations and their static HTML assets.');
+console.log('Verified six studio pages, eight demonstrations and their static HTML assets.');

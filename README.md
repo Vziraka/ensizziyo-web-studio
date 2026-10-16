@@ -15,7 +15,7 @@ This private repository owns the studio website and its implementation decisions
 
 ## Current state
 
-The approved Horizon/Manrope studio and eight interactive demonstrations are curated in [site](site/README.md). The first production path builds a private, noindex review site with a Netlify Forms inquiry and [site CI](.github/workflows/site-check.yml). [Launch decisions and release checks](docs/studio-launch.md) describe the account, proof, accessibility, SEO and rollback work before public release. No hosting account, domain, business inbox or production deployment has been configured here.
+The approved Horizon/Manrope studio and eight interactive demonstrations are curated in [site](site/README.md). The first production path builds a private, noindex review site with a Netlify Forms inquiry, a privacy notice draft and [site CI](.github/workflows/site-check.yml). [Launch decisions and release checks](docs/studio-launch.md) describe the account, proof, accessibility, SEO and rollback work before public release. No hosting account, domain, business inbox or production deployment has been configured here.
 
 From the repository root, with Node 24 and Python already available:
 
@@ -26,7 +26,7 @@ node --test scripts/inquiry.test.mjs
 python -m http.server 4207 --bind 127.0.0.1 --directory dist
 ```
 
-Open `http://127.0.0.1:4207/studio/`. The readiness signal is Python's `Serving HTTP on 127.0.0.1 port 4207` line. Stop only this server with Ctrl+C in its terminal. Open `/studio/about/`, `/studio/services/`, `/studio/work/` and `/studio/inquiry/` directly; check the headings and navigation, then choose a service and Work filter and follow a demo's return link. The built HTML contains the page content before JavaScript runs. In the inquiry, empty required fields should show errors; a synthetic `example.com` entry should reach review and retain its values on Edit. The local server rejects POST, so Send must keep details and show a retry message. This local check does not prove Netlify delivery. Use only synthetic details; no real contact data is needed. `dist/` is ignored by Git and can be rebuilt from `site/`.
+Open `http://127.0.0.1:4207/studio/`. The readiness signal is Python's `Serving HTTP on 127.0.0.1 port 4207` line. Stop only this server with Ctrl+C in its terminal. Open `/studio/about/`, `/studio/services/`, `/studio/work/`, `/studio/inquiry/` and `/studio/privacy/` directly; check the headings and navigation, then choose a service and Work filter and follow a demo's return link. The built HTML contains the page content before JavaScript runs. In the inquiry, empty required fields should show errors; a synthetic `example.com` entry should reach review and retain its values on Edit. The local server rejects POST, so Send must keep details and show a retry message. This local check does not prove Netlify delivery. Use only synthetic details; no real contact data is needed. `dist/` is ignored by Git and can be rebuilt from `site/`.
 
 A controlled research runner remains in [pipeline](pipeline/README.md), with subscription-backed Cursor, Claude and Codex assessments and Google Sheets result writes. It is separate from website inbound inquiries. Production scheduling and outreach are not active.
 
