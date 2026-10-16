@@ -3,17 +3,13 @@ import {createViews,routeHref} from './views.mjs';
 import {validateInquiry,sendInquiry} from './inquiry.mjs';
 import {createScenes} from '../shared/scene-motion.mjs';
 import {$,$$,setupPreview,focusHeading,motion,openDialog} from '../shared/preview.mjs';
-const data=await fetch('data.json').then(r=>r.json());setupPreview({studio:true});let service='websites',filter='All',showIndex=1,reviewIndex=0,reviewsPlaying=true,reviewTimer=0,counterFrame=0,counted=false,page='home',observer=null,formData={description:'',name:'',email:'',business:'',website:'',context:''},reviewed=false,completed=false,returnState=null;
+const data=await fetch('data.json').then(r=>r.json());setupPreview({studio:true});let service='websites',filter='All',showIndex=1,page='home',formData={description:'',name:'',email:'',business:'',website:'',context:''},reviewed=false,completed=false,returnState=null;
 try{returnState=JSON.parse(sessionStorage.getItem('studio-return')||'null');if(returnState){filter=returnState.filter||'All';service=returnState.service||'websites';showIndex=returnState.showIndex||0}}catch{}
 const views=createViews(data,()=>({service,filter,formData}));
 const {samples,categories,categoryLabels,art}=views;
 let showcase=null;
 
-function updateReviews(animate=false){$('.review-cards').innerHTML=Array.from({length:3},(_,i)=>data.testimonials.reviews[(reviewIndex+i)%4]).map(r=>`<article class="review-card"><div class="stars" aria-label="5 stars">★★★★★</div><h3>${r.name}</h3><p>${r.comment}</p></article>`).join('');$('#review-count').textContent=innerWidth<=700?`${reviewIndex+1} of 4`:`Showing ${reviewIndex+1}, ${(reviewIndex+1)%4+1}, ${(reviewIndex+2)%4+1} of 4`;$('#reviews-play').textContent=reviewsPlaying&&motion()?'Ⅱ  Pause motion':'▷  Resume motion';if(animate&&motion())$('.review-cards').animate([{opacity:.35,transform:'translateX(10px)'},{opacity:1,transform:'none'}],{duration:400,easing:'ease-out'})}
-function timers(){clearInterval(reviewTimer);if(page!=='home'||document.hidden||!motion())return;if(reviewsPlaying)reviewTimer=setInterval(()=>{const r=$('.reviews')?.getBoundingClientRect();if(r&&r.top<innerHeight&&r.bottom>0){reviewIndex=(reviewIndex+1)%4;updateReviews(true)}},8000)}
-function pauseReviews(){reviewsPlaying=false;clearInterval(reviewTimer);if($('#reviews-play'))$('#reviews-play').textContent='▷  Resume motion'}
-function counters(){if(counted||!motion()){$$('[data-count]').forEach(e=>e.textContent=Number(e.dataset.count).toLocaleString('en-US')+'+');counted=true;return}counted=true;const start=performance.now();function frame(now){const p=Math.min(1,(now-start)/2000),ease=1-(1-p)**3;$$('[data-count]').forEach(e=>e.textContent=Math.round(Number(e.dataset.count)*ease).toLocaleString('en-US')+'+');if(p<1&&motion())counterFrame=requestAnimationFrame(frame);else $$('[data-count]').forEach(e=>e.textContent=Number(e.dataset.count).toLocaleString('en-US')+'+')}counterFrame=requestAnimationFrame(frame)}
-function attachHome(){showcase=mountShowcase($('.horizon-gallery'),samples,showIndex,i=>showIndex=i,art);updateReviews();$('.review-cards').addEventListener('mouseenter',pauseReviews);$('.review-cards').addEventListener('focusin',pauseReviews);if(!counted&&motion())$$('[data-count]').forEach(e=>e.textContent='0+');observer=new IntersectionObserver(entries=>{if(entries.some(e=>e.isIntersecting)){counters();observer?.disconnect()}},{threshold:.3});observer.observe($('.metrics'));timers()}
+function attachHome(){showcase=mountShowcase($('.horizon-gallery'),samples,showIndex,i=>showIndex=i,art)}
 
 function changeService(value){
   service=value;
@@ -27,7 +23,7 @@ function changeService(value){
 }
 
 function render(){
-  showcase?.destroy();showcase=null;clearInterval(reviewTimer);cancelAnimationFrame(counterFrame);observer?.disconnect();
+  showcase?.destroy();showcase=null;
   if(/^#(home|about|services|work|inquiry|privacy)(\/|$)/.test(location.hash))history.replaceState(null,'',routeHref(location.hash));
   const route=location.pathname.split('/').filter(Boolean)[1]||'home';
   const params=new URLSearchParams(location.search);
@@ -101,17 +97,12 @@ document.addEventListener('click',e=>{
     history.replaceState(null,'',filter==='All'?'/studio/work/':`/studio/work/?category=${encodeURIComponent(filter)}`);
     render();$(`[data-filter="${filter}"]`)?.focus({preventScroll:true});
   }
-  if(el.id==='reviews-play'){reviewsPlaying=!reviewsPlaying;updateReviews();timers()}
-  if(el.id==='review-prev'||el.id==='review-next'){pauseReviews();reviewIndex=(reviewIndex+(el.id==='review-next'?1:3))%4;updateReviews(true)}
   if(el.id==='new-inquiry'){formData={description:'',name:'',email:'',business:'',website:'',context:''};reviewed=false;completed=false}
   if(el.getAttribute('href')==='/studio/inquiry/#edit'){e.preventDefault();location.hash='edit'}
   if(el.id==='remove-context'){formData.context='';history.replaceState(null,'','/studio/inquiry/');render()}
   if(el.id==='finish')submitReview(el);
 });
 addEventListener('hashchange',render);
-document.addEventListener('visibilitychange',()=>{if(document.hidden)pauseReviews()});
-document.addEventListener('motionchange',()=>{if(!motion()){pauseReviews();cancelAnimationFrame(counterFrame);if(page==='home')counters()}});
-addEventListener('resize',()=>{if(page==='home')updateReviews()});
 render();
 
 createScenes({entries:[['.horizon-hero h1','rise'],['.horizon-intro','rise'],['.services-heading','rise'],['.horizon-service-grid>a','rise'],['.home-contact','rise'],['.home-services>h2','rise'],['.service-row','slide'],['.campaign-example','curtain'],['.principles article','rise'],['.audiences article','slide'],['.handoff article','rise'],['.service-content','curtain'],['.scope article','slide'],['.project','curtain'],['.cta','rise'],['.success','rise']],tactile:['.project .art']});
