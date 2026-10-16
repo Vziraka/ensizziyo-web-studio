@@ -30,5 +30,6 @@ for (const page of pages) {
 }
 
 assert.equal(await readFile(join(root, 'robots.txt'), 'utf8'), 'User-agent: *\nDisallow: /\n');
+assert.ok(!Object.hasOwn(JSON.parse(await readFile(join(root, 'studio', 'data.json'), 'utf8')), 'inquiry'), 'Synthetic studio inquiry data must not ship');
 await assert.rejects(stat(join(root, 'README.md')), {code: 'ENOENT'});
 console.log('Verified nine private review entry points and their static HTML assets.');

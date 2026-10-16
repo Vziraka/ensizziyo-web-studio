@@ -325,25 +325,24 @@
         "Testing, support options and ongoing costs agreed before launch."
       ]
     ],
+    "faq": [
+      [
+        "Do I need to know which service I need?",
+        "No. Tell us what happens today and what you would like to work better. We can discuss the right scope together."
+      ],
+      [
+        "Can you work with the tools we already use?",
+        "We can review your current workflow and tools, then agree on access, data, running costs and support before proposing an integration."
+      ],
+      [
+        "Can you join an agency project?",
+        "Yes. We agree responsibilities, review points and the handover with your team before work begins."
+      ],
+      [
+        "How does a project start?",
+        "We begin with a conversation about the goal, then agree a written scope and estimate before starting the build."
+      ]
+    ],
     "cta": "Tell us what happens today and what you would like to work better. You do not need a technical brief to start."
-  },
-  "inquiry": {
-    "description": "We book cleaning jobs by text. I want customers to request a regular clean online and for our team to track each request in one place.",
-    "name": "Alex Morgan",
-    "email": "alex@example.com",
-    "business": "Example Home Care",
-    "website": "https://example.com",
-    "context": "Homekind",
-    "required": [
-      "description",
-      "name",
-      "email"
-    ],
-    "optional": [
-      "business",
-      "website",
-      "context"
-    ],
-    "sent": false
   }
 }
