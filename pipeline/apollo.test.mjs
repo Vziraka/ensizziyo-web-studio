@@ -249,3 +249,64 @@ test('unexpected recipient or unresolved personalization holds the message befor
   await assert.rejects(connection.prepare('send', 'send'), /draft required/i);
   await assert.rejects(connection.prepare('duplicate-draft', 'draft_create'), /pending|uncertain/i);
 });
+
+test('Apollo can wrap the unchanged body in an empty HTML document without weakening message checks', async () => {
+  const { connection } = await fixture({ approved_message: approvedMessage });
+  await ownedContact(connection); await mailbox(connection); await connection.event(noAnswer());
+  const draft = await connection.prepare('wrapped-draft', 'draft_create');
+  const message = { ...draft.input, id: '777777777777777777777777', status: 'drafted',
+    body_html: `<html><head></head><body>${approvedMessage.body_html}</body></html>` };
+  const state = await connection.state();
+  assert.throws(() => connection.verifyDraft({ ...message, body_html: message.body_html.replace('<head>', '<head><script>changed()</script>') }, state), /confirmed owner-only/i);
+  assert.throws(() => connection.verifyDraft({ ...message, body_html: message.body_html.replace('no actual call', 'actual call') }, state), /confirmed owner-only/i);
+  assert.throws(() => connection.verifyDraft({ ...message, from_email: 'other@example.com' }, state), /confirmed owner-only/i);
+  assert.throws(() => connection.verifyDraft({ ...message, bcc_emails: ['other@example.com'] }, state), /confirmed owner-only/i);
+  await connection.settle('wrapped-draft', { emailer_message: message });
+  assert.equal((await connection.prepare('wrapped-send', 'send')).input.id, message.id);
+});
+
+async function deliveredOwnerEmail() {
+  const result = await fixture({ approved_message: approvedMessage }); const connection = result.connection;
+  await ownedContact(connection); await mailbox(connection); await connection.event(noAnswer());
+  const draft = await connection.prepare('draft', 'draft_create');
+  await connection.settle('draft', { emailer_message: { ...draft.input, id: '777777777777777777777777' } });
+  await connection.prepare('send', 'send'); await connection.settle('send', { id: '777777777777777777777777', status: 'scheduled' });
+  await connection.prepare('delivered', 'message_status'); await connection.settle('delivered', { id: '777777777777777777777777', status: 'completed' });
+  return result;
+}
+function gmailReplyReceipt() {
+  const headers = values => Object.entries(values).map(([name, value]) => ({ name, value }));
+  return { gmail_profile: { structuredContent: { email: approvedMessage.from } }, gmail_thread: { structuredContent: {
+    id: 'aaaaaaaaaaaaaaaa', messages: [
+      { id: 'aaaaaaaaaaaaaaaa', thread_id: 'aaaaaaaaaaaaaaaa', label_ids: ['SENT'], internal_date: String(+now()),
+        payload: { headers: headers({ From: approvedMessage.from, To: `Owner <${approvedMessage.to}>`, Subject: approvedMessage.subject, 'Message-ID': '<controlled@example.com>' }) } },
+      { id: 'bbbbbbbbbbbbbbbb', thread_id: 'aaaaaaaaaaaaaaaa', label_ids: ['INBOX'], internal_date: String(+now()),
+        payload: { headers: headers({ From: `Owner <${approvedMessage.to}>`, To: approvedMessage.from, Subject: `Re: ${approvedMessage.subject}`, 'In-Reply-To': '<controlled@example.com>' }) } }
+    ] } } };
+}
+
+test('verified Gmail reply pauses the actual test state and remains idempotent after restart', async () => {
+  const { directory, connection } = await deliveredOwnerEmail();
+  await connection.receiveReply(gmailReplyReceipt());
+  const resumed = await ApolloTestConnection.open({ directory, config: { ...config, approved_message: approvedMessage }, now });
+  await resumed.receiveReply(gmailReplyReceipt());
+  const state = await resumed.state();
+  assert.equal(state.flow.status, 'Reply review');
+  assert.equal(state.flow.events.filter(e => e.source === 'gmail_readback').length, 1);
+  assert.equal(state.flow.emails.length, 1);
+  assert.equal(state.flow.actual_outreach_count, 0);
+  assert.equal(emailGate(state.flow, now()).allowed, false);
+});
+
+test('wrong Gmail owner, unrelated reply and forged header lists cannot be adopted', async () => {
+  const { connection } = await deliveredOwnerEmail();
+  const wrongOwner = gmailReplyReceipt(); wrongOwner.gmail_profile.structuredContent.email = 'foreign@example.com';
+  await assert.rejects(connection.receiveReply(wrongOwner), /Gmail owner/i);
+  for (const [replacement, expected] of [['<another@example.com>', /matching reply/i], ['<controlled@example.com>\r\nextra', /header/i]]) {
+    const unrelated = gmailReplyReceipt(); unrelated.gmail_thread.structuredContent.messages[1].payload.headers.find(h => h.name === 'In-Reply-To').value = replacement;
+    await assert.rejects(connection.receiveReply(unrelated), expected);
+  }
+  const spoof = gmailReplyReceipt(); spoof.gmail_thread.structuredContent.messages[1].payload.headers.push({ name: 'From', value: 'foreign@example.com' });
+  await assert.rejects(connection.receiveReply(spoof), /header/i);
+  assert.equal((await connection.state()).flow.status, 'Email eligible');
+});
