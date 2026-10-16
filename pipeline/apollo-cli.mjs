@@ -9,6 +9,7 @@ async function main() {
   const session = process.env.STUDIO_APOLLO_SESSION;
   if (!session) throw Error('STUDIO_APOLLO_SESSION must identify this verified app session');
   const connection = await ApolloTestConnection.open({ directory, config: await readJson(join(directory, 'config.json')), session });
+  if (command === 'monitor-next') return connection.monitorNext();
   if (command === 'prepare') return connection.prepare(key, operation, kind ? { kind } : {});
   if (command === 'settle' || command === 'event' || command === 'reply') {
     if (!/^[a-zA-Z0-9_-]{1,80}$/.test(key ?? '')) throw Error('Invalid private receipt key');
@@ -18,9 +19,13 @@ async function main() {
     const flow = await connection.event(receipt);
     return { status: flow.status, simulated_calls: flow.calls.length, real_outreach: 0 };
   }
-  if (command === 'status') return { projection: await connection.projection(), real_outreach: 0,
-    email_gate: emailGate((await connection.state()).flow, new Date(), connection.config.time_zone) };
-  throw Error('Use prepare, settle, event, reply or status; production is not implemented');
+  if (command === 'status') {
+    const state = await connection.state();
+    return { projection: await connection.projection(), real_outreach: 0, email_gate: emailGate(state.flow, new Date(), connection.config.time_zone),
+      reply_monitor: { enabled: connection.config.reply_monitor?.enabled ?? false, completed_cycles: state.monitor?.completed_cycles ?? 0,
+        last_completed_at: state.monitor?.completed_at ?? state.monitor?.last_completed_at, held: state.monitor?.held, suppression: state.records.suppression?.status ?? 'No verified sequence stop' } };
+  }
+  throw Error('Use prepare, settle, event, reply, monitor-next or status; production is not implemented');
 }
 
 try { console.log(JSON.stringify(await main())); }
