@@ -28,10 +28,10 @@ function changeService(value){
 
 function render(){
   showcase?.destroy();showcase=null;clearInterval(reviewTimer);cancelAnimationFrame(counterFrame);observer?.disconnect();
-  if(/^#(home|about|services|work|inquiry)(\/|$)/.test(location.hash))history.replaceState(null,'',routeHref(location.hash));
+  if(/^#(home|about|services|work|inquiry|privacy)(\/|$)/.test(location.hash))history.replaceState(null,'',routeHref(location.hash));
   const route=location.pathname.split('/').filter(Boolean)[1]||'home';
   const params=new URLSearchParams(location.search);
-  page=['about','services','work','inquiry'].includes(route)?route:'home';
+  page=['about','services','work','inquiry','privacy'].includes(route)?route:'home';
   if(page==='services')service=data.services.some(s=>s.id===params.get('service'))?params.get('service'):'websites';
   if(page==='work')filter=categories.includes(params.get('category'))?params.get('category'):'All';
   if(page==='inquiry'){
