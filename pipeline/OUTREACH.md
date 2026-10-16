@@ -1,6 +1,6 @@
 # Food and beverage call and email workflow
 
-Owner decisions recorded October 16, 2026. **The first controlled connection increment is implemented; full integration and activation are not complete.** The [Apollo proof guide](APOLLO.md) owns executed test results and operation. Research, live outreach and schedules remain paused. The [sales kit](https://docs.google.com/document/d/1qybvO__qBf508RGSAnADSBjIhw1G_kIWIflqpF9ikkU) contains the offer, scripts, emails, discovery questions, prototype brief and proposal outline. The [research playbook](RESEARCH.md) owns prospect screening and evidence qualification. This guide owns the full S2 handoff, field ownership, failure behavior and acceptance checks.
+Owner decisions recorded October 16, 2026. **Controlled connection, reply/cancellation and daily task handoffs are implemented; full integration and activation are not complete.** The [Apollo proof guide](APOLLO.md) owns executed test results and operation. Research, live outreach and schedules remain paused. The [sales kit](https://docs.google.com/document/d/1qybvO__qBf508RGSAnADSBjIhw1G_kIWIflqpF9ikkU) contains the offer, scripts, emails, discovery questions, prototype brief and proposal outline. The [research playbook](RESEARCH.md) owns prospect screening and evidence qualification. This guide owns the full S2 handoff, field ownership, failure behavior and acceptance checks.
 
 ## Selected operating rules
 
@@ -16,7 +16,7 @@ Owner decisions recorded October 16, 2026. **The first controlled connection inc
 
 ## Tool roles and record ownership
 
-Reuse the existing Google/Node/Apollo route. No new CRM, external automation service, model API or dependency is selected. Native Apollo capabilities should perform outbound scheduling and execution. The controlled connection uses existing app tools for bounded operations and a test message; a separate chat heartbeat supervises exact-thread polling and native cancellation without scheduling outbound messages. Controlled inactive-sequence future-step cancellation passed; native call events, active campaign reply/stop rules, broader synchronization and sustained scheduled operation remain to verify. Its detailed limits are in the proof guide.
+Reuse the existing Google/Node/Apollo route. No new CRM, external automation service, model API or dependency is selected. Native Apollo capabilities should perform outbound scheduling and execution. The controlled connection uses existing app tools for bounded operations and a test message. Its single-thread heartbeat passed two scheduled cycles and is now paused at the owner's request. Three fictional cases passed saved-outcome-to-task handoffs; the email remained unsent and calls remained simulated. Controlled inactive-sequence cancellation passed; native call events, automatic sending/cadence, active campaign reply/stop rules, broader synchronization and sustained scheduled operation remain to verify. Routine production checks should be private with consolidated actionable exceptions; the notification destination remains to decide. Detailed limits are in the proof guide.
 
 | Information or action | Owner | Synchronization boundary |
 | --- | --- | --- |
