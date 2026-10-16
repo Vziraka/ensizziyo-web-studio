@@ -18,7 +18,7 @@ const answers={
  start:['Where do I start?','Start with Foundations: a 50-minute introduction to breath, alignment and controlled movement. You do not need previous class experience.'],
  full:['What happens if a class is full?','Choose See other times to find the next available session. This preview does not take waitlist requests.'],
  access:['Questions about access or taking part?','The class preview includes easier movement options and time to ask questions. Venue access information and a working contact route need confirmation before a live launch.'],
- login:['Member access','Member accounts are not connected in this local preview. You can explore the classes and try the booking preview without signing in.'],
+ login:['Member access','Member accounts are not connected in this demonstration. You can explore the classes and try the booking preview without signing in.'],
  contact:['Contact the studio','This is a local studio concept. Contact delivery is not connected; no message will be sent. Explore the class information or try the booking preview.']
 };
 const steps=[

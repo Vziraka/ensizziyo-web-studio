@@ -2,16 +2,14 @@ name: Studio site checks
 
 on:
   pull_request:
-    paths: ['site/**', 'scripts/build-site.mjs', 'scripts/verify-site.mjs', 'scripts/inquiry.test.mjs', 'netlify.toml', '.github/workflows/site-check.yml']
   push:
     branches: [main]
-    paths: ['site/**', 'scripts/build-site.mjs', 'scripts/verify-site.mjs', 'scripts/inquiry.test.mjs', 'netlify.toml', '.github/workflows/site-check.yml']
 
 permissions:
   contents: read
 
 jobs:
-  checks:
+  site-checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

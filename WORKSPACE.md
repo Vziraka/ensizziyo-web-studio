@@ -13,7 +13,7 @@ The owner's latest decision puts food and beverage businesses around Fairfax/the
 
 ## Studio launch handoff — October 16, 2026
 
-Draft [PR #26](https://github.com/Vziraka/ensizziyo-web-studio/pull/26) on branch `codex/studio-launch-readiness` in the managed worktree `C:\Users\zvent\.codex\worktrees\studio-launch\ensizziyo-web-studio` holds the curated private site build and [launch approach](docs/studio-launch.md). The approved prototype source, design evidence and unrelated edits remain untouched in the primary checkout above. `TASKS.md` tracks W2/W3/W4 status; this branch does not change the live operating plan, prospect tracker or outbound runner. Account setup, claim reconciliation and publication checks remain for later handoff.
+[PR #26](https://github.com/Vziraka/ensizziyo-web-studio/pull/26) merged the curated private site build and [launch approach](docs/studio-launch.md) into `main` after review and passing site checks. The managed worktree `C:\Users\zvent\.codex\worktrees\studio-launch\ensizziyo-web-studio` continues release readiness on `codex/site-public-readiness`; the approved prototype source, design evidence and unrelated edits remain untouched in the primary checkout above. `TASKS.md` tracks W2/W3/W4 status; website work does not change the live operating plan, prospect tracker or outbound runner. Account setup, claim reconciliation and publication checks remain for later handoff.
 
 ## Controller checkpoint — October 15, 2026
 
