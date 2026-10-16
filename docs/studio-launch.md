@@ -37,7 +37,7 @@ This is practical CI/CD and Git-managed deployment configuration. A Kubernetes p
 1. Register the selected domain in the owner's account; configure the business inbox, DNS, HTTPS and sender authentication. Record actual first-year and renewal costs.
 2. Connect a private Netlify project to this repository; enable Forms, set the notification inbox, then prove a synthetic valid inquiry appears in both Netlify and the inbox. Prove invalid details and a delivery failure do not show success.
 3. Resolve the claim conflict: the copied `data.json` labels the four exact reviews fictional placeholders, while the owner now says all four are genuine and approved. Keep them in private review only until original wording and publication permission are reconciled. The 500+/1,000+ figures are owner-reported and need a supportable scope and date before public display.
-4. Add the privacy notice and crawlable studio pages; check links, metadata, image rights, sample labels, accessibility, keyboard and reduced-motion paths, physical phone, major browsers and page performance.
+4. Add the privacy notice, founder introduction, FAQ and crawlable studio pages; check links, metadata, image rights, sample labels, accessibility, keyboard and reduced-motion paths, physical phone, major browsers and page performance.
 5. Review a release candidate in its private deploy preview, record the build and rollback target, then make the reviewed version public. Check live inquiry delivery and monitoring after launch.
 
 The commercial outreach launch is a separate decision: its connected lifecycle system, account cutover and sending checks have their own tasks. Website publication does not imply outreach is active.
