@@ -1,0 +1,349 @@
+{
+  "samples": [
+    {
+      "name": "Sola",
+      "category": "Marketing",
+      "description": "Botanical drinks / flavor exploration",
+      "source": "design/w1-homekind-sola-options/sola-5-matched-ingredients.webp",
+      "source_sha256": "b6c36c4ba5c65396c6884c65420ea862ae30cd41143929dbc853a6f741d50145",
+      "clip": null,
+      "image": "assets/sola.webp",
+      "size": [
+        1487,
+        1058
+      ],
+      "url": "../sola-motion/"
+    },
+    {
+      "name": "Pulse",
+      "category": "Websites",
+      "description": "Movement studio / class booking preview",
+      "source": "design/w1-pulse-detailed/revision-3/page-01.webp",
+      "source_sha256": "1a8e8c78689ca7e78a479cb34bd69460b7099ddec2daebf544a5f2c57c5f30e5",
+      "clip": [
+        40,
+        140,
+        1360,
+        838
+      ],
+      "image": "assets/pulse.webp",
+      "size": [
+        1440,
+        1100
+      ],
+      "url": "../pulse-motion/"
+    },
+    {
+      "name": "Fieldwork",
+      "category": "Websites",
+      "description": "Distinctive homes / viewing inquiry",
+      "source": "design/w1-fieldwork-forma-options/fieldwork-3.webp",
+      "source_sha256": "8407982ebc21eab1553187902f4400595e42cb5da057ede49c2fba8165b35fa0",
+      "clip": [
+        0,
+        0,
+        1024,
+        640
+      ],
+      "image": "assets/fieldwork.webp",
+      "size": [
+        1024,
+        1536
+      ],
+      "url": "../fieldwork-motion/"
+    },
+    {
+      "name": "Forma",
+      "category": "Websites",
+      "description": "Furniture showroom / finish and bag preview",
+      "source": "design/w1-fieldwork-forma-options/forma-6.webp",
+      "source_sha256": "6e0e2ceaf5feb15b22099c0a71fa34f78dde38ba6a28670b336e3ec676292a81",
+      "clip": [
+        0,
+        0,
+        1024,
+        664
+      ],
+      "image": "assets/forma.webp",
+      "size": [
+        1024,
+        1536
+      ],
+      "url": "../forma-motion/"
+    },
+    {
+      "name": "Arc",
+      "category": "Systems",
+      "description": "Sales workspace / investigation and resolution",
+      "source": "design/w1-arc-relay-options/arc-1.webp",
+      "source_sha256": "662c8dfab2704219253e6c3f74907744696b21a31ed7edcf50cbaf3ae814b73f",
+      "clip": null,
+      "image": "assets/arc.webp",
+      "size": [
+        1487,
+        1058
+      ],
+      "url": "../arc-motion/"
+    },
+    {
+      "name": "Relay",
+      "category": "Automation",
+      "description": "Editable workflow / inspect a scripted run",
+      "source": "design/w1-relay-detailed/page-04.webp",
+      "source_sha256": "9f65bfb7faf2e84b4813609267ea0f0ae58f900755cb62dd6c577b820d260f58",
+      "clip": [
+        80,
+        155,
+        1440,
+        1024
+      ],
+      "image": "assets/relay.webp",
+      "size": [
+        1600,
+        1280
+      ],
+      "url": "../relay-motion/"
+    },
+    {
+      "name": "Homekind",
+      "category": "Websites",
+      "description": "Recurring home care / inquiry and rescheduling",
+      "source": "design/w1-homekind-sola-options/homekind-1.webp",
+      "source_sha256": "6382bc03d65531b825c1c3f7e130304a141e0256e93171d5540df2167d535064",
+      "clip": [
+        0,
+        0,
+        1024,
+        640
+      ],
+      "image": "assets/homekind.webp",
+      "size": [
+        1024,
+        1536
+      ],
+      "url": "../homekind-motion/"
+    },
+    {
+      "name": "Juniper",
+      "category": "Websites",
+      "description": "Neighborhood cafe / menu and table preview",
+      "source": "design/w1-pulse-juniper-options/juniper-4.webp",
+      "source_sha256": "16941483ec283ecc355b9698922931a5ec70f7664399c86e6f5fcacd5bea237e",
+      "clip": [
+        0,
+        0,
+        1024,
+        640
+      ],
+      "image": "assets/juniper.webp",
+      "size": [
+        1024,
+        1536
+      ],
+      "url": "../juniper-motion/"
+    }
+  ],
+  "testimonials": {
+    "content_status": "FICTIONAL_LAYOUT_PLACEHOLDERS_NOT_FOR_PUBLICATION",
+    "reviews": [
+      {
+        "name": "Maya Patel",
+        "stars": 5,
+        "comment": "The new website finally explains what we do clearly. The whole process felt straightforward, and the team listened to what mattered to us."
+      },
+      {
+        "name": "Daniel Reed",
+        "stars": 5,
+        "comment": "We loved having our enquiries and day-to-day tasks in one place. Ensizziyo took time to understand how we work before designing the solution."
+      },
+      {
+        "name": "Sofia Bennett",
+        "stars": 5,
+        "comment": "The campaign and website felt like one brand. We especially appreciated the thoughtful design, clear communication and attention to the small details."
+      },
+      {
+        "name": "James Ellis",
+        "stars": 5,
+        "comment": "The regular updates made it easy to give feedback. We loved the care put into the design and the clear handover at the end."
+      }
+    ],
+    "desktop_visible": 3,
+    "mobile_visible": 1,
+    "advance_cards": 1,
+    "dwell_ms": 8000,
+    "transition_ms": 400,
+    "pause_on": [
+      "hover",
+      "focus",
+      "manual navigation",
+      "hidden page"
+    ],
+    "resume": "Explicit Play",
+    "reduced_motion": "Manual controls only; no transition"
+  },
+  "owner_reported_metrics": {
+    "clients": 500,
+    "projects_delivered": 1000,
+    "independently_audited": false
+  },
+  "services": [
+    {
+      "id": "websites",
+      "label": "Websites & landing pages",
+      "sample": "Homekind",
+      "category": "Websites",
+      "headline": "Make the next step clear.",
+      "intro": "Explain the offer, show relevant work and make inquiries straightforward. Shape the page around what people need to understand and do.",
+      "scope": [
+        [
+          "A clear structure",
+          "Plan the pages, message and content around your offer and the questions customers ask."
+        ],
+        [
+          "Design for every screen",
+          "Develop desktop and mobile layouts, with clear navigation and readable content."
+        ],
+        [
+          "A useful inquiry route",
+          "Design the form, review and response states, then agree how inquiries reach your business."
+        ]
+      ],
+      "agree": "Page count, copy and imagery, content editing, hosting, form delivery and any booking or payment integrations. Timing and price follow the agreed scope.",
+      "work_link": "Explore website work"
+    },
+    {
+      "id": "systems",
+      "label": "Systems & integrations",
+      "sample": "Arc",
+      "category": "Systems",
+      "headline": "Bring the work together.",
+      "intro": "Requests and records are scattered across tools. Connect the useful parts so people can find the information they need and act on it.",
+      "scope": [
+        [
+          "Map the workflow",
+          "Understand who uses each tool, where information lives and how work moves between people."
+        ],
+        [
+          "Connect the right tools",
+          "Define data fields, permissions and the handoffs worth connecting, including what happens when a connection fails."
+        ],
+        [
+          "Make daily work visible",
+          "Shape dashboards, queues and detail views around the decisions your team needs to make."
+        ]
+      ],
+      "agree": "Existing tools and access, data ownership, migration needs, integration limits, software costs and ongoing support. Connections depend on each service and its available access.",
+      "work_link": "Explore systems work"
+    },
+    {
+      "id": "automation",
+      "label": "Automation & AI",
+      "sample": "Relay",
+      "category": "Automation",
+      "headline": "Give repeat work a clear path.",
+      "intro": "Repeat admin needs a clearer, safer path. Identify useful triggers, define the rules and keep human review where judgment matters.",
+      "scope": [
+        [
+          "Choose a useful starting point",
+          "Map a repeat task, its inputs and the result the business needs. Start with a workflow that is worth automating."
+        ],
+        [
+          "Set rules and review points",
+          "Define conditions, exceptions and approval steps. Use AI where it fits the task and available information."
+        ],
+        [
+          "Plan for real-world failures",
+          "Test sample runs, decide how issues are spotted and make it clear how a person can pause or recover the workflow."
+        ]
+      ],
+      "agree": "Tool access, information handling, human approvals, running costs, monitoring and ownership. Agree what happens when a step fails or a result needs review.",
+      "work_link": "Explore automation work"
+    },
+    {
+      "id": "marketing",
+      "label": "Marketing support",
+      "sample": "Sola",
+      "category": "Marketing",
+      "headline": "Give a campaign a destination.",
+      "intro": "A campaign needs content and somewhere to land. Bring the message, creative direction and landing experience into one coherent piece of work.",
+      "scope": [
+        [
+          "Shape the message",
+          "Clarify the audience, offer and action you want people to take."
+        ],
+        [
+          "Create a consistent visual direction",
+          "Develop the agreed imagery, copy and content formats so the campaign feels connected."
+        ],
+        [
+          "Connect content to the next step",
+          "Plan the landing page, inquiry route and useful ways to measure the response."
+        ]
+      ],
+      "agree": "Channels, formats, content quantities, asset rights, publishing responsibilities and measurement. Media spend and ongoing campaign management are scoped separately.",
+      "work_link": "Explore marketing work"
+    }
+  ],
+  "about": {
+    "intro": "A website is part of how a business works. We start with the people, the task and the thing that needs to improve.",
+    "relationship": "Talk directly about the problem. Review the direction before the build. Agree what success looks like, what is included and who owns each next step.",
+    "principles": [
+      [
+        "Start with the problem",
+        "Map the current experience and the change the business needs."
+      ],
+      [
+        "Make the work visible",
+        "Review designs and decisions before investing in a complete build."
+      ],
+      [
+        "Leave a clear handoff",
+        "Agree testing, ownership, support and ongoing costs before launch."
+      ]
+    ],
+    "audiences": [
+      [
+        "For your business",
+        "Make an unclear website, scattered tools or repeat admin easier to manage. We help turn the problem into a practical scope."
+      ],
+      [
+        "For your agency",
+        "Bring us into a client project for design and development support. Agree responsibilities, review points and a clear handover from the start."
+      ]
+    ],
+    "handoff": [
+      [
+        "A shared scope",
+        "What is included, what it depends on and what comes next."
+      ],
+      [
+        "Clear ownership",
+        "Access, accounts and the information needed to own the work."
+      ],
+      [
+        "A plan for launch",
+        "Testing, support options and ongoing costs agreed before launch."
+      ]
+    ],
+    "cta": "Tell us what happens today and what you would like to work better. You do not need a technical brief to start."
+  },
+  "inquiry": {
+    "description": "We book cleaning jobs by text. I want customers to request a regular clean online and for our team to track each request in one place.",
+    "name": "Alex Morgan",
+    "email": "alex@example.com",
+    "business": "Example Home Care",
+    "website": "https://example.com",
+    "context": "Homekind",
+    "required": [
+      "description",
+      "name",
+      "email"
+    ],
+    "optional": [
+      "business",
+      "website",
+      "context"
+    ],
+    "sent": false
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "fictional": true,
+  "scenario_date": "2026-10-13",
+  "workflow_version": 1,
+  "service": {
+    "allowed_postcodes": [
+      "22030",
+      "20120"
+    ],
+    "request": {
+      "id": "REQ-018",
+      "customer_id": "C-1042",
+      "raw_postcode": " 22030 ",
+      "postcode": "22030",
+      "raw_service": " cleaning ",
+      "service": "Cleaning",
+      "frequency": "Every 2 weeks",
+      "interval_days": 14
+    },
+    "first_visit": "2026-10-20",
+    "next_visit": "2026-11-03",
+    "plan_id": "PLAN-018",
+    "events_seconds": [
+      0,
+      1.1,
+      2.4,
+      6.8,
+      10
+    ],
+    "pause_after_event": 2,
+    "review_sample": {
+      "id": "REQ-019",
+      "postcode": "99999",
+      "eligible": false,
+      "review_id": "REVIEW-019",
+      "finished_seconds": 6,
+      "plan_created": false,
+      "draft_created": false
+    }
+  },
+  "quote": {
+    "as_of": "2026-10-13",
+    "minimum_age_days": 7,
+    "positive": {
+      "id": "Q-042",
+      "issued": "2026-10-05",
+      "age_days": 8,
+      "replied": false,
+      "due": true,
+      "draft_id": "DRAFT-042"
+    },
+    "negative": {
+      "id": "Q-043",
+      "issued": "2026-10-10",
+      "age_days": 3,
+      "replied": false,
+      "due": false
+    }
+  },
+  "appointment": {
+    "as_of": "2026-10-13T14:00:00-04:00",
+    "timezone": "America/New_York",
+    "window_hours": 24,
+    "positive": {
+      "id": "A-031",
+      "starts": "2026-10-14T10:00:00-04:00",
+      "hours_remaining": 20,
+      "confirmed": true,
+      "due": true,
+      "draft_id": "DRAFT-031"
+    },
+    "negative": {
+      "id": "A-032",
+      "starts": "2026-10-15T10:00:00-04:00",
+      "hours_remaining": 44,
+      "confirmed": true,
+      "due": false
+    }
+  },
+  "all_outputs_local_simulation": true,
+  "messages_sent": 0,
+  "external_records_created": 0
+}

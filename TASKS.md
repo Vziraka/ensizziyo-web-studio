@@ -1,5 +1,11 @@
 # Launch tasks
 
+## Website launch checkpoint — October 16, 2026
+
+W1's approved Horizon/Manrope studio and eight interactive demos have been brought into `site/` from the preserved local design checkout. W2's production approach is recorded in [the studio launch decision](docs/studio-launch.md): Git pull requests, site CI, private Netlify previews, static hosting, an inbox-first Netlify Forms inquiry, and a later separate inbound lead path. Ensizziyo Studio is the working public-name recommendation; domain registration and public release remain open. W3 is underway: the static build, input validation, form submission/failure behavior and CI are implemented and locally checked. Live Netlify form storage and mailbox delivery are not verified, so W3 is not complete. W4 remains pending.
+
+Next complete increment: set up an owner-controlled domain, business inbox and private Netlify project; verify a synthetic inquiry in both the provider record and inbox; then complete the public release checks in the linked decision. The four review quotes remain private-review content until their placeholder metadata and claimed original approvals are reconciled.
+
 ## Setup
 - [x] Consolidate website audience, offer hypothesis, design direction, and verification criteria.
 - [x] Create and verify private GitHub remote.
@@ -8,7 +14,7 @@
 
 ## Website milestones
 
-Current next task is W1. No website implementation has started. The commercial launch work below can progress alongside design; the final brand/domain does not block a prototype.
+The October 16 checkpoint above supersedes this original milestone introduction. The commercial launch work below can progress alongside the website; domain selection does not block private review builds.
 
 | ID | Deliverable | Depends on | Complete when |
 | --- | --- | --- | --- |

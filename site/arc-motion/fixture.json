@@ -1,0 +1,182 @@
+{
+  "fictional": true,
+  "as_of": "2026-10-14",
+  "period": [
+    "2026-10-06",
+    "2026-10-12"
+  ],
+  "comparison": [
+    "2026-09-29",
+    "2026-10-05"
+  ],
+  "daily_current": [
+    5440,
+    7200,
+    5520,
+    7120,
+    5520,
+    5680,
+    6080
+  ],
+  "daily_previous": [
+    6400,
+    8000,
+    6560,
+    8800,
+    7040,
+    7200,
+    6000
+  ],
+  "current_revenue": 42560,
+  "previous_revenue": 50000,
+  "paid_orders": 532,
+  "previous_paid_orders": 625,
+  "average_order": 80,
+  "channels": [
+    {
+      "name": "Paid search",
+      "previous": 24000,
+      "current": 18400
+    },
+    {
+      "name": "Organic search",
+      "previous": 16000,
+      "current": 14460
+    },
+    {
+      "name": "Returning",
+      "previous": 10000,
+      "current": 9700
+    }
+  ],
+  "campaigns": [
+    {
+      "name": "Brand search",
+      "previous": 16000,
+      "current": 12800,
+      "previous_orders": 200,
+      "current_orders": 160
+    },
+    {
+      "name": "Workshop essentials",
+      "previous": 8000,
+      "current": 5600,
+      "previous_orders": 100,
+      "current_orders": 70
+    }
+  ],
+  "attention_orders": [
+    {
+      "id": 10482,
+      "customer": "J. T.",
+      "issue": "Payment review",
+      "amount": 160,
+      "date": "2026-10-13",
+      "age_days": 1
+    },
+    {
+      "id": 10479,
+      "customer": "M. L.",
+      "issue": "Stock issue",
+      "amount": 240,
+      "date": "2026-10-12",
+      "age_days": 2
+    },
+    {
+      "id": 10473,
+      "customer": "K. R.",
+      "issue": "Address check",
+      "amount": 80,
+      "date": "2026-10-12",
+      "age_days": 2
+    },
+    {
+      "id": 10469,
+      "customer": "D. C.",
+      "issue": "Payment review",
+      "amount": 160,
+      "date": "2026-10-11",
+      "age_days": 3
+    },
+    {
+      "id": 10465,
+      "customer": "A. B.",
+      "issue": "Stock issue",
+      "amount": 80,
+      "date": "2026-10-11",
+      "age_days": 3
+    },
+    {
+      "id": 10461,
+      "customer": "L. P.",
+      "issue": "Address check",
+      "amount": 160,
+      "date": "2026-10-10",
+      "age_days": 4
+    },
+    {
+      "id": 10456,
+      "customer": "R. S.",
+      "issue": "Payment review",
+      "amount": 240,
+      "date": "2026-10-10",
+      "age_days": 4
+    },
+    {
+      "id": 10452,
+      "customer": "N. E.",
+      "issue": "Stock issue",
+      "amount": 80,
+      "date": "2026-10-09",
+      "age_days": 5
+    },
+    {
+      "id": 10449,
+      "customer": "S. W.",
+      "issue": "Payment review",
+      "amount": 160,
+      "date": "2026-10-09",
+      "age_days": 5
+    },
+    {
+      "id": 10443,
+      "customer": "B. H.",
+      "issue": "Address check",
+      "amount": 80,
+      "date": "2026-10-08",
+      "age_days": 6
+    },
+    {
+      "id": 10438,
+      "customer": "P. M.",
+      "issue": "Stock issue",
+      "amount": 240,
+      "date": "2026-10-08",
+      "age_days": 6
+    },
+    {
+      "id": 10431,
+      "customer": "E. F.",
+      "issue": "Payment review",
+      "amount": 80,
+      "date": "2026-10-07",
+      "age_days": 7
+    }
+  ],
+  "resolution": {
+    "order_id": 10473,
+    "customer_note": "Please deliver to Suite 2.",
+    "before_unit": "",
+    "after_unit": "Suite 2",
+    "before_status": "Address check",
+    "after_status": "Ready for fulfillment",
+    "attention_before": 12,
+    "attention_after": 11,
+    "payment_review": 5,
+    "stock_issue": 4,
+    "address_before": 3,
+    "address_after": 2,
+    "email_sent": false,
+    "shipment_created": false
+  }
+}
