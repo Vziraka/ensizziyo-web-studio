@@ -1,5 +1,7 @@
 # Website implementation brief
 
+**October 16 — launch approach:** The owner approved Horizon/Manrope and all eight interactive demos for the first public site, with Git pull requests for content updates. Studio inquiries should reach an owner-controlled business inbox first and later enter a separate inbound lead path; outbound prospect research is not the inquiry destination. Use Ensizziyo Studio as the working brand recommendation while comparing a founder-led alternative; prefer `.com` if viable and consider the GitHub Student Developer Pack's eligible `.studio` first-year offer. The private production path, acceptance checks, unresolved account/domain costs and claim discrepancy are in [the studio launch decision](docs/studio-launch.md). This does not authorize a domain purchase or public deployment.
+
 ## Audience and offer
 
 Primary: owner-operated and small local businesses in Fairfax and the DMV. Secondary: small agencies needing a development partner. The first outreach pilot focuses on food and beverage businesses; residential cleaners are a later campaign. Validate demand and reachability through the agreed research and owner conversations.

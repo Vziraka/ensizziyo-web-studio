@@ -1,0 +1,110 @@
+{
+  "fictional": true,
+  "as_of": "2026-10-14",
+  "locale": "Fairfax, Virginia, USA",
+  "timezone": "America/New_York",
+  "service_zip_codes": [
+    "22030",
+    "20120"
+  ],
+  "frequency_days": [
+    7,
+    14,
+    28
+  ],
+  "inquiry": {
+    "id": "HK-024",
+    "name": "Alex Morgan",
+    "email": "alex@example.com",
+    "zip": "22030",
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "frequency_days": 14,
+    "preferred_day": "Tuesday",
+    "arrival_window": [
+      "09:00",
+      "12:00"
+    ],
+    "extras": [
+      "Inside oven"
+    ],
+    "note": "A dog will be in a separate room.",
+    "booking_confirmed": false,
+    "price": null,
+    "messages_sent": 0
+  },
+  "visit": {
+    "plan_id": "HK-018",
+    "frequency_days": 14,
+    "original": {
+      "date": "2026-10-20",
+      "weekday": "Tuesday",
+      "window": [
+        "09:00",
+        "12:00"
+      ]
+    },
+    "alternatives": [
+      {
+        "date": "2026-10-21",
+        "weekday": "Wednesday",
+        "window": [
+          "09:00",
+          "12:00"
+        ]
+      },
+      {
+        "date": "2026-10-22",
+        "weekday": "Thursday",
+        "window": [
+          "13:00",
+          "16:00"
+        ]
+      }
+    ],
+    "selected_date": "2026-10-22",
+    "scope": "This visit only",
+    "next_regular": {
+      "date": "2026-11-03",
+      "weekday": "Tuesday",
+      "window": [
+        "09:00",
+        "12:00"
+      ]
+    },
+    "following_regular": "2026-11-17",
+    "real_schedule_changed": false,
+    "messages_sent": 0
+  },
+  "inclusions": {
+    "Kitchen": [
+      "Counters and reachable surfaces",
+      "Sink and taps",
+      "Hob and appliance exteriors",
+      "Vacuum and mop floors"
+    ],
+    "Bathrooms": [
+      "Shower and tub",
+      "Sink and taps",
+      "Toilet",
+      "Mirrors",
+      "Vacuum and mop floors"
+    ],
+    "Living spaces": [
+      "Dust reachable surfaces",
+      "Wipe reachable shelves",
+      "Vacuum floors and rugs",
+      "Mop hard floors"
+    ]
+  },
+  "optional_extras": [
+    "Inside oven",
+    "Inside fridge",
+    "Interior windows"
+  ],
+  "exclusions": [
+    "High ladder work",
+    "Hazardous waste",
+    "Heavy furniture moving"
+  ]
+}

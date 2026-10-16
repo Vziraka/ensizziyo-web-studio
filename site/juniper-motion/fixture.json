@@ -1,0 +1,61 @@
+{
+  "as_of": "2026-10-14",
+  "timezone": "America/New_York",
+  "fictional": true,
+  "menu_currency": "USD",
+  "selected_source_prices": {
+    "Strawberry Matcha": 6,
+    "Cinnamon Bun": 5,
+    "Ricotta Toast": 9
+  },
+  "additional_menu_prices": {
+    "Espresso": 3,
+    "Cappuccino": 4.5,
+    "Butter Croissant": 4,
+    "Eggs on Toast": 10,
+    "Seasonal Soup": 8
+  },
+  "hours": {
+    "daily_open": "07:00",
+    "daily_close": "17:00"
+  },
+  "reservation": {
+    "id": "JN-017",
+    "date": "2026-10-17",
+    "guests": 2,
+    "start": "10:30",
+    "end": "12:00",
+    "duration_minutes": 90,
+    "name": "Alex Morgan",
+    "email": "alex@example.com",
+    "note": "A quieter table, if possible.",
+    "status": "SIMULATED_ONLY_NO_BOOKING",
+    "available_times": [
+      "09:30",
+      "10:00",
+      "10:30",
+      "11:30"
+    ],
+    "full_time": "11:00"
+  },
+  "location": "Fairfax, Virginia (fictional; no street address or map)",
+  "menu_detail": {
+    "item": "Ricotta Toast",
+    "price": 9,
+    "ingredients": "Whipped ricotta, seasonal jam, toasted nuts, chili honey and sourdough.",
+    "proposed_ingredients_to_verify": [
+      "milk",
+      "wheat",
+      "tree nuts"
+    ]
+  },
+  "rules": [
+    "A time is not held while browsing.",
+    "Changing date or guests clears a selected time and refreshes availability.",
+    "Review always repeats date, time, end time and party size.",
+    "Back retains details.",
+    "No table substitution without a fresh selection.",
+    "All sample seatings must end at or before 17:00.",
+    "No real reservation, payment or message."
+  ]
+}

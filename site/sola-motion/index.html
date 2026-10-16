@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fff9e7">
+  <title>Sola — A little sunshine, bottled</title>
+  <meta name="description" content="Explore Sola botanical soda. Orange + Rosemary, Lime + Basil, and Berry + Hibiscus.">
+  <link rel="stylesheet" href="./sola.css">
+  <script type="module" src="./sola.mjs"></script>
+</head>
+<body>
+  <a class="skip" href="#flavor-controls">Skip to flavor controls</a>
+  <header class="masthead">
+    <a class="all-flavors" href="#collection" hidden><img src="./assets/arrow-left.svg" alt=""> All flavors</a>
+    <span class="eyebrow brand-type">Botanical soda</span>
+    <a class="wordmark" href="#collection" aria-label="Sola — all flavors"><img src="./assets/sola-wordmark.webp" alt="sola"></a>
+    <button class="menu-button" aria-haspopup="dialog" aria-controls="menu">Menu</button>
+  </header>
+  <main>
+    <div id="collection">
+      <section class="scroll-track" aria-label="Sola flavor collection">
+        <div class="stage" tabindex="0" aria-label="Flavor stage. Use left and right arrow keys to select a flavor.">
+          <h1 class="sr-only">A little sunshine, bottled</h1>
+          <img class="poster" src="./assets/collection.webp" alt="" aria-hidden="true">
+          <div class="scene" hidden>
+            <img class="sun" src="./assets/sun-stage.webp" alt="">
+            <div class="products">
+              <button class="product" data-flavor="0" aria-label="Select Orange + Rosemary"><img src="./assets/orange-rosemary.webp" alt="Orange Sola bottle with rosemary" draggable="false"></button>
+              <button class="product" data-flavor="1" aria-label="Select Lime + Basil"><img src="./assets/lime-basil.webp" alt="Green Sola bottle with basil" draggable="false"></button>
+              <button class="product" data-flavor="2" aria-label="Select Berry + Hibiscus"><img src="./assets/berry-hibiscus.webp" alt="Red Sola bottle with hibiscus" draggable="false"></button>
+            </div>
+            <img class="tagline" src="./assets/sola-tagline.webp" alt="">
+          </div>
+          <a class="stage-open pill" href="#flavor/lime">Explore this flavor</a>
+          <div class="stage-bottom" id="flavor-controls">
+            <button class="round previous" aria-label="Previous flavor"><img src="./assets/arrow-left.svg" alt=""></button>
+            <span class="scroll-hint eyebrow">Scroll or drag to explore <a href="#flavor-selection">View all flavors ↓</a></span>
+            <span class="counter eyebrow" aria-hidden="true">01 / 03</span>
+            <button class="round next" aria-label="Next flavor"><img src="./assets/arrow-left.svg" alt=""></button>
+          </div>
+        </div>
+      </section>
+      <section class="selection" id="flavor-selection" aria-label="Selected flavor">
+        <div><p class="eyebrow selection-kicker">The collection</p><h2 id="selected-name">Lime + Basil</h2><p id="selected-description">Lime brightness. A basil finish.</p></div>
+        <a class="pill solid selection-open" href="#flavor/lime">Explore this flavor <img src="./assets/arrow-left.svg" alt=""></a>
+        <nav class="flavor-tabs" aria-label="Choose a flavor"><button data-select="0">Orange + Rosemary</button><button data-select="1" aria-current="true">Lime + Basil</button><button data-select="2">Berry + Hibiscus</button></nav>
+      </section>
+    </div>
+    <article id="detail" hidden aria-labelledby="detail-title">
+      <section class="detail-intro">
+        <h1 id="detail-title" tabindex="-1"><img src="./assets/orange-heading.webp" alt="Orange + Rosemary"></h1>
+        <div class="detail-caption"><h2>Botanical soda</h2><p id="detail-description">Orange brightness.<br>A rosemary finish.</p></div>
+        <div class="detail-product"><img id="detail-image" src="./assets/orange-rosemary.webp" alt="Orange Sola bottle with rosemary"></div>
+        <a class="story-link" href="#story">Explore<br>the flavor <img src="./assets/chevron-down.svg" alt=""></a>
+        <div class="notes-line"><span class="eyebrow">Flavor notes</span><span id="note-one">Orange</span><span id="note-two">Rosemary</span><button class="next-detail">Lime + Basil <img src="./assets/arrow-left.svg" alt=""></button></div>
+      </section>
+      <section class="story" id="story" tabindex="-1">
+        <h2><img src="./assets/sola-pairing.webp" alt="A bright little pairing."></h2>
+        <div class="story-copy"><p id="story-one">Orange brings the brightness.</p><p id="story-two">Rosemary brings the twist.</p></div>
+        <img class="ingredients" src="./assets/orange-rosemary-ingredients.webp" alt="Fresh orange and rosemary">
+      </section>
+      <section class="flavor-notes"><p class="eyebrow">Flavor notes</p><div class="note-grid"><div><h3 id="ingredient-one" class="eyebrow">Orange</h3><p id="taste-one">Bright, rounded citrus.</p></div><div><h3 id="ingredient-two" class="eyebrow">Rosemary</h3><p id="taste-two">A fragrant herbal finish.</p></div></div><div class="serve"><div><h3 class="eyebrow">Serve it your way</h3><p>Chilled, over ice, or poured slowly into your favorite glass.</p></div><button class="next-detail pill solid">Explore Lime + Basil <img src="./assets/arrow-left.svg" alt=""></button></div><a class="back-bottom" href="#collection">Back to all flavors</a></section>
+    </article>
+    <p class="sr-only" role="status" id="announcement" aria-live="polite"></p>
+    <p class="asset-error" role="status" hidden>Some images could not load. Refresh to try again. Flavor information and controls are still available.</p>
+  </main>
+  <footer><a href="#collection" aria-label="Back to Sola collection">sola</a><button class="motion-control" aria-pressed="false">Pause motion</button><span>Local motion preview</span></footer>
+  <dialog id="menu" aria-label="Sola menu"><div class="menu-top"><img src="./assets/sola-wordmark.webp" alt="sola"><button class="close-menu">Close</button></div><nav aria-label="Sola"><a href="#collection">All flavors</a><a href="#flavor/orange">Orange + Rosemary</a><a href="#flavor/lime">Lime + Basil</a><a href="#flavor/berry">Berry + Hibiscus</a></nav><button class="motion-control" aria-pressed="false">Pause motion</button></dialog>
+  <noscript><p class="no-script">This motion preview needs JavaScript. Sola's three flavors are Orange + Rosemary, Lime + Basil and Berry + Hibiscus.</p></noscript>
+</body></html>
