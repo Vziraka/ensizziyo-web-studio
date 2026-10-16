@@ -47,7 +47,14 @@ for (const page of pages) {
 }
 
 assert.equal(await readFile(join(root, 'robots.txt'), 'utf8'), 'User-agent: *\nDisallow: /\n');
-assert.ok(!Object.hasOwn(JSON.parse(await readFile(join(root, 'studio', 'data.json'), 'utf8')), 'inquiry'), 'Synthetic studio inquiry data must not ship');
+const studioData = JSON.parse(await readFile(join(root, 'studio', 'data.json'), 'utf8'));
+assert.ok(!Object.hasOwn(studioData, 'inquiry'), 'Synthetic studio inquiry data must not ship');
+assert.ok(!Object.hasOwn(studioData, 'testimonials'), 'Placeholder reviews must not ship');
+assert.ok(!Object.hasOwn(studioData, 'owner_reported_metrics'), 'Unverified metric scope must not ship');
+assert.doesNotMatch(await readFile(join(root, 'studio', 'index.html'), 'utf8'), /500\+|1,000\+|Client perspectives/);
+const privacy = await readFile(join(root, 'studio', 'privacy', 'index.html'), 'utf8');
+assert.match(privacy, /use <a href="\/studio\/inquiry\/">the inquiry form<\/a>/);
+assert.doesNotMatch(privacy, /mailto:hello@evzdigital\.studio/);
 assert.equal(routeHref('#services/systems'), '/studio/services/?service=systems');
 assert.equal(routeHref('#work/Systems'), '/studio/work/?category=Systems');
 assert.equal(routeHref('#inquiry/Arc'), '/studio/inquiry/?sample=Arc');
