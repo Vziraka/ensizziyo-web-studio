@@ -1,6 +1,6 @@
 # Ensizziyo Web Studio
 
-EVZ Digital is the owner-selected working public name, with EVZ as the visual mark. `evzdigital.studio` is the selected public domain; registration is pending.
+EVZ Digital is the owner-selected working public name, with EVZ as the visual mark. `evzdigital.studio` is registered in the owner's Name.com account.
 
 This private repository owns the studio website and its implementation decisions. Business owners are the primary audience; agency partnerships are secondary.
 
@@ -15,7 +15,7 @@ This private repository owns the studio website and its implementation decisions
 
 ## Current state
 
-The approved Horizon/Manrope studio and eight interactive demonstrations are curated in [site](site/README.md). The first production path builds a private, noindex review site with a Netlify Forms inquiry, a privacy notice draft and [site CI](.github/workflows/site-check.yml). [Launch decisions and release checks](docs/studio-launch.md) describe the account, proof, accessibility, SEO and rollback work before public release. No hosting account, domain, business inbox or production deployment has been configured here.
+The approved Horizon/Manrope studio and eight interactive demonstrations are curated in [site](site/README.md). The first production path builds a private, noindex review site with a Netlify Forms inquiry, a privacy notice draft and [site CI](.github/workflows/site-check.yml). [Launch decisions and release checks](docs/studio-launch.md) describe the account, proof, accessibility, SEO and rollback work before public release. The domain is registered and its contact verified; hosting, the business inbox, website/email DNS and production deployment are not configured yet.
 
 From the repository root, with Node 24 and Python already available:
 
