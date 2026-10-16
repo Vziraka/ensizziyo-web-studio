@@ -2,6 +2,8 @@
 
 October 16 studio launch path: consulted the linked specification and architecture references plus current GitHub Education, Netlify and Google Workspace documentation. Reused local Node and Python/Pillow to curate the approved runtime and optimize copied images; no catalog skill, plugin or software was installed. The launch choice and verification limits are in [the studio launch decision](docs/studio-launch.md).
 
+October 16 student-domain update: Name.com recognized the owner's GitHub student eligibility through GitHub sign-in, and the selected `.studio` offer appeared in the cart. Registration and redemption are still pending owner checkout. The current domain choice, displayed costs and verification limits are in [the launch decision](docs/studio-launch.md#identity-and-domain); the October 13 unverified-offer note below is historical.
+
 Research catalog, not an installation manifest. Updated October 15, 2026. No catalog skill pack was installed. The user-installed Apollo connector and the project dependency needed for the authorized research proof are recorded below. Availability can differ between agent sessions.
 
 ## Subscription controller checkpoint
