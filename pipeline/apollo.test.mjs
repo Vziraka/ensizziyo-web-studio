@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ApolloTestConnection, applyTestEvent, emailGate, unwrapApollo } from './apollo.mjs';
@@ -309,4 +309,211 @@ test('wrong Gmail owner, unrelated reply and forged header lists cannot be adopt
   const spoof = gmailReplyReceipt(); spoof.gmail_thread.structuredContent.messages[1].payload.headers.push({ name: 'From', value: 'foreign@example.com' });
   await assert.rejects(connection.receiveReply(spoof), /header/i);
   assert.equal((await connection.state()).flow.status, 'Email eligible');
+});
+
+const monitorConfig = { enabled: true, thread_id: 'aaaaaaaaaaaaaaaa', interval_minutes: 5,
+  sequence_create_confirmed: true, enrollment_confirmed: true };
+const sequenceName = `STUDIO TEST ${run} reply-stop`;
+const sequenceId = '888888888888888888888888';
+const membership = status => ({ emailer_campaign_id: sequenceId, status });
+async function monitorFixture() {
+  const result = await deliveredOwnerEmail();
+  result.connection.config.reply_monitor = { ...monitorConfig };
+  return result;
+}
+async function settleMonitor(connection, expected, result) {
+  const request = await connection.monitorNext();
+  assert.equal(request.operation, expected);
+  await connection.settle(request.key, result);
+  return request;
+}
+async function queuePausedSequence(connection) {
+  await connection.prepare('sequence-lookup', 'sequence_search'); await connection.settle('sequence-lookup', { emailer_campaigns: [] });
+  const create = await connection.prepare('sequence-create', 'sequence_create');
+  assert.equal(create.input.active, false);
+  assert.equal(create.input.permissions, 'private');
+  assert.equal(create.input.emailer_steps.length, 2);
+  await connection.settle('sequence-create', { emailer_campaign: { id: sequenceId, ...create.input } });
+  const enroll = await connection.prepare('sequence-enroll', 'sequence_enroll');
+  assert.equal(enroll.input.status, 'paused');
+  assert.equal(enroll.input.auto_unpause_at, undefined);
+  await connection.settle('sequence-enroll', { contacts: [{ id: '333333333333333333333333', contact_campaign_statuses: [membership('paused')] }] });
+  return create.input;
+}
+async function monitoredReply(connection) {
+  const receipt = gmailReplyReceipt();
+  await settleMonitor(connection, 'gmail_profile', receipt.gmail_profile);
+  await settleMonitor(connection, 'gmail_thread', receipt.gmail_thread);
+  assert.equal((await connection.state()).flow.status, 'Reply review');
+}
+async function stopPreflight(connection, sequence, status = 'paused') {
+  await settleMonitor(connection, 'profile', { id: config.user_id });
+  const original = (await connection.state()).records.contact;
+  await settleMonitor(connection, 'contact_search', { contacts: [{ ...original, contact_campaign_statuses: [membership(status)] }] });
+  await settleMonitor(connection, 'sequence_search', { emailer_campaigns: [{ id: sequenceId, ...sequence }] });
+}
+
+test('monitor remains inert when disabled and resumes a pending read without broadening its scope', async () => {
+  const { directory, connection } = await monitorFixture();
+  connection.config.reply_monitor.enabled = false;
+  assert.equal((await connection.monitorNext()).status, 'Disabled');
+  connection.config.reply_monitor.enabled = true;
+  const request = await connection.monitorNext();
+  assert.equal(request.tool, 'mcp__codex_apps__gmail_get_profile');
+  const resumed = await ApolloTestConnection.open({ directory, config: connection.config, now });
+  assert.deepEqual(await resumed.monitorNext(), request);
+  await resumed.settle(request.key, gmailReplyReceipt().gmail_profile);
+  const thread = await resumed.monitorNext();
+  assert.deepEqual(thread.input, { thread_id: monitorConfig.thread_id, max_messages: 20 });
+  assert.equal(thread.tool, 'mcp__codex_apps__gmail_read_email_thread');
+});
+
+test('no-reply polling completes quietly, respects the interval and keeps a compact read ledger', async () => {
+  let instant = now();
+  const { directory, connection } = await monitorFixture(); connection.now = () => instant;
+  await mkdir(join(directory, 'receipts'));
+  const evidence = join(directory, 'receipts', 'original-proof.json'); await writeFile(evidence, 'keep');
+  let firstRead;
+  const receipt = gmailReplyReceipt(); receipt.gmail_thread.structuredContent.messages.pop();
+  for (let n = 0; n < 3; n++) {
+    await settleMonitor(connection, 'gmail_profile', receipt.gmail_profile);
+    await settleMonitor(connection, 'gmail_thread', receipt.gmail_thread);
+    assert.equal((await connection.monitorNext()).status, 'Complete');
+    if (n === 0) {
+      firstRead = Object.keys((await connection.state()).actions).find(k => k.startsWith('monitor-'));
+      await writeFile(join(directory, 'receipts', firstRead + '.json'), 'old completed read');
+      await writeFile(join(directory, firstRead + '.json'), 'outside receipts; keep');
+    }
+    assert.equal((await connection.monitorNext()).status, 'Waiting');
+    instant = new Date(+instant + 300000);
+  }
+  const state = await connection.state();
+  assert.equal(state.flow.status, 'Email eligible');
+  assert.equal(Object.values(state.actions).filter(a => a.monitor_read).length, 2);
+  assert.equal(state.monitor.completed_cycles, 3);
+  assert.equal(await readFile(evidence, 'utf8'), 'keep');
+  await assert.rejects(readFile(join(directory, 'receipts', firstRead + '.json')), { code: 'ENOENT' });
+  assert.equal(await readFile(join(directory, firstRead + '.json'), 'utf8'), 'outside receipts; keep');
+});
+
+test('a slow provider read does not postpone the next five-minute poll', async () => {
+  const start = +now(); let instant = now();
+  const { connection } = await monitorFixture(); connection.now = () => instant;
+  const receipt = gmailReplyReceipt(); receipt.gmail_thread.structuredContent.messages.pop();
+  await settleMonitor(connection, 'gmail_profile', receipt.gmail_profile);
+  instant = new Date(start + 15000);
+  await settleMonitor(connection, 'gmail_thread', receipt.gmail_thread);
+  assert.equal((await connection.monitorNext()).status, 'Complete');
+  instant = new Date(start + 300000);
+  assert.equal((await connection.monitorNext()).operation, 'gmail_profile');
+});
+
+test('verified reply stops only the owned paused sequence and requires independent terminal readback', async () => {
+  const { connection } = await monitorFixture();
+  const sequence = await queuePausedSequence(connection);
+  connection.config.enabled = false;
+  await monitoredReply(connection);
+  await stopPreflight(connection, sequence);
+  const stop = await connection.monitorNext();
+  assert.equal(stop.operation, 'sequence_stop');
+  assert.deepEqual(stop.input.contact_ids, ['333333333333333333333333']);
+  assert.deepEqual(stop.input.emailer_campaign_ids, [sequenceId]);
+  assert.equal(stop.input.mode, 'stop');
+  await connection.settle(stop.key, { entity_progress_job: { id: '999999999999999999999999' } });
+  assert.notEqual((await connection.state()).records.suppression?.status, 'Verified');
+  const contact = (await connection.state()).records.contact;
+  await settleMonitor(connection, 'contact_search', { contacts: [{ ...contact, contact_campaign_statuses: [membership('finished')] }] });
+  await settleMonitor(connection, 'sequence_search', { emailer_campaigns: [{ id: sequenceId, ...sequence }] });
+  assert.equal((await connection.monitorNext()).status, 'Complete');
+  const state = await connection.state();
+  assert.equal(state.records.suppression.status, 'Verified');
+  assert.equal(state.flow.actual_outreach_count, 0);
+});
+
+test('native already-finished membership is verified without another stop mutation', async () => {
+  const { connection } = await monitorFixture(); const sequence = await queuePausedSequence(connection);
+  await monitoredReply(connection); await stopPreflight(connection, sequence, 'finished');
+  assert.equal((await connection.monitorNext()).status, 'Complete');
+  const state = await connection.state();
+  assert.equal(state.records.suppression.status, 'Verified');
+  assert.equal(Object.values(state.actions).filter(a => a.operation === 'sequence_stop').length, 0);
+});
+
+test('lost stop response is reconciled by readback after restart without replaying the mutation', async () => {
+  const { directory, connection } = await monitorFixture(); const sequence = await queuePausedSequence(connection);
+  await monitoredReply(connection); await stopPreflight(connection, sequence);
+  const stop = await connection.monitorNext();
+  const resumed = await ApolloTestConnection.open({ directory, config: connection.config, now });
+  const reconcile = await resumed.monitorNext();
+  assert.equal(reconcile.operation, 'contact_search');
+  const contact = (await resumed.state()).records.contact;
+  await resumed.settle(reconcile.key, { contacts: [{ ...contact, contact_campaign_statuses: [membership('finished')] }] });
+  await settleMonitor(resumed, 'sequence_search', { emailer_campaigns: [{ id: sequenceId, ...sequence }] });
+  assert.equal((await resumed.monitorNext()).status, 'Complete');
+  const state = await resumed.state();
+  assert.equal(state.actions[stop.key].status, 'Done');
+  assert.equal(state.actions[stop.key].reconciled_by, reconcile.key);
+  assert.equal(Object.values(state.actions).filter(a => a.operation === 'sequence_stop').length, 1);
+});
+
+test('foreign thread and unsuccessful stop never become a verified cancellation', async () => {
+  let instant = now();
+  const { connection } = await monitorFixture(); const sequence = await queuePausedSequence(connection);
+  connection.now = () => instant;
+  const owner = await connection.monitorNext();
+  await assert.rejects(connection.settle(owner.key, { structuredContent: { email: 'foreign@example.com' } }), /Gmail owner/i);
+  await connection.settle(owner.key, gmailReplyReceipt().gmail_profile);
+  const thread = await connection.monitorNext(), wrong = gmailReplyReceipt().gmail_thread;
+  wrong.structuredContent.id = 'cccccccccccccccc';
+  await assert.rejects(connection.settle(thread.key, wrong), /thread/i);
+  await connection.settle(thread.key, gmailReplyReceipt().gmail_thread);
+  await stopPreflight(connection, sequence);
+  const stop = await connection.monitorNext();
+  await assert.rejects(connection.settle(stop.key, { isError: true }), /failed/i);
+  for (let n = 0; n < 4; n++) {
+    const read = await connection.monitorNext(); assert.equal(read.operation, 'contact_search');
+    const contact = (await connection.state()).records.contact;
+    await connection.settle(read.key, { contacts: [{ ...contact, contact_campaign_statuses: [membership('paused')] }] });
+    if (n < 3) assert.equal((await connection.monitorNext()).status, 'Deferred');
+    instant = new Date(+instant + 20000);
+  }
+  assert.equal((await connection.monitorNext()).status, 'Held');
+  assert.notEqual((await connection.state()).records.suppression?.status, 'Verified');
+  await assert.rejects(connection.prepare('stop-again', 'sequence_stop'), /pending|uncertain/i);
+});
+
+test('foreign Apollo owner/contact/sequence and empty readbacks block a native stop', async () => {
+  const { connection } = await monitorFixture(); const sequence = await queuePausedSequence(connection);
+  await monitoredReply(connection);
+  const owner = await connection.monitorNext();
+  await assert.rejects(connection.settle(owner.key, { id: 'ffffffffffffffffffffffff' }), /owner changed/i);
+  await connection.settle(owner.key, { id: config.user_id });
+  const contactRead = await connection.monitorNext(), contact = (await connection.state()).records.contact;
+  await assert.rejects(connection.settle(contactRead.key, { contacts: [] }), /contact missing/i);
+  await assert.rejects(connection.settle(contactRead.key, { contacts: [{ ...contact, id: 'ffffffffffffffffffffffff' }] }), /mapping changed/i);
+  await connection.settle(contactRead.key, { contacts: [{ ...contact, contact_campaign_statuses: [membership('paused')] }] });
+  const sequenceRead = await connection.monitorNext();
+  for (const invalid of [[], [{ ...sequence, id: 'ffffffffffffffffffffffff' }], [{ ...sequence, id: sequenceId, active: true }]]) {
+    await assert.rejects(connection.settle(sequenceRead.key, { emailer_campaigns: invalid }), /missing|owned inactive/i);
+  }
+  assert.equal(Object.values((await connection.state()).actions).filter(a => a.operation === 'sequence_stop').length, 0);
+});
+
+test('completed cancellation remains idempotent across later poll cycles and old read receipts are pruned', async () => {
+  let instant = now();
+  const { connection } = await monitorFixture(); connection.now = () => instant;
+  const sequence = await queuePausedSequence(connection);
+  await monitoredReply(connection); await stopPreflight(connection, sequence);
+  const stop = await connection.monitorNext(); await connection.settle(stop.key, { entity_progress_job: { id: '999999999999999999999999' } });
+  const contact = (await connection.state()).records.contact;
+  await settleMonitor(connection, 'contact_search', { contacts: [{ ...contact, contact_campaign_statuses: [membership('finished')] }] });
+  await settleMonitor(connection, 'sequence_search', { emailer_campaigns: [{ ...sequence, id: sequenceId }] });
+  assert.equal((await connection.monitorNext()).status, 'Complete');
+  instant = new Date(+instant + 300000);
+  await monitoredReply(connection);
+  assert.equal((await connection.monitorNext()).status, 'Complete');
+  const state = await connection.state();
+  assert.equal(state.flow.events.filter(e => e.source === 'gmail_readback').length, 1);
+  assert.equal(Object.values(state.actions).filter(a => a.operation === 'sequence_stop').length, 1);
+  assert.equal(Object.values(state.actions).filter(a => a.monitor_read).length, 2);
 });

@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { privateStateDirectory, readJson, saveJson, acquireLock } from './engine.mjs';
@@ -74,9 +74,13 @@ const methods = {
   profile: 'users_api_profile', mailboxes: 'email_accounts_index', contact_search: 'contacts_search',
   account_create: 'accounts_create', contact_create: 'contacts_create', task_create: 'tasks_create',
   task_search: 'tasks_search', task_show: 'tasks_show', fixture_complete: 'tasks_complete', call_task_skip: 'tasks_skip',
-  draft_create: 'emailer_messages_create', send: 'emailer_messages_send_now', message_status: 'emailer_messages_email_send_status'
+  draft_create: 'emailer_messages_create', send: 'emailer_messages_send_now', message_status: 'emailer_messages_email_send_status',
+  gmail_profile: 'get_profile', gmail_thread: 'read_email_thread', sequence_search: 'emailer_campaigns_search',
+  sequence_create: 'sequences_create', sequence_enroll: 'emailer_campaigns_add_contact_ids', sequence_stop: 'emailer_campaigns_remove_or_stop_contact_ids'
 };
-const readOnly = new Set(['profile', 'mailboxes', 'contact_search', 'task_search', 'task_show', 'message_status']);
+const readOnly = new Set(['profile', 'mailboxes', 'contact_search', 'task_search', 'task_show', 'message_status', 'gmail_profile', 'gmail_thread', 'sequence_search']);
+const toolName = operation => `mcp__codex_apps__${operation.startsWith('gmail_') ? 'gmail_' : 'apollo_io_apollo_'}${methods[operation]}`;
+const sequenceName = config => `STUDIO TEST ${config.run_id} reply-stop`;
 
 function validateConfig(config) {
   check(config?.schema_version === 1 && config.mode === 'controlled-test', 'Only controlled-test mode is implemented; production is blocked');
@@ -93,6 +97,11 @@ function validateConfig(config) {
     check(typeof m.body_html === 'string' && m.body_html.includes('CONTROLLED TEST') && m.body_html.length <= 4000, 'Clearly marked bounded test body required');
     check(!/{{|}}|\[\[|\]\]/.test(m.subject + m.body_html), 'Unresolved message placeholders are blocked');
     check(m.confirmed === true, 'The Apollo connector requires concrete message confirmation');
+  }
+  if (config.reply_monitor) {
+    const m = config.reply_monitor;
+    check(typeof m.enabled === 'boolean' && id(m.thread_id) && m.interval_minutes === 5, 'Explicit bounded reply-monitor configuration required');
+    check(typeof m.sequence_create_confirmed === 'boolean' && typeof m.enrollment_confirmed === 'boolean', 'Separate sequence setup confirmations required');
   }
   return config;
 }
@@ -119,38 +128,85 @@ export class ApolloTestConnection {
     return this.change(state => { state.flow = applyTestEvent(state.flow, { ...event, source: 'fixture' }, this.now()); return state.flow; });
   }
   async receiveReply(receipt) {
-    return this.change(state => {
-      const approved = this.config.approved_message, profile = receipt?.gmail_profile?.structuredContent, thread = receipt?.gmail_thread?.structuredContent;
-      check(!receipt?.gmail_profile?.isError && !receipt?.gmail_thread?.isError && profile && thread, 'Verified structured Gmail readbacks required');
-      check(approved && profile.email === approved.from, 'Gmail owner does not match the approved sender');
-      const sent = Object.values(state.actions).find(a => a.operation === 'send' && a.status === 'Done');
-      check(sent && state.records.message?.message_hash === apolloHash(approved) && state.flow.emails.some(e => e.id === `sent:${state.records.message.id}`), 'Verified original test send required');
-      check(id(thread.id) && Array.isArray(thread.messages) && thread.messages.length <= 20, 'Invalid or oversized Gmail thread');
-      const header = (message, name) => {
-        const found = (message.payload?.headers ?? []).filter(h => h.name?.toLowerCase() === name.toLowerCase());
-        check(found.length <= 1 && found.every(h => typeof h.value === 'string' && !/[\r\n]/.test(h.value)), 'Ambiguous or invalid Gmail header');
-        return found[0]?.value ?? '';
-      };
-      const address = value => {
-        const found = value.match(/[^\s<>\",;]+@[^\s<>\",;]+\.[^\s<>\",;]+/g) ?? [];
-        return found.length === 1 ? found[0].toLowerCase() : '';
-      };
-      const original = thread.messages.find(m => m.id === thread.id && m.thread_id === thread.id && m.label_ids?.includes('SENT') &&
-        address(header(m, 'From')) === approved.from.toLowerCase() && address(header(m, 'To')) === approved.to.toLowerCase() && header(m, 'Subject') === approved.subject);
-      check(original && Number.isFinite(Number(original.internal_date)) && Number(original.internal_date) >= +time(sent.prepared_at) &&
-        Number(original.internal_date) <= +time(sent.prepared_at) + 300000, 'Original Gmail message does not match the controlled send window');
-      const messageId = header(original, 'Message-ID'); check(messageId, 'Original SMTP message ID is missing');
-      const replies = thread.messages.filter(m => m.id !== original.id && m.thread_id === thread.id &&
-        address(header(m, 'From')) === approved.to.toLowerCase() && address(header(m, 'To')) === approved.from.toLowerCase() &&
-        header(m, 'Subject').replace(/^re:\s*/i, '') === approved.subject && header(m, 'In-Reply-To') === messageId);
-      check(replies.length, 'No matching reply to the original controlled message');
-      for (const reply of replies) {
-        check(id(reply.id) && Number.isFinite(Number(reply.internal_date)) && Number(reply.internal_date) >= Number(original.internal_date), 'Invalid reply identity or chronology');
-        state.flow = applyTestEvent(state.flow, { id: `gmail_reply:${reply.id}`, type: 'reply', at: new Date(Number(reply.internal_date)).toISOString(),
-          source: 'gmail_readback', gmail_thread_id: thread.id, gmail_message_id: reply.id }, this.now());
+    return this.change(state => this.ingestReply(state, receipt));
+  }
+  ingestReply(state, receipt, allowNoReply = false) {
+    const approved = this.config.approved_message, profile = receipt?.gmail_profile?.structuredContent, thread = receipt?.gmail_thread?.structuredContent;
+    check(!receipt?.gmail_profile?.isError && !receipt?.gmail_thread?.isError && profile && thread, 'Verified structured Gmail readbacks required');
+    check(approved && profile.email === approved.from, 'Gmail owner does not match the approved sender');
+    const sent = Object.values(state.actions).find(a => a.operation === 'send' && a.status === 'Done');
+    check(sent && state.records.message?.message_hash === apolloHash(approved) && state.flow.emails.some(e => e.id === `sent:${state.records.message.id}`), 'Verified original test send required');
+    check(id(thread.id) && Array.isArray(thread.messages) && thread.messages.length <= 20, 'Invalid or oversized Gmail thread');
+    const header = (message, name) => {
+      const found = (message.payload?.headers ?? []).filter(h => h.name?.toLowerCase() === name.toLowerCase());
+      check(found.length <= 1 && found.every(h => typeof h.value === 'string' && !/[\r\n]/.test(h.value)), 'Ambiguous or invalid Gmail header');
+      return found[0]?.value ?? '';
+    };
+    const address = value => {
+      const found = value.match(/[^\s<>\",;]+@[^\s<>\",;]+\.[^\s<>\",;]+/g) ?? [];
+      return found.length === 1 ? found[0].toLowerCase() : '';
+    };
+    const original = thread.messages.find(m => m.id === thread.id && m.thread_id === thread.id && m.label_ids?.includes('SENT') &&
+      address(header(m, 'From')) === approved.from.toLowerCase() && address(header(m, 'To')) === approved.to.toLowerCase() && header(m, 'Subject') === approved.subject);
+    check(original && Number.isFinite(Number(original.internal_date)) && Number(original.internal_date) >= +time(sent.prepared_at) &&
+      Number(original.internal_date) <= +time(sent.prepared_at) + 300000, 'Original Gmail message does not match the controlled send window');
+    const messageId = header(original, 'Message-ID'); check(messageId, 'Original SMTP message ID is missing');
+    const replies = thread.messages.filter(m => m.id !== original.id && m.thread_id === thread.id &&
+      address(header(m, 'From')) === approved.to.toLowerCase() && address(header(m, 'To')) === approved.from.toLowerCase() &&
+      header(m, 'Subject').replace(/^re:\s*/i, '') === approved.subject && header(m, 'In-Reply-To') === messageId);
+    check(allowNoReply || replies.length, 'No matching reply to the original controlled message');
+    for (const reply of replies) {
+      check(id(reply.id) && Number.isFinite(Number(reply.internal_date)) && Number(reply.internal_date) >= Number(original.internal_date), 'Invalid reply identity or chronology');
+      state.flow = applyTestEvent(state.flow, { id: `gmail_reply:${reply.id}`, type: 'reply', at: new Date(Number(reply.internal_date)).toISOString(),
+        source: 'gmail_readback', gmail_thread_id: thread.id, gmail_message_id: reply.id }, this.now());
+    }
+    return { status: state.flow.status, verified_replies: replies.length, real_outreach: 0 };
+  }
+  async monitorNext() {
+    const plan = await this.change(async state => {
+      const settings = this.config.reply_monitor;
+      if (!settings?.enabled) return { status: 'Disabled' };
+      check(state.records.message && state.flow.emails.length, 'A delivered owner-only test is required before monitoring');
+      let m = state.monitor;
+      if (m?.held) return { status: 'Held', reason: m.held };
+      if (m?.completed_at && +this.now() < +time(m.started_at) + settings.interval_minutes * 60000) return { status: 'Waiting', next_at: new Date(+time(m.started_at) + settings.interval_minutes * 60000).toISOString() };
+      if (!m || m.completed_at) {
+        // Keep completed monitor reads compact; original proof and mutation receipts are never pruned.
+        for (const [key, action] of Object.entries(state.actions)) if (action.monitor_read && action.status === 'Done') {
+          check(/^monitor-[a-f0-9-]{36}-[0-7]-[0-4]$/.test(key) && readOnly.has(action.operation), 'Invalid monitor-read retention scope');
+          await unlink(join(this.directory, 'receipts', `${key}.json`)).catch(error => { if (error.code !== 'ENOENT') throw error; });
+          delete state.actions[key];
+        }
+        m = state.monitor = { id: `monitor-${randomUUID()}`, phase: 0, read_attempts: 0, new_replies: 0,
+          completed_cycles: m?.completed_cycles ?? 0, last_completed_at: m?.completed_at ?? m?.last_completed_at, started_at: this.now().toISOString() };
       }
-      return { status: state.flow.status, verified_replies: replies.length, real_outreach: 0 };
+      if (m.phase === 2 && (!state.flow.events.some(e => e.source === 'gmail_readback' && e.type === 'reply') || !state.records.sequence_enrollment || state.records.suppression?.status === 'Verified')) m.phase = 8;
+      if (m.phase === 5 && state.records.contact.contact_campaign_statuses?.some(s => s.emailer_campaign_id === state.records.sequence.id && s.status === 'finished')) {
+        for (const action of Object.values(state.actions)) if (action.monitor_read && ['contact_search', 'sequence_search'].includes(action.operation)) action.monitor_read = false;
+        state.records.suppression = { status: 'Verified', sequence_id: state.records.sequence.id, contact_id: state.records.contact.id,
+          verified_at: this.now().toISOString(), source: 'Already finished at independent readback' }; m.phase = 8;
+      }
+      if (m.phase === 8) {
+        m.completed_at = this.now().toISOString(); m.completed_cycles++;
+        return { status: 'Complete', new_replies: m.new_replies, suppression: state.records.suppression?.status ?? 'No enrolled test sequence', real_outreach: 0 };
+      }
+      if (m.phase === 6 && m.readback_after && +this.now() < +time(m.readback_after)) return { status: 'Deferred', next_at: m.readback_after };
+      const operations = ['gmail_profile', 'gmail_thread', 'profile', 'contact_search', 'sequence_search', 'sequence_stop', 'contact_search', 'sequence_search'];
+      let operation = operations[m.phase], key = `${m.id}-${m.phase}-${m.read_attempts}`;
+      if (m.phase === 5 && state.actions[key]?.status === 'Pending') {
+        m.stop_key = key; m.phase = 6; operation = 'contact_search'; key = `${m.id}-6-${m.read_attempts}`;
+      }
+      const pending = state.actions[key]; m.key = key;
+      if (pending?.status === 'Pending') {
+        check(readOnly.has(operation), 'Uncertain mutation requires readback; never replay');
+        m.read_reissues = (m.read_reissues ?? 0) + 1;
+        if (m.read_reissues > 3) { m.held = 'Read did not settle after bounded retries'; return { status: 'Held', reason: m.held }; }
+        return { key, operation, tool: toolName(operation), input: pending.input };
+      }
+      return { key, operation };
     });
+    if (!plan.operation || plan.tool) return plan;
+    return { ...await this.prepare(plan.key, plan.operation), operation: plan.operation };
   }
   message(state) {
     const m = this.config.approved_message;
@@ -177,6 +233,32 @@ export class ApolloTestConnection {
     const kind = options.kind ?? 'call_gate';
     if (operation === 'profile') return { include_credit_usage: true };
     if (operation === 'mailboxes') return {};
+    if (operation === 'gmail_profile') { check(c.reply_monitor?.enabled, 'Reply monitoring is disabled'); return {}; }
+    if (operation === 'gmail_thread') {
+      check(c.reply_monitor?.enabled && state.records.gmail_profile?.email === c.approved_message?.from, 'Verified Gmail owner required');
+      return { thread_id: c.reply_monitor.thread_id, max_messages: 20 };
+    }
+    if (operation === 'sequence_search') return { q_name: sequenceName(c), page: '1', per_page: '10' };
+    if (operation === 'sequence_create') {
+      check(c.reply_monitor?.sequence_create_confirmed && state.records.sequence_search_empty, 'Confirm the exact inactive sequence before creating it');
+      return { name: sequenceName(c), active: false, permissions: 'private', emailer_steps: [1, 2].map(n => ({
+        type: 'auto_email', wait_time: 7, wait_mode: 'day', emailer_touches: [{ include_signature: false, status: 'to_be_reviewed',
+          generation_tone: { tone_type: 'Direct' }, emailer_template: { subject: `[STUDIO TEST] Unsent follow-up ${n}`,
+            body_html: '<p>CONTROLLED TEST — fictional record. This follow-up must remain unsent; it exists only to verify cancellation.</p>' } }] })) };
+    }
+    if (operation === 'sequence_enroll') {
+      const sequence = state.records.sequence, message = c.approved_message;
+      check(c.reply_monitor?.enrollment_confirmed && sequence?.active === false && state.records.contact, 'Confirm one paused fictional enrollment in the owned inactive sequence');
+      check(state.records.mailboxes?.some(a => a.id === message?.mailbox_id && a.email === message.from), 'Observed confirmed test mailbox required');
+      return { id: sequence.id, emailer_campaign_id: sequence.id, contact_ids: [state.records.contact.id],
+        send_email_from_email_account_id: message.mailbox_id, status: 'paused' };
+    }
+    if (operation === 'sequence_stop') {
+      check(c.reply_monitor?.enabled && state.records.sequence?.active === false && state.records.sequence_enrollment?.status === 'Verified paused', 'Owned inactive sequence and verified paused enrollment required');
+      check(state.records.contact_session === this.session && state.records.sequence_session === this.session, 'Refresh exact contact and sequence IDs in this session before stopping');
+      check(state.flow.events.some(e => e.type === 'reply' && e.source === 'gmail_readback'), 'Verified actual reply required before native cancellation');
+      return { contact_ids: [state.records.contact.id], emailer_campaign_ids: [state.records.sequence.id], mode: 'stop', stop_reason: 'Controlled owner reply verified; cancel remaining test follow-ups' };
+    }
     if (operation === 'contact_search') return { q_keywords: address, page: 1, per_page: 10 };
     if (operation === 'account_create') return { name: marker, domain: `${c.run_id}.invalid` };
     if (operation === 'contact_create') {
@@ -216,7 +298,7 @@ export class ApolloTestConnection {
       const previous = state.actions[key];
       if (previous) { check(previous.operation === operation && apolloHash(previous.options) === apolloHash(options), 'Action key conflicts with earlier operation'); check(previous.status === 'Done', 'Pending/uncertain action requires readback reconciliation; no blind retry'); return { already_done: true, key }; }
       if (!readOnly.has(operation)) {
-        check(this.config.enabled, 'Apollo test mutations are disabled');
+        check(operation === 'sequence_stop' ? this.config.reply_monitor?.enabled : this.config.enabled, 'Apollo test mutations are disabled');
         check(state.records.verified_session === this.session, 'Read and verify the Apollo account in this session before mutations');
         check(!Object.values(state.actions).some(a => a.operation === operation && a.status !== 'Done' &&
           (operation !== 'task_create' || (a.options.kind ?? 'call_gate') === (options.kind ?? 'call_gate'))),
@@ -226,11 +308,15 @@ export class ApolloTestConnection {
       if (operation === 'contact_create' && state.records.contact) return { already_done: true, key };
       if (operation === 'task_create' && state.records.tasks[options.kind ?? 'call_gate']) return { already_done: true, key };
       if (operation === 'draft_create' && state.records.message) return { already_done: true, key };
+      if (operation === 'sequence_create' && state.records.sequence) return { already_done: true, key };
+      if (operation === 'sequence_enroll' && state.records.sequence_enrollment) return { already_done: true, key };
+      if (operation === 'sequence_stop' && state.records.suppression?.status === 'Verified') return { already_done: true, key };
       if (operation === 'send') check(!Object.values(state.actions).some(a => a.operation === 'send'), 'Send already reserved; reconcile status rather than resending');
       const input = this.build(state, operation, options);
       if (operation === 'profile') state.records.verified_session = null;
       state.actions[key] = { operation, options, input, hash: apolloHash(input), status: 'Pending', prepared_at: this.now().toISOString() };
-      return { key, tool: `mcp__codex_apps__apollo_io_apollo_${methods[operation]}`, input };
+      if (state.monitor?.key === key && readOnly.has(operation)) state.actions[key].monitor_read = true;
+      return { key, tool: toolName(operation), input };
     });
   }
   owned(operation, data, input) {
@@ -250,16 +336,56 @@ export class ApolloTestConnection {
   async settle(key, raw) {
     return this.change(state => {
       const action = state.actions[key]; check(action?.status === 'Pending', 'Only an exact pending action can be settled');
-      const data = unwrapApollo(raw); action.result = data;
       const op = action.operation, kind = action.options.kind ?? 'call_gate';
+      let data;
+      if (op.startsWith('gmail_')) { check(!raw?.isError && raw?.structuredContent, 'Structured Gmail readback required'); data = raw.structuredContent; }
+      else data = unwrapApollo(raw);
+      if (op === 'gmail_thread') data = { id: data.id, messages: data.messages?.map(m => ({ id: m.id, thread_id: m.thread_id,
+        label_ids: m.label_ids, internal_date: m.internal_date, payload: { headers: m.payload?.headers } })) };
+      action.result = data;
       if (op === 'profile') { check(data.id === this.config.user_id, 'Apollo account owner changed'); state.records.verified_session = this.session; }
       else if (op === 'mailboxes') { check(Array.isArray(data.email_accounts), 'Malformed mailbox readback'); state.records.mailboxes = data.email_accounts; }
+      else if (op === 'gmail_profile') { check(data.email === this.config.approved_message?.from, 'Gmail owner does not match the approved sender'); state.records.gmail_profile = { email: data.email }; }
+      else if (op === 'gmail_thread') {
+        check(data.id === this.config.reply_monitor?.thread_id, 'Gmail thread differs from the exact monitored thread');
+        const before = state.flow.events.length;
+        this.ingestReply(state, { gmail_profile: { structuredContent: state.records.gmail_profile }, gmail_thread: { structuredContent: data } }, true);
+        if (state.monitor?.key === key) state.monitor.new_replies = state.flow.events.length - before;
+      }
+      else if (op === 'sequence_search' || op === 'sequence_create') {
+        const candidates = op === 'sequence_create' ? [data.emailer_campaign ?? data] : data.emailer_campaigns;
+        check(Array.isArray(candidates) && candidates.length <= 1 && (!data.pagination || data.pagination.total_pages <= 1), 'Ambiguous or incomplete owned sequence readback');
+        if (state.monitor?.key === key) check(candidates.length === 1, 'Owned sequence missing during monitored cancellation');
+        state.records.sequence_search_empty = candidates.length === 0;
+        if (candidates.length) {
+          const sequence = candidates[0];
+          check(id(sequence.id) && sequence.name === sequenceName(this.config) && sequence.active === false &&
+            (!state.records.sequence || sequence.id === state.records.sequence.id), 'Sequence is not the owned inactive test sequence');
+          check(op === 'sequence_create' || state.records.sequence, 'Existing sequence needs explicit ownership reconciliation; do not adopt by name');
+          state.records.sequence = sequence;
+          state.records.sequence_session = this.session;
+        }
+      }
+      else if (op === 'sequence_enroll') {
+        check(!data.contacts || data.contacts.length === 1 && data.contacts[0].id === state.records.contact.id, 'Enrollment returned unexpected contacts');
+        state.records.sequence_enrollment = { sequence_id: state.records.sequence.id, contact_id: state.records.contact.id, status: 'Awaiting readback' };
+        const contact = data.contacts?.find(c => c.id === state.records.contact.id);
+        if (contact?.contact_campaign_statuses?.some(s => s.emailer_campaign_id === state.records.sequence.id && s.status === 'paused')) state.records.sequence_enrollment.status = 'Verified paused';
+      }
+      else if (op === 'sequence_stop') state.records.suppression = { status: 'Awaiting readback', sequence_id: state.records.sequence.id, contact_id: state.records.contact.id, action_key: key };
       else if (op === 'account_create') state.records.account = this.owned(op, data, action.input);
-      else if (op === 'contact_create') state.records.contact = this.owned(op, data, action.input);
+      else if (op === 'contact_create') { state.records.contact = this.owned(op, data, action.input); state.records.contact_session = this.session; }
       else if (op === 'contact_search') {
         check(Array.isArray(data.contacts) && data.contacts.length <= 1, 'Ambiguous test contact search; reconcile');
+        if (state.monitor?.key === key) check(data.contacts.length === 1, 'Owned contact missing during monitored cancellation');
         state.records.contact_search_empty = data.contacts.length === 0;
-        if (data.contacts.length) state.records.contact = this.owned(op, data.contacts[0], action.input);
+        if (data.contacts.length) {
+          const contact = this.owned(op, data.contacts[0], action.input);
+          check((!state.records.contact || contact.id === state.records.contact.id) && (!state.records.account || contact.account_id === state.records.account.id), 'Owned contact mapping changed');
+          state.records.contact = contact;
+          state.records.contact_session = this.session;
+          if (state.records.sequence_enrollment && contact.contact_campaign_statuses?.some(s => s.emailer_campaign_id === state.records.sequence.id && s.status === 'paused')) state.records.sequence_enrollment.status = 'Verified paused';
+        }
       } else if (op === 'task_create') state.records.tasks[kind] = this.owned(op, data, action.input);
       else if (op === 'task_show') {
         const existing = state.records.tasks[kind], task = this.owned(op, data, { contact_id: state.records.contact.id,
@@ -298,7 +424,26 @@ export class ApolloTestConnection {
         if (op === 'message_status' && status === 'bounced') append('bounce', 'bounce');
         if (op === 'message_status' && status === 'failed') append('email_failure', 'failure');
       }
-      action.status = 'Done'; action.finished_at = this.now().toISOString(); return { key, operation: op, status: action.status };
+      action.status = 'Done'; action.finished_at = this.now().toISOString();
+      if (state.monitor?.key === key) {
+        const m = state.monitor; m.read_reissues = 0;
+        if (m.phase === 6) {
+          m.read_attempts++;
+          const finished = state.records.contact?.contact_campaign_statuses?.some(s => s.emailer_campaign_id === state.records.sequence?.id && s.status === 'finished');
+          if (finished) {
+            action.monitor_read = false;
+            const stopKey = m.stop_key ?? Object.keys(state.actions).find(k => k.startsWith(m.id) && state.actions[k].operation === 'sequence_stop');
+            if (stopKey && state.actions[stopKey].status === 'Pending') Object.assign(state.actions[stopKey], { status: 'Done', reconciled_by: key, finished_at: this.now().toISOString() });
+            state.records.suppression = { status: 'Awaiting sequence readback', sequence_id: state.records.sequence.id, contact_id: state.records.contact.id, readback_key: key }; m.phase++;
+          } else if (m.read_attempts >= 4) m.held = 'Native stop was not confirmed after four readbacks; reconcile the pending action';
+          else m.readback_after = new Date(+this.now() + 20000).toISOString();
+        } else if (m.phase === 7) {
+          check(!state.records.sequence_search_empty, 'Owned sequence disappeared during cancellation verification');
+          action.monitor_read = false;
+          state.records.suppression.status = 'Verified'; state.records.suppression.verified_at = this.now().toISOString(); m.phase++;
+        } else m.phase++;
+      }
+      return { key, operation: op, status: action.status };
     });
   }
   async projection() {
