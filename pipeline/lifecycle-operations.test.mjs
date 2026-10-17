@@ -195,14 +195,21 @@ test('stable notifications exclude check times, and new sync failures remain act
   await s.app.change(state => { state.operations.holds.synchronization = 'Owner edited the projection; preserve it'; });
   assert.equal((await s.ops.report()).changed, true);
 });
-test('DNC cancels the native future call task without inventing a completed call', async t => {
+test('DNC cancels the native future call task and reports verified cancellation once without inventing a completed call', async t => {
   const s = await setup(t), p = provider(s.config); await drive(s.ops, p.respond);
+  const before = await s.ops.report();
+  await s.app.change(state => { state.operations.notification.last_notified = before.fingerprint; });
   await s.app.apply({ id: 'dnc-after-delivery', prospect_id: 'maple', type: 'contact_stopped', at, data: { reason: 'do_not_contact' } });
   s.advance(301_000); await drive(new ControlledOperations(s.app, 'cancel-native-call'), p.respond);
-  s.advance(301_000); await drive(new ControlledOperations(s.app, 'read-skipped-native-call'), p.respond);
+  s.advance(301_000); const verified = await drive(new ControlledOperations(s.app, 'read-skipped-native-call'), p.respond);
   const state = await s.app.snapshot(), future = Object.values(state.actions).find(a => a.type === 'call_task' && a.provider_task);
   assert.equal(future.status, 'Cancelled'); assert.equal(future.cancellation, 'Verified skipped at Apollo');
   assert.equal(p.calls.filter(c => c.operation === 'task_skip').length, 1); assert.equal(state.prospects.maple.calls['maple-call-1'].simulated, true);
+  assert.equal(verified.changed, true); assert.notEqual(verified.fingerprint, before.fingerprint);
+  assert.equal((await s.ops.report()).fingerprint, verified.fingerprint);
+  await s.app.change(state => { state.operations.notification.last_notified = verified.fingerprint; });
+  s.advance(301_000); const unchanged = await drive(new ControlledOperations(s.app, 'quiet-cancelled-call'), p.respond);
+  assert.equal(unchanged.changed, false); assert.equal(p.calls.filter(c => c.operation === 'task_skip').length, 1);
 });
 test('a stop during uncertain native task creation reconciles and cancels it instead of losing the task', async t => {
   const s = await setup(t), p = provider(s.config);

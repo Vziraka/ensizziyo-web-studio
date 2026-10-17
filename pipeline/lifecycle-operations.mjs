@@ -26,9 +26,11 @@ const header = (message, name) => {
 const address = value => { const values = value.match(/[^\s<>\",;]+@[^\s<>\",;]+\.[^\s<>\",;]+/g) ?? []; return values.length === 1 ? values[0].toLowerCase() : ''; };
 const message = data => data.emailer_message ?? data;
 const eventData = data => data.event ?? data;
-function notification(o, now) {
+function notification(o, now, actions) {
   const stable = { replies: [...new Set(o.replies)].sort(), holds: o.holds,
     bookings: Object.fromEntries(Object.entries(o.bookings).map(([id, b]) => [id, { id: b.id, start: b.start, end: b.end, verified: b.verified }])), suppression: o.suppression ?? {},
+    task_cancellations: Object.fromEntries(Object.values(actions).filter(a => a.provider_task && ['call_task', 'callback_task'].includes(a.type) && (a.cancel_requested || a.cancellation))
+      .map(a => [a.id, { task_id: a.provider_task.id, requested: a.cancel_requested === true, verified: a.cancellation === 'Verified skipped at Apollo' }])),
     deliveries: Object.fromEntries(Object.entries(o.email).map(([id, e]) => [id, e.status])) };
   const fingerprint = hash(stable), changed = fingerprint !== o.notification?.last_notified;
   o.notification = { ...o.notification, fingerprint, changed, checked_at: now.toISOString() };
@@ -112,7 +114,7 @@ export class ControlledOperations {
         delete o.holds.connection; value = undefined;
         if (step.done) {
           cycle.completed_at = now.toISOString(); cycle.completed_cycles++; delete o.lease;
-          return { status: 'Complete', completed_cycles: cycle.completed_cycles, ...notification(o, now), research: 'paused', real_outreach: 0 };
+          return { status: 'Complete', completed_cycles: cycle.completed_cycles, ...notification(o, now, state.actions), research: 'paused', real_outreach: 0 };
         }
         const request = step.value, logical = mutations.has(request.operation) ? request.logical : `${cycle.read_epoch}-${this.session}-${request.logical}`;
         const saved = o.requests[logical];
@@ -325,5 +327,5 @@ export class ControlledOperations {
       await this.app.change(state => { state.operations.effects[id].applied = true; });
     }
   }
-  async report() { return this.app.change(state => notification(state.operations, this.app.now())); }
+  async report() { return this.app.change(state => notification(state.operations, this.app.now(), state.actions)); }
 }
