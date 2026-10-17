@@ -36,7 +36,13 @@ export function schemasFor(job, snapshots) {
   const report = limited ? { ...base, properties: { ...base.properties,
     recommendation: { type: 'string', const: 'Insufficient evidence' }, opportunities: { ...base.properties.opportunities, maxItems: 0 }
   } } : base;
-  return { checkpoint: job.research_version === 3 ? detailedCheckpointSchema : qualityCheckpointSchema, report };
+  const bind = schema => !snapshots ? schema : { ...schema, properties: { ...schema.properties,
+    job_id: { ...text, const: job.id }, business_name: { ...text, const: job.business_name },
+    sources: { ...schema.properties.sources, items: { anyOf: snapshots.sources.map(s => ({ ...source, properties: { ...source.properties,
+      url: { ...text, const: s.url }, checked_at: { ...text, const: s.checked_at }, content_sha256: { ...text, const: s.content_sha256 }
+    } })) } }
+  } };
+  return { checkpoint: bind(job.research_version === 3 ? detailedCheckpointSchema : qualityCheckpointSchema), report: bind(report) };
 }
 
 export function validate(value, schema, path = 'result') {
