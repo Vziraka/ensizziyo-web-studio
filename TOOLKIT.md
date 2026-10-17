@@ -1,5 +1,7 @@
 # Task-based tool catalog
 
+October 17 studio proof restoration: consulted Matt Pocock's current diagnosing-bugs guidance for a direct failing site check, then reused the existing Node build/verification and Chrome browser review. The original site CSS and JavaScript patterns were sufficient; no package, plugin or software was installed.
+
 October 16 EVZ UI refinement: consulted the linked Scrollcraft room-depth and scroll-reveal references for Forma, then implemented the selected behavior in the site's existing CSS and JavaScript. No Scrollcraft package, new plugin, or runtime dependency was installed.
 
 October 16 studio launch path: consulted the linked specification and architecture references plus current GitHub Education, Netlify and Google Workspace documentation. Reused local Node and Python/Pillow to curate the approved runtime and optimize copied images; no catalog skill, plugin or software was installed. The launch choice and verification limits are in [the studio launch decision](docs/studio-launch.md).

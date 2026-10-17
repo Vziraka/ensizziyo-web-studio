@@ -3,13 +3,49 @@ import {createViews,routeHref} from './views.mjs';
 import {validateInquiry,sendInquiry} from './inquiry.mjs';
 import {createScenes} from '../shared/scene-motion.mjs';
 import {$,$$,setupPreview,focusHeading,motion,openDialog} from '../shared/preview.mjs';
-const data=await fetch('data.json').then(r=>r.json());setupPreview({studio:true});let service='websites',filter='All',showIndex=1,page='home',formData={description:'',name:'',email:'',business:'',website:'',context:''},reviewed=false,completed=false,returnState=null;
+const data=await fetch('data.json').then(r=>r.json());setupPreview({studio:true});let service='websites',filter='All',showIndex=1,reviewIndex=0,reviewTimer=0,counterFrame=0,counted=false,observer=null,page='home',formData={description:'',name:'',email:'',business:'',website:'',context:''},reviewed=false,completed=false,returnState=null;
 try{returnState=JSON.parse(sessionStorage.getItem('studio-return')||'null');if(returnState){filter=returnState.filter||'All';service=returnState.service||'websites';showIndex=returnState.showIndex||0}}catch{}
 const views=createViews(data,()=>({service,filter,formData}));
 const {samples,categories,categoryLabels,art}=views;
 let showcase=null;
 
-function attachHome(){showcase=mountShowcase($('.horizon-gallery'),samples,showIndex,i=>showIndex=i,art)}
+function updateReviews(animate=false){
+  $('.review-cards').innerHTML=views.reviewCards(reviewIndex);
+  const total=data.testimonials.reviews.length;
+  $('#review-count').textContent=innerWidth<=700?`${reviewIndex+1} of ${total}`:`Showing ${Array.from({length:3},(_,i)=>(reviewIndex+i)%total+1).join(', ')} of ${total}`;
+  if(animate&&motion())$('.review-cards').animate([{opacity:.35,transform:'translateX(10px)'},{opacity:1,transform:'none'}],{duration:400,easing:'ease-out'});
+}
+function scheduleReviews(){
+  clearInterval(reviewTimer);
+  if(page!=='home'||document.hidden||!motion())return;
+  reviewTimer=setInterval(()=>{
+    const bounds=$('.reviews')?.getBoundingClientRect();
+    if(bounds&&bounds.top<innerHeight&&bounds.bottom>0){reviewIndex=(reviewIndex+1)%data.testimonials.reviews.length;updateReviews(true)}
+  },8000);
+}
+function showFinalCounts(){$$('[data-count]').forEach(e=>e.textContent=Number(e.dataset.count).toLocaleString('en-US')+'+')}
+function countMetrics(){
+  if(counted)return;
+  counted=true;
+  if(!motion()){showFinalCounts();return}
+  const started=performance.now();
+  function frame(now){
+    const progress=Math.min(1,(now-started)/2000),ease=1-(1-progress)**3;
+    $$('[data-count]').forEach(e=>e.textContent=Math.round(Number(e.dataset.count)*ease).toLocaleString('en-US')+'+');
+    if(progress<1&&motion())counterFrame=requestAnimationFrame(frame);else showFinalCounts();
+  }
+  counterFrame=requestAnimationFrame(frame);
+}
+function attachHome(){
+  showcase=mountShowcase($('.horizon-gallery'),samples,showIndex,i=>showIndex=i,art);
+  updateReviews();
+  if(!counted&&motion())$$('[data-count]').forEach(e=>e.textContent='0+');
+  observer=new IntersectionObserver(entries=>{
+    if(entries.some(e=>e.isIntersecting)){countMetrics();observer?.disconnect();observer=null}
+  },{threshold:.3});
+  observer.observe($('.metrics'));
+  scheduleReviews();
+}
 
 function changeService(value){
   service=value;
@@ -23,7 +59,7 @@ function changeService(value){
 }
 
 function render(){
-  showcase?.destroy();showcase=null;
+  showcase?.destroy();showcase=null;clearInterval(reviewTimer);cancelAnimationFrame(counterFrame);observer?.disconnect();observer=null;
   if(/^#(home|about|services|work|inquiry|privacy)(\/|$)/.test(location.hash))history.replaceState(null,'',routeHref(location.hash));
   const route=location.pathname.split('/').filter(Boolean)[1]||'home';
   const params=new URLSearchParams(location.search);
@@ -97,12 +133,22 @@ document.addEventListener('click',e=>{
     history.replaceState(null,'',filter==='All'?'/studio/work/':`/studio/work/?category=${encodeURIComponent(filter)}`);
     render();$(`[data-filter="${filter}"]`)?.focus({preventScroll:true});
   }
+  if(el.id==='review-prev'||el.id==='review-next'){
+    reviewIndex=(reviewIndex+(el.id==='review-next'?1:data.testimonials.reviews.length-1))%data.testimonials.reviews.length;
+    updateReviews(true);scheduleReviews();
+  }
   if(el.id==='new-inquiry'){formData={description:'',name:'',email:'',business:'',website:'',context:''};reviewed=false;completed=false}
   if(el.getAttribute('href')==='/studio/inquiry/#edit'){e.preventDefault();location.hash='edit'}
   if(el.id==='remove-context'){formData.context='';history.replaceState(null,'','/studio/inquiry/');render()}
   if(el.id==='finish')submitReview(el);
 });
 addEventListener('hashchange',render);
+document.addEventListener('visibilitychange',scheduleReviews);
+document.addEventListener('motionchange',()=>{
+  if(!motion()&&page==='home'){cancelAnimationFrame(counterFrame);showFinalCounts();counted=true}
+  scheduleReviews();
+});
+addEventListener('resize',()=>{if(page==='home')updateReviews()});
 render();
 
 createScenes({entries:[['.horizon-hero h1','rise'],['.horizon-intro','rise'],['.services-heading','rise'],['.horizon-service-grid>a','rise'],['.home-contact','rise'],['.home-services>h2','rise'],['.service-row','slide'],['.campaign-example','curtain'],['.principles article','rise'],['.audiences article','slide'],['.handoff article','rise'],['.service-content','curtain'],['.scope article','slide'],['.project','curtain'],['.cta','rise'],['.success','rise']],tactile:['.project .art']});
