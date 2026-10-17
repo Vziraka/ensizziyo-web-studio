@@ -119,15 +119,19 @@ export async function watchJob({ directory, queue, jobId, invoke, signal, collec
   const deadline = clock() + timeoutMs;
   let intakeReady = !intakeResearch;
   let researchVersion = qualityResearch ? 2 : undefined;
+  let researchDate;
   await onEvent({ job_id: jobId, event: 'listener_started', max_jobs: 1, timeout_ms: timeoutMs });
   while (clock() < deadline) {
     signal?.throwIfAborted();
     if (!intakeReady) {
       const intake = await intakeSharedCandidate({ directory, queue, jobId, now, collectSources, signal });
       intakeReady = Boolean(intake);
-      if (intake) researchVersion = intake.research_version;
+      if (intake) {
+        researchVersion = intake.research_version;
+        researchDate = (await readJson(join(directory, jobId, 'job.json'))).as_of;
+      }
     }
-    const pending = intakeReady ? await queue.pendingJob(jobId, now().toISOString().slice(0, 10), researchVersion ?? (qualityResearch || intakeResearch)) : null;
+    const pending = intakeReady ? await queue.pendingJob(jobId, researchDate ?? now().toISOString().slice(0, 10), researchVersion ?? (qualityResearch || intakeResearch)) : null;
     if (pending) {
       await snapshotJob(directory, pending.job);
       await onEvent({ job_id: jobId, event: 'queue_selected', worker: pending.worker });
