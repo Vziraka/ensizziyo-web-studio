@@ -1,5 +1,7 @@
 # Task-based tool catalog
 
+October 16 EVZ UI refinement: consulted the linked Scrollcraft room-depth and scroll-reveal references for Forma, then implemented the selected behavior in the site's existing CSS and JavaScript. No Scrollcraft package, new plugin, or runtime dependency was installed.
+
 October 16 studio launch path: consulted the linked specification and architecture references plus current GitHub Education, Netlify and Google Workspace documentation. Reused local Node and Python/Pillow to curate the approved runtime and optimize copied images; no catalog skill, plugin or software was installed. The launch choice and verification limits are in [the studio launch decision](docs/studio-launch.md).
 
 October 16 student-domain update: Name.com recognized the owner's GitHub student eligibility through GitHub sign-in, and the owner registered `evzdigital.studio` using that offer. Name.com's processed invoice confirms a $0.00 first-year total, and the registrant contact is verified. The displayed renewal cost and remaining checks are in [the launch decision](docs/studio-launch.md#identity-and-domain); the October 13 unverified-offer note below is historical.

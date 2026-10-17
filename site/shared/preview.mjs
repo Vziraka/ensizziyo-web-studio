@@ -1,9 +1,21 @@
 export const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 export const escapeHTML=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const money=n=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(n);
-const reduced=matchMedia('(prefers-reduced-motion:reduce)');let paused=false;
-export const motion=()=>!paused&&!reduced.matches;
-export function setupPreview({studio=false}={}){if(studio){const button=document.createElement('button');button.className='motion-toggle';document.querySelector('.site-footer').append(button)}else{const footer=document.createElement('footer');footer.className='preview-footer';footer.innerHTML='<a href="/studio/work/">← Back to studio work</a><span>Interactive demonstration · Actions are simulated</span><button class="motion-toggle" aria-pressed="false">Pause motion</button>';document.body.append(footer)}function apply(){document.body.classList.toggle('motion-off',!motion());$('.motion-toggle').textContent=motion()?'Pause motion':'Enable motion';$('.motion-toggle').setAttribute('aria-pressed',String(!motion()));if(!motion())document.getAnimations().forEach(a=>{if(a.effect?.getComputedTiming().iterations===Infinity)a.cancel();else a.finish()});document.dispatchEvent(new CustomEvent('motionchange'));}$('.motion-toggle').onclick=()=>{paused=!paused;apply()};reduced.addEventListener('change',apply);apply();}
+const reduced=matchMedia('(prefers-reduced-motion:reduce)');
+export const motion=()=>!reduced.matches;
+export function setupPreview({studio=false}={}){
+  if(!studio){
+    const footer=document.createElement('footer');footer.className='preview-footer';
+    footer.innerHTML='<a href="/studio/work/">← Back to studio work</a><span>Interactive demonstration · Actions are simulated</span>';
+    document.body.append(footer);
+  }
+  function apply(){
+    document.body.classList.toggle('motion-off',!motion());
+    if(!motion())document.getAnimations().forEach(a=>{if(a.effect?.getComputedTiming().iterations===Infinity)a.cancel();else a.finish()});
+    document.dispatchEvent(new CustomEvent('motionchange'));
+  }
+  reduced.addEventListener('change',apply);apply();
+}
 export function focusHeading(selector='h1'){requestAnimationFrame(()=>{const el=$$(selector).find(e=>e.getClientRects().length);if(el){el.tabIndex=-1;el.focus({preventScroll:true})}})}
 export function openDialog(dialog,trigger=document.activeElement){dialog._origin=trigger;dialog.showModal();dialog.addEventListener('close',()=>dialog._origin?.isConnected&&dialog._origin.focus({preventScroll:true}),{once:true})}
 
