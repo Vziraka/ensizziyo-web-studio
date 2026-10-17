@@ -27,7 +27,7 @@ export function parseWorkerOutput(raw) {
     const value = JSON.parse(raw);
     if (value.is_error) throw Error('Worker reported an error');
     if (value.structured_output) return value.structured_output;
-    if (value.schema_version) return value;
+    if (value.schema_version || typeof value.verdict === 'string' && value.decision && typeof value.decision === 'object' && !Array.isArray(value.decision)) return value;
     if (value.result) return parse(value.result);
   } catch { /* A streaming response contains one JSON object per line. */ }
   const events = raw.split(/\r?\n/).flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } });

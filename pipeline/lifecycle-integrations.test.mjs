@@ -19,7 +19,7 @@ test('USD entry preserves cents exactly and refuses negative, ambiguous or over-
   assert.equal(centsFromDollars('1200.01'), 120001); assert.equal(centsFromDollars('0.29'), 29); assert.equal(centsFromDollars('600'), 60000);
   for (const invalid of ['-1', '1e3', '1,200', '1.005', 'NaN', 'Infinity']) assert.throws(() => centsFromDollars(invalid), /USD dollars/);
 });
-const aiConfig = { ...initialConfig, priority: 'idle', transcript_ai: { ...initialConfig.transcript_ai, enabled: true } };
+const aiConfig = { ...initialConfig, priority: 'idle', transcript_ai: { ...initialConfig.transcript_ai, enabled: true, author_model: 'gpt-6-luna', reviewer_model: 'gpt-6.1-sol' } };
 async function setup(t, config = aiConfig, connected = true) {
   const directory = await mkdtemp(join(tmpdir(), 'studio-life-integration-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const app = await StudioLifecycle.initialize({ directory, config, now: () => new Date(at) });
@@ -40,6 +40,27 @@ test('subscription author and independent reviewer bind exact evidence; restart 
   const restart = await StudioLifecycle.open({ directory, now: () => new Date('2026-10-19T16:00:00Z') });
   await assessTranscript(restart, id, 'call-1', { invoke: async () => { throw Error('Must not dispatch'); }, usage: allowance });
   assert.equal(Object.keys((await restart.snapshot()).ai_attempts).length, 2);
+});
+
+test('the installed Luna/Sol high pair can assess and review while the owner outcome stays pending', async t => {
+  const config = { ...aiConfig, transcript_ai: { ...aiConfig.transcript_ai, author_model: 'gpt-5.6-luna', reviewer_model: 'gpt-5.6-sol' } };
+  const { app } = await setup(t, config), models = [];
+  await assessTranscript(app, id, 'call-1', { usage: allowance, invoke: async options => {
+    models.push([options.model, options.effort]);
+    const field = options.model === 'gpt-5.6-luna' ? 'transcript_sha256' : 'proposal_sha256';
+    assert.equal(options.outputSchema.properties[field].const, field === 'transcript_sha256' ? hash(fixtureTranscript) : hash(fixtureProposal));
+    return options.model === 'gpt-5.6-luna' ? fixtureProposal : review(fixtureProposal);
+  } });
+  assert.deepEqual(models, [['gpt-5.6-luna', 'high'], ['gpt-5.6-sol', 'high']]);
+  assert.equal((await app.snapshot()).prospects[id].stage, 'Connected review');
+  assert.equal(Object.keys((await app.snapshot()).ai_attempts).length, 2);
+});
+
+test('an unapproved mixed model pair holds before allowance or inference', async t => {
+  const config = { ...aiConfig, transcript_ai: { ...aiConfig.transcript_ai, reviewer_model: 'gpt-5.6-sol' } };
+  const { app } = await setup(t, config);
+  await assert.rejects(assessTranscript(app, id, 'call-1', { usage: () => { throw Error('No allowance read'); }, invoke: () => { throw Error('No inference'); } }), /owner-selected/);
+  assert.equal(Object.keys((await app.snapshot()).ai_attempts).length, 0);
 });
 test('low or unknown allowance and website priority hold inference without consuming a call', async t => {
   const { app, directory } = await setup(t); let calls = 0;
