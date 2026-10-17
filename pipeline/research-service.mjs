@@ -8,7 +8,11 @@ import { check } from './lifecycle.mjs';
 import { syncResearchImports } from './production.mjs';
 import { publishLifecycle } from './lifecycle-sync.mjs';
 
-const compact = result => ({ status: result.status, campaign: result.campaign, counts: result.counts, calls_reserved: result.calls_reserved });
+const compact = result => {
+  const held = result.jobs?.filter(j => j.status === 'Held') ?? [];
+  return { status: result.status, campaign: result.campaign, counts: result.counts, calls_reserved: result.calls_reserved,
+    ...(held.length ? { reason: `${held.length} research job(s) held. ${held.map(j => `${j.job_id}: ${j.reason ?? 'Reconciliation required'}. ${j.next_action ?? 'Inspect the retained job before retrying.'}`).join(' ')}`.slice(0, 500) } : {}) };
+};
 
 export async function researchTick(app, { signal, run = runController, queueFactory = config => new GoogleQueue(config), monitorMs = 1000 } = {}) {
   check(Number.isInteger(monitorMs) && monitorMs >= 1 && monitorMs <= 5000, 'Bounded research control monitor required');
