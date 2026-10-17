@@ -316,6 +316,11 @@ export class StudioLifecycle {
   async dashboard() {
     this.config = await readJson(join(this.directory, 'lifecycle-config.json'));
     const state = await this.snapshot(), today = businessDate(this.now());
+    let researchPaused = !this.config.research_enabled, researchHold;
+    if (this.config.research?.source_directory) {
+      try { const control = await readJson(join(this.config.research.source_directory, 'research-control.json')); check(control.schema_version === 1 && typeof control.enabled === 'boolean', 'Unknown control'); researchPaused = !control.enabled || control.priority !== 'research'; }
+      catch { researchPaused = true; researchHold = 'Configured research control is unavailable; verify its pause/priority before running workers.'; }
+    }
     const real = Object.values(state.prospects).filter(r => !r.controlled);
     const contacted = real.filter(r => r.attempts.some(a => !a.simulated && businessDate(a.at) === today));
     const first = contacted.filter(r => businessDate(r.attempts.find(a => !a.simulated).at) === today).length;
@@ -323,14 +328,14 @@ export class StudioLifecycle {
       .map(a => ({ ...a, company_id: state.prospects[a.prospect_id].company_id, kind: a.payload.kind, due_at: a.payload.due_at,
         status: 'scheduled', stopped: state.prospects[a.prospect_id].restriction || !['Ready to contact', 'Contacting', 'Callback'].includes(state.prospects[a.prospect_id].stage) }));
     const queue = dailyCallQueue(candidates, this.now());
-    return { ...state, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode, research_paused: !this.config.research_enabled, outreach_paused: !this.config.outreach_enabled, priority: this.config.priority,
+    return { ...state, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode, research_paused: researchPaused, outreach_paused: !this.config.outreach_enabled, priority: this.config.priority,
       runtime_enabled: this.config.runtime?.enabled === true, final_review: this.config.mode === 'production' ? { fingerprint: (await import('./production.mjs')).releaseFingerprint(this.config), gates: (await import('./production.mjs')).productionGates(this.config), approved: this.config.release?.approved === true, verified: this.config.verified_summary ?? [] } : null,
       ai_enabled: this.config.transcript_ai.enabled, connector_writes_enabled: this.config.connector_writes_enabled, readiness: this.config.readiness },
       daily: { date: today, unique_businesses: contacted.length, new_businesses: first, repeat_businesses: contacted.length - first,
         actual_call_attempts: real.flatMap(r => r.attempts).filter(a => a.channel === 'call' && businessDate(a.at) === today && !a.simulated).length,
         actual_emails: real.flatMap(r => r.attempts).filter(a => a.channel === 'email' && businessDate(a.at) === today && !a.simulated).length,
         minimum: 50, shortfall: Math.max(0, 50 - contacted.length), due: queue },
-      exceptions: [...state.exceptions, ...(state.runtime?.last_error ? [{ id: 'runtime', reason: state.runtime.last_error }] : []), ...Object.entries(state.operations?.holds ?? {}).map(([id, reason]) => ({ id: `operations-${id}`, reason })), ...Object.values(state.actions).filter(a => ['Uncertain', 'Held'].includes(a.status)).map(a => ({ id: a.id, reason: a.hold })),
+      exceptions: [...state.exceptions, ...(researchHold ? [{ id: 'research-control', reason: researchHold }] : []), ...(state.runtime?.last_error ? [{ id: 'runtime', reason: state.runtime.last_error }] : []), ...Object.entries(state.operations?.holds ?? {}).map(([id, reason]) => ({ id: `operations-${id}`, reason })), ...Object.values(state.actions).filter(a => ['Uncertain', 'Held'].includes(a.status)).map(a => ({ id: a.id, reason: a.hold })),
         ...Object.values(state.prospects).filter(r => r.stage === 'Hold').map(r => ({ id: r.id, reason: r.next_check }))] };
   }
   async backup(output) {

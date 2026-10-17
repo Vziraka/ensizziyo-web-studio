@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { check, hash, initialConfig, businessDate, businessDaysBetween } from './lifecycle.mjs';
-import { readJson, saveJson } from './engine.mjs';
+import { readJson, saveJson, privateStateDirectory } from './engine.mjs';
 import { reviewFiles, readPrivateJson, validateDecision } from './prospects.mjs';
 import { validateEvidenceReview } from './evidence-review.mjs';
 import { ControlledOperations, controlledThread, verifiedContact } from './lifecycle-operations.mjs';
@@ -18,7 +18,7 @@ export const productionConfig = {
   native_email: { enabled: false, rounds: [] }, research: { auto_import: false, source_directory: '' }, release: { approved: false }, readiness_evidence: {}
 };
 export function releaseFingerprint(c) {
-  return hash({ run_id: c.run_id, campaign: c.campaign, sender: c.sender, calendar: c.calendar, apollo_owner: c.apollo?.user_id, readiness_evidence: c.readiness_evidence,
+  return hash({ run_id: c.run_id, campaign: c.campaign, sender: c.sender, calendar: c.calendar, apollo_owner: c.apollo?.user_id, research_source: c.research?.source_directory ?? '', readiness_evidence: c.readiness_evidence,
     native_email: c.native_email, google: c.google ? { spreadsheet_id: c.google.spreadsheet_id, sheet_id: c.google.sheet_id, sheet_title: c.google.sheet_title } : null });
 }
 export function productionGates(c) {
@@ -36,12 +36,14 @@ export function requireProductionRelease(c) {
   check(new Set(c.native_email.rounds.flatMap(r => [r.list_id, r.sequence_id, r.subject_field_id, r.body_field_id])).size === 8, 'Email rounds need separate immutable queues, sequences and fields');
 }
 export async function approveProductionRelease(app, fingerprint, approvalRef) {
-  const path = join(app.directory, 'lifecycle-config.json'), c = await readJson(path);
-  check(fingerprint === releaseFingerprint(c), 'Review the current production fingerprint first');
-  c.release = { approved: true, fingerprint, approval_ref: approvalRef, approved_at: app.now().toISOString() };
-  c.outreach_enabled = true; c.connector_writes_enabled = true;
-  requireProductionRelease(c); await saveJson(path, c); app.config = c;
-  return { released: true, research_enabled: false, fingerprint };
+  return app.change(async () => {
+    const path = join(app.directory, 'lifecycle-config.json'), c = await readJson(path);
+    check(fingerprint === releaseFingerprint(c), 'Review the current production fingerprint first');
+    c.release = { approved: true, fingerprint, approval_ref: approvalRef, approved_at: app.now().toISOString() };
+    c.outreach_enabled = true; c.connector_writes_enabled = true;
+    requireProductionRelease(c); await saveJson(path, c); app.config = c;
+    return { released: true, research_enabled: false, fingerprint };
+  });
 }
 export function contactKeys(r) {
   return [r.company_id && `company:${r.company_id}`, r.contact?.email && `email:${r.contact.email.toLowerCase()}`,
@@ -101,6 +103,28 @@ export async function queueMeeting(app, input) {
     if (state.operations?.cycle) state.operations.cycle.completed_bookings = state.operations.cycle.completed_bookings.filter(id => id !== key);
     return { queued: true, booking_id: key, booked: false };
   });
+}
+export async function pauseStudio(app) {
+  const c = await app.change(async () => {
+    const path = join(app.directory, 'lifecycle-config.json'), c = await readJson(path);
+    c.transcript_ai.enabled = false; c.connector_writes_enabled = false; c.outreach_enabled = false; c.research_enabled = false;
+    if (c.operations) c.operations.enabled = false;
+    await saveJson(path, c); app.config = c; return c;
+  });
+  if (c.research?.source_directory) {
+    try {
+      const directory = await privateStateDirectory(c.research.source_directory), controlPath = join(directory, 'research-control.json');
+      const control = await readJson(controlPath); check(control.schema_version === 1 && typeof control.enabled === 'boolean', 'Unknown research control');
+      control.enabled = false; await saveJson(controlPath, control);
+      check((await readJson(controlPath)).enabled === false, 'Research pause readback failed');
+      await app.change(state => { state.exceptions = state.exceptions.filter(e => e.id !== 'research-pause'); });
+    } catch {
+      const reason = 'Connector work and transcript AI paused; configured research-controller pause is unverified. Check its private control before assuming its worker stopped.';
+      await app.change(state => { state.exceptions = state.exceptions.filter(e => e.id !== 'research-pause'); state.exceptions.push({ id: 'research-pause', reason }); });
+      throw Error(reason);
+    }
+  }
+  return { paused: true };
 }
 export async function syncResearchImports(app) {
   const c = await readJson(join(app.directory, 'lifecycle-config.json'));

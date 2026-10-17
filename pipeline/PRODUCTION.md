@@ -78,7 +78,7 @@ It uses a hidden window, starts at owner logon, ignores overlaps and bounds rest
 
 An exclusive Windows named pipe serializes startup. Only its owner can archive locks with a confirmed dead process. Live/unknown locks hold. Saved receipts settle before new work; uncertain mutations follow authoritative readback and never replay. Failure does not erase stops/approvals/reservations. The console reports runtime state, last check, holds, projection and backup.
 
-**Pause all** or the CLI pause command disables connector work, outreach and inference while preserving reservations. To stop the host, use the startup script's Stop action and verify its owned process exited. Keep recovery archives/receipts. Restored backups disable execution and need rebinding/review. Never clear a hold just to make the screen green.
+**Pause all** or the CLI pause command disables connector work, outreach and inference while preserving reservations. When the production research directory is bound, the same action also disables and reads back its research-control file; the console reads research permission/priority from that same source. An unavailable control leaves an explicit exception and never reports that research stopped. To stop the host, use the startup script's Stop action and verify its owned process exited. Keep recovery archives/receipts. Restored backups disable execution and need rebinding/review. Never clear a hold just to make the screen green.
 
 ## Final release, upkeep and verification
 
