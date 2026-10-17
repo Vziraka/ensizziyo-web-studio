@@ -210,6 +210,27 @@ test('an unapproved native proof cannot publish an intent; a foreign recipient f
   const c = structuredClone(s.c); c.operations.native_proof.message.to = 'foreign@example.org'; await saveJson(join(s.directory, 'lifecycle-config.json'), c);
   await assert.rejects(operationsFor(s.app, 'foreign-proof').next(), /owner-controlled test inboxes/);
 });
+test('native handoff accepts the connector contact-list envelope and rejects failed or malformed lists', async t => {
+  for (const variant of ['success', 'failed', 'malformed']) {
+    const s = await nativeProof(t), respond = s.p.respond;
+    s.p.respond = r => {
+      const data = respond(r);
+      return r.operation === 'lists' ? { success: variant !== 'failed', data: variant === 'malformed' ? {} : data.labels } : data;
+    };
+    if (variant === 'success') await drive(s.app, s.p);
+    else {
+      const ops = operationsFor(s.app, 'list-receipt-test');
+      for (let count = 0; count < 10; count++) {
+        const request = await ops.next();
+        assert.ok(request.operation);
+        const settled = await ops.settle(request.key, { content: [{ type: 'text', text: JSON.stringify(s.p.respond(request)) }] });
+        assert.equal(settled.status, request.operation === 'lists' ? 'Failed' : 'Done');
+        if (request.operation === 'lists') { assert.equal((await ops.next()).operation, undefined); break; }
+      }
+    }
+    assert.equal(s.p.calls.filter(c => c.operation === 'intent').length, variant === 'success' ? 1 : 0, variant);
+  }
+});
 test('Pause all stops and reads back the configured research controller, preserving its priority and quota settings', async t => {
   const s = await setup(t, false), directory = await mkdtemp(join(tmpdir(), 'evz-pause-research-'));
   t.after(() => rm(directory, { recursive: true, force: true }));

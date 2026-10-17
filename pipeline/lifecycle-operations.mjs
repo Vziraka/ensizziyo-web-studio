@@ -334,7 +334,11 @@ export class ControlledOperations {
       const r = Object.values(state.operations?.requests ?? {}).find(r => r.key === key);
       check(r?.status === 'Pending' && r.session === this.session && names[r.operation], 'Unknown, stale or settled operations receipt');
       try {
-        const data = unwrapApollo(raw); check(data && typeof data === 'object' && !Array.isArray(data), 'Malformed provider receipt');
+        let data = unwrapApollo(raw); check(data && typeof data === 'object' && !Array.isArray(data), 'Malformed provider receipt');
+        if (r.operation === 'lists' && 'success' in data) {
+          check(data.success === true && Array.isArray(data.data), 'Malformed contact-list receipt');
+          data = { labels: data.data };
+        }
         // Gmail bodies are unnecessary for matching replies; keep only protocol headers in operating state.
         r.result = r.operation === 'thread' ? { id: data.id, messages: data.messages?.map(m => ({ id: m.id, thread_id: m.thread_id, internal_date: m.internal_date, label_ids: m.label_ids, payload: { headers: m.payload?.headers } })) } : data;
         r.status = 'Done'; r.receipt_sha256 = hash(raw); r.finished_at = this.app.now().toISOString();

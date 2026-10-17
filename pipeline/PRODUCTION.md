@@ -51,6 +51,8 @@ The separate NativeProofOperations lane rehearses this same native protocol with
 
 The connected metadata proof verified an app-server custom-field write/readback without a model turn. Apollo ignored both empty-string and null cleanup calls despite contact-shaped responses; the fixture was cleared through its UI and independently read back. Raw receipts and the reported provider issue stay private. Production never treats an update response alone as verified personalization.
 
+The contact-list connector returns `{ success: true, data: [...] }`; receipt settlement normalizes that envelope only for list reads. Failed/malformed list receipts remain failed. The controlled rehearsal initially held before intent publication on this shape; preserving its ledger allows a later normal cycle to retry the read without repeating a mutation.
+
 ## Booking, delivery and ownership
 
 A reviewed conversation and explicitly agreed slot/guest are required before queuing an invitation. The service checks current owner, fresh free/busy, weekdays 9–17 Eastern, 20-minute duration and 15-minute buffers. It creates one private event for the exact guest and reads it independently. Lost responses reconcile by exact search, never another create. Queued is not booked. Guest delivery, Meet provisioning and acceptance remain separate evidence.
