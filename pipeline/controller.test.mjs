@@ -14,6 +14,7 @@ import { promisify } from 'node:util';
 import { acquireLock } from './engine.mjs';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { watchJob } from './runner.mjs';
 
 const now = () => new Date('2026-10-15T12:00:00Z');
 const config = {
@@ -144,6 +145,29 @@ test('daily budgets persist across restarts and resume from a checkpoint without
   const result = await run(f, { now: tomorrow, readUsage: async () => ({ ...(await usage()), checked_at: tomorrow().toISOString() }), invoke: worker(async o => { phases.push(o.phase); return o.phase === 'review' ? acceptedReview(o) : assessment(o); }) });
   assert.equal(result.jobs[0].status, 'Complete'); assert.deepEqual(phases, ['assess', 'review']);
   assert.deepEqual(await readFile(join(f.directory, 'controller-fixture/checkpoint.json')), before);
+});
+
+test('a captured packet can wait across UTC midnight before its first pickup without refreshing evidence dates', async () => {
+  const f = await fixture();
+  const tomorrow = () => new Date('2026-10-16T12:00:00Z');
+  const result = await run(f, { now: tomorrow, readUsage: async () => ({ ...(await usage()), checked_at: tomorrow().toISOString() }) });
+  assert.equal(result.jobs[0].status, 'Complete');
+  assert.equal(result.jobs[0].decision, 'Research-qualified');
+  assert.equal(result.calls_reserved, 3);
+  const job = await saved(f, 'controller-fixture/job.json');
+  const snapshots = await saved(f, 'controller-fixture/sources.json');
+  assert.equal(job.as_of, '2026-10-15');
+  assert.equal(snapshots.sources[0].checked_at, '2026-10-15');
+  assert.equal(snapshots.sources[0].fetched_at, now().toISOString());
+  assert.equal(snapshots.sources[0].reviewed_context.inspected_at, now().toISOString());
+});
+
+test('the named intake listener preserves the captured date when its first pickup is next day', async () => {
+  const f = await fixture();
+  await watchJob({ directory: f.directory, queue: f.queue, jobId: f.config.job_ids[0], intakeResearch: true,
+    now: () => new Date('2026-10-16T12:00:00Z'), invoke: worker(assessment) });
+  assert.equal((await saved(f, 'controller-fixture/job.json')).as_of, '2026-10-15');
+  assert.equal((await saved(f, 'controller-fixture/state.json')).status, 'Complete');
 });
 
 test('website priority interrupts active assessment; a later run resumes without charging a recovery', async () => {

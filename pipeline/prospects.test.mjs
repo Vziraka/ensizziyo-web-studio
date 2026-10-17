@@ -54,6 +54,38 @@ test('discovery intake saves reviewed evidence once and publishes one verified R
   assert.equal(fake.writes.length, 1);
 });
 
+test('retained version-3 captures use the qualification age bound without refreshing source dates', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'studio-retained-intake-')), fake = sheet();
+  const retained = structuredClone(packet); retained.job.research_version = 3;
+  await intakeCandidate({ directory, queue: fake.queue, packet: retained, now: () => new Date('2026-10-28T00:00:00Z') });
+  const source = JSON.parse(await readFile(join(directory, packet.job.id, 'sources.json'))).sources[0];
+  assert.equal(source.checked_at, '2026-10-14');
+  assert.equal(source.fetched_at, '2026-10-14T13:00:00Z');
+  assert.equal(fake.writes.length, 1);
+});
+
+test('future, over-age and legacy queued packets stay blocked without Google writes', async () => {
+  for (const [version, at, date] of [[3, '2026-10-13T12:00:00Z'], [3, '2026-10-28T00:00:01Z'], [2, '2026-10-15T12:00:00Z'], [3, '2026-12-01T12:00:00Z', '2026-11-31']]) {
+    const directory = await mkdtemp(join(tmpdir(), 'studio-stale-intake-')), fake = sheet();
+    const stale = structuredClone(packet); stale.job.research_version = version;
+    if (date) { stale.job.as_of = date; stale.captures.sources[0].checked_at = date; stale.captures.sources[0].fetched_at = `${date}T13:00:00Z`; }
+    await assert.rejects(intakeCandidate({ directory, queue: fake.queue, packet: stale, now: () => new Date(at) }), /date.*stale|stale.*date/i);
+    assert.equal(fake.writes.length, 0);
+    await assert.rejects(readFile(join(directory, packet.job.id, 'job.json')), { code: 'ENOENT' });
+  }
+});
+
+test('a deferred HTTP capture still requires a new dated job before any retrieval or Google write', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'studio-stale-http-')), fake = sheet();
+  const mixed = structuredClone(packet); mixed.job.research_version = 3;
+  mixed.job.website = 'https://example.com/';
+  mixed.job.seed_urls.push('https://example.com/menu');
+  mixed.captures.http_urls = ['https://example.com/menu'];
+  await assert.rejects(intakeCandidate({ directory, queue: fake.queue, packet: mixed, now: () => new Date('2026-10-15T12:00:00Z'),
+    collectSources: async () => assert.fail('Cannot backdate a new HTTP retrieval') }), /stale|HTTP collection requires today/);
+  assert.equal(fake.writes.length, 0);
+});
+
 async function assessed() {
   const directory = await mkdtemp(join(tmpdir(), 'studio-prospect-')), fake = sheet();
   await intakeCandidate({ directory, queue: fake.queue, packet, now });

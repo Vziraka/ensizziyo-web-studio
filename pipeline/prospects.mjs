@@ -53,7 +53,6 @@ export async function intakeCandidate({ directory, queue, packet, now = () => ne
   const p = packet.job;
   const job = { id: p?.id, business_name: p?.business_name, website: p?.website, seed_urls: p?.seed_urls, purpose: prospectPurpose, as_of: p?.as_of, research_version: p?.research_version };
   validateJob(job);
-  if (job.as_of !== now().toISOString().slice(0, 10)) throw Error('Discovery date is stale; prepare a new dated job');
   const captures = packet.captures;
   text(captures?.reviewed_by, 'capture reviewer', 200);
   if (!Array.isArray(captures.sources)) throw Error('Reviewed captures are required');
@@ -67,6 +66,9 @@ export async function intakeCandidate({ directory, queue, packet, now = () => ne
   const host = url => new URL(url).hostname.replace(/^www\./, '').toLowerCase();
   if (!Array.isArray(httpUrls) || new Set(httpUrls).size !== httpUrls.length || httpUrls.length > 4 || httpUrls.some(url => job.research_version !== 3 || !job.website || !job.seed_urls.includes(url) || host(url) !== host(job.website) || sources.some(s => s.url === url))) throw Error('HTTP collection requires distinct approved website-host URLs without overlapping supplied captures');
   if (sources.length) validateSnapshots({ sources, failures: captures.failures ?? [] }, job);
+  const intakeTime = now(), capturedDay = new Date(`${job.as_of}T00:00:00Z`), age = intakeTime - capturedDay;
+  const retainedCaptures = job.research_version === 3 && sources.length > 0 && !httpUrls.length && age >= 0 && age <= 14 * 86_400_000 && capturedDay.toISOString().slice(0, 10) === job.as_of;
+  if (job.as_of !== intakeTime.toISOString().slice(0, 10) && !retainedCaptures) throw Error('Discovery date is stale or future; prepare a new dated job. Only retained version-3 captures may wait up to 14 days; HTTP collection requires today.');
   directory = await privateStateDirectory(directory);
   await mkdir(directory, { recursive: true });
   const release = await acquireLock(directory);
