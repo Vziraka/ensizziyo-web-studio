@@ -12,6 +12,6 @@ export function researchCallPrep(f, decision, reviewedAt) {
     existing_alternatives: opportunity.existing_alternatives,
     hypothesis: opportunity.proposed_solution, possible_effect: opportunity.possible_effect,
     unknowns: [...new Set([...f.report.unknowns, opportunity.validation_needed])],
-    opening: `Hi, I’m calling from EVZ Digital. ${observations[0]?.fact.length <= 220 ? `I noticed: ${observations[0].fact} ` : `I was looking at ${f.job.business_name}. `}I had an idea I wanted to check with you. Have you got a moment for a quick question?`,
+    opening: `Hi, I’m calling from EVZ Digital. I came across ${f.job.business_name} and had one idea I wanted to check with you. Have you got a moment for a quick question?`,
     questions: [opportunity.owner_question, 'Which tools, links or messages already handle that step, and what works well?', 'What would you most like to make easier for customers or for yourself?'] };
 }
