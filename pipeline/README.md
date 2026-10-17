@@ -1,5 +1,7 @@
 # Controlled research proof
 
+The current [production preparation and local service](PRODUCTION.md) separates production from fictional state, imports independently reviewed research, and runs deterministic connected-tool checks without this chat relaying each call. The business sender, final native email route/rehearsal, prospect supply and measured capacity remain launch holds; no real business has been contacted. Historical proof commands below remain available for explicitly bounded work.
+
 The [private lifecycle workspace](LIFECYCLE.md) adds call/transcript review, commercial evidence, delivery and support. Its runbook separates connected checks, simulated decisions and remaining launch gates. Real research/outreach remain paused.
 
 One Windows Node.js process connects the **Research proof** tab of the existing tracker to subscription-authenticated Cursor, Claude and Codex CLIs. It supports named on-demand runs and a bounded listener that automatically picks up one specified new job from Sheets. It does not install a recurring schedule, contact businesses or connect to Apollo.

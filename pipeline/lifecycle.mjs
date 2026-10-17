@@ -87,7 +87,8 @@ export class StudioLifecycle {
     check(config.schema_version === 1 && ['controlled', 'production'].includes(config.mode) && key(config.run_id), 'Invalid lifecycle configuration');
     check(config.timezone === 'America/New_York' && config.daily_target === 50, 'Use the agreed campaign timezone and minimum');
     check(config.research_enabled === false, 'Real research remains paused in this build');
-    check(config.outreach_enabled === false, 'Production activation requires the separate final readiness review');
+    if (config.mode === 'controlled') check(config.outreach_enabled === false, 'Production activation requires the separate final readiness review');
+    else if (config.outreach_enabled || config.connector_writes_enabled) { const { requireProductionRelease } = await import('./production.mjs'); requireProductionRelease(config); }
     app.config = config;
     await app.change(state => { check(state.run_id === config.run_id && state.mode === config.mode, 'State belongs to a different run or mode'); });
     return app;
@@ -112,6 +113,7 @@ export class StudioLifecycle {
   }
   async snapshot() { return readJson(join(this.directory, 'lifecycle-state.json')); }
   async apply(event, { actor = 'owner', expectedRevision } = {}) {
+    this.config = await readJson(join(this.directory, 'lifecycle-config.json'));
     check(key(event?.id) && key(event.prospect_id) && text(event.type, 80) && date(event.at), 'Event needs stable IDs and an explicit timestamp');
     check(Date.parse(event.at) <= +this.now() + 60_000, 'An event cannot claim a future action');
     return this.change(state => {
@@ -123,16 +125,17 @@ export class StudioLifecycle {
       let r = state.prospects[event.prospect_id];
       state.updated_at = this.now().toISOString();
       if (event.type === 'prospect_imported') {
-        owner(actor);
+        if (this.config.mode === 'production') check(actor === 'research-import', 'Production prospects must enter through the retained independent research review'); else owner(actor);
         check(!r && !Object.values(state.prospects).some(x => x.company_id === data.company_id), 'Prospect/company already exists');
         check(key(data.company_id) && text(data.name, 250) && text(data.idea, 1600) && text(data.category, 150), 'Identity, category and tailored idea required');
-        check(typeof data.controlled === 'boolean' && (this.config.mode !== 'controlled' || data.controlled), 'Controlled mode accepts fictional records only');
+        check(typeof data.controlled === 'boolean' && data.controlled === (this.config.mode === 'controlled'), 'Controlled mode accepts fictional records only; production records need a separate workspace');
         check(!data.controlled || data.contact?.email?.endsWith('@example.invalid') && !data.contact?.phone, 'Fictional records must use .invalid email and no dialable phone');
         check(data.qualification?.verdict === 'Research-qualified' && data.qualification.independent_review === 'Accepted' &&
           date(data.qualification.checked_at) && /^[a-f0-9]{64}$/.test(data.qualification.report_sha256 ?? '') &&
           /^[a-f0-9]{64}$/.test(data.qualification.review_sha256 ?? '') && text(data.qualification.evidence_ref), 'Accepted source-backed research and review references required');
         check(data.controlled || /food|beverage|bakery|café|cafe/i.test(data.category), 'First campaign is food and beverages');
         check(data.controlled || data.contact?.verified === true && date(data.contact.checked_at) && text(data.contact.source), 'Public contact ownership must be verified');
+        if (!data.controlled) check(!Object.values(state.prospects).some(x => x.contact?.email?.toLowerCase() === data.contact.email?.toLowerCase() || x.contact?.phone && x.contact.phone.replace(/\D/g, '') === data.contact.phone?.replace(/\D/g, '')), 'Duplicate contact identity already exists; preserve its restrictions');
         r = state.prospects[event.prospect_id] = { ...data, id: event.prospect_id, stage: 'Ready to contact', cold_paused: false,
           attempts: [], calls: {}, transcripts: {}, proposals: {}, approved_calls: {}, payments: [], invoices: [], materials: [], tasks: [], revisions: [], tickets: [] };
         request(state, r, 'call_task', { due_at: event.at, kind: 'new' }, eid);
@@ -142,6 +145,7 @@ export class StudioLifecycle {
         switch (event.type) {
           case 'call_logged': {
             owner(actor); check(key(data.call_id) && !r.calls[data.call_id] && [...coldOutcomes, 'connected', 'callback', 'declined', 'do_not_contact', 'wrong_contact', 'skipped'].includes(data.outcome), 'Explicit unique call outcome required');
+            check(r.controlled || this.config.outreach_enabled === true && this.config.release?.approved === true, 'Real calling remains paused pending final release');
             check(data.simulated === r.controlled, 'Simulated and actual calls cannot be mixed');
             check(date(data.performed_at) && Date.parse(data.performed_at) <= Date.parse(event.at) && (!r.attempts.length || Date.parse(data.performed_at) >= Date.parse(r.attempts.at(-1).at)), 'Call time must be performed, ordered and dated');
             if (data.outcome !== 'skipped') {
@@ -236,7 +240,7 @@ export class StudioLifecycle {
               Date.parse(data.end) > Date.parse(data.start) && data.timezone === 'America/New_York', 'Record an exact owner-verified calendar event for this conversation');
             r.meeting = { ...data, reference: safeReference(data.reference), verified_at: event.at }; break;
           case 'meeting_verified':
-            check(actor === 'provider' && r.controlled && key(data.event_id) && date(data.start) && date(data.end) && Date.parse(data.end) > Date.parse(data.start) && data.timezone === 'America/New_York', 'Exact controlled provider booking evidence required');
+            check(actor === 'provider' && key(data.event_id) && date(data.start) && date(data.end) && Date.parse(data.end) > Date.parse(data.start) && data.timezone === 'America/New_York', 'Exact provider booking evidence required');
             check(Object.values(state.operations?.bookings ?? {}).some(b => b.id === data.event_id && b.verified && b.start === data.start && b.end === data.end), 'Booking must pass the controller readback boundary');
             r.meeting = { ...data, reference: safeReference(data.reference), verified_at: event.at, current_status: 'Verified' }; break;
           case 'preview_recorded':
@@ -319,13 +323,14 @@ export class StudioLifecycle {
       .map(a => ({ ...a, company_id: state.prospects[a.prospect_id].company_id, kind: a.payload.kind, due_at: a.payload.due_at,
         status: 'scheduled', stopped: state.prospects[a.prospect_id].restriction || !['Ready to contact', 'Contacting', 'Callback'].includes(state.prospects[a.prospect_id].stage) }));
     const queue = dailyCallQueue(candidates, this.now());
-    return { ...state, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode, research_paused: true, outreach_paused: true, priority: this.config.priority,
+    return { ...state, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode, research_paused: !this.config.research_enabled, outreach_paused: !this.config.outreach_enabled, priority: this.config.priority,
+      runtime_enabled: this.config.runtime?.enabled === true, final_review: this.config.mode === 'production' ? { fingerprint: (await import('./production.mjs')).releaseFingerprint(this.config), gates: (await import('./production.mjs')).productionGates(this.config), approved: this.config.release?.approved === true, verified: this.config.verified_summary ?? [] } : null,
       ai_enabled: this.config.transcript_ai.enabled, connector_writes_enabled: this.config.connector_writes_enabled, readiness: this.config.readiness },
       daily: { date: today, unique_businesses: contacted.length, new_businesses: first, repeat_businesses: contacted.length - first,
         actual_call_attempts: real.flatMap(r => r.attempts).filter(a => a.channel === 'call' && businessDate(a.at) === today && !a.simulated).length,
         actual_emails: real.flatMap(r => r.attempts).filter(a => a.channel === 'email' && businessDate(a.at) === today && !a.simulated).length,
         minimum: 50, shortfall: Math.max(0, 50 - contacted.length), due: queue },
-      exceptions: [...state.exceptions, ...Object.entries(state.operations?.holds ?? {}).map(([id, reason]) => ({ id: `operations-${id}`, reason })), ...Object.values(state.actions).filter(a => ['Uncertain', 'Held'].includes(a.status)).map(a => ({ id: a.id, reason: a.hold })),
+      exceptions: [...state.exceptions, ...(state.runtime?.last_error ? [{ id: 'runtime', reason: state.runtime.last_error }] : []), ...Object.entries(state.operations?.holds ?? {}).map(([id, reason]) => ({ id: `operations-${id}`, reason })), ...Object.values(state.actions).filter(a => ['Uncertain', 'Held'].includes(a.status)).map(a => ({ id: a.id, reason: a.hold })),
         ...Object.values(state.prospects).filter(r => r.stage === 'Hold').map(r => ({ id: r.id, reason: r.next_check }))] };
   }
   async backup(output) {
@@ -348,8 +353,9 @@ export class StudioLifecycle {
     check(!Object.values(state.ai_attempts).some(a => a.status === 'Running'), 'Cannot restore running worker state');
     destination = await privateStateDirectory(destination); await mkdir(destination, { mode: 0o700 });
     for (const a of Object.values(state.actions)) if (a.status === 'Pending') { a.status = 'Uncertain'; a.hold = 'Restored pending mutation; read back provider, never resend'; }
-    for (const r of Object.values(state.operations?.requests ?? {})) if (r.status === 'Pending' && ['draft', 'send', 'stop', 'booking_create', 'task_create', 'task_skip'].includes(r.operation)) r.status = 'Uncertain';
+    for (const r of Object.values(state.operations?.requests ?? {})) if (r.status === 'Pending' && ['draft', 'send', 'stop', 'booking_create', 'task_create', 'task_skip', 'contact_create', 'personalize', 'intent'].includes(r.operation)) r.status = 'Uncertain';
     if (state.operations) delete state.operations.lease;
+    delete state.runtime;
     await writeFile(join(destination, 'lifecycle-config.json'), JSON.stringify({ ...initialConfig, run_id: state.run_id, mode: state.mode }), { flag: 'wx', mode: 0o600 });
     await writeFile(join(destination, 'lifecycle-state.json'), JSON.stringify(state), { flag: 'wx', mode: 0o600 });
     return { execution: 'disabled', prospects: Object.keys(state.prospects).length };

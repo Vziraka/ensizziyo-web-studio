@@ -6,16 +6,19 @@ import { readJson } from './engine.mjs';
 import { validateBookingSlot } from './lifecycle-documents.mjs';
 import { controlledTaskIdentity } from './lifecycle-bridge.mjs';
 
-const names = {
+export const operationNames = {
   apollo_profile: 'apollo_io_apollo_users_api_profile', mailboxes: 'apollo_io_apollo_email_accounts_index', contact: 'apollo_io_apollo_contacts_search',
   draft: 'apollo_io_apollo_emailer_messages_create', send: 'apollo_io_apollo_emailer_messages_send_now', delivery: 'apollo_io_apollo_emailer_messages_email_send_status',
   sequence: 'apollo_io_apollo_emailer_campaigns_search', stop: 'apollo_io_apollo_emailer_campaigns_remove_or_stop_contact_ids',
   task_create: 'apollo_io_apollo_tasks_create', task_search: 'apollo_io_apollo_tasks_search', task_read: 'apollo_io_apollo_tasks_show', task_skip: 'apollo_io_apollo_tasks_skip',
   gmail_profile: 'gmail_get_profile', gmail_search: 'gmail_search_email_ids', thread: 'gmail_read_email_thread',
   calendar_profile: 'google_calendar_get_profile', busy: 'google_calendar_get_availability', booking_create: 'google_calendar_create_event',
-  booking_search: 'google_calendar_search_events', booking_read: 'google_calendar_read_event'
+  booking_search: 'google_calendar_search_events', booking_read: 'google_calendar_read_event',
+  contact_create: 'apollo_io_apollo_contacts_create', personalize: 'apollo_io_apollo_contacts_update',
+  fields: 'apollo_io_apollo_fields_index', lists: 'apollo_io_apollo_labels_index', intent: 'apollo_io_apollo_labels_add_entity_ids_to_label_names'
 };
-const mutations = new Set(['draft', 'send', 'stop', 'booking_create', 'task_create', 'task_skip']);
+export const mutations = new Set(['draft', 'send', 'stop', 'booking_create', 'task_create', 'task_skip', 'contact_create', 'personalize', 'intent']);
+const names = operationNames;
 const identifier = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value);
 const explicitDate = value => typeof value === 'string' && /(?:Z|[+-]\d\d:\d\d)$/.test(value) && Number.isFinite(Date.parse(value));
 const header = (message, name) => {
@@ -43,36 +46,48 @@ export function controlledThread(thread, expected, now) {
     address(header(m, 'From')) === expected.from.toLowerCase() && address(header(m, 'To')) === expected.to.toLowerCase() && header(m, 'Subject') === expected.subject);
   check(original && header(original, 'Message-ID') && Number(original.internal_date) >= Date.parse(expected.sent_after) &&
     Number(original.internal_date) <= Date.parse(expected.sent_before), 'Original email differs from the bound owner-only test');
+  const sentIds = thread.messages.filter(m => m.label_ids?.includes('SENT') && address(header(m, 'From')) === expected.from.toLowerCase() && address(header(m, 'To')) === expected.to.toLowerCase()).map(m => header(m, 'Message-ID')).filter(Boolean);
   const replies = thread.messages.filter(m => m.id !== original.id && m.thread_id === thread.id &&
     address(header(m, 'From')) === expected.to.toLowerCase() && address(header(m, 'To')) === expected.from.toLowerCase() &&
-    header(m, 'Subject').replace(/^re:\s*/i, '') === expected.subject && header(m, 'In-Reply-To') === header(original, 'Message-ID'));
+    (sentIds.includes(header(m, 'In-Reply-To')) || header(m, 'References').includes(header(original, 'Message-ID'))));
+  const uncertainIncoming = thread.messages.filter(m => m.id !== original.id && m.thread_id === thread.id && !m.label_ids?.includes('SENT') &&
+    Number(m.internal_date) >= Number(original.internal_date) && address(header(m, 'From')) !== expected.from.toLowerCase() && !replies.includes(m));
+  check(!uncertainIncoming.length, 'Unverified incoming message in the bound thread; hold this route for review');
   for (const reply of replies) check(identifier(reply.id) && Number(reply.internal_date) >= Number(original.internal_date) && Number(reply.internal_date) <= +now, 'Invalid reply chronology');
   // Bodies and quoted instructions never select tools or authorize actions. Every matching reply pauses cold contact.
   return replies.map(m => ({ id: m.id, kind: header(m, 'Auto-Submitted') && header(m, 'Auto-Submitted').toLowerCase() !== 'no' ? 'out_of_office' : 'reply', at: new Date(Number(m.internal_date)).toISOString() }));
 }
 
-function contact(data, binding, owner) {
+export function verifiedContact(data, binding, owner, real = false) {
   check(data.contacts?.length === 1 && !data.pagination?.next_page && (!data.pagination || data.pagination.total_pages <= 1), 'Controlled contact search is missing or ambiguous');
   const c = data.contacts[0];
   check(c.id === binding.contact_id && c.account_id === binding.account_id && c.owner_id === owner && c.email === binding.email &&
-    c.email.endsWith('@example.invalid') && Array.isArray(c.phone_numbers) && c.phone_numbers.length === 0, 'Controlled contact ownership or no-phone scope changed');
+    (real ? !c.email.endsWith('.invalid') : c.email.endsWith('@example.invalid') && Array.isArray(c.phone_numbers) && c.phone_numbers.length === 0), 'Contact ownership or scope changed');
+  if (real && binding.phone) {
+    const digits = value => String(value ?? '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+    check([c.corporate_phone, c.direct_phone, ...(c.phone_numbers ?? []).map(p => p.raw_number ?? p.sanitized_number ?? p.number)].some(p => digits(p) === digits(binding.phone)), 'Apollo phone differs from the verified public business phone');
+  }
+  if (binding.require_no_phone) check(Array.isArray(c.phone_numbers) && c.phone_numbers.length === 0 && (c.name ?? [c.first_name, c.last_name].filter(Boolean).join(' ')) === binding.controlled_name, 'Native proof must remain an exact named no-phone fictional contact');
   return c;
 }
-function bookingIdentity(data, expected, owner) {
+const contact = verifiedContact;
+export function bookingIdentity(data, expected, owner) {
   const e = eventData(data), start = typeof e.start === 'string' ? e.start : e.start?.dateTime ?? e.start_time, end = typeof e.end === 'string' ? e.end : e.end?.dateTime ?? e.end_time;
   const normalized = text => typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : '';
   check(identifier(e.id) && (e.summary ?? e.title) === expected.title && normalized(e.description) === normalized(expected.description) &&
     Date.parse(start) === Date.parse(expected.start) && Date.parse(end) === Date.parse(expected.end) && e.status === 'confirmed' &&
     e.visibility === 'private' && e.transparency === 'opaque' && e.reminders?.use_default === false && !e.reminders.overrides?.length &&
-    (!e.attendees || e.attendees.length <= 1 && e.attendees.every(a => a.email === owner && a.is_self === true)) && e.organizer?.email === owner && e.organizer.is_self !== false && !e.recurrence?.length,
+    (expected.attendee_email ? e.attendees?.filter(a => a.email !== owner).length === 1 && e.attendees.some(a => a.email === expected.attendee_email) : !e.attendees || e.attendees.length <= 1 && e.attendees.every(a => a.email === owner && a.is_self === true)) && e.organizer?.email === owner && e.organizer.is_self !== false && !e.recurrence?.length,
   'Calendar event differs from the exact private, owner-only booking');
   return { id: e.id, start: expected.start, end: expected.end, timezone: 'America/New_York', reference: e.htmlLink ?? e.url ?? `calendar:${e.id}`, status: e.status };
 }
 
 export class ControlledOperations {
   constructor(app, session) { check(identifier(session), 'Fresh operations session required'); this.app = app; this.session = session; }
+  validateScope(state, c) { check(c.operations.allowlist.every(id => state.prospects[id]?.controlled === true), 'Allowlist contains a missing or real business'); }
   async settings() {
     const c = await readJson(join(this.app.directory, 'lifecycle-config.json')), o = c.operations;
+    check(!o?.native_proof, 'Use the explicitly scoped native proof controller');
     check(c.mode === 'controlled' && c.research_enabled === false && c.outreach_enabled === false, 'Only controlled operations are allowed; research and real outreach stay paused');
     check(c.readiness.owner_design_approved === true, 'Owner design approval is required');
     check(o && typeof o.enabled === 'boolean' && o.interval_minutes === 5 && Array.isArray(o.allowlist) && o.allowlist.length <= 12 && new Set(o.allowlist).size === o.allowlist.length, 'Explicit bounded controlled scope required');
@@ -85,6 +100,7 @@ export class ControlledOperations {
     }
     for (const b of Object.values(o.bookings ?? {})) check(o.allowlist.includes(b.prospect_id) && b.title?.startsWith('STUDIO TEST ') &&
       b.description?.startsWith('CONTROLLED TEST ') && b.description.length < 1000 && explicitDate(b.start) && explicitDate(b.end), 'Bounded fictional booking required');
+    for (const b of Object.values(o.bookings ?? {})) if (b.attendee_email) check(o.recipients.includes(b.attendee_email) && b.guest_invitation_approved === true && b.approval_ref?.length > 5, 'A controlled guest invitation needs exact owner-inbox approval');
     return c;
   }
   async next() {
@@ -92,7 +108,7 @@ export class ControlledOperations {
     await this.effects();
     return this.app.change(state => {
       const now = this.app.now(), o = state.operations ??= { requests: {}, effects: {}, bookings: {}, email: {}, holds: {}, replies: [] };
-      check(c.operations.allowlist.every(id => state.prospects[id]?.controlled === true), 'Allowlist contains a missing or real business');
+      this.validateScope(state, c);
       if (o.lease && o.lease.session !== this.session && Date.parse(o.lease.until) > +now) return { status: 'Busy', next_at: o.lease.until };
       o.lease = { session: this.session, until: new Date(+now + 90_000).toISOString() };
       if (o.cycle?.completed_at && +now < Date.parse(o.cycle.started_at) + 300_000) { delete o.lease; return { status: 'Waiting', next_at: new Date(Date.parse(o.cycle.started_at) + 300_000).toISOString() }; }
@@ -114,7 +130,7 @@ export class ControlledOperations {
         delete o.holds.connection; value = undefined;
         if (step.done) {
           cycle.completed_at = now.toISOString(); cycle.completed_cycles++; delete o.lease;
-          return { status: 'Complete', completed_cycles: cycle.completed_cycles, ...notification(o, now, state.actions), research: 'paused', real_outreach: 0 };
+          return { status: 'Complete', completed_cycles: cycle.completed_cycles, ...notification(o, now, state.actions), research: 'paused', real_outreach: Object.values(state.prospects).filter(r => !r.controlled).reduce((n, r) => n + r.attempts.length, 0) };
         }
         const request = step.value, logical = mutations.has(request.operation) ? request.logical : `${cycle.read_epoch}-${this.session}-${request.logical}`;
         const saved = o.requests[logical];
@@ -183,38 +199,7 @@ export class ControlledOperations {
             throw Error('Sequence stop requested; verify at the next bounded cycle');
           }
         }
-        for (const a of Object.values(state.actions).filter(a => a.prospect_id === id && ['call_task', 'callback_task'].includes(a.type) &&
-          (a.status !== 'Cancelled' || a.provider_task && a.cancel_requested))) {
-          if (!binding || !['Queued', 'Pending', 'Uncertain', 'Verified'].includes(a.status)) continue;
-          const createLogical = `${a.id}-task-create`, prior = o.requests[createLogical];
-          if (!a.provider_task && !prior && (record.cold_paused || record.restriction)) { a.status = 'Cancelled'; continue; }
-          const found = yield request(`${a.id}-contact`, 'contact', { q_keywords: binding.email, per_page: 10, page: 1 }); contact(found, binding, c.apollo.user_id);
-          a.request ??= { contact_id: binding.contact_id, account_id: binding.account_id, user_id: c.apollo.user_id, type: 'call', status: 'scheduled', priority: a.type === 'callback_task' ? 'high' : 'low',
-            due_at: new Date(Math.floor(Date.parse(a.payload.due_at) / 1000) * 1000).toISOString(), title: `STUDIO TEST ${c.run_id} ${a.id}`,
-            note: 'CONTROLLED TEST — fictional follow-up task. No actual call; do not dial. A reply/stop cancels this task.' };
-          if (!a.provider_task && prior && prior.status !== 'Done') {
-            const candidates = yield request(`${a.id}-task-search`, 'task_search', { contact_id: binding.contact_id, user_id: c.apollo.user_id, q_keywords: a.request.title, per_page: 10, page: 1, task_status: 'scheduled' });
-            check(!candidates.failed && candidates.tasks?.length === 1 && (!candidates.pagination || candidates.pagination.total_pages <= 1), 'Uncertain call task is not uniquely reconciled; never recreate');
-            const candidate = candidates.tasks[0]; check((candidate.contact_id ?? candidate.contact?.id) === binding.contact_id, 'Call task candidate belongs to another contact');
-            a.provider_task = { id: candidate.id, user_id: c.apollo.user_id, account_id: binding.account_id };
-          }
-          if (!a.provider_task) {
-            const created = yield request(createLogical, 'task_create', a.request); check(!created.failed, 'Call task creation failed; reconcile without replay');
-            a.provider_task = controlledTaskIdentity(created.task ?? created, a.request);
-          }
-          let detail = yield request(`${a.id}-task-read`, 'task_read', { id: a.provider_task.id }); check(!detail.failed, 'Controlled call task readback failed'); detail = detail.task ?? detail;
-          check(detail.id === a.provider_task.id && (detail.contact_id ?? detail.contact?.id) === binding.contact_id &&
-            (!Object.hasOwn(detail, 'user_id') || detail.user_id === c.apollo.user_id) && !detail.emailer_campaign_id && !detail.sequence_id, 'Controlled call task association changed');
-          if (detail.status === 'skipped' && a.cancel_requested) { retain(`${a.id}-task-read`); a.status = 'Cancelled'; a.cancellation = 'Verified skipped at Apollo'; a.cancel_requested = false; continue; }
-          a.provider_task = controlledTaskIdentity(detail, a.request, a.provider_task, true); a.status = 'Verified';
-          if (!a.verified_at) { retain(`${a.id}-task-read`); a.verified_at = now.toISOString(); }
-          if (a.cancel_requested || record.cold_paused || record.restriction) {
-            a.cancel_requested = true;
-            const skipKey = `${a.id}-task-skip`;
-            if (!o.requests[skipKey]) yield request(skipKey, 'task_skip', { id: detail.id, note: 'Controlled reply/outcome verified; cancel this fictional call task. No actual call placed.' });
-            throw Error('Controlled call cancellation awaits skipped readback; never replay the skip');
-          }
-        }
+        yield* this.tasks(state, c, id, binding, record, request, retain);
         for (const [actionId, m] of Object.entries(c.operations.emails ?? {})) {
           const a = state.actions[actionId]; if (a?.prospect_id !== id) continue;
           const e = o.email[actionId] ??= { status: 'Awaiting approval' };
@@ -262,6 +247,47 @@ export class ControlledOperations {
       } catch (error) { o.holds[id] = error.message; }
       o.cycle.completed_records.push(id);
     }
+    yield* this.bookings(state, c, request, retain);
+  }
+  *tasks(state, c, id, binding, record, request, retain) {
+    const o = state.operations, now = this.app.now();
+        for (const a of Object.values(state.actions).filter(a => a.prospect_id === id && ['call_task', 'callback_task'].includes(a.type) &&
+          (a.status !== 'Cancelled' || a.provider_task && a.cancel_requested))) {
+          if (!binding || !['Queued', 'Pending', 'Uncertain', 'Verified'].includes(a.status)) continue;
+          const createLogical = `${a.id}-task-create`, prior = o.requests[createLogical];
+          const coldHold = record.cold_paused && (a.type !== 'callback_task' || record.stage !== 'Callback');
+          if (!a.provider_task && !prior && (coldHold || record.restriction)) { a.status = 'Cancelled'; continue; }
+          const found = yield request(`${a.id}-contact`, 'contact', { q_keywords: binding.email, per_page: 10, page: 1 }); verifiedContact(found, binding, c.apollo.user_id, !record.controlled || Boolean(c.operations.native_proof));
+          a.request ??= { contact_id: binding.contact_id, account_id: binding.account_id, user_id: c.apollo.user_id, type: 'call', status: 'scheduled', priority: a.type === 'callback_task' ? 'high' : 'low',
+            due_at: new Date(Math.floor(Date.parse(a.payload.due_at) / 1000) * 1000).toISOString(), title: `${record.controlled ? 'STUDIO TEST' : 'EVZ'} ${c.run_id} ${a.id}`,
+            note: record.controlled ? 'CONTROLLED TEST — fictional follow-up task. No actual call; do not dial. A reply/stop cancels this task.' :
+              `Owner call. Record the actual outcome in Studio Operations; task completion alone never sends email. Idea: ${record.idea}` };
+          if (!a.provider_task && prior && prior.status !== 'Done') {
+            const candidates = yield request(`${a.id}-task-search`, 'task_search', { contact_id: binding.contact_id, user_id: c.apollo.user_id, q_keywords: a.request.title, per_page: 10, page: 1, task_status: 'scheduled' });
+            check(!candidates.failed && candidates.tasks?.length === 1 && (!candidates.pagination || candidates.pagination.total_pages <= 1), 'Uncertain call task is not uniquely reconciled; never recreate');
+            const candidate = candidates.tasks[0]; check((candidate.contact_id ?? candidate.contact?.id) === binding.contact_id, 'Call task candidate belongs to another contact');
+            a.provider_task = { id: candidate.id, user_id: c.apollo.user_id, account_id: binding.account_id };
+          }
+          if (!a.provider_task) {
+            const created = yield request(createLogical, 'task_create', a.request); check(!created.failed, 'Call task creation failed; reconcile without replay');
+            a.provider_task = controlledTaskIdentity(created.task ?? created, a.request);
+          }
+          let detail = yield request(`${a.id}-task-read`, 'task_read', { id: a.provider_task.id }); check(!detail.failed, 'Controlled call task readback failed'); detail = detail.task ?? detail;
+          check(detail.id === a.provider_task.id && (detail.contact_id ?? detail.contact?.id) === binding.contact_id &&
+            (!Object.hasOwn(detail, 'user_id') || detail.user_id === c.apollo.user_id) && !detail.emailer_campaign_id && !detail.sequence_id, 'Controlled call task association changed');
+          if (detail.status === 'skipped' && a.cancel_requested) { retain(`${a.id}-task-read`); a.status = 'Cancelled'; a.cancellation = 'Verified skipped at Apollo'; a.cancel_requested = false; continue; }
+          a.provider_task = controlledTaskIdentity(detail, a.request, a.provider_task, true); a.status = 'Verified';
+          if (!a.verified_at) { retain(`${a.id}-task-read`); a.verified_at = now.toISOString(); }
+          if (a.cancel_requested || coldHold || record.restriction) {
+            a.cancel_requested = true;
+            const skipKey = `${a.id}-task-skip`;
+            if (!o.requests[skipKey]) yield request(skipKey, 'task_skip', { id: detail.id, note: record.controlled ? 'Controlled reply/outcome verified; cancel this fictional call task. No actual call placed.' : 'Saved owner outcome or reply cancels this future task. Task skipping is not evidence of a call.' });
+            throw Error('Controlled call cancellation awaits skipped readback; never replay the skip');
+          }
+        }
+  }
+  *bookings(state, c, request, retain) {
+    const o = state.operations, now = this.app.now();
     for (const [bookingId, b] of Object.entries(c.operations.bookings ?? {}).filter(([id]) => !o.cycle.completed_bookings.includes(id))) {
       try {
         const r = state.prospects[b.prospect_id], createKey = `${bookingId}-create`, prior = o.requests[createKey]; let eventId = o.bookings[bookingId]?.id;
@@ -280,7 +306,7 @@ export class ControlledOperations {
           check(!busy.failed && busy.calendars?.length === 1 && busy.calendars[0].calendar_id === c.calendar.calendar_id && !busy.calendars[0].errors, 'Calendar availability failed or changed');
           validateBookingSlot({ start: b.start, end: b.end, timezone: 'America/New_York' }, busy.calendars[0].busy, c.calendar, now.toISOString(), now);
           const created = yield request(createKey, 'booking_create', { calendar_id: c.calendar.calendar_id, title: b.title, description: b.description, start_time: b.start, end_time: b.end,
-            timezone_str: 'America/New_York', attendees: [], add_google_meet: false, visibility: 'private', transparency: 'opaque', reminders: { use_default: false, overrides: [] } });
+            timezone_str: 'America/New_York', attendees: b.attendee_email ? [b.attendee_email] : [], add_google_meet: false, visibility: 'private', transparency: 'opaque', reminders: { use_default: false, overrides: [] } });
           check(!created.failed, 'Calendar create failed; reconcile without replay'); eventId = eventData(created).id;
         }
         check(identifier(eventId), 'Booking returned no event ID');
@@ -299,7 +325,9 @@ export class ControlledOperations {
       }
       o.cycle.completed_bookings.push(bookingId);
     }
+
   }
+
   async settle(key, raw) {
     await this.settings();
     return this.app.change(state => {
