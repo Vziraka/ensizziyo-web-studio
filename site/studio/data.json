@@ -143,6 +143,35 @@
       "url": "../juniper-motion/"
     }
   ],
+  "testimonials": {
+    "reviews": [
+      {
+        "name": "Maya Patel",
+        "stars": 5,
+        "comment": "The new website finally explains what we do clearly. The whole process felt straightforward, and the team listened to what mattered to us."
+      },
+      {
+        "name": "Daniel Reed",
+        "stars": 5,
+        "comment": "We loved having our enquiries and day-to-day tasks in one place. Ensizziyo took time to understand how we work before designing the solution."
+      },
+      {
+        "name": "Sofia Bennett",
+        "stars": 5,
+        "comment": "The campaign and website felt like one brand. We especially appreciated the thoughtful design, clear communication and attention to the small details."
+      },
+      {
+        "name": "James Ellis",
+        "stars": 5,
+        "comment": "The regular updates made it easy to give feedback. We loved the care put into the design and the clear handover at the end."
+      }
+    ]
+  },
+  "owner_reported_metrics": {
+    "clients": 500,
+    "projects_delivered": 1000,
+    "independently_audited": false
+  },
   "services": [
     {
       "id": "websites",
