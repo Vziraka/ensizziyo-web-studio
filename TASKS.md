@@ -1,5 +1,6 @@
 # Launch tasks
 
+
 ## EVZ UI and motion refinement — October 16, 2026
 
 The owner selected these changes after a design interview for the public EVZ Digital site: show three complete desktop work panels with the center largest; keep carousel cycling after arrows and project selection; remove only the small hero note; remove generic Pause motion controls across the studio and eight demonstrations; replace the dark sample return strip with a taller white studio-styled bar that remains at the top; make Forma's room-to-collection scroll transition more expressive within the existing page length; and replace emoji-prone diagonal arrows with consistent SVG icons. Keep the operating-system reduced-motion preference.
@@ -11,6 +12,21 @@ The owner selected these changes after a design interview for the public EVZ Dig
 [PR #55](https://github.com/Vziraka/ensizziyo-web-studio/pull/55) owns the required check, review, merge, and live-route evidence for this refinement.
 
 The owner explicitly accepted continuous automatic carousel motion without a visitor stop control. This is a known [WCAG 2.2.2 Pause, Stop, Hide](https://www.w3.org/WAI/WCAG22/Understanding/pause-stop-hide.html) gap. The device reduced-motion setting still suppresses automatic motion. The local review does not establish physical iOS Safari behavior; the diagonal arrow is now SVG rather than a Unicode character.
+
+## End-to-end pipeline build — October 16, 2026
+
+Owner authorization: complete the agreed system and present one final working design for approval; ask only for required access/consent or consequential unresolved decisions. Real prospect research, real outreach and the old test monitor remain paused. Use fictional records and existing subscriptions/connections; no new paid service or model API.
+
+Outcome: connect the existing research, Apollo queue and reply-stop work to a private owner review console. Carry a record through explicit call logging, transcript assessment/review, discovery, a bounded preview, an approved fixed quote, agreement/invoice/payment evidence, onboarding, delivery/revisions/acceptance, handover and support closure. Apollo remains the call/email workspace; research evidence stays in its existing private store/Sheets. The console stores private operating events and document references outside Git, without copying credentials into prompts.
+
+Interfaces and failure behavior: stable prospect/company/call/event IDs, immutable transcript hashes, owner-confirmed decisions and authoritative provider readbacks. A connected call/reply pauses cold progression immediately. A decline/do-not-contact takes precedence over late positive events. Pending or uncertain external mutations require readback and cannot be blindly replayed. Subscription calls reserve durable allowance, respect website/client priority and never fall back to paid APIs. Backup restores into a new private directory with execution disabled. A loopback-only console uses same-origin session protection and renders all transcripts/provider text as data.
+
+Acceptance: meaningful public-interface tests for the full fictional journey, call/email caps and daily unique counts, stop precedence, transcript approval, money/acceptance gates, recovery, backup integrity and HTTP authorization; actual subscription transcript assessment and independent claim review when the saved login/allowance permits; bounded connected Apollo/Google verification; desktop/mobile/keyboard browser checks. Record simulated and connected evidence separately. Complete two review passes on the identified revision and required CI before merging.
+
+Production gates remain explicit: final owner design approval, recovered/verified business mailbox, approved native Apollo automation and controlled delivery/cancellation rehearsal, sufficient reviewed prospects, capacity/health checks and launch controls. The 20 real qualified prospects/five drafts in C5 cannot be fulfilled while research is paused. Project-specific prices, contract commitments, payments and real outreach are never fabricated. Default commercial/calendar settings are editable drafts for final review. Status: working review implemented; final integration remains in progress.
+
+Verification: syntax and all 153 account-free tests passed. The full restored-copy browser journey reached Closed after discovery refusal/success, clickable preview, written quote, agreement/deposit, onboarding, delivery, included revision, acceptance/balance, handover and resolved support. Desktop, phone-sized layout and keyboard skip/focus passed. The existing scoped Google identity published/read back three fictional summaries without altering original research tabs. Direct Apollo task reconciliation verified one unchanged unsent task, including actual second-precision/compact-read behavior. Calendar owner/free-busy and buffered-slot validation passed without creating an invitation. The backup restored into a separate execution-disabled private directory. Live transcript inference was Held before dispatch at 20% remaining to preserve the 30% reserve. Native list membership and Activity passed, but the resulting task remained unreadable; that one-contact non-sending workflow is Paused and Inconclusive. The [runbook](pipeline/LIFECYCLE.md) records the remaining launch work; this increment completes no real research/outreach, paid transaction or production activation.
+
 
 ## Website launch checkpoint — October 16, 2026
 

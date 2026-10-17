@@ -1,5 +1,7 @@
 # Controlled Apollo connection
 
+Latest increment: the [private lifecycle workspace](LIFECYCLE.md) links explicit call outcomes, reviewed transcripts and the commercial/delivery/support journey. One new unsent task and a scoped Google projection passed connected readback. A separate native list-trigger test logged an action but did not return a verifiable task; it is paused and remains inconclusive. The old heartbeat stays paused. Neither this increment nor the earlier proofs activate a production campaign.
+
 This controlled S2 increment connects private Node receipts to the existing authenticated Apollo/Gmail app connectors and a fictional Sheets projection. **Production is blocked; research remains paused.** It adds no dependency, API key or paid model API. The single-thread test heartbeat passed two actual scheduled cycles and is now paused at the owner's request. The controlled daily queue below adds fictional saved-outcome handoffs without sending. The [workflow](OUTREACH.md) owns full production requirements; the [controller](CONTROLLER.md) owns research separately.
 
 `apollo.mjs` owns record bounds, eligibility and receipts. `apollo-cli.mjs` prepares/settles requests and ingests verified Gmail reply readbacks. The Codex app invokes the existing Apollo and Gmail tools and saves their exact responses privately. Apollo owns email execution. This requires an active authenticated app session; it is not a standalone unattended transport or another follow-up scheduler.
