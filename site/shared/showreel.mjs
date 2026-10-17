@@ -4,9 +4,8 @@ if(window.parent!==window&&new URLSearchParams(location.search).has('showreel'))
   const reduced=matchMedia('(prefers-reduced-motion:reduce)');
   const folder=location.pathname.split('/')[1];
   const style=document.createElement('style');
-  style.textContent='html{scrollbar-width:none!important}::-webkit-scrollbar{display:none!important}.preview-footer,.review-return,.skip,footer .motion-control{display:none!important}.showreel-paused *{animation-play-state:paused!important;scroll-behavior:auto!important}';
+  style.textContent='html{scrollbar-width:none!important}::-webkit-scrollbar{display:none!important}.preview-footer,.review-return,.skip{display:none!important}.showreel-paused *{animation-play-state:paused!important;scroll-behavior:auto!important}';
   document.head.append(style);
-  const control=()=>document.querySelector('.motion-toggle,.motion-control');
   function playback(value){
     requested=value;
     playing=requested&&!reduced.matches&&!document.hidden;
@@ -14,8 +13,6 @@ if(window.parent!==window&&new URLSearchParams(location.search).has('showreel'))
     if(!playing){cancelAnimationFrame(frame);frame=0}
     document.body.dataset.previewTime=String(Math.round(elapsed));
     document.body.classList.toggle('showreel-paused',!playing);
-    const button=control();
-    if(button&&!button.disabled&&(button.getAttribute('aria-pressed')==='true')===playing)button.click();
     document.getAnimations().forEach(a=>{try{if(playing&&a.playState==='paused')a.play();else if(!playing&&a.playState==='running')a.pause()}catch{}});
     document.querySelectorAll('video').forEach(v=>{v.muted=true;v.loop=true;if(playing){v.play().catch(()=>{});v.classList.add('visible')}else v.pause()});
   }

@@ -6,10 +6,10 @@ const originals=$$('.product');
 originals.forEach((p,i)=>p.dataset.slot=i);
 for(const offset of [-3,3])originals.forEach((p,i)=>{const clone=p.cloneNode(true);clone.dataset.slot=i+offset;$('.products').append(clone)});
 const products=$$('.product');
-let selected=mobile.matches?0:1,position=selected,target=selected,paused=false,ready=false,frame=0;
+let selected=mobile.matches?0:1,position=selected,target=selected,ready=false,frame=0;
 let view='collection',savedScroll=0,returnFocus=null,lastDetail=0,point={x:0,y:0},lastTime=0,velocity=0;
 let wheelTimer=0,wheelStart=selected,drag=null,ignoreClickUntil=0;
-const motion=()=>!paused&&!reduced.matches;
+const motion=()=>!reduced.matches;
 const announce=message=>$('#announcement').textContent=message;
 const closestProduct=index=>products.filter(p=>Number(p.dataset.flavor)===index).sort((a,b)=>Math.abs(railDelta(Number(a.dataset.slot),position))-Math.abs(railDelta(Number(b.dataset.slot),position)))[0];
 function select(index){
@@ -69,7 +69,6 @@ stage.addEventListener('wheel',e=>{
 function applyMotion(){
   clearTimeout(wheelTimer);wheelTimer=0;drag=null;
   document.body.classList.toggle('motion-off',!motion());point={x:0,y:0};$('.ingredients').style.transform='none';$('#detail-image').style.transform='none';
-  $$('.motion-control').forEach(b=>{b.textContent=reduced.matches?'Reduced motion enabled':paused?'Enable motion':'Pause motion';b.disabled=reduced.matches;b.setAttribute('aria-pressed',String(!motion()))});
   if(!motion()){target=Math.round(target);position=target;velocity=0;document.getAnimations().forEach(a=>a.finish())}
   updateSelection(wrap(Math.round(target)));requestDraw();
 }
@@ -166,7 +165,6 @@ const reveals=new IntersectionObserver(entries=>entries.forEach(entry=>{
 }),{threshold:.2});
 $$('.story h2,.story-copy p,.note-grid>div,.serve').forEach(el=>reveals.observe(el));
 addEventListener('resize',requestDraw);mobile.addEventListener('change',()=>{drag=null;requestDraw()});reduced.addEventListener('change',applyMotion);
-$$('.motion-control').forEach(b=>b.addEventListener('click',()=>{paused=!paused;applyMotion()}));
 $('.menu-button').addEventListener('click',()=>menu.showModal());$('.close-menu').addEventListener('click',()=>menu.close());
 menu.addEventListener('click',e=>{if(e.target===menu&&e.clientX<menu.getBoundingClientRect().left)menu.close();if(e.target.closest('a'))menu.close()});
 $$('.next-detail').forEach(b=>b.addEventListener('click',()=>{location.hash=`flavor/${flavors[wrap(lastDetail+1)].id}`}));

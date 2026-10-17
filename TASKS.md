@@ -1,5 +1,16 @@
 # Launch tasks
 
+## EVZ UI and motion refinement — October 16, 2026
+
+The owner selected these changes after a design interview for the public EVZ Digital site: show three complete desktop work panels with the center largest; keep carousel cycling after arrows and project selection; remove only the small hero note; remove generic Pause motion controls across the studio and eight demonstrations; replace the dark sample return strip with a taller white studio-styled bar that remains at the top; make Forma's room-to-collection scroll transition more expressive within the existing page length; and replace emoji-prone diagonal arrows with consistent SVG icons. Keep the operating-system reduced-motion preference.
+
+- [x] Implement the studio gallery, hero, return bar, Forma motion, and icon changes in the production `site/` source.
+- [x] Build and verify six studio routes and eight demonstrations; run inquiry tests.
+- [x] Review desktop and mobile layouts, all eight sample return bars, Forma's scroll states, and carousel cycling after manual navigation and picker selection in the local browser.
+- [ ] Complete PR review and publish the reviewed revision through the protected `main` branch; verify the live routes afterward.
+
+The owner explicitly accepted continuous automatic carousel motion without a visitor stop control. This is a known [WCAG 2.2.2 Pause, Stop, Hide](https://www.w3.org/WAI/WCAG22/Understanding/pause-stop-hide.html) gap. The device reduced-motion setting still suppresses automatic motion. The local review does not establish physical iOS Safari behavior; the diagonal arrow is now SVG rather than a Unicode character.
+
 ## Website launch checkpoint — October 16, 2026
 
 Workspace access update: Google blocked sign-in using the primary admin address. The owner canceled the first October 16 recovery request, then started a new one and reports that Google imposed a 48-hour waiting period. The new request is pending; access is not restored, and Google's exact completion time is not verified. The owner should follow the recovery instructions and check the designated recovery inbox without sharing the link or codes. Gmail delivery, send-as, and the subscribed plan/amount remain unverified until Workspace access returns. Google's billing receipt says the trial ends October 30, 2026, with the first billing date November 1, 2026.

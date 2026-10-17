@@ -2,16 +2,16 @@ import {motion,openDialog} from '../shared/preview.mjs';
 
 // Only the visible samples are mounted. The full sites remain separate destinations.
 export function mountShowcase(root,samples,initial,onChange,art){
-  let index=initial,playing=true,inView=true,timer=0,destroyed=false,drag=null,settling=0;
+  let index=initial,inView=true,timer=0,destroyed=false,drag=null,settling=0;
   const mq=matchMedia('(max-width:700px)'),frames=new Map(),abort=new AbortController();
   const listen=(el,type,fn)=>el.addEventListener(type,fn,{signal:abort.signal});
-  const active=()=>playing&&motion()&&inView&&!document.hidden;
+  const active=()=>motion()&&inView&&!document.hidden;
   root.innerHTML=`<div class="gallery-heading"><span></span><h2>Our top work</h2></div>
     <div class="gallery-stage" aria-label="Sample project carousel" aria-roledescription="carousel" tabindex="0"></div>
     <div class="gallery-nav"><button class="round-control" data-step="-1" aria-label="Previous project">←</button><div class="gallery-captions"></div><button class="round-control" data-step="1" aria-label="Next project">→</button></div>
-    <div class="gallery-tools"><button class="browse-projects" aria-haspopup="dialog">8 projects <span> / Browse all</span></button><div class="gallery-dots" aria-label="Choose project">${samples.map((s,i)=>`<button data-index="${i}" aria-label="Show ${s.name}"><span></span></button>`).join('')}</div><div class="gallery-actions"><button class="gallery-play"></button><a class="open-sample">Open sample <span aria-hidden="true">↗</span></a></div></div>
+    <div class="gallery-tools"><button class="browse-projects" aria-haspopup="dialog">8 projects <span> / Browse all</span></button><div class="gallery-dots" aria-label="Choose project">${samples.map((s,i)=>`<button data-index="${i}" aria-label="Show ${s.name}"><span></span></button>`).join('')}</div><div class="gallery-actions"><a class="open-sample">Open sample <span aria-hidden="true"><svg class="ui-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19 19 5M7 5h12v12"/></svg></span></a></div></div>
     <p class="sr-only gallery-announcement" aria-live="polite"></p>
-    <dialog class="project-picker" aria-labelledby="picker-title"><div><h2 id="picker-title">Our top work</h2><button class="picker-close" aria-label="Close project picker">Close ×</button></div><div class="picker-list">${samples.map((s,i)=>`<button data-index="${i}"><span>${s.name}</span><small>${s.category}</small><span aria-hidden="true">↗</span></button>`).join('')}</div></dialog>`;
+    <dialog class="project-picker" aria-labelledby="picker-title"><div><h2 id="picker-title">Our top work</h2><button class="picker-close" aria-label="Close project picker">Close ×</button></div><div class="picker-list">${samples.map((s,i)=>`<button data-index="${i}"><span>${s.name}</span><small>${s.category}</small><span aria-hidden="true"><svg class="ui-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19 19 5M7 5h12v12"/></svg></span></button>`).join('')}</div></dialog>`;
   const stage=root.querySelector('.gallery-stage'),picker=root.querySelector('dialog');
   const positions=()=>mq.matches?[0]:[-1,0,1];
   const positionIndex=offset=>(index+offset+samples.length)%samples.length;
@@ -20,9 +20,6 @@ export function mountShowcase(root,samples,initial,onChange,art){
   function send(){
     frames.forEach(({iframe})=>iframe?.contentWindow?.postMessage({type:'ensizziyo-preview',playing:active()&&!settling},location.origin));
     root.classList.toggle('gallery-paused',!active());
-    const button=root.querySelector('.gallery-play');
-    button.textContent=active()?'Ⅱ  Pause motion':motion()?'▷  Resume motion':'Motion off';
-    button.setAttribute('aria-pressed',String(!active()));button.disabled=!motion();
   }
   function mountFrame(entry,s){
     if(entry.iframe||!active()||settling)return;
@@ -43,7 +40,7 @@ export function mountShowcase(root,samples,initial,onChange,art){
       const s=samples[i];let entry=frames.get(i);
       if(!entry){
         const card=document.createElement('article');card.className='gallery-panel';
-        card.innerHTML=`<div class="preview-poster">${art(s.name)}</div><a href="${s.url}" data-sample="${s.name}" aria-label="Open ${s.name} sample"><span class="panel-open">Open ${s.name} ↗</span></a>`;
+        card.innerHTML=`<div class="preview-poster">${art(s.name)}</div><a href="${s.url}" data-sample="${s.name}" aria-label="Open ${s.name} sample"><span class="panel-open">Open ${s.name} <svg class="ui-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19 19 5M7 5h12v12"/></svg></span></a>`;
         entry={card,iframe:null};frames.set(i,entry);stage.append(card);
       }
       entry.card.dataset.position=String(offset);entry.card.style.order=offset+1;
@@ -65,18 +62,15 @@ export function mountShowcase(root,samples,initial,onChange,art){
     frames.forEach((entry,i)=>mountFrame(entry,samples[i]));send();scale();
   }
   function schedule(){clearInterval(timer);if(active())timer=setInterval(()=>select(index+1,false),15000)}
-  function select(next,manual=true){index=(next+samples.length)%samples.length;if(manual)playing=false;render(manual,true,manual?700:1200);schedule()}
-  function pause(){playing=false;send();schedule()}
+  function select(next,manual=true){index=(next+samples.length)%samples.length;render(manual,true,manual?700:1200);schedule()}
   listen(root,'click',e=>{
     const b=e.target.closest('button');if(!b)return;
     if(b.dataset.step){select(index+Number(b.dataset.step));return}
     if(b.dataset.index!==undefined){select(Number(b.dataset.index));if(picker.open)picker.close();return}
-    if(b.classList.contains('gallery-play')){playing=!playing;render();schedule()}
-    if(b.classList.contains('browse-projects')){pause();openDialog(picker,b)}
+    if(b.classList.contains('browse-projects'))openDialog(picker,b);
     if(b.classList.contains('picker-close'))picker.close();
   });
   listen(stage,'keydown',e=>{if(e.altKey||e.ctrlKey||e.metaKey)return;if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();select(e.key==='Home'?0:e.key==='End'?7:index+(e.key==='ArrowRight'?1:-1))}});
-  listen(stage,'focusin',pause);
   listen(stage,'pointerdown',e=>{if(e.button===0)drag={x:e.clientX,y:e.clientY}});
   listen(stage,'pointerup',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag=null;if(Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy)){select(index+(dx<0?1:-1));const stop=ev=>{ev.preventDefault();ev.stopImmediatePropagation()};stage.addEventListener('click',stop,{once:true,capture:true})}});
   listen(stage,'pointercancel',()=>drag=null);

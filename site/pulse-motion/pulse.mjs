@@ -2,8 +2,8 @@ import {storyIndex,storyOffset} from './motion.mjs';
 import {classes,dates,sessions,rowsFor,nextAvailable,validateContact,parseRoute,dateLabel} from './model.mjs';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const film=$('.hero-film'),reduced=matchMedia('(prefers-reduced-motion:reduce)'),menu=$('#mobile-menu'),answer=$('#answer');
-let paused=false,view='home',step=0,filter='foundations',day='2026-10-15',week=0,chosen=null,scheduleY=0,filmStarted=false,filmFinished=false,answerOrigin=null;
-const motion=()=>!paused&&!reduced.matches;
+let view='home',step=0,filter='foundations',day='2026-10-15',week=0,chosen=null,scheduleY=0,filmStarted=false,filmFinished=false,answerOrigin=null;
+const motion=()=>!reduced.matches;
 const storyTrack=$('.story-track'),storyStage=$('.story-stage'),storyMedia=$('.story-media');
 const pinnedStory=()=>motion()&&innerWidth>900&&innerHeight>=700;
 let scrollFrame=0;
@@ -104,8 +104,8 @@ function filmLabel(){$('.film-control').textContent=!motion()?'Motion paused':fi
 async function playFilm(replay){if(!motion()||view!=='home')return;if(replay){film.currentTime=0;filmFinished=false}try{await film.play();filmStarted=true;film.classList.add('visible')}catch{film.classList.remove('visible')}filmLabel();}
 film.addEventListener('playing',()=>{film.classList.add('visible');filmLabel()});film.addEventListener('pause',filmLabel);film.addEventListener('ended',()=>{filmFinished=true;filmLabel()});film.addEventListener('error',()=>{film.classList.remove('visible');$('.film-control').textContent='Film unavailable';$('.film-control').disabled=true});
 $('.film-control').addEventListener('click',()=>{if(!film.paused)film.pause();else playFilm(filmFinished)});
-function applyMotion(){const before=storyTrack.getBoundingClientRect();const inside=view==='home'&&before.top<=0&&before.bottom>innerHeight;document.body.classList.toggle('motion-off',!motion());if(inside)scrollTo({top:storyTrack.getBoundingClientRect().top+scrollY,behavior:'instant'});$$('.motion-toggle').forEach(b=>{b.textContent=reduced.matches?'Reduced motion enabled':paused?'Enable motion':'Pause motion';b.setAttribute('aria-pressed',String(!motion()));b.disabled=reduced.matches});if(!motion()){film.pause();film.classList.remove('visible');document.getAnimations().forEach(a=>a.finish())}filmLabel();}
-$$('.motion-toggle').forEach(b=>b.addEventListener('click',()=>{paused=!paused;applyMotion()}));reduced.addEventListener('change',applyMotion);
+function applyMotion(){const before=storyTrack.getBoundingClientRect();const inside=view==='home'&&before.top<=0&&before.bottom>innerHeight;document.body.classList.toggle('motion-off',!motion());if(inside)scrollTo({top:storyTrack.getBoundingClientRect().top+scrollY,behavior:'instant'});if(!motion()){film.pause();film.classList.remove('visible');document.getAnimations().forEach(a=>a.finish())}filmLabel();}
+reduced.addEventListener('change',applyMotion);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)film.pause()});
 $('.skip').addEventListener('click',e=>{e.preventDefault();$('#main').tabIndex=-1;$('#main').focus();});
 document.addEventListener('click',e=>{const link=e.target.closest('a[href^="#"]');if(link&&link.getAttribute('href')===location.hash){e.preventDefault();route()}});

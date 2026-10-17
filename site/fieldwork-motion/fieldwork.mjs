@@ -2,8 +2,8 @@ import {homes,money,filterHomes,routeFor,wrap,validateInquiry,preferredDay} from
 import {createScrollMotion} from './scroll-motion.mjs';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const reduced=matchMedia('(prefers-reduced-motion:reduce)'),rail=$('.listing-rail'),gallery=$('#gallery');
-let paused=false,current={page:'home'},setting='all',price='any',order='setting',railIndex=0,photoIndex=0,origin=null,modalOrigin=null,propertyY=0,inquiryHome=null,transitioning=false;
-const motion=()=>!paused&&!reduced.matches;
+let current={page:'home'},setting='all',price='any',order='setting',railIndex=0,photoIndex=0,origin=null,modalOrigin=null,propertyY=0,inquiryHome=null,transitioning=false;
+const motion=()=>!reduced.matches;
 const facts=h=>`${h.setting} / ${h.beds} bedrooms / ${h.baths} bathrooms / ${h.area.toLocaleString('en-US')} sq ft`;
 const images=[['foundry-living.webp','The living room, opening onto a sheltered garden.'],['foundry-courtyard.webp','From the courtyard, looking toward the living room.'],['foundry-detail.webp','Brick, steel and a continuous stone threshold.']];
 function animate(el,ms=240){if(motion())el.animate([{opacity:0,transform:'translateY(8px)'},{opacity:1,transform:'none'}],{duration:ms,easing:'ease-out'});}
@@ -80,8 +80,8 @@ $$('[data-info]').forEach(b=>b.onclick=()=>{const [title,copy]=info[b.dataset.in
 $$('.plan-open').forEach(b=>b.onclick=()=>{modalOrigin=b;$('#plan').showModal();$('.close-plan').focus()});
 $('.close-plan').onclick=()=>$('#plan').close();$('.close-info').onclick=()=>$('#info').close();$('.menu-button').onclick=e=>{modalOrigin=e.currentTarget;$('#menu').showModal()};$('.close-menu').onclick=()=>$('#menu').close();
 $$('dialog').forEach(d=>d.addEventListener('close',()=>{if(modalOrigin?.isConnected&&!modalOrigin.closest('[hidden]')&&!modalOrigin.closest('dialog:not([open])'))modalOrigin.focus({preventScroll:true});updateBar()}));
-function applyMotion(){document.body.classList.toggle('motion-off',!motion());$$('.motion-toggle').forEach(b=>{b.textContent=motion()?'Pause motion':'Enable motion';b.setAttribute('aria-pressed',String(!motion()))});if(!motion())document.getAnimations().forEach(a=>a.finish());scheduleScroll();}
-$$('.motion-toggle').forEach(b=>b.onclick=()=>{paused=!paused;applyMotion()});reduced.addEventListener('change',applyMotion);
+function applyMotion(){document.body.classList.toggle('motion-off',!motion());if(!motion())document.getAnimations().forEach(a=>a.finish());scheduleScroll();}
+reduced.addEventListener('change',applyMotion);
 $('#inquiry-form').addEventListener('submit',e=>{e.preventDefault();const data={name:$('#name').value,email:$('#email').value,day:$('#day').value};const errors=validateInquiry(data);for(const id of ['name','email','day']){$('#'+id+'-error').textContent=errors[id];$('#'+id).setAttribute('aria-invalid',String(!!errors[id]))}const first=Object.keys(errors).find(key=>errors[key]);if(first){$('#'+first).focus();return;}
  $('.result-home').textContent=current.home.name+' / '+money(current.home.price);$('.result-preference').textContent='Preferred: '+preferredDay(data.day)+' / '+$('#time').value.toLowerCase();$('.result-email').textContent='Reply to: '+data.email.trim();$('#inquiry-form').hidden=true;$('.inquiry-result').hidden=false;$('.inquiry-result h2').focus();animate($('.inquiry-result'));
 });$('.edit-inquiry').onclick=()=>{$('.inquiry-result').hidden=true;$('#inquiry-form').hidden=false;$('#name').focus()};
