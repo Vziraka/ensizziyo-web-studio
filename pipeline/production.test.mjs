@@ -152,6 +152,11 @@ test('retained detailed research and independent review import once, preserve su
   await reviewFiles(directory, job.id);
   const result = await importResearch(s.app, directory, job.id); assert.equal(result.imported, true);
   const importedRecord=(await s.app.snapshot()).prospects[result.prospect_id]; assert.equal(importedRecord.contact.checked_at, source.fetched_at); assert.equal(importedRecord.qualification.checked_at, '2026-10-19T00:00:00.000Z');
+  assert.equal(importedRecord.call_prep.questions[0], report.opportunities[0].owner_question);
+  assert.equal(importedRecord.call_prep.observations[0].fact, report.observations[0].fact);
+  assert.deepEqual(importedRecord.call_prep.observations[0].sources, [{ url: source.url, checked_at: source.fetched_at, excerpt: 'DM to order' }]);
+  assert.equal(importedRecord.call_prep.hypothesis, report.opportunities[0].proposed_solution);
+  assert.ok(importedRecord.call_prep.unknowns.includes(report.unknowns[0]));
   await s.app.apply({ id: 'stop-imported', prospect_id: result.prospect_id, type: 'contact_stopped', at, data: { reason: 'do_not_contact' } });
   const duplicate = await importResearch(s.app, directory, job.id); assert.equal(duplicate.imported, false); assert.equal(duplicate.restricted, true);
   assert.equal((await s.app.snapshot()).prospects[result.prospect_id].contact.phone, '+1 202 555 0101');

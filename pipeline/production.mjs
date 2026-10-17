@@ -5,6 +5,7 @@ import { readJson, saveJson, privateStateDirectory } from './engine.mjs';
 import { reviewFiles, readPrivateJson, validateDecision } from './prospects.mjs';
 import { validateEvidenceReview } from './evidence-review.mjs';
 import { ControlledOperations, controlledThread, verifiedContact } from './lifecycle-operations.mjs';
+import { researchCallPrep } from './call-prep.mjs';
 
 const email = value => typeof value === 'string' && /^[^\s@,;<>"\r\n]+@[^\s@,;<>"\r\n]+\.[^\s@,;<>"\r\n]+$/.test(value) && !value.endsWith('.invalid');
 const id = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value);
@@ -69,6 +70,7 @@ export async function importResearch(app, directory, jobId, contactProof) {
   const opportunity = f.report.opportunities[d.opportunity_index], companyId = p.company_id ?? `company-${hash(d.contact.email.toLowerCase()).slice(0, 24)}`;
   const data = { company_id: companyId, name: f.job.business_name, category: `Food / beverage: ${f.intake.discovery.category}`, area: f.intake.discovery.area, controlled: false,
     idea: `${opportunity.observed_basis} Possible improvement: ${opportunity.proposed_solution}`,
+    call_prep: researchCallPrep(f, d, receipt.reviewed_at),
     contact: { email: d.contact.email, phone: p.phone, verified: true, checked_at: p.checked_at, source: p.source },
     qualification: { verdict: d.decision, independent_review: 'Accepted', checked_at: `${f.job.as_of}T00:00:00.000Z`, reviewed_at: receipt.reviewed_at, report_sha256: f.report_sha256, review_sha256: hash(raw), evidence_ref: `research:${jobId}` } };
   const keys = contactKeys(data), state = await app.snapshot();
