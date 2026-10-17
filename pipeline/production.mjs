@@ -157,7 +157,10 @@ export async function syncResearchImports(app) {
 }
 export function nativeMessage(record, round, c) {
   const subject = `${round === 1 ? 'An idea' : 'Following up on an idea'} for ${record.name}`.replace(/["\r\n]/g, ' ').slice(0, 119);
-  const body = `Hi,\n\nI tried calling ${record.name} and wanted to share one idea: ${record.idea}\n\nWould an improvement like this fit what you want to do next? I build websites, practical business systems, AI tools and marketing projects, scoped around the owner's goal.\n\nEVZ Digital\n${c.sender.website}\n${c.sender.postal_address}\n\nThis is a business introduction and advertisement. Reply "stop" to opt out of all further marketing from EVZ Digital.`;
+  const idea = record.call_prep?.hypothesis ?? record.idea;
+  const question = record.call_prep?.questions?.[0] ?? 'Would an improvement like this fit what you want to do next?';
+  check(typeof idea === 'string' && idea.trim() && typeof question === 'string' && question.trim(), 'A reviewed enhancement and owner question are required');
+  const body = `Hi,\n\nI tried calling ${record.name} and wanted to share one idea: ${idea}\n\n${question}\n\nI build focused websites and business tools through EVZ Digital.\n${c.sender.website}\n${c.sender.postal_address}\n\nThis is a business introduction and advertisement. Reply "stop" to opt out of all further marketing from EVZ Digital.`;
   check(body.length <= 4000 && !/{{|}}|[<>]/.test(subject + body), 'Tailored email exceeds the native field bounds or contains markup/template instructions');
   return { subject, body };
 }

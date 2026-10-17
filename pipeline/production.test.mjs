@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { StudioLifecycle, initialConfig } from './lifecycle.mjs';
 import { fixtureProspect } from './lifecycle-fixtures.mjs';
 import { saveJson } from './engine.mjs';
-import { productionConfig, releaseFingerprint, requireProductionRelease, approveProductionRelease, ProductionOperations, NativeProofOperations, operationsFor, importResearch, queueMeeting, pauseStudio } from './production.mjs';
+import { productionConfig, releaseFingerprint, requireProductionRelease, approveProductionRelease, ProductionOperations, NativeProofOperations, operationsFor, importResearch, queueMeeting, pauseStudio, nativeMessage } from './production.mjs';
+import { researchCallPrep } from './call-prep.mjs';
 import { dailyCallQueue } from './apollo-queue.mjs';
 import { intakeCandidate, reviewFiles, reviewTemplate, prospectPurpose } from './prospects.mjs';
 import { sourceContentHash } from './sources.mjs';
@@ -14,6 +15,30 @@ import { controlledThread, operationNames } from './lifecycle-operations.mjs';
 import { operationsTick } from './operations-service.mjs';
 
 const at = '2026-10-19T14:00:00.000Z', owner = 'studio@example.com';
+
+test('the spoken opening preserves the evidence beside it without reciting research caveats', () => {
+  const fact = 'The published cookie range includes dietary labels; safety and availability were not independently tested.';
+  const f = { job: { business_name: 'SYNTHETIC Bakery' }, snapshots: { sources: [{ url: 'https://example.com/', fetched_at: at }] },
+    report: { unknowns: ['Internal systems unverified.'], observations: [{ fact, evidence: [{ url: 'https://example.com/', excerpt: 'Cookies' }] }], opportunities: [{ observed_basis: fact, proposed_solution: 'An optional gift request.', possible_effect: 'A hypothesis.', existing_alternatives: ['Existing email'], validation_needed: 'Check current tools.', owner_question: 'Would a gift request help?' }] } };
+  const prep = researchCallPrep(f, { opportunity_index: 0, observations: [{ index: 0, supported: true }] }, at);
+  assert.equal(prep.observations[0].fact, fact);
+  assert.ok(prep.opening.includes('SYNTHETIC Bakery'));
+  assert.ok(!prep.opening.includes(fact));
+  assert.equal(prep.questions[0], 'Would a gift request help?');
+});
+
+test('native email introduces the retained enhancement and owner question without research commentary', () => {
+  const record = { name: 'SYNTHETIC Bakery', idea: 'INTERNAL RESEARCH COMMENTARY', call_prep: { hypothesis: 'An optional gift-order request.', questions: ['Would this complement your current email process?'] } };
+  const c = { sender: { website: 'https://example.com', postal_address: 'SYNTHETIC POSTAL ADDRESS' } };
+  const message = nativeMessage(record, 1, c);
+  assert.ok(message.body.includes(record.call_prep.hypothesis));
+  assert.ok(message.body.includes(record.call_prep.questions[0]));
+  assert.ok(!message.body.includes(record.idea));
+  assert.ok(message.body.includes('I tried calling SYNTHETIC Bakery'));
+  assert.ok(message.body.includes('Reply "stop"'));
+  assert.throws(() => nativeMessage({ ...record, call_prep: { hypothesis: {}, questions: ['A question?'] } }, 1, c), /reviewed enhancement/);
+});
+
 async function setup(t, released = true, outcome = 'no_answer') {
   const directory = await mkdtemp(join(tmpdir(), 'evz-production-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const config = structuredClone(productionConfig); let now = new Date(at);
