@@ -10,6 +10,8 @@ Implementation checkpoint: direct authenticated connector transport, separate pr
 
 Shared-stop correction: the production review exposed that a separately bound research controller would not observe the console-only pause flag. Console and CLI now share one pause operation that disables and independently reads back that controller's existing control file. Failed control access leaves other execution paused and records an explicit unverified-research hold. Dashboard research permission/priority reads the same source; no model or discovery is started. The release fingerprint also binds the research source directory.
 
+Deployment correction: the installed owner task started the separate reviewed runtime in paused standby. An actual Stop check reproduced Task Scheduler terminating only its PowerShell wrapper while Node kept port 8807. Stop now verifies the installed task, lock, executable/command and process creation time before closing the owned process tree. Unknown identities remain held and saved locks/reservations survive for exclusive restart recovery. Re-run the installed stop/start check before presenting deployment as verified; reboot and sleep recovery remain separate untested gates.
+
 ## Controlled email, booking, synchronization and supervision — October 17, 2026
 
 The owner approved the private console design and authorized finishing these connections with controlled records only. Research and real-business outreach remain paused. Reuse the existing Apollo/Gmail, Calendar and scoped Sheets connections; the old reply heartbeat remains paused in favor of one bounded coordinator for the controlled scope.

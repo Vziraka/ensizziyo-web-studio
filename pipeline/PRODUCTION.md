@@ -74,7 +74,7 @@ Install the owner's non-admin Windows startup task from the reviewed runtime:
     .\studio-service.ps1 -Action Start -StateDirectory 'C:\private\studio-operations'
     .\studio-service.ps1 -Action Status -StateDirectory 'C:\private\studio-operations'
 
-It uses a hidden window, starts at owner logon, ignores overlaps and bounds restarts to three with one-minute intervals. The computer must be on/awake, the owner session available and existing connector authentication usable. No active chat is needed. Reboot/logon, sleep recovery and disconnected-account behavior require separate measurement from a running-host proof.
+It uses a hidden window, starts at owner logon, ignores overlaps and bounds restarts to three with one-minute intervals. Stop validates the exact installed runtime, private lock, process command and creation time, then closes the owned Node tree as well as the scheduler wrapper. Changed/unknown identities hold instead of killing another process. Dead locks and reservations remain for exclusive recovery on restart. The computer must be on/awake, the owner session available and existing connector authentication usable. No active chat is needed. Reboot/logon, sleep recovery and disconnected-account behavior require separate measurement from a running-host proof.
 
 An exclusive Windows named pipe serializes startup. Only its owner can archive locks with a confirmed dead process. Live/unknown locks hold. Saved receipts settle before new work; uncertain mutations follow authoritative readback and never replay. Failure does not erase stops/approvals/reservations. The console reports runtime state, last check, holds, projection and backup.
 
