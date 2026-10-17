@@ -1,6 +1,10 @@
 # Task-based tool catalog
 
+<<<<<<< HEAD
 October 17 production service: reused installed Codex CLI 0.148.0 app-server and its inspected JSON-RPC schema, following the [official protocol](https://learn.chatgpt.com/docs/app-server). Verified direct authenticated Apollo/Gmail/Calendar reads without starting a model turn or extracting credentials, and two bounded Windows background cycles. The transport rejects provider approval requests and arbitrary tools. Reused Node 24, Windows Task Scheduler, the existing Google dependency/scoped identity and connected accounts. No dependency, plugin, API key, model API, purchase or expanded account permission was added. Native personalized email follows [Apollo custom variables](https://knowledge.apollo.io/hc/en-us/articles/4409494161677-Use-Custom-Dynamic-Variables); final sender/native configuration and controlled proof remain gated. [PRODUCTION.md](pipeline/PRODUCTION.md) records operation, versioned deployment and rollback.
+=======
+October 17 studio proof restoration: consulted Matt Pocock's current diagnosing-bugs guidance for a direct failing site check, then reused the existing Node build/verification and Chrome browser review. The original site CSS and JavaScript patterns were sufficient; no package, plugin or software was installed.
+>>>>>>> origin/main
 
 October 16 EVZ UI refinement: consulted the linked Scrollcraft room-depth and scroll-reveal references for Forma, then implemented the selected behavior in the site's existing CSS and JavaScript. No Scrollcraft package, new plugin, or runtime dependency was installed.
 
