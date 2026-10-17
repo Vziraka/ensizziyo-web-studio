@@ -8,6 +8,7 @@ import { assessTranscript } from './lifecycle-ai.mjs';
 import { readJson } from './engine.mjs';
 import { renderProposal } from './lifecycle-documents.mjs';
 import { queueMeeting, pauseStudio } from './production.mjs';
+import { setResearchPriority } from './research-service.mjs';
 
 const assets = new Map([['/', ['index.html', 'text/html']], ['/app.js', ['app.js', 'text/javascript']], ['/money.js', ['money.js', 'text/javascript']], ['/app.css', ['app.css', 'text/css']],
   ['/preview/', ['preview.html', 'text/html']], ['/preview.js', ['preview.js', 'text/javascript']]]);
@@ -54,6 +55,7 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
       if (url.pathname === '/api/pause') {
         return json(200, await pauseStudio(app));
       }
+      if (url.pathname === '/api/research-priority') return json(200, await setResearchPriority(app, input.priority));
       if (url.pathname === '/api/backup') {
         await mkdir(join(app.directory, 'backups'), { recursive: true, mode: 0o700 });
         return json(200, await app.backup(join(app.directory, 'backups', `lifecycle-${Date.now()}.json`)));

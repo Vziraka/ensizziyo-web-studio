@@ -16,7 +16,7 @@ export const productionConfig = {
   apollo: { user_id: '', bindings: {} },
   sender: { email: '', mailbox_id: '', postal_address: '', website: 'https://evzdigital.studio/studio/', daily_email_limit: 20 },
   campaign: { category: 'food-and-beverage', area: 'Fairfax / DMV', max_calls: 2, max_emails: 2, business_days: 10 },
-  native_email: { enabled: false, rounds: [] }, research: { auto_import: false, source_directory: '' }, release: { approved: false }, readiness_evidence: {}
+  native_email: { enabled: false, rounds: [] }, research: { auto_import: false, supervised: false, source_directory: '' }, release: { approved: false }, readiness_evidence: {}
 };
 export function releaseFingerprint(c) {
   return hash({ run_id: c.run_id, campaign: c.campaign, sender: c.sender, calendar: c.calendar, apollo_owner: c.apollo?.user_id, research_source: c.research?.source_directory ?? '', readiness_evidence: c.readiness_evidence,
