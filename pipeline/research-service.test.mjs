@@ -57,6 +57,17 @@ test('a retained live or dead research lock is preserved for explicit reconcilia
   }
 });
 
+test('a held controller result appears in consolidated exceptions without a thrown service error', async t => {
+  const f = await fixture(t), stop = new AbortController();
+  await saveJson(join(f.directory, 'controller-state.json'), { calls: [], jobs: { 'fictional-service': {
+    stage: 'held', status: 'Held', reason: 'WORKER_FAILED', next_action: 'Verify subscription authentication; preserve the reservation.'
+  } }, provider_blocks: {} });
+  await runResearchService(f.app, { signal: stop.signal, handoff: async () => ({ status: 'Disabled' }), wait: async () => stop.abort() });
+  const state = await f.app.snapshot();
+  assert.equal(state.exceptions.filter(e => e.id === 'research-service').length, 1);
+  assert.match(state.exceptions.find(e => e.id === 'research-service').reason, /fictional-service.*WORKER_FAILED.*Verify subscription/);
+});
+
 test('one eligible tick passes the exact configured directory, queue and abort signal to the existing bounded controller', async t => {
   const f = await fixture(t), queue = { fictional: true }; let count = 0;
   const result = await researchTick(f.app, { queueFactory: c => { assert.equal(c.spreadsheetId, 'fictional-only'); assert.equal(c.minRequestIntervalMs, 1250); return queue; },
