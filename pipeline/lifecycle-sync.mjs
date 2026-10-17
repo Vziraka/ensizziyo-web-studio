@@ -3,20 +3,21 @@ import { readJson } from './engine.mjs';
 import { GoogleQueue } from './google.mjs';
 import { check, hash } from './lifecycle.mjs';
 
-const headers = ['Prospect ID', 'Fictional business', 'Current step', 'Next owner action', 'Restriction', 'Test quote USD', 'Test paid USD', 'Saved UTC'];
 const normalize = (rows, count) => Array.from({ length: count }, (_, i) => Array.from({ length: 8 }, (_, j) => String(rows[i]?.[j] ?? '')));
 export async function publishLifecycle(app, suppliedQueue) {
   const config = await readJson(join(app.directory, 'lifecycle-config.json')), g = config.google;
-  check(config.mode === 'controlled' && g?.sheet_title === 'Lifecycle proof' && Number.isInteger(g.sheet_id), 'Only the isolated controlled lifecycle tab is writable');
+  const controlled = config.mode === 'controlled';
+  check(g?.sheet_title === (controlled ? 'Lifecycle proof' : 'Studio operations') && Number.isInteger(g.sheet_id), 'Only the explicitly bound isolated operations tab is writable');
+  const headers = ['Prospect ID', controlled ? 'Fictional business' : 'Business', 'Current step', 'Next owner action', 'Restriction', controlled ? 'Test quote USD' : 'Quote USD', controlled ? 'Test paid USD' : 'Verified paid USD', 'Saved UTC'];
   const queue = suppliedQueue ?? new GoogleQueue({ spreadsheetId: g.spreadsheet_id, keyFile: g.key_file, minRequestIntervalMs: 350 });
   const metadata = await queue.request('GET', '?fields=spreadsheetId,sheets(properties)');
   check(metadata.spreadsheetId === g.spreadsheet_id && metadata.sheets.some(s => s.properties.sheetId === g.sheet_id && s.properties.title === g.sheet_title), 'Sheet ownership/name changed');
   let pending, fresh = false;
   await app.change(async state => {
-    const records = Object.values(state.prospects); check(records.length <= 90 && records.every(r => r.controlled), 'Controlled projection size/scope exceeded');
+    const records = Object.values(state.prospects); check(records.length <= (controlled ? 90 : 500) && records.every(r => r.controlled === controlled), 'Projection size/mode scope exceeded');
     const rows = [headers, ...records.map(r => [r.id, r.name, r.stage, [r.next_check ?? (r.stage === 'Connected review' ? 'Review transcript proposal' : r.stage === 'Support' ? 'Resolve support / close project' : r.stage === 'Contacting' ? 'Owner call/email follow-up' : r.stage),
-      ...Object.entries(state.operations?.email ?? {}).filter(([id]) => state.actions[id]?.prospect_id === r.id).map(([, e]) => `Controlled email: ${e.status}`),
-      ...(r.meeting ? [`Private test booking: ${r.meeting.start}`] : [])].join(' · '),
+      ...Object.entries(state.operations?.email ?? {}).filter(([id]) => state.actions[id]?.prospect_id === r.id).map(([, e]) => `Email: ${e.status}`),
+      ...(r.meeting ? [`${controlled ? 'Private test booking' : 'Meeting'}: ${r.meeting.start}`] : [])].join(' · '),
       r.restriction ?? 'None', r.quote ? String(r.quote.price_cents / 100) : '', r.payments.length ? String(r.payments.reduce((n, p) => n + p.amount_cents, 0) / 100) : '', r.updated_at])];
     const range = `'${g.sheet_title}'!A1:H${rows.length}`;
     if (state.sheet_projection?.status === 'Pending') { pending = state.sheet_projection; return; }

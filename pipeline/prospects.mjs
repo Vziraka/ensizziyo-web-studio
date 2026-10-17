@@ -154,6 +154,7 @@ export function validateDecision(d, f, now = () => new Date()) {
   const contactSource = f.snapshots.sources.find(s => s.url === d.contact?.url);
   if (!f.report.public_contact_routes.includes(d.contact?.url) || !contactSource || !['business', 'social'].includes(contactSource.kind) || contactSource.capture_method === 'search_snippet') throw Error('Choose a captured first-party public business contact route');
   if (typeof d.contact.email !== 'string' || d.contact.email.length > 254 || (d.contact.email && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.contact.email) || !contactSource.text.includes(d.contact.email)))) throw Error('Email must appear exactly in the chosen captured business source');
+  if (d.contact.phone !== undefined && (typeof d.contact.phone !== 'string' || d.contact.phone.length > 50 || d.contact.phone && (!/^\+?[\d\s().-]{10,50}$/.test(d.contact.phone) || !contactSource.text.includes(d.contact.phone)))) throw Error('Phone must appear exactly in the chosen captured business source');
   return d;
 }
 

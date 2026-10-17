@@ -1,5 +1,7 @@
 # Controlled email, booking, synchronization and monitoring
 
+The controlled protocol below remains available for bounded proofs. [Production operation](PRODUCTION.md) adds the direct authenticated app-server transport and local Windows host; chat heartbeats are no longer the intended production connector executor. Both earlier test heartbeats are paused after their bounded proofs. Production source/records, native email and owner release remain separate.
+
 The owner approved the console design on October 17, 2026, and authorized finishing these connections using controlled records. Research, real-business outreach and the old `studio-controlled-reply-monitor` remain paused. This coordinator runs no research, transcript inference, dialer, paid model API, sequence enrollment or activation. It reuses the existing authenticated app connectors and scoped Google identity. No new dependency or credential is added.
 
 ## Ownership and scope

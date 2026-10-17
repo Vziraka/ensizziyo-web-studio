@@ -1,5 +1,7 @@
 # Private sales, delivery and support workspace
 
+Current production preparation, direct connector service, separate records and remaining launch gates are in [PRODUCTION.md](PRODUCTION.md). The earlier chat-supervised controlled proof below remains useful evidence; it is no longer the intended production dispatch loop. Both old test heartbeats are paused.
+
 The owner approved this design on October 17, 2026. [Controlled operations](OPERATIONS.md) connects its email, booking, synchronization and supervision paths. Research, real outreach and the previous heartbeat remain paused. It reuses Node 24, the existing Google library, Apollo/Gmail/Calendar connections and subscription CLIs. No dependency, paid model API or new subscription was added.
 
 ## Journey and ownership
