@@ -1,5 +1,5 @@
 import { centsFromDollars } from '/money.js';
-let state, view = 'today', selected = 'juniper', dirty = false, refreshAfter = 0;
+let state, view = 'today', selected = 'juniper', lane = 'all', dirty = false, refreshAfter = 0;
 const content = document.querySelector('#content'), message = document.querySelector('#message');
 const titles = { today: ['Your operating desk', 'Make the next move clear.', 'Calls, decisions and client work, with the evidence beside them.'], reviews: ['Evidence → owner decision', 'Review the conversation.', 'A connected call pauses cold follow-ups until you confirm its next action.'], clients: ['From scope to support', 'Deliver what you agreed.', 'Track materials, payment evidence, delivery checks and open requests.'], exceptions: ['Bounded recovery', 'Handle the exceptions.', 'Held work stays visible while unrelated records continue.'], launch: ['Before the first real contact', 'Approve a working system.', 'These gates stay closed until their evidence and your final approval are recorded.'] };
 function el(tag, text, className) { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; }
@@ -18,11 +18,11 @@ function panel(title) { const node = el('section', undefined, 'panel'); if (titl
 function link(label, href) { const node = el('a', label); if (/^https:\/\//i.test(href) || href === '/preview/' || /^\/proposal\/[a-zA-Z0-9_-]+$/.test(href)) { node.href = href; node.target = '_blank'; node.rel = 'noreferrer'; } else node.removeAttribute('href'); return node; }
 function summary(r) {
   const node = button('', () => { selected = r.id; render(); }, `record${selected === r.id ? ' selected' : ''}`);
-  node.append(el('strong', r.name), pill(r.stage), el('small', r.idea)); return node;
+  node.append(el('strong', r.name), pill(r.call_lane === 'verification' ? 'Verification call only' : 'Research reviewed'), pill(r.stage), el('small', r.idea)); return node;
 }
 function stats() {
   const row = el('div', undefined, 'stats');
-  for (const [label, value, note] of [['Businesses today', `${state.daily.unique_businesses} / 50`, 'Actual contacts · follow-ups included'], ['Call reviews', Object.values(state.prospects).filter(r => r.stage === 'Connected review').length, 'Held until your decision'], ['Open support', Object.values(state.prospects).flatMap(r => r.tickets).filter(t => t.status === 'Open').length, state.controls.mode === 'controlled' ? 'Fictional projects in this review' : 'Saved client requests'], ['Exceptions', state.exceptions.length, 'Consolidated in the private workspace']]) {
+  for (const [label, value, note] of [['Businesses today', `${state.daily.unique_businesses} / 50`, 'Actual contacts · follow-ups included'], ['Call reviews', Object.values(state.prospects).filter(r => ['Connected review', 'Verification review'].includes(r.stage)).length, 'Held until your decision'], ['Open support', Object.values(state.prospects).flatMap(r => r.tickets).filter(t => t.status === 'Open').length, state.controls.mode === 'controlled' ? 'Fictional projects in this review' : 'Saved client requests'], ['Exceptions', state.exceptions.length, 'Consolidated in the private workspace']]) {
     const card = el('div', undefined, 'stat'); card.append(el('p', label, 'eyebrow'), el('strong', String(value)), el('small', note)); row.append(card);
   } return row;
 }
@@ -31,6 +31,7 @@ function inputField(form, label, name, value = '', type = 'text', options) {
   if (options) { input = el('select'); for (const item of options) { const o = el('option', item.label ?? item); o.value = item.value ?? item; input.append(o); } }
   else input = el(type === 'textarea' ? 'textarea' : 'input');
   input.name = name;
+  input.setAttribute('aria-label', label);
   if (input.tagName === 'INPUT') input.type = type === 'money' ? 'text' : type;
   if (type === 'money') { input.inputMode = 'decimal'; input.dataset.money = 'true'; }
   if (type === 'checkbox') { wrap.className = 'checkbox'; input.checked = value === true; wrap.prepend(input); }
@@ -62,6 +63,19 @@ function callForm(r) {
 function callPrep(r) {
   const card = el('section', undefined, 'call-prep'); card.setAttribute('aria-label', 'Call preparation');
   card.append(el('h3', 'Before you call'));
+  if (r.call_lane === 'verification') {
+    const packet = r.verification.packet;
+    card.append(el('p', 'Verification call only · current activity and owner fit are unconfirmed. This is not a detailed, independently accepted assessment. No automatic email follows an unanswered call.', 'notice'));
+    for (const [key, title] of [['identity', 'Business identity'], ['location', 'Location'], ['offering', 'Public offering'], ['public_phone', 'Public business phone']]) {
+      const proof = packet[key], source = packet.sources.find(s => s.url === proof.url), line = el('p');
+      line.append(el('strong', `${title}: `), document.createTextNode(proof.excerpt), document.createTextNode(' · '), link('Source ↗', proof.url), document.createTextNode(` · checked ${source.fetched_at}`)); card.append(line);
+    }
+    card.append(el('h4', 'Suggested opening'), el('blockquote', r.verification.opening, 'quote'));
+    card.append(el('h4', 'Then ask'), el('p', r.verification.owner_question ?? 'What would you most like to make easier for customers or for yourself?'), el('p', 'How do customers order or enquire today? Which tools already handle this, and what works well?'), el('p', `Possible enhancement to discuss: ${r.idea}`, 'muted'));
+    const unknowns = el('ul'); for (const unknown of packet.unknowns) unknowns.append(el('li', unknown)); card.append(unknowns);
+    if (Date.now() - Date.parse(r.contact.checked_at) > 14 * 86400000) card.append(el('p', 'The identity/phone check is stale. Reverify before calling.', 'notice'));
+    return card;
+  }
   const prep = r.call_prep;
   if (!prep?.observations?.length || prep.observations.some(o => !o.sources?.length || o.sources.some(s => !/^https:\/\//i.test(s.url) || !Number.isFinite(Date.parse(s.checked_at))))) {
     card.append(el('p', 'Call preparation evidence is missing. Check the saved research and current customer route before choosing an opening; no evidence-based script is available.', 'notice'));
@@ -114,11 +128,21 @@ function review(r, node) {
 }
 function nextForm(r, node) {
   const ref = r.controlled ? 'fixture:owner-verified evidence — controlled test only' : '';
-  if (['Ready to contact', 'Contacting', 'Callback'].includes(r.stage)) {
-    if (!r.controlled && state.controls.outreach_paused) node.append(el('p', 'This prospect is staged. Calling and email stay paused until the final release.', 'notice'));
+  if (['Ready to contact', 'Contacting', 'Ready to verify', 'Verifying', 'Callback'].includes(r.stage)) {
+    if (!r.controlled && state.controls.calls_paused) node.append(el('p', 'This prospect is staged. Calling stays paused until the final owner release. Email has separate launch gates.', 'notice'));
     else node.append(callForm(r));
   }
   if (r.stage === 'Connected review') review(r, node);
+  if (r.stage === 'Verification review') {
+    const callId = Object.keys(r.approved_calls).at(-1);
+    node.append(eventForm(r, 'Confirm the actual verification conversation', 'verification_confirmed', [
+      ['The speaker confirmed this business identity', 'identity_confirmed', false, 'checkbox'], ['The speaker confirmed current business activity', 'active_confirmed', false, 'checkbox'],
+      ['Decision-maker / role confirmed in the conversation', 'decision_maker', ''], ['Specific owner goal', 'goal', '', 'textarea'],
+      ['Exact transcript quote confirming identity', 'identity_quote', '', 'textarea'], ['Exact transcript quote confirming current activity', 'activity_quote', '', 'textarea'],
+      ['Exact transcript quote confirming decision-maker', 'decision_maker_quote', '', 'textarea'], ['Exact transcript quote supporting the goal', 'goal_quote', '', 'textarea'],
+      ['Business email given in this conversation, optional', 'email', ''], ['Exact quote requesting or agreeing to email at this address', 'email_quote', '', 'textarea'], ['I confirmed the owner wants email at this address', 'email_permission_confirmed', false, 'checkbox']
+    ], { call_id: callId }, 'Confirm conversation qualification'));
+  }
   if (r.stage === 'Reply review') node.append(eventForm(r, 'Review the verified reply', 'reply_reviewed', [
     ['Next action', 'outcome', 'hold', 'text', ['discovery', 'requested_info', 'hold', 'decline', 'do_not_contact']],
     ['Your reply review note', 'note', '', 'textarea']
@@ -189,7 +213,7 @@ function nextForm(r, node) {
 }
 function detail(r) {
   const node = panel(); node.append(pill(r.stage), el('h2', r.name, 'detail-title'), el('p', r.idea, 'idea'), el('p', `Evidence: ${r.qualification.evidence_ref}`, 'source'));
-  if (!r.controlled) node.append(el('p', `Public business phone: ${r.contact.phone ?? 'awaiting verification'} · Email: ${r.contact.email}`, 'source'));
+  if (!r.controlled) node.append(el('p', `Public business phone: ${r.contact.phone ?? 'awaiting verification'} · Email: ${r.contact.email ?? 'unverified — automatic email blocked'}`, 'source'));
   for (const [actionId, email] of Object.entries(state.operations?.email ?? {})) if (state.actions[actionId]?.prospect_id === r.id) node.append(el('p', `Email: ${email.status}${email.thread ? ' · sender thread verified' : ''}`, 'notice'));
   if (r.reply) node.append(el('p', `Verified reply: ${new Date(r.reply.at).toLocaleString()} · cold follow-ups paused · suppression: ${r.suppression ?? 'local only'}`, 'notice'));
   if (r.meeting) {
@@ -202,7 +226,7 @@ function detail(r) {
   if (r.stage === 'Callback') {
     node.append(el('p', r.callback_at ? `Requested callback: ${new Date(r.callback_at).toLocaleString()}. Cold email remains paused.` : 'Callback requested. Check the saved agreed time before calling.', 'notice'));
   }
-  if (['Ready to contact', 'Contacting', 'Callback'].includes(r.stage)) node.append(callPrep(r));
+  if (['Ready to contact', 'Contacting', 'Ready to verify', 'Verifying', 'Callback'].includes(r.stage)) node.append(callPrep(r));
   nextForm(r, node);
   const history = el('details'); history.append(el('summary', 'Review the saved event history'));
   const list = el('ol', undefined, 'timeline');
@@ -212,9 +236,9 @@ function detail(r) {
   history.append(list); node.append(history); return node;
 }
 function render() {
-  document.querySelector('#mode-banner').textContent = state.controls.mode === 'controlled' ? 'Controlled operations proof · Fictional businesses, simulated calls and payments. Approved test emails go only to owner-controlled inboxes.' : state.controls.outreach_paused ? 'Production workspace · Saved research, calls and client work. Contact remains paused until launch evidence and final owner release are recorded.' : 'Production workspace · Live calls and email operate within the approved campaign rules. Review due work and exceptions before contacting.';
+  document.querySelector('#mode-banner').textContent = state.controls.mode === 'controlled' ? 'Controlled operations proof · Fictional businesses, simulated calls and payments. Approved test emails go only to owner-controlled inboxes.' : state.controls.calls_paused ? 'Production workspace · Saved research, verification calls and client work. Contact remains paused until final owner release.' : state.controls.outreach_paused ? 'Calls-only release · You place and log calls. Automated email and booking remain blocked by separate production gates.' : 'Production workspace · Live calls and email operate within the approved campaign rules. Review due work and exceptions before contacting.';
   document.querySelector('#research-status').textContent = `${state.controls.research_paused ? 'Research paused' : 'Research enabled'}${state.research_runtime ? ` · ${state.research_runtime.status}${state.research_runtime.counts ? ` · ${state.research_runtime.counts.Complete} reviewed` : ''}` : ''}`;
-  document.querySelector('#outreach-status').textContent = state.controls.outreach_paused ? 'Outreach paused' : 'Outreach enabled';
+  document.querySelector('#outreach-status').textContent = state.controls.calls_paused ? 'Outreach paused' : state.controls.outreach_paused ? 'Calls only · email paused' : 'Outreach enabled';
   content.replaceChildren(); const title = titles[view]; document.querySelector('#view-kicker').textContent = title[0]; document.querySelector('#view-title').textContent = title[1]; document.querySelector('#view-description').textContent = title[2];
   document.querySelector('#updated').textContent = `Saved revision ${state.revision} · ${new Date(state.updated_at).toLocaleTimeString()}`;
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
@@ -228,6 +252,11 @@ function render() {
   }
   if (view === 'launch') {
     if (state.controls.mode === 'production') {
+      const calls = panel('Calls-only final review'), review = state.controls.final_review.calls;
+      calls.append(el('p', 'Release your manual calls and Apollo call tasks separately from email. Verification calls confirm activity and goals; they never trigger no-answer email. All real contact stays paused until your final approval.', 'notice'));
+      for (const [key, label] of [['queue_verified', 'Checked identities, public phones and call cards'], ['outcomes_verified', 'Call outcomes, transcript/owner review and stop handling'], ['supervision_verified', 'Durable task supervision and recovery']]) calls.append(el('p', `${review.evidence[key] ? '✓' : '·'} ${label}`));
+      calls.append(el('p', `Transcript review allowance: ${review.transcript_daily_calls} subscription model calls/day. A clean author/reviewer pair uses two; failed calls also count. Website priority and the 30% reserve can pause analysis. Email and invitations retain their separate launch gates.`, 'muted'));
+      content.append(calls);
       const research = panel('Research priority');
       research.append(el('p', `Current priority: ${state.controls.research_priority ?? 'unavailable'}. Resume the saved campaign within its subscription allowance. Website and client priority pause research; outreach keeps its separate launch gates.`, 'muted'));
       for (const [value, label] of [['website', 'Website priority'], ['client', 'Client priority'], ['research', 'Resume approved research']]) research.append(button(label, async () => {
@@ -241,12 +270,18 @@ function render() {
     if (state.controls.final_review?.verified?.length) { node.append(el('h3', 'Verified so far')); for (const line of state.controls.final_review.verified) node.append(el('p', line, 'muted')); }
     node.append(list, el('p', 'Readiness values are evidence-based gates, not checkboxes that activate sending. No production activation is available from this review screen.', 'muted')); content.append(node); return;
   }
-  if (view === 'today') content.append(stats());
-  const grid = el('div', undefined, 'grid'), records = Object.values(state.prospects).filter(r => view === 'reviews' ? r.stage === 'Connected review' : view === 'clients' ? r.handover || r.quote || ['Preview', 'Delivery', 'Client review', 'Onboarding'].includes(r.stage) : true);
+  if (view === 'today') content.append(stats(), el('p', `Prepared due call cards: ${state.daily.prepared.research} research-reviewed · ${state.daily.prepared.verification} verification only. These are prepared records, not calls made or accepted detailed assessments.`, 'notice'));
+  const grid = el('div', undefined, 'grid'), records = Object.values(state.prospects).filter(r => view === 'reviews' ? ['Connected review', 'Verification review'].includes(r.stage) : view === 'clients' ? r.handover || r.quote || ['Preview', 'Delivery', 'Client review', 'Onboarding'].includes(r.stage) : lane === 'all' || (r.call_lane === 'verification' ? lane === 'verification' : lane === 'research'));
   if (view === 'today') { const order = new Map(state.daily.due.map((a, i) => [a.prospect_id, i])); records.sort((a, b) => (order.get(a.id) ?? 10000) - (order.get(b.id) ?? 10000)); }
   const left = panel(view === 'reviews' ? 'Awaiting your review' : view === 'clients' ? 'Client work' : state.controls.mode === 'controlled' ? 'Controlled working records' : 'Daily call queue & prospects');
-  left.append(el('p', view === 'today' ? 'In production, Apollo holds your call tasks. This review shows each decision and its downstream work.' : 'Select a record to review its current step.', 'muted'));
-  for (const r of records) left.append(summary(r));
+  left.append(el('p', view === 'today' ? 'Review the purpose and evidence before calling. Apollo tasks publish after final release; task completion is never call evidence.' : 'Select a record to review its current step.', 'muted'));
+  if (view === 'today') {
+    const filter = inputField(left, 'Call lane', 'lane', lane, 'text', [{ value: 'all', label: 'All call cards' }, { value: 'research', label: 'Research reviewed' }, { value: 'verification', label: 'Verification calls only' }]);
+    filter.addEventListener('change', () => { lane = filter.value; render(); });
+  }
+  const recordList = el('div', undefined, 'record-list');
+  for (const r of records) recordList.append(summary(r));
+  left.append(recordList);
   if (!records.length) left.append(el('p', state.controls.mode === 'production' ? 'No reviewed prospects imported yet. Fictional test records stay in the separate rehearsal workspace.' : 'No records at this step.', 'empty'));
   if (!records.some(r => r.id === selected)) selected = records[0]?.id;
   grid.append(left); if (selected && state.prospects[selected]) grid.append(detail(state.prospects[selected])); content.append(grid);

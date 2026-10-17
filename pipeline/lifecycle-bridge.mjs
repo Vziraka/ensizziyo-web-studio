@@ -11,7 +11,7 @@ export function controlledTaskIdentity(task, expected, existing, readback = fals
   check(task?.id && task.title === expected.title && task.type === expected.type && task.status === 'scheduled' &&
     (task.contact_id ?? task.contact?.id) === expected.contact_id &&
     (Object.hasOwn(task, 'user_id') ? task.user_id : existing?.user_id) === expected.user_id &&
-    (!Object.hasOwn(task, 'account_id') || task.account_id === expected.account_id) && !task.emailer_campaign_id && !task.sequence_id,
+    (!Object.hasOwn(task, 'account_id') || (task.account_id ?? null) === (expected.account_id ?? null)) && !task.emailer_campaign_id && !task.sequence_id,
   'Provider task does not match the exact owned standalone request');
   check(!existing || existing.id === task.id, 'Provider task identity changed');
   check(task.note === expected.note && Math.floor(Date.parse(task.due_at) / 1000) === Math.floor(Date.parse(expected.due_at) / 1000), 'Provider changed the task note or due time');

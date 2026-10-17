@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { mutations } from './lifecycle-operations.mjs';
-import { operationsFor, requireProductionRelease, syncResearchImports } from './production.mjs';
+import { operationsFor, requireProductionRelease, requireCallRelease, syncResearchImports } from './production.mjs';
 import { maintainOperations } from './lifecycle-maintenance.mjs';
 import { AppConnectors } from './app-connectors.mjs';
 import { check, hash } from './lifecycle.mjs';
@@ -16,7 +16,10 @@ async function dispatchGuard(app, next, session) {
   const state = await app.snapshot(), r = Object.values(state.operations.requests).find(r => r.key === next.key);
   check(r?.session === session && r.status === 'Pending' && r.input_sha256 === hash(next.input), 'Prepared operation identity changed before dispatch');
   if (!writes.has(next.operation) || ['stop', 'task_skip'].includes(next.operation)) return;
-  if (config.mode === 'production') requireProductionRelease(config);
+  if (config.mode === 'production') {
+    if (['contact_create', 'task_create'].includes(next.operation)) requireCallRelease(config);
+    else requireProductionRelease(config);
+  }
   const suffix = { draft: 'draft', send: 'send', task_create: 'task-create', personalize: 'personalize', intent: 'intent' }[next.operation];
   const action = suffix && Object.values(state.actions).find(a => r.logical === `${a.id}-${suffix}`);
   const booking = next.operation === 'booking_create' && Object.entries(config.operations.bookings ?? {}).find(([id]) => r.logical === `${id}-create`)?.[1];

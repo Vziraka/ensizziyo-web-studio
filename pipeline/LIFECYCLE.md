@@ -6,6 +6,8 @@ The owner approved this design on October 17, 2026. [Controlled operations](OPER
 
 ## Journey and ownership
 
+The owner-approved [verification-call lane](PRODUCTION.md#verification-calls) complements full research. Checked identity/public phone plus a tailored hypothesis permit a staged verification card, with activity and goals explicitly unknown. The console keeps its purpose/counts separate, creates no email after no-answer and requires transcript/owner confirmation before discovery. Calls-only final release leaves the full email/booking gates intact. Fifty prepared cards are not fifty completed contacts or fifty independently accepted assessments.
+
 SOSA discovers candidates using [RESEARCH.md](RESEARCH.md); the existing controller owns evidence, worker handoffs, allowance and independent review. Food/beverages remain first, cleaners later. This build runs no discovery and contributes no fictional records to C5's 20 real qualified prospects/five drafts.
 
 Apollo remains the call/email workspace. The owner makes every call. The console records outcomes and carries a conversation through transcript/owner review → discovery → bounded clickable preview → fixed written quote → signed agreement → invoice/settled payment evidence → onboarding → service-specific checks → revision/acceptance → settled balance/handover → support closure. Agreement, payment and acceptance require owner-verified references; v1 does not sign contracts or charge a customer.
