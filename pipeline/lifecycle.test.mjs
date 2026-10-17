@@ -24,6 +24,28 @@ async function setup(t) {
   return { app, directory, event: (type, data = {}, id = type, p = 'fictional-bakery', actor = 'owner') =>
     app.apply({ id, prospect_id: p, type, at, data }, { actor }) };
 }
+
+test('same-host state writers serialize without losing updates', async t => {
+  const { app } = await setup(t);
+  let entered, resume;
+  const started = new Promise(resolve => { entered = resolve; }), gate = new Promise(resolve => { resume = resolve; });
+  const first = app.change(async state => { entered(); await gate; state.concurrent_updates = 1; });
+  await started;
+  const second = app.change(state => { state.concurrent_updates = (state.concurrent_updates ?? 0) + 1; });
+  const results = Promise.allSettled([first, second]); resume();
+  assert.deepEqual((await results).map(r => r.status), ['fulfilled', 'fulfilled']);
+  assert.equal((await app.snapshot()).concurrent_updates, 2);
+});
+
+test('a rejected same-host change does not block the following valid change', async t => {
+  const { app } = await setup(t);
+  const results = await Promise.allSettled([
+    app.change(() => { throw Error('Deliberate validation failure'); }),
+    app.change(state => { state.after_failure = true; })
+  ]);
+  assert.deepEqual(results.map(r => r.status), ['rejected', 'fulfilled']);
+  assert.equal((await app.snapshot()).after_failure, true);
+});
 async function connected(s) {
   await s.app.apply(prospect());
   await s.event('call_logged', { call_id: 'call-1', outcome: 'connected', simulated: true, performed_at: at });

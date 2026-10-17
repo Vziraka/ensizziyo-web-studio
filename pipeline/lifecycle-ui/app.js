@@ -213,7 +213,7 @@ function detail(r) {
 }
 function render() {
   document.querySelector('#mode-banner').textContent = state.controls.mode === 'controlled' ? 'Controlled operations proof · Fictional businesses, simulated calls and payments. Approved test emails go only to owner-controlled inboxes.' : state.controls.outreach_paused ? 'Production workspace · Saved research, calls and client work. Contact remains paused until launch evidence and final owner release are recorded.' : 'Production workspace · Live calls and email operate within the approved campaign rules. Review due work and exceptions before contacting.';
-  document.querySelector('#research-status').textContent = state.controls.research_paused ? 'Research paused' : 'Research enabled';
+  document.querySelector('#research-status').textContent = `${state.controls.research_paused ? 'Research paused' : 'Research enabled'}${state.research_runtime ? ` · ${state.research_runtime.status}${state.research_runtime.counts ? ` · ${state.research_runtime.counts.Complete} reviewed` : ''}` : ''}`;
   document.querySelector('#outreach-status').textContent = state.controls.outreach_paused ? 'Outreach paused' : 'Outreach enabled';
   content.replaceChildren(); const title = titles[view]; document.querySelector('#view-kicker').textContent = title[0]; document.querySelector('#view-title').textContent = title[1]; document.querySelector('#view-description').textContent = title[2];
   document.querySelector('#updated').textContent = `Saved revision ${state.revision} · ${new Date(state.updated_at).toLocaleTimeString()}`;
@@ -227,6 +227,14 @@ function render() {
     node.append(el('p', 'Routine checks stay in private logs. Notifications are consolidated and sent only for a meaningful change or required decision. The earlier test monitor stays paused.', 'muted')); content.append(node); return;
   }
   if (view === 'launch') {
+    if (state.controls.mode === 'production') {
+      const research = panel('Research priority');
+      research.append(el('p', `Current priority: ${state.controls.research_priority ?? 'unavailable'}. Resume the saved campaign within its subscription allowance. Website and client priority pause research; outreach keeps its separate launch gates.`, 'muted'));
+      for (const [value, label] of [['website', 'Website priority'], ['client', 'Client priority'], ['research', 'Resume approved research']]) research.append(button(label, async () => {
+        try { await api('/api/research-priority', { priority: value }); tell(`Research priority saved: ${value}.`); await refresh(); } catch (error) { tell(error.message, true); }
+      }));
+      content.append(research);
+    }
     const node = panel('Required before live automation'), list = el('div', undefined, 'checklist');
     const checks = { owner_design_approved: ['Your final design approval', 'Review this console, operating rules and controlled proof.'], business_sender_verified: ['Business sender ready', 'Workspace access, mailbox receipt/send-as and domain authentication checked.'], native_automation_verified: ['Apollo automatic handoff', 'Approved templates, exact intent lists, native workflow triggers and stop rules tested.'], delivery_and_stop_verified: ['Controlled delivery and cancellation', 'One approved owner-only rehearsal of the final native sending route; no blind retries.'], website_inquiry_verified: ['Website and inquiry route', 'Published studio and reachable inquiry destination verified.'], prospect_supply_verified: ['Reviewed food/beverage prospect supply', 'Resume research only when authorized; do not lower screening quality to fill 50.'], capacity_verified: ['Subscription and operating capacity', 'Live Luna/high + Sol/high compatibility, allowance, source review and upkeep measured.'] };
     for (const [key, [label, description]] of Object.entries(checks)) { const row = el('div', undefined, 'check-item'), copy = el('div'), gate = state.controls.final_review?.gates.find(g => g.key === key); copy.append(el('strong', label), el('p', description)); if (gate?.note) copy.append(el('p', gate.note)); const passed = state.controls.final_review ? gate?.passed : state.controls.readiness[key]; row.append(el('span', passed ? '✓' : '·'), copy); list.append(row); }

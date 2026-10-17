@@ -86,7 +86,7 @@ export class StudioLifecycle {
     const config = await readJson(join(directory, 'lifecycle-config.json'));
     check(config.schema_version === 1 && ['controlled', 'production'].includes(config.mode) && key(config.run_id), 'Invalid lifecycle configuration');
     check(config.timezone === 'America/New_York' && config.daily_target === 50, 'Use the agreed campaign timezone and minimum');
-    check(config.research_enabled === false, 'Real research remains paused in this build');
+    check(config.research_enabled === false, 'Research execution uses the separately bound controller control');
     if (config.mode === 'controlled') check(config.outreach_enabled === false, 'Production activation requires the separate final readiness review');
     else if (config.outreach_enabled || config.connector_writes_enabled) { const { requireProductionRelease } = await import('./production.mjs'); requireProductionRelease(config); }
     app.config = config;
@@ -101,15 +101,20 @@ export class StudioLifecycle {
     return StudioLifecycle.open({ directory, now });
   }
   async change(fn) {
-    const release = await acquireLock(this.directory);
+    const previous = this.changeTail ?? Promise.resolve();
+    let finish;
+    this.changeTail = new Promise(resolve => { finish = resolve; });
+    await previous;
+    let release;
     try {
+      release = await acquireLock(this.directory);
       const state = await readJson(join(this.directory, 'lifecycle-state.json'));
       check(state.schema_version === 1, 'Unknown state version');
       const result = await fn(state);
       check(Buffer.byteLength(JSON.stringify(state)) <= 20_000_000, 'State size limit reached; archive closed records before proceeding');
       await saveJson(join(this.directory, 'lifecycle-state.json'), state);
       return result;
-    } finally { await release(); }
+    } finally { try { await release?.(); } finally { finish(); } }
   }
   async snapshot() { return readJson(join(this.directory, 'lifecycle-state.json')); }
   async apply(event, { actor = 'owner', expectedRevision } = {}) {
@@ -316,9 +321,9 @@ export class StudioLifecycle {
   async dashboard() {
     this.config = await readJson(join(this.directory, 'lifecycle-config.json'));
     const state = await this.snapshot(), today = businessDate(this.now());
-    let researchPaused = !this.config.research_enabled, researchHold;
+    let researchPaused = !this.config.research_enabled, researchHold, researchPriority;
     if (this.config.research?.source_directory) {
-      try { const control = await readJson(join(this.config.research.source_directory, 'research-control.json')); check(control.schema_version === 1 && typeof control.enabled === 'boolean', 'Unknown control'); researchPaused = !control.enabled || control.priority !== 'research'; }
+      try { const control = await readJson(join(this.config.research.source_directory, 'research-control.json')); check(control.schema_version === 1 && typeof control.enabled === 'boolean', 'Unknown control'); researchPaused = !control.enabled || control.priority !== 'research'; researchPriority = control.priority; }
       catch { researchPaused = true; researchHold = 'Configured research control is unavailable; verify its pause/priority before running workers.'; }
     }
     const real = Object.values(state.prospects).filter(r => !r.controlled);
@@ -328,7 +333,7 @@ export class StudioLifecycle {
       .map(a => ({ ...a, company_id: state.prospects[a.prospect_id].company_id, kind: a.payload.kind, due_at: a.payload.due_at,
         status: 'scheduled', stopped: state.prospects[a.prospect_id].restriction || !['Ready to contact', 'Contacting', 'Callback'].includes(state.prospects[a.prospect_id].stage) }));
     const queue = dailyCallQueue(candidates, this.now());
-    return { ...state, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode, research_paused: researchPaused, outreach_paused: !this.config.outreach_enabled, priority: this.config.priority,
+    return { ...state, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode, research_paused: researchPaused, research_priority: researchPriority, outreach_paused: !this.config.outreach_enabled, priority: this.config.priority,
       runtime_enabled: this.config.runtime?.enabled === true, final_review: this.config.mode === 'production' ? { fingerprint: (await import('./production.mjs')).releaseFingerprint(this.config), gates: (await import('./production.mjs')).productionGates(this.config), approved: this.config.release?.approved === true, verified: this.config.verified_summary ?? [] } : null,
       ai_enabled: this.config.transcript_ai.enabled, connector_writes_enabled: this.config.connector_writes_enabled, readiness: this.config.readiness },
       daily: { date: today, unique_businesses: contacted.length, new_businesses: first, repeat_businesses: contacted.length - first,
