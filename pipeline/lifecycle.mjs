@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { acquireLock, privateStateDirectory, readJson, saveJson } from './engine.mjs';
 import { dailyCallQueue } from './apollo-queue.mjs';
+import { verificationLane, verificationData, validateVerificationRecord, verificationFresh, callStages } from './verification-calls.mjs';
 
 export const hash = value => createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
 export const check = (condition, message) => { if (!condition) throw Error(message); };
@@ -55,9 +56,12 @@ function pauseCold(state, record, eventId, reason) {
 }
 function contactable(record, at) {
   check(record.stage !== 'Stopped' && !record.restriction && !record.cold_paused, 'Cold contact is paused or restricted');
-  check(record.qualification?.verdict === 'Research-qualified' && record.qualification.independent_review === 'Accepted', 'Reviewed qualification required');
-  check(date(record.qualification.checked_at) && Date.parse(at) >= Date.parse(record.qualification.checked_at) &&
-    Date.parse(at) - Date.parse(record.qualification.checked_at) <= 30 * 86_400_000, 'Research/contact check is stale or from the future');
+  if (verificationLane(record)) validateVerificationRecord(record, at);
+  else {
+    check(record.qualification?.verdict === 'Research-qualified' && record.qualification.independent_review === 'Accepted', 'Reviewed qualification required');
+    check(date(record.qualification.checked_at) && Date.parse(at) >= Date.parse(record.qualification.checked_at) &&
+      Date.parse(at) - Date.parse(record.qualification.checked_at) <= 30 * 86_400_000, 'Research/contact check is stale or from the future');
+  }
   const first = record.attempts[0]?.at;
   check(!first || businessDaysBetween(first, at) < 10, 'Ten-business-day cold campaign has ended');
 }
@@ -88,7 +92,7 @@ export class StudioLifecycle {
     check(config.timezone === 'America/New_York' && config.daily_target === 50, 'Use the agreed campaign timezone and minimum');
     check(config.research_enabled === false, 'Research execution uses the separately bound controller control');
     if (config.mode === 'controlled') check(config.outreach_enabled === false, 'Production activation requires the separate final readiness review');
-    else if (config.outreach_enabled || config.connector_writes_enabled) { const { requireProductionRelease } = await import('./production.mjs'); requireProductionRelease(config); }
+    else if (config.outreach_enabled || config.connector_writes_enabled || config.calls_enabled) { const { requireCallRelease } = await import('./production.mjs'); requireCallRelease(config); }
     app.config = config;
     await app.change(state => { check(state.run_id === config.run_id && state.mode === config.mode, 'State belongs to a different run or mode'); });
     return app;
@@ -121,6 +125,7 @@ export class StudioLifecycle {
     this.config = await readJson(join(this.directory, 'lifecycle-config.json'));
     check(key(event?.id) && key(event.prospect_id) && text(event.type, 80) && date(event.at), 'Event needs stable IDs and an explicit timestamp');
     check(Date.parse(event.at) <= +this.now() + 60_000, 'An event cannot claim a future action');
+    if (event.type === 'call_logged' && this.config.mode === 'production') { const { requireCallRelease } = await import('./production.mjs'); requireCallRelease(this.config); }
     return this.change(state => {
       const fingerprint = hash({ event, actor });
       if (state.events[event.id]) { check(state.events[event.id].fingerprint === fingerprint, 'Event ID conflicts with saved evidence'); return { duplicate: true, revision: state.revision }; }
@@ -129,19 +134,28 @@ export class StudioLifecycle {
       const data = event.data ?? {}, eid = event.id;
       let r = state.prospects[event.prospect_id];
       state.updated_at = this.now().toISOString();
-      if (event.type === 'prospect_imported') {
-        if (this.config.mode === 'production') check(actor === 'research-import', 'Production prospects must enter through the retained independent research review'); else owner(actor);
+      if (['prospect_imported', 'verification_imported'].includes(event.type)) {
+        const verification = event.type === 'verification_imported';
+        if (this.config.mode === 'production') check(actor === (verification ? 'verification-import' : 'research-import'), verification ? 'Production verification calls must enter through the retained verification import' : 'Production prospects must enter through the retained independent research review'); else owner(actor);
         check(!r && !Object.values(state.prospects).some(x => x.company_id === data.company_id), 'Prospect/company already exists');
         check(key(data.company_id) && text(data.name, 250) && text(data.idea, 1600) && text(data.category, 150), 'Identity, category and tailored idea required');
         check(typeof data.controlled === 'boolean' && data.controlled === (this.config.mode === 'controlled'), 'Controlled mode accepts fictional records only; production records need a separate workspace');
         check(!data.controlled || data.contact?.email?.endsWith('@example.invalid') && !data.contact?.phone, 'Fictional records must use .invalid email and no dialable phone');
-        check(data.qualification?.verdict === 'Research-qualified' && data.qualification.independent_review === 'Accepted' &&
-          date(data.qualification.checked_at) && /^[a-f0-9]{64}$/.test(data.qualification.report_sha256 ?? '') &&
-          /^[a-f0-9]{64}$/.test(data.qualification.review_sha256 ?? '') && text(data.qualification.evidence_ref), 'Accepted source-backed research and review references required');
-        check(data.controlled || /food|beverage|bakery|café|cafe/i.test(data.category), 'First campaign is food and beverages');
-        check(data.controlled || data.contact?.verified === true && date(data.contact.checked_at) && text(data.contact.source), 'Public contact ownership must be verified');
-        if (!data.controlled) check(!Object.values(state.prospects).some(x => x.contact?.email?.toLowerCase() === data.contact.email?.toLowerCase() || x.contact?.phone && x.contact.phone.replace(/\D/g, '') === data.contact.phone?.replace(/\D/g, '')), 'Duplicate contact identity already exists; preserve its restrictions');
-        r = state.prospects[event.prospect_id] = { ...data, id: event.prospect_id, stage: 'Ready to contact', cold_paused: false,
+        if (verification) {
+          check(date(data.verification?.reviewed_at) && Date.parse(data.verification.reviewed_at) <= Date.parse(event.at), 'Verification review time must be observed, not future');
+          const expected = verificationData(data.verification?.packet, new Date(data.verification?.reviewed_at), data.controlled);
+          check(hash(data) === hash(expected), 'Verification import differs from its retained packet');
+          validateVerificationRecord(data, event.at);
+        } else {
+          check(!data.call_lane || data.call_lane === 'research', 'Research import cannot choose the verification lane');
+          check(data.qualification?.verdict === 'Research-qualified' && data.qualification.independent_review === 'Accepted' &&
+            date(data.qualification.checked_at) && /^[a-f0-9]{64}$/.test(data.qualification.report_sha256 ?? '') &&
+            /^[a-f0-9]{64}$/.test(data.qualification.review_sha256 ?? '') && text(data.qualification.evidence_ref), 'Accepted source-backed research and review references required');
+          check(data.controlled || /food|beverage|bakery|café|cafe/i.test(data.category), 'First campaign is food and beverages');
+          check(data.controlled || data.contact?.verified === true && date(data.contact.checked_at) && text(data.contact.source), 'Public contact ownership must be verified');
+        }
+        if (!data.controlled) check(!Object.values(state.prospects).some(x => data.contact.email && x.contact?.email?.toLowerCase() === data.contact.email.toLowerCase() || x.contact?.phone && x.contact.phone.replace(/\D/g, '') === data.contact.phone?.replace(/\D/g, '')), 'Duplicate contact identity already exists; preserve its restrictions');
+        r = state.prospects[event.prospect_id] = { ...data, id: event.prospect_id, stage: verification ? 'Ready to verify' : 'Ready to contact', cold_paused: false,
           attempts: [], calls: {}, transcripts: {}, proposals: {}, approved_calls: {}, payments: [], invoices: [], materials: [], tasks: [], revisions: [], tickets: [] };
         request(state, r, 'call_task', { due_at: event.at, kind: 'new' }, eid);
       } else {
@@ -150,11 +164,11 @@ export class StudioLifecycle {
         switch (event.type) {
           case 'call_logged': {
             owner(actor); check(key(data.call_id) && !r.calls[data.call_id] && [...coldOutcomes, 'connected', 'callback', 'declined', 'do_not_contact', 'wrong_contact', 'skipped'].includes(data.outcome), 'Explicit unique call outcome required');
-            check(r.controlled || this.config.outreach_enabled === true && this.config.release?.approved === true, 'Real calling remains paused pending final release');
             check(data.simulated === r.controlled, 'Simulated and actual calls cannot be mixed');
             check(date(data.performed_at) && Date.parse(data.performed_at) <= Date.parse(event.at) && (!r.attempts.length || Date.parse(data.performed_at) >= Date.parse(r.attempts.at(-1).at)), 'Call time must be performed, ordered and dated');
             if (data.outcome !== 'skipped') {
-              check(r.stage === 'Ready to contact' || r.stage === 'Contacting' || r.stage === 'Callback', 'Call is outside the contact stage');
+              if (verificationLane(r)) validateVerificationRecord(r, data.performed_at);
+              check(callStages.includes(r.stage), 'Call is outside the contact stage');
               check(r.stage === 'Callback' || r.attempts.filter(x => x.channel === 'call').length < 2, 'Two-call campaign cap reached');
               if (r.stage !== 'Callback') contactable(r, data.performed_at);
               r.attempts.push({ id: data.call_id, channel: 'call', at: data.performed_at, simulated: data.simulated, connected: ![...coldOutcomes, 'wrong_contact'].includes(data.outcome) });
@@ -170,9 +184,20 @@ export class StudioLifecycle {
               check(date(data.callback_at) && Date.parse(data.callback_at) > Date.parse(data.performed_at), 'Callback needs an exact time after the performed call');
               r.stage = 'Callback'; r.callback_at = data.callback_at; pauseCold(state, r, eid, 'Requested callback'); request(state, r, 'callback_task', { due_at: data.callback_at, kind: 'callback' }, eid);
             } else if (coldOutcomes.includes(data.outcome)) {
+              if (verificationLane(r) || !this.config.outreach_enabled && !r.controlled) {
+                r.stage = verificationLane(r) ? 'Verifying' : 'Contacting';
+                if (r.cold_paused || r.attempts.filter(x => x.channel === 'call').length >= 2) {
+                  r.stage = 'Hold'; r.next_check = r.cold_paused ? 'Requested callback was unanswered; owner reviews the next conversational step. Email stays blocked.' : 'Two call attempts used; hold for owner review. No email is released by this call-only lane.';
+                } else {
+                  const due = new Date(data.performed_at); let days = 0;
+                  while (days < 5) { due.setUTCDate(due.getUTCDate() + 1); if (![0, 6].includes(new Date(`${businessDate(due)}T12:00:00Z`).getUTCDay())) days++; }
+                  request(state, r, 'call_task', { due_at: due.toISOString(), kind: 'follow-up' }, eid);
+                }
+              } else {
               r.stage = 'Contacting';
               if (!r.contact?.verified || r.cold_paused) { r.stage = 'Hold'; r.next_check = r.cold_paused ? 'Requested callback was unanswered; owner chooses the conversational next step' : 'Verify the public email before handoff'; }
               else if (r.attempts.filter(x => x.channel === 'email').length < 2 && !Object.values(state.actions).some(a => a.prospect_id === r.id && a.type === 'email' && ['Queued', 'Pending', 'Uncertain', 'Awaiting readback'].includes(a.status))) request(state, r, 'email', { call_id: data.call_id, idea: r.idea, email: r.contact.email }, eid);
+              }
             } else { r.stage = 'Hold'; r.next_check = data.outcome === 'wrong_contact' ? 'Verify the public phone/contact ownership' : 'Record an actual outcome; skipped tasks do not release email'; pauseCold(state, r, eid, r.next_check); }
             break;
           }
@@ -202,9 +227,25 @@ export class StudioLifecycle {
             r.approved_calls[data.call_id] = { outcome: data.outcome, at: event.at, actor, proposal_sha256: proposal.sha256, note: data.note ?? '' };
             if (['not_interested', 'do_not_contact'].includes(data.outcome)) { r.restriction = data.outcome; r.stage = 'Stopped'; pauseCold(state, r, eid, data.outcome); }
             else if (data.outcome === 'callback') { check(date(data.callback_at) && Date.parse(data.callback_at) > Date.parse(r.calls[data.call_id].performed_at), 'Confirm an exact callback after the call; overdue promises stay due'); r.stage = 'Callback'; r.callback_at = data.callback_at; request(state, r, 'callback_task', { due_at: data.callback_at, kind: 'callback' }, eid); }
+            else if (['discovery', 'requested_info'].includes(data.outcome) && verificationLane(r)) { r.stage = 'Verification review'; r.next_check = 'Confirm business identity, current activity, decision-maker and goal from the actual conversation. Email remains blocked.'; }
             else if (data.outcome === 'discovery') r.stage = 'Discovery';
             else if (data.outcome === 'requested_info') { r.stage = 'Information requested'; request(state, r, 'information_task', { summary: proposal.summary }, eid); }
             else { r.stage = 'Hold'; r.next_check = 'Owner clarification of the connected call'; }
+            break;
+          }
+          case 'verification_confirmed': {
+            owner(actor); const reviewed = r.approved_calls[data.call_id], transcript = r.transcripts[data.call_id];
+            check(verificationLane(r) && r.stage === 'Verification review' && reviewed && ['discovery', 'requested_info'].includes(reviewed.outcome) && transcript, 'Review a connected verification call first');
+            check(data.identity_confirmed === true && data.active_confirmed === true && text(data.decision_maker, 250) && text(data.goal, 1600), 'Confirm identity, current activity, decision-maker and a specific goal');
+            check(['identity_quote', 'activity_quote', 'decision_maker_quote', 'goal_quote'].every(k => text(data[k], 1500) && transcript.text.includes(data[k])), 'Retain exact transcript quotes for identity, activity, decision-maker and goal');
+            if (data.email) {
+              check(typeof data.email === 'string' && /^[^\s@,;<>"\r\n]+@[^\s@,;<>"\r\n]+\.[^\s@,;<>"\r\n]+$/.test(data.email) && (!r.controlled || data.email.endsWith('@example.invalid')), 'Use the confirmed business email; controlled records retain .invalid addresses');
+              check(data.email_permission_confirmed === true && text(data.email_quote, 1500) && data.email_quote.includes(data.email) && transcript.text.includes(data.email_quote), 'Confirm the requested email route with an exact transcript quote');
+              r.contact.email = data.email; r.contact.verified = true; r.contact.email_evidence = { source: `call:${data.call_id}`, quote: data.email_quote, confirmed_at: event.at };
+            }
+            r.verification.conversation = { ...data, at: event.at, actor, transcript_sha256: transcript.sha256 };
+            r.stage = reviewed.outcome === 'requested_info' ? 'Information requested' : 'Discovery'; r.next_check = 'Continue the confirmed owner conversation; cold email remains paused.';
+            if (r.stage === 'Information requested') request(state, r, 'information_task', { summary: data.goal }, eid);
             break;
           }
           case 'reply_received':
@@ -331,15 +372,17 @@ export class StudioLifecycle {
     const first = contacted.filter(r => businessDate(r.attempts.find(a => !a.simulated).at) === today).length;
     const candidates = Object.values(state.actions).filter(a => ['call_task', 'callback_task'].includes(a.type) && ['Queued', 'Verified'].includes(a.status))
       .map(a => ({ ...a, company_id: state.prospects[a.prospect_id].company_id, kind: a.payload.kind, due_at: a.payload.due_at,
-        status: 'scheduled', stopped: state.prospects[a.prospect_id].restriction || !['Ready to contact', 'Contacting', 'Callback'].includes(state.prospects[a.prospect_id].stage) }));
+        status: 'scheduled', stopped: state.prospects[a.prospect_id].restriction || !callStages.includes(state.prospects[a.prospect_id].stage) || verificationLane(state.prospects[a.prospect_id]) && !verificationFresh(state.prospects[a.prospect_id], this.now().toISOString()) }));
     const queue = dailyCallQueue(candidates, this.now());
-    return { ...state, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode, research_paused: researchPaused, research_priority: researchPriority, outreach_paused: !this.config.outreach_enabled, priority: this.config.priority,
-      runtime_enabled: this.config.runtime?.enabled === true, final_review: this.config.mode === 'production' ? { fingerprint: (await import('./production.mjs')).releaseFingerprint(this.config), gates: (await import('./production.mjs')).productionGates(this.config), approved: this.config.release?.approved === true, verified: this.config.verified_summary ?? [] } : null,
+    return { ...state, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode, research_paused: researchPaused, research_priority: researchPriority, outreach_paused: !this.config.outreach_enabled, calls_paused: !this.config.outreach_enabled && !this.config.calls_enabled, priority: this.config.priority,
+      runtime_enabled: this.config.runtime?.enabled === true, final_review: this.config.mode === 'production' ? { fingerprint: (await import('./production.mjs')).releaseFingerprint(this.config), gates: (await import('./production.mjs')).productionGates(this.config), approved: this.config.release?.approved === true, verified: this.config.verified_summary ?? [],
+        calls: { fingerprint: (await import('./production.mjs')).callReleaseFingerprint(this.config), approved: this.config.call_release?.approved === true, evidence: this.config.call_readiness ?? {}, transcript_daily_calls: this.config.transcript_ai.daily_calls } } : null,
       ai_enabled: this.config.transcript_ai.enabled, connector_writes_enabled: this.config.connector_writes_enabled, readiness: this.config.readiness },
       daily: { date: today, unique_businesses: contacted.length, new_businesses: first, repeat_businesses: contacted.length - first,
         actual_call_attempts: real.flatMap(r => r.attempts).filter(a => a.channel === 'call' && businessDate(a.at) === today && !a.simulated).length,
         actual_emails: real.flatMap(r => r.attempts).filter(a => a.channel === 'email' && businessDate(a.at) === today && !a.simulated).length,
-        minimum: 50, shortfall: Math.max(0, 50 - contacted.length), due: queue },
+        minimum: 50, shortfall: Math.max(0, 50 - contacted.length), due: queue,
+        prepared: { research: queue.filter(a => !verificationLane(state.prospects[a.prospect_id])).length, verification: queue.filter(a => verificationLane(state.prospects[a.prospect_id])).length } },
       exceptions: [...state.exceptions, ...(researchHold ? [{ id: 'research-control', reason: researchHold }] : []), ...(state.runtime?.last_error ? [{ id: 'runtime', reason: state.runtime.last_error }] : []), ...Object.entries(state.operations?.holds ?? {}).map(([id, reason]) => ({ id: `operations-${id}`, reason })), ...Object.values(state.actions).filter(a => ['Uncertain', 'Held'].includes(a.status)).map(a => ({ id: a.id, reason: a.hold })),
         ...Object.values(state.prospects).filter(r => r.stage === 'Hold').map(r => ({ id: r.id, reason: r.next_check }))] };
   }

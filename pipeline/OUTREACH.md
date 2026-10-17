@@ -6,6 +6,8 @@ Owner decisions recorded October 16, 2026. **Controlled connection, reply/cancel
 
 ## Selected operating rules
 
+October 17 extension: a separately labelled verification call checks current activity and goals after first-party identity/phone review. Its no-answer/busy/voicemail route creates only a call follow-up five business days later, with a two-call/ten-business-day cap; no cold email is created. Connected calls pause for independent transcript assessment and owner review, then require explicit identity/activity/decision-maker/goal confirmation supported by exact transcript quotes before discovery. An optionally supplied email needs its exact requested/confirmed transcript route. Qualification does not resume cold follow-ups. Calls-only release can publish standalone Apollo tasks and enable bounded subscription transcript review while email/booking remain off under their full production gates. See [PRODUCTION.md](PRODUCTION.md#verification-calls).
+
 - Food/beverages first; residential cleaners later. Keep all four service areas available and approach each business with one supported addition or problem solution.
 - Call first when a suitable verified public business number is available. Ensizziyo makes the calls; an AI caller is deferred. Work the daily task list in Apollo.
 - After an actual logged no-answer attempt, send a short tailored email later that business day if a verified business email is available and sending windows/capacity permit. Never imply a conversation happened. A missing suitable phone permits an honest email-only branch after channel checks; it does not permit an invented call.

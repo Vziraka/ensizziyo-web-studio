@@ -6,7 +6,7 @@ import { readJson } from './engine.mjs';
 import { seedLifecycle } from './lifecycle-fixtures.mjs';
 import { assessTranscript } from './lifecycle-ai.mjs';
 import { LifecycleBridge } from './lifecycle-bridge.mjs';
-import { productionConfig, operationsFor, importResearch, approveProductionRelease, pauseStudio } from './production.mjs';
+import { productionConfig, operationsFor, importResearch, importVerification, approveProductionRelease, approveCallRelease, pauseStudio } from './production.mjs';
 
 async function main() {
   const [command, key, operation, actionId, prospectId] = process.argv.slice(2), directory = process.env.STUDIO_LIFECYCLE_STATE_DIR;
@@ -30,6 +30,8 @@ async function main() {
   if (command === 'ops-ack') return app.change(state => { check(state.operations?.notification?.fingerprint === key, 'Acknowledge only the current exception report'); state.operations.notification.last_notified = key; return { acknowledged: true }; });
   if (command === 'event') return app.apply(await readJson(key), { actor: app.config.mode === 'controlled' ? 'controlled-fixture' : 'owner' });
   if (command === 'import-research') return importResearch(app, process.env.STUDIO_STATE_DIR, key, operation ? await readJson(operation) : undefined);
+  if (command === 'import-verification') return importVerification(app, await readJson(key));
+  if (command === 'release-calls') return approveCallRelease(app, key, operation);
   if (command === 'release') return approveProductionRelease(app, key, operation);
   if (command === 'assess') return assessTranscript(app, key, operation);
   if (command === 'publish') { const { publishLifecycle } = await import('./lifecycle-sync.mjs'); return publishLifecycle(app); }

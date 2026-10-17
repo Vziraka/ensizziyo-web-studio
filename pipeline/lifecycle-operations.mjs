@@ -61,8 +61,9 @@ export function controlledThread(thread, expected, now) {
 export function verifiedContact(data, binding, owner, real = false) {
   check(data.contacts?.length === 1 && !data.pagination?.next_page && (!data.pagination || data.pagination.total_pages <= 1), 'Controlled contact search is missing or ambiguous');
   const c = data.contacts[0];
-  check(c.id === binding.contact_id && c.account_id === binding.account_id && c.owner_id === owner && c.email === binding.email &&
-    (real ? !c.email.endsWith('.invalid') : c.email.endsWith('@example.invalid') && Array.isArray(c.phone_numbers) && c.phone_numbers.length === 0), 'Contact ownership or scope changed');
+  const scoped = real ? binding.verification === true ? c.organization_name === binding.business_name : typeof c.email === 'string' && !c.email.endsWith('.invalid') : c.email?.endsWith('@example.invalid') && Array.isArray(c.phone_numbers) && c.phone_numbers.length === 0;
+  check(c.id === binding.contact_id && (c.account_id ?? null) === (binding.account_id ?? null) && c.owner_id === owner && (c.email ?? null) === (binding.email ?? null) &&
+    scoped, 'Contact ownership or scope changed');
   if (real && binding.phone) {
     const digits = value => String(value ?? '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
     check([c.corporate_phone, c.direct_phone, ...(c.phone_numbers ?? []).map(p => p.raw_number ?? p.sanitized_number ?? p.number)].some(p => digits(p) === digits(binding.phone)), 'Apollo phone differs from the verified public business phone');
@@ -257,11 +258,11 @@ export class ControlledOperations {
           const createLogical = `${a.id}-task-create`, prior = o.requests[createLogical];
           const coldHold = record.cold_paused && (a.type !== 'callback_task' || record.stage !== 'Callback');
           if (!a.provider_task && !prior && (coldHold || record.restriction)) { a.status = 'Cancelled'; continue; }
-          const found = yield request(`${a.id}-contact`, 'contact', { q_keywords: binding.email, per_page: 10, page: 1 }); verifiedContact(found, binding, c.apollo.user_id, !record.controlled || Boolean(c.operations.native_proof));
-          a.request ??= { contact_id: binding.contact_id, account_id: binding.account_id, user_id: c.apollo.user_id, type: 'call', status: 'scheduled', priority: a.type === 'callback_task' ? 'high' : 'low',
+          const found = yield request(`${a.id}-contact`, 'contact', { q_keywords: binding.email || binding.business_name, per_page: 10, page: 1 }); verifiedContact(found, binding, c.apollo.user_id, !record.controlled || Boolean(c.operations.native_proof));
+          a.request ??= { contact_id: binding.contact_id, ...(binding.account_id ? { account_id: binding.account_id } : {}), user_id: c.apollo.user_id, type: 'call', status: 'scheduled', priority: a.type === 'callback_task' ? 'high' : 'low',
             due_at: new Date(Math.floor(Date.parse(a.payload.due_at) / 1000) * 1000).toISOString(), title: `${record.controlled ? 'STUDIO TEST' : 'EVZ'} ${c.run_id} ${a.id}`,
             note: record.controlled ? 'CONTROLLED TEST — fictional follow-up task. No actual call; do not dial. A reply/stop cancels this task.' :
-              `Owner call. Record the actual outcome in Studio Operations; task completion alone never sends email. Idea: ${record.idea}` };
+              `Owner call${record.call_lane === 'verification' ? ' — VERIFY IDENTITY, CURRENT ACTIVITY AND GOALS; NO AUTOMATIC EMAIL' : ''}. Record the actual outcome in Studio Operations; task completion alone never sends email. Topic: ${record.idea}` };
           if (!a.provider_task && prior && prior.status !== 'Done') {
             const candidates = yield request(`${a.id}-task-search`, 'task_search', { contact_id: binding.contact_id, user_id: c.apollo.user_id, q_keywords: a.request.title, per_page: 10, page: 1, task_status: 'scheduled' });
             check(!candidates.failed && candidates.tasks?.length === 1 && (!candidates.pagination || candidates.pagination.total_pages <= 1), 'Uncertain call task is not uniquely reconciled; never recreate');

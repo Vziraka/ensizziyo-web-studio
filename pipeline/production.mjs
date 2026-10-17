@@ -6,12 +6,14 @@ import { reviewFiles, readPrivateJson, validateDecision } from './prospects.mjs'
 import { validateEvidenceReview } from './evidence-review.mjs';
 import { ControlledOperations, controlledThread, verifiedContact } from './lifecycle-operations.mjs';
 import { researchCallPrep } from './call-prep.mjs';
+import { verificationData, verificationLane, validateVerificationRecord, phoneDigits } from './verification-calls.mjs';
 
 const email = value => typeof value === 'string' && /^[^\s@,;<>"\r\n]+@[^\s@,;<>"\r\n]+\.[^\s@,;<>"\r\n]+$/.test(value) && !value.endsWith('.invalid');
 const id = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value);
 const phone = value => String(value ?? '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
 export const productionConfig = {
   ...structuredClone(initialConfig), mode: 'production', run_id: 'evz-food-beverage',
+  calls_enabled: false, call_release: { approved: false }, call_readiness: {},
   runtime: { enabled: false }, operations: { enabled: false, interval_minutes: 5, allowlist: [], bookings: {}, emails: {} },
   apollo: { user_id: '', bindings: {} },
   sender: { email: '', mailbox_id: '', postal_address: '', website: 'https://evzdigital.studio/studio/', daily_email_limit: 20 },
@@ -36,6 +38,30 @@ export function requireProductionRelease(c) {
   check(c.native_email?.enabled && c.native_email.rounds?.length === 2 && c.native_email.rounds.every((r, i) => r.round === i + 1 && id(r.list_id) && r.list_name?.startsWith('EVZ ') && id(r.sequence_id) && r.sequence_name?.startsWith('EVZ ') && id(r.subject_field_id) && id(r.body_field_id) && r.verified === true), 'Two verified single-email native routes required');
   check(new Set(c.native_email.rounds.flatMap(r => [r.list_id, r.sequence_id, r.subject_field_id, r.body_field_id])).size === 8, 'Email rounds need separate immutable queues, sequences and fields');
 }
+export function callReleaseFingerprint(c) {
+  const ai = c.transcript_ai;
+  return hash({ run_id: c.run_id, apollo_owner: c.apollo?.user_id, campaign: c.campaign, call_readiness: c.call_readiness, scope: c.operations?.allowlist,
+    transcript_policy: { daily_calls: ai.daily_calls, reserve_percent: ai.reserve_percent, author_model: ai.author_model, reviewer_model: ai.reviewer_model, effort: ai.effort } });
+}
+export function requireCallRelease(c) {
+  if (c.outreach_enabled) return requireProductionRelease(c);
+  check(c.mode === 'production' && c.calls_enabled === true && c.connector_writes_enabled === true, 'Real calling remains paused pending final call-only release');
+  check(c.call_release?.approved === true && c.call_release.fingerprint === callReleaseFingerprint(c) && c.call_release.approval_ref?.length > 5, 'Call-only approval must match the current queue and rules');
+  check(id(c.apollo?.user_id) && c.campaign?.category === 'food-and-beverage' && c.campaign.max_calls === 2 && c.campaign.max_emails === 2 && c.campaign.business_days === 10, 'Reviewed call owner and campaign bounds required');
+  check(['queue_verified', 'outcomes_verified', 'supervision_verified'].every(k => typeof c.call_readiness?.[k] === 'string' && c.call_readiness[k].length > 5), 'Call-only verification evidence is incomplete');
+}
+export async function approveCallRelease(app, fingerprint, approvalRef) {
+  return app.change(async () => {
+    const path = join(app.directory, 'lifecycle-config.json'), c = await readJson(path);
+    check(!c.outreach_enabled && fingerprint === callReleaseFingerprint(c), 'Review the current calls-only queue first');
+    c.calls_enabled = true; c.connector_writes_enabled = true;
+    c.operations.enabled = true; c.runtime.enabled = true;
+    c.transcript_ai.enabled = true;
+    c.call_release = { approved: true, fingerprint, approval_ref: approvalRef, approved_at: app.now().toISOString() };
+    requireCallRelease(c); await saveJson(path, c); app.config = c;
+    return { calls_released: true, email_released: false, fingerprint };
+  });
+}
 export async function approveProductionRelease(app, fingerprint, approvalRef) {
   return app.change(async () => {
     const path = join(app.directory, 'lifecycle-config.json'), c = await readJson(path);
@@ -49,6 +75,16 @@ export async function approveProductionRelease(app, fingerprint, approvalRef) {
 export function contactKeys(r) {
   return [r.company_id && `company:${r.company_id}`, r.contact?.email && `email:${r.contact.email.toLowerCase()}`,
     phone(r.contact?.phone).length >= 10 && `phone:${phone(r.contact.phone)}`].filter(Boolean);
+}
+export async function importVerification(app, packet) {
+  const data = verificationData(packet, app.now(), app.config.mode === 'controlled'), keys = contactKeys(data), state = await app.snapshot();
+  const nameKey = s => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+  const prior = Object.values(state.prospects).find(r => nameKey(r.name) === nameKey(data.name) || contactKeys(r).some(k => keys.includes(k)));
+  if (prior) return { imported: false, duplicate_of: prior.id, restricted: Boolean(prior.restriction) };
+  const prospectId = `verify-${hash(data.company_id).slice(0, 24)}`;
+  await app.apply({ id: `verify-import-${hash(packet.id).slice(0, 24)}`, prospect_id: prospectId, type: 'verification_imported', at: app.now().toISOString(), data }, { actor: app.config.mode === 'controlled' ? 'controlled-fixture' : 'verification-import' });
+  if (app.config.mode === 'production') await stageProspect(app, prospectId);
+  return { imported: true, prospect_id: prospectId, calls: 'paused until final release', email: 'blocked pending qualification and full release' };
 }
 
 // Reads retained source/review files, never an editable Sheet verdict or an owner HTTP event.
@@ -84,7 +120,11 @@ export async function importResearch(app, directory, jobId, contactProof) {
 async function stageProspect(app, prospectId) {
   await app.change(async () => {
     const path = join(app.directory, 'lifecycle-config.json'), c = await readJson(path);
-    if (!c.operations.allowlist.includes(prospectId)) { check(c.operations.allowlist.length < 500, 'Archive completed campaign records before importing more'); c.operations.allowlist.push(prospectId); await saveJson(path, c); }
+    if (!c.operations.allowlist.includes(prospectId)) {
+      check(c.operations.allowlist.length < 500, 'Archive completed campaign records before importing more'); c.operations.allowlist.push(prospectId);
+      if (c.calls_enabled && !c.outreach_enabled) { c.calls_enabled = false; c.connector_writes_enabled = false; c.call_release.approved = false; }
+      await saveJson(path, c);
+    }
     app.config = c;
   });
 }
@@ -109,7 +149,7 @@ export async function queueMeeting(app, input) {
 export async function pauseStudio(app) {
   const c = await app.change(async () => {
     const path = join(app.directory, 'lifecycle-config.json'), c = await readJson(path);
-    c.transcript_ai.enabled = false; c.connector_writes_enabled = false; c.outreach_enabled = false; c.research_enabled = false;
+    c.transcript_ai.enabled = false; c.connector_writes_enabled = false; c.outreach_enabled = false; c.calls_enabled = false; c.research_enabled = false;
     if (c.operations) c.operations.enabled = false;
     await saveJson(path, c); app.config = c; return c;
   });
@@ -166,7 +206,8 @@ export function nativeMessage(record, round, c) {
 }
 
 export class ProductionOperations extends ControlledOperations {
-  writeReady(c) { if (c.outreach_enabled && c.connector_writes_enabled) { requireProductionRelease(c); return true; } return false; }
+  writeReady(c) { if ((c.outreach_enabled || c.calls_enabled) && c.connector_writes_enabled) { requireCallRelease(c); return true; } return false; }
+  emailReady(c) { return c.outreach_enabled === true; }
   composeMessage(record, round, c) { return nativeMessage(record, round, c); }
   async settings() {
     const c = await readJson(join(this.app.directory, 'lifecycle-config.json'));
@@ -177,7 +218,7 @@ export class ProductionOperations extends ControlledOperations {
       check(id(key) && c.operations.allowlist.includes(b.prospect_id) && b.approved === true && b.approval_ref?.length > 5 && email(b.attendee_email) && b.title?.startsWith('EVZ Digital') && b.title.length < 200 && b.description?.length < 1500, 'Production invitations require a bounded owner-approved booking');
       check((await this.app.snapshot()).prospects[b.prospect_id]?.contact.email === b.attendee_email, 'Meeting guest must match the reviewed conversation contact');
     }
-    if (c.outreach_enabled || c.connector_writes_enabled) requireProductionRelease(c);
+    if (c.outreach_enabled || c.calls_enabled || c.connector_writes_enabled) requireCallRelease(c);
     return c;
   }
   validateScope(state, c) { check(c.operations.allowlist.every(id => state.prospects[id]?.controlled === false), 'Production cannot include fictional or missing records'); }
@@ -186,14 +227,25 @@ export class ProductionOperations extends ControlledOperations {
     const retain = logical => { const r = o.requests[`${o.cycle.read_epoch}-${this.session}-${logical}`]; if (r) r.retain = true; };
     const ap = yield request('apollo-owner', 'apollo_profile', { include_credit_usage: false });
     check(!ap.failed && ap.id === c.apollo.user_id, 'Apollo owner unavailable or changed');
-    const gp = yield request('gmail-owner', 'gmail_profile', {}), cp = yield request('calendar-owner', 'calendar_profile', {});
-    check(!gp.failed && !cp.failed && gp.email === c.calendar.owner_email && cp.email === c.calendar.owner_email, 'Business Gmail/Calendar connection is not the configured owner');
+    if (!c.calls_enabled || c.outreach_enabled) {
+      const gp = yield request('gmail-owner', 'gmail_profile', {}), cp = yield request('calendar-owner', 'calendar_profile', {});
+      check(!gp.failed && !cp.failed && gp.email === c.calendar.owner_email && cp.email === c.calendar.owner_email, 'Business Gmail/Calendar connection is not the configured owner');
+    }
     const writeReady = this.writeReady(c);
     o.bindings ??= {};
     for (const prospectId of c.operations.allowlist.filter(id => !o.cycle.completed_records.includes(id))) {
       const r = state.prospects[prospectId];
       try {
-        if (!r.restriction && r.attempts.length && businessDaysBetween(r.attempts[0].at, now) >= 10) { r.cold_paused = true; if (['Ready to contact', 'Contacting'].includes(r.stage)) { r.stage = 'Hold'; r.next_check = 'Ten-business-day cold campaign ended; review before any new campaign.'; } }
+        if (verificationLane(r) && !r.restriction && ['Ready to verify', 'Verifying', 'Callback'].includes(r.stage)) {
+          try { validateVerificationRecord(r, now); }
+          catch (error) {
+            r.stage = 'Hold'; r.cold_paused = true; r.next_check = `Reverify public identity/phone before calling: ${error.message}`;
+            for (const a of Object.values(state.actions).filter(a => a.prospect_id === r.id && ['call_task', 'callback_task'].includes(a.type))) {
+              if (a.status === 'Queued') a.status = 'Cancelled'; else if (a.provider_task) a.cancel_requested = true;
+            }
+          }
+        }
+        if (!r.restriction && r.attempts.length && businessDaysBetween(r.attempts[0].at, now) >= 10) { r.cold_paused = true; if (['Ready to contact', 'Contacting', 'Ready to verify', 'Verifying'].includes(r.stage)) { r.stage = 'Hold'; r.next_check = 'Ten-business-day cold campaign ended; review before any new campaign.'; } }
         for (const e of Object.values(o.email).filter(e => e.prospect_id === prospectId && e.thread)) {
           const raw = yield request(`${prospectId}-${e.thread.thread_id}-thread`, 'thread', { thread_id: e.thread.thread_id, max_messages: 20 });
           check(!raw.failed, 'Reply monitoring unavailable; hold contact');
@@ -206,31 +258,38 @@ export class ProductionOperations extends ControlledOperations {
         }
         let binding = o.bindings[prospectId];
         if (!binding && writeReady && !r.restriction && (!r.cold_paused || r.stage === 'Callback')) {
-          let found = yield request(`${prospectId}-find-contact`, 'contact', { q_keywords: r.contact.email, per_page: 10, page: 1 });
+          if (verificationLane(r)) validateVerificationRecord(r, now);
+          const query = r.contact.email || r.name;
+          let found = yield request(`${prospectId}-find-contact`, 'contact', { q_keywords: query, per_page: 10, page: 1 });
           check(!found.failed && Array.isArray(found.contacts) && !found.pagination?.next_page && (!found.pagination || found.pagination.total_pages <= 1), 'Contact discovery failed or is truncated');
-          let person = found.contacts.find(p => p.email?.toLowerCase() === r.contact.email.toLowerCase());
+          const match = p => r.contact.email ? p.email?.toLowerCase() === r.contact.email.toLowerCase() : p.organization_name === r.name && [p.corporate_phone, p.direct_phone, ...(p.phone_numbers ?? []).map(n => n.raw_number ?? n.sanitized_number ?? n.number)].some(n => phoneDigits(n) === phoneDigits(r.contact.phone));
+          let person = found.contacts.find(match);
           check(found.contacts.length <= 1, 'Ambiguous contact match requires owner resolution');
           check(!found.contacts.length || person, 'Contact search returned a different address; verify before creating or updating');
           const create = `${prospectId}-contact-create`;
           if (!person) {
-            check(!o.requests[create], 'Uncertain contact creation requires exact contact readback; never recreate');
-            const created = yield request(create, 'contact_create', { email: r.contact.email, first_name: 'Business', last_name: 'Owner', organization_name: r.name, corporate_phone: r.contact.phone });
-            check(!created.failed, 'Contact creation failed; reconcile before continuing');
-            found = yield request(`${prospectId}-created-contact`, 'contact', { q_keywords: r.contact.email, per_page: 10, page: 1 }); person = found.contacts?.[0];
+            if (!o.requests[create]) {
+              const created = yield request(create, 'contact_create', { ...(r.contact.email ? { email: r.contact.email } : {}), first_name: 'Business', last_name: 'Contact', organization_name: r.name, corporate_phone: r.contact.phone });
+              check(!created.failed, 'Contact creation failed; reconcile before continuing');
+            }
+            found = yield request(`${prospectId}-created-contact`, 'contact', { q_keywords: query, per_page: 10, page: 1 });
+            check(!found.failed && found.contacts?.length === 1 && !found.pagination?.next_page && (!found.pagination || found.pagination.total_pages <= 1), 'Created contact is missing, ambiguous or truncated; never recreate'); person = found.contacts[0];
           }
-          check(person?.email === r.contact.email && person.owner_id === c.apollo.user_id && id(person.id) && id(person.account_id), 'Existing contact ownership/organization needs review');
-          binding = o.bindings[prospectId] = { contact_id: person.id, account_id: person.account_id, email: person.email, phone: r.contact.phone };
+          check(person && match(person) && person.owner_id === c.apollo.user_id && id(person.id) && (verificationLane(r) ? !person.account_id || id(person.account_id) : id(person.account_id)), 'Existing contact ownership/organization needs review');
+          check(!person.contact_campaign_statuses?.some(s => ['active', 'paused'].includes(s.status)), 'Existing contact is already in a sequence; hold to prevent overlapping outreach');
+          if (o.requests[create] && o.requests[create].status !== 'Done') Object.assign(o.requests[create], { status: 'Done', result: { contact: person }, reconciliation: { kind: 'unique authoritative contact readback; creation was not retried', contact_id: person.id, at: now.toISOString() } });
+          binding = o.bindings[prospectId] = { contact_id: person.id, account_id: person.account_id ?? null, email: person.email ?? null, phone: r.contact.phone, ...(verificationLane(r) ? { verification: true, business_name: r.name } : {}) };
         }
         if (binding) {
           if (r.cold_paused || r.restriction) yield* this.suppressNative(state, c, r, binding, request, retain);
           if (writeReady || r.restriction || r.cold_paused) yield* this.tasks(state, c, prospectId, binding, r, request, retain);
-          yield* this.nativeEmails(state, c, r, binding, request, retain, writeReady);
+          yield* this.nativeEmails(state, c, r, binding, request, retain, writeReady && this.emailReady(c));
         }
         delete o.holds[prospectId];
       } catch (error) { o.holds[prospectId] = error.message; }
       o.cycle.completed_records.push(prospectId);
     }
-    if (writeReady) yield* this.bookings(state, c, request, retain);
+    if (writeReady && c.outreach_enabled) yield* this.bookings(state, c, request, retain);
   }
   *suppressNative(state, c, r, binding, request, retain) {
     const o = state.operations;
@@ -249,6 +308,7 @@ export class ProductionOperations extends ControlledOperations {
   }
   *nativeEmails(state, c, r, binding, request, retain, writeReady) {
     const o = state.operations, now = this.app.now();
+    check(!verificationLane(r) || !Object.values(state.actions).some(a => a.prospect_id === r.id && a.type === 'email' && a.status !== 'Cancelled'), 'Verification calls cannot release cold email; qualify the conversation and review its next action');
     for (const a of Object.values(state.actions).filter(a => a.prospect_id === r.id && a.type === 'email' && a.status !== 'Cancelled')) {
       const e = o.email[a.id] ??= { prospect_id: r.id, status: 'Awaiting native release' }, intentKey = `${a.id}-intent`;
       if (e.thread) continue;
@@ -319,6 +379,7 @@ export class NativeProofOperations extends ProductionOperations {
   }
   validateScope(state, c) { check(c.operations.allowlist.every(id => state.prospects[id]?.controlled === true && state.prospects[id].contact.email.endsWith('@example.invalid') && !state.prospects[id].contact.phone), 'Native proof accepts one fictional lifecycle record only'); }
   writeReady(c) { return c.operations.native_proof.enabled && c.operations.native_proof.message.approved; }
+  emailReady(c) { return this.writeReady(c); }
   composeMessage(record, round, c) { const m = c.operations.native_proof.message; return { subject: m.subject, body: m.body_text }; }
   *plan(state, c) {
     const id = c.operations.allowlist[0], binding = c.apollo.bindings[id];
