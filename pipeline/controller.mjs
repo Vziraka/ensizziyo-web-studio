@@ -121,7 +121,7 @@ export async function runController({ directory, config, queue, invoke = invokeC
         state.last_codex_usage = usage;
       }
       await guard(); options.signal?.throwIfAborted();
-      const stronger = options.phase === 'review' || record.stage === 'repair';
+      const stronger = options.phase === 'review' || record.stage === 'repair' || record.use_review_model === true;
       const model = stronger ? p.review_model : p.model, effort = worker === 'codex' ? (stronger ? p.review_effort : p.effort) : undefined;
       const call = { id: randomUUID(), job_id: record.job_id, day: now().toISOString().slice(0, 10), reserved_at: now().toISOString(), worker, model, effort: effort ?? null, phase: options.phase, status: 'Reserved' };
       if (record.recovery_armed) { record.recoveries++; delete record.recovery_armed; }
@@ -166,7 +166,13 @@ export async function runController({ directory, config, queue, invoke = invokeC
           if (prior && (prior.child_pid || prior.attempt_id !== record.attempt_id || prior.status === 'Running' || prior.status === 'Blocked')) throw problem('RECONCILIATION_REQUIRED', 'Prior process/reservation needs reconciliation');
           if (record.needs_handoff) {
             if (record.recoveries >= config.max_recoveries) throw problem('RECOVERY_EXHAUSTED', 'Bounded subscription handoff exhausted');
-            record.worker = await choose(config.fallback_order.filter(w => w !== record.worker));
+            const alternatives = config.fallback_order.filter(w => w !== record.worker);
+            let alternate;
+            for (const worker of alternatives) if (await available(worker)) { alternate = worker; break; }
+            const failed = state.calls.findLast(c => c.job_id === record.job_id), policy = config.providers[record.worker];
+            if (alternate) record.worker = alternate;
+            else if (failed?.worker === record.worker && ['WORKER_OUTPUT_INVALID', 'WORKER_TIMEOUT'].includes(failed.status) && policy.model !== policy.review_model && await available(record.worker)) record.use_review_model = true;
+            else record.worker = await choose(alternatives);
             record.recovery_armed = true; delete record.needs_handoff; await save();
           }
           if (!prior || prior.status !== 'Complete' || record.stage === 'repair') {

@@ -199,6 +199,72 @@ test('recognized assessment timeout hands off only after stop and reuses immutab
   const state = await saved(f); assert.equal(state.jobs['controller-fixture'].recoveries, 1); assert.equal(state.calls.length, 4);
 });
 
+test('a single subscription recovers invalid author output with its configured review model and retained checkpoint', async () => {
+  const f = await fixture(), phases = []; let checkpoint, sources;
+  for (const worker of ['claude', 'cursor']) f.config.providers[worker].enabled = false;
+  f.config.max_calls_per_job = 6;
+  const result = await run(f, { invoke: worker(async o => {
+    phases.push(`${o.model}/${o.phase}`);
+    if (o.phase === 'assess' && o.model === 'fixture-model') {
+      checkpoint = await readFile(join(o.directory, 'checkpoint.json')); sources = await readFile(join(o.directory, 'sources.json'));
+      return { invalid: true };
+    }
+    if (o.phase === 'assess') {
+      assert.equal(o.model, 'fixture-review-model'); assert.equal(o.effort, 'medium');
+      assert.deepEqual(await readFile(join(o.directory, 'checkpoint.json')), checkpoint);
+      assert.deepEqual(await readFile(join(o.directory, 'sources.json')), sources);
+    }
+    return o.phase === 'review' ? acceptedReview(o) : assessment(o);
+  }) });
+  assert.equal(result.jobs[0].status, 'Complete'); assert.equal(result.jobs[0].decision, 'Research-qualified');
+  assert.deepEqual(phases, ['fixture-model/collect', 'fixture-model/assess', 'fixture-review-model/assess', 'fixture-review-model/review']);
+  const state = await saved(f); assert.equal(state.jobs['controller-fixture'].recoveries, 1);
+  assert.equal(state.calls.length, 4); assert.equal(state.calls.filter(c => c.status === 'WORKER_OUTPUT_INVALID').length, 1);
+});
+
+test('single-subscription recovery preserves its charged calls and checkpoint across a daily-budget restart', async () => {
+  const f = await fixture();
+  for (const worker of ['claude', 'cursor']) f.config.providers[worker].enabled = false;
+  f.config.providers.codex.daily_calls = 3; f.config.max_calls_per_job = 6;
+  const invoke = worker(async o => o.phase === 'assess' && o.model === 'fixture-model' ? { invalid: true } : o.phase === 'review' ? acceptedReview(o) : assessment(o));
+  const first = await run(f, { invoke });
+  assert.equal(first.jobs[0].status, 'Deferred'); assert.equal(first.calls_reserved, 3);
+  const checkpoint = await readFile(join(f.directory, 'controller-fixture/checkpoint.json'));
+  const sameDay = await run(f, { invoke }); assert.equal(sameDay.calls_reserved, 3);
+  const tomorrow = () => new Date('2026-10-16T12:00:00Z'), phases = [];
+  const resumed = await run(f, { now: tomorrow, readUsage: async () => ({ ...(await usage()), checked_at: tomorrow().toISOString() }),
+    invoke: worker(async o => { phases.push(o.phase); return o.phase === 'review' ? acceptedReview(o) : assessment(o); }) });
+  assert.equal(resumed.jobs[0].status, 'Complete'); assert.deepEqual(phases, ['review']);
+  assert.deepEqual(await readFile(join(f.directory, 'controller-fixture/checkpoint.json')), checkpoint);
+  const state = await saved(f); assert.equal(state.calls.length, 4); assert.equal(state.jobs['controller-fixture'].recoveries, 1);
+  assert.equal(state.calls.filter(c => c.day === '2026-10-15').length, 3);
+});
+
+test('a second invalid output holds after one same-subscription recovery without another collection', async () => {
+  const f = await fixture(), phases = [];
+  for (const worker of ['claude', 'cursor']) f.config.providers[worker].enabled = false;
+  const result = await run(f, { invoke: worker(async o => { phases.push(o.phase); return o.phase === 'collect' ? assessment(o) : { invalid: true }; }) });
+  assert.equal(result.jobs[0].status, 'Held'); assert.equal(result.jobs[0].reason, 'WORKER_OUTPUT_INVALID');
+  assert.deepEqual(phases, ['collect', 'assess', 'assess']);
+  const state = await saved(f); assert.equal(state.calls.length, 3); assert.equal(state.jobs['controller-fixture'].recoveries, 1);
+  assert.equal(state.calls.at(-1).model, 'fixture-review-model');
+});
+
+test('an actual single-subscription quota block never retries that provider with another model', async () => {
+  const f = await fixture(), phases = [];
+  for (const worker of ['claude', 'cursor']) f.config.providers[worker].enabled = false;
+  const result = await run(f, { invoke: worker(async o => {
+    phases.push(`${o.model}/${o.phase}`);
+    if (o.phase === 'assess') throw Object.assign(Error('Synthetic subscription quota'), { code: 'WORKER_QUOTA' });
+    return assessment(o);
+  }) });
+  assert.equal(result.jobs[0].status, 'Deferred'); assert.equal(result.calls_reserved, 2);
+  assert.deepEqual(phases, ['fixture-model/collect', 'fixture-model/assess']);
+  assert.equal((await saved(f)).provider_blocks.codex, now().toISOString());
+  const resumed = await run(f, { invoke: () => assert.fail('A quota block must not retry its provider') });
+  assert.equal(resumed.calls_reserved, 2); assert.equal((await saved(f)).provider_blocks.codex, now().toISOString());
+});
+
 test('rejected opportunity is repaired once with original bytes retained, then held if review still rejects it', async () => {
   const f = await fixture(); let reviews = 0, repair = false;
   const result = await run(f, { invoke: worker(async o => {
