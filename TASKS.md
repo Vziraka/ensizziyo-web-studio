@@ -1,5 +1,15 @@
 # Launch tasks
 
+## Controlled email, booking, synchronization and supervision — October 17, 2026
+
+The owner approved the private console design and authorized finishing these connections with controlled records only. Research and real-business outreach remain paused. Reuse the existing Apollo/Gmail, Calendar and scoped Sheets connections; the old reply heartbeat remains paused in favor of one bounded coordinator for the controlled scope.
+
+Outcome: explicit owner call outcomes release only a confirmed owner-inbox email through Apollo; fresh reply/stop checks precede dispatch, and future actions cancel after replies or restrictions. Verify one private fictional Calendar booking by independent readback, with conflict and uncertain-create recovery. Synchronize multiple fictional records and their provider results to the existing isolated tracker tab without overwriting owner edits. Supervise the allowlisted records, bounded recovery, health, private backups and consolidated exceptions; unchanged polls stay quiet.
+
+Acceptance: persistent action reservations, exact account/contact/recipient/message/event identity, explicit approval boundaries, no duplicate send/booking after restart, automatic future-action cancellation and restriction precedence, bounded work per wake and separate research/outreach controls. Cover failure/recovery through public interfaces, then run connected controlled proofs and desktop/browser checks. Keep real research/contact counts zero. Record actual versus simulated evidence and remaining sender/capacity gates; complete two reviews and required CI before merge.
+
+Implementation checkpoint: account-free tests cover the full coordinator, including uncertain send/draft/task/booking operations, native future-task cancellation, actual-shaped Calendar string dates/self attendees, progression-safe booking monitoring, pause/leases and stable notifications. Connected historical reply cancellation/native finished readback, one private Calendar create/readback, five-record Sheet projection and daily private backup passed. The no-answer email is held for the connector's exact one-message confirmation; scheduled execution will be recorded separately. No new email, real call/business contact, research, guest invitation or model inference has run in this increment so far.
+
 
 ## EVZ UI and motion refinement — October 16, 2026
 

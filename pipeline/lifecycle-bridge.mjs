@@ -7,7 +7,7 @@ const prefix = 'mcp__codex_apps__apollo_io_apollo_';
 const taskTypes = { call_task: 'call', callback_task: 'call', email: 'outreach_manual_email', information_task: 'action_item' };
 const methods = { profile: 'users_api_profile', contact: 'contacts_search', create_task: 'tasks_create', read_task: 'tasks_show', search_task: 'tasks_search' };
 const validKey = value => /^[a-zA-Z0-9_-]{1,100}$/.test(value ?? '');
-function identity(task, expected, existing, readback = false) {
+export function controlledTaskIdentity(task, expected, existing, readback = false) {
   check(task?.id && task.title === expected.title && task.type === expected.type && task.status === 'scheduled' &&
     (task.contact_id ?? task.contact?.id) === expected.contact_id &&
     (Object.hasOwn(task, 'user_id') ? task.user_id : existing?.user_id) === expected.user_id &&
@@ -80,9 +80,9 @@ export class LifecycleBridge {
           const c = data.contacts[0]; check(c.id === binding.contact_id && c.account_id === binding.account_id && c.owner_id === config.apollo.user_id && c.email === binding.email && Array.isArray(c.phone_numbers) && c.phone_numbers.length === 0, 'Contact differs from the exact owned no-phone fictional record');
           state.bridge.contacts[op.prospect_id] = { id: c.id, account_id: c.account_id, session: this.session };
         } else if (op.operation === 'create_task') {
-          action.provider_task = identity(data.task ?? data, action.request); action.status = 'Awaiting readback';
+          action.provider_task = controlledTaskIdentity(data.task ?? data, action.request); action.status = 'Awaiting readback';
         } else if (op.operation === 'read_task') {
-          action.provider_task = identity(data.task ?? data, action.request, action.provider_task, true); action.status = 'Verified'; delete action.hold; action.verified_at = this.app.now().toISOString();
+          action.provider_task = controlledTaskIdentity(data.task ?? data, action.request, action.provider_task, true); action.status = 'Verified'; delete action.hold; action.verified_at = this.app.now().toISOString();
         } else if (op.operation === 'search_task') {
           check(data.tasks?.length === 1 && (!data.pagination || data.pagination.total_pages <= 1), 'Uncertain creation not uniquely reconciled; do not resend');
           const task = data.tasks[0], expected = action.request;

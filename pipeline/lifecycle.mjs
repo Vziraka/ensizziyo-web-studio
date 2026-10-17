@@ -45,6 +45,7 @@ function pauseCold(state, record, eventId, reason) {
   for (const action of Object.values(state.actions)) if (action.prospect_id === record.id && ['email', 'call_task', 'callback_task'].includes(action.type)) {
     if (action.status === 'Queued') action.status = 'Cancelled';
     if (action.status === 'Pending') { action.status = 'Uncertain'; action.hold = 'Stop arrived after dispatch; reconcile provider before continuing'; }
+    if (action.status === 'Verified' && action.provider_task && ['call_task', 'callback_task'].includes(action.type)) action.cancel_requested = true;
   }
   if (record.apollo?.sequence_id) {
     record.suppression = 'Pending';
@@ -137,7 +138,7 @@ export class StudioLifecycle {
         request(state, r, 'call_task', { due_at: event.at, kind: 'new' }, eid);
       } else {
         check(r, 'Unknown prospect');
-        if (r.restriction) check(['support_opened', 'support_closed', 'note_added'].includes(event.type), 'Restriction cannot be cleared by a later event');
+        if (r.restriction) check(['support_opened', 'support_closed', 'note_added', 'reply_received', 'email_delivered', 'meeting_verified'].includes(event.type), 'Restriction cannot be cleared by a later event');
         switch (event.type) {
           case 'call_logged': {
             owner(actor); check(key(data.call_id) && !r.calls[data.call_id] && [...coldOutcomes, 'connected', 'callback', 'declined', 'do_not_contact', 'wrong_contact', 'skipped'].includes(data.outcome), 'Explicit unique call outcome required');
@@ -150,7 +151,10 @@ export class StudioLifecycle {
               r.attempts.push({ id: data.call_id, channel: 'call', at: data.performed_at, simulated: data.simulated, connected: ![...coldOutcomes, 'wrong_contact'].includes(data.outcome) });
             }
             r.calls[data.call_id] = { ...data, event_id: eid };
-            for (const a of Object.values(state.actions)) if (a.prospect_id === r.id && ['call_task', 'callback_task'].includes(a.type) && a.status === 'Queued') a.status = 'Cancelled';
+            for (const a of Object.values(state.actions)) if (a.prospect_id === r.id && ['call_task', 'callback_task'].includes(a.type)) {
+              if (a.status === 'Queued') a.status = 'Cancelled';
+              else if (a.provider_task) a.cancel_requested = true;
+            }
             if (['declined', 'do_not_contact'].includes(data.outcome)) { r.restriction = data.outcome; r.stage = 'Stopped'; pauseCold(state, r, eid, data.outcome); }
             else if (data.outcome === 'connected') { r.stage = 'Connected review'; pauseCold(state, r, eid, 'Connected call awaiting transcript/owner review'); }
             else if (data.outcome === 'callback') {
@@ -198,13 +202,30 @@ export class StudioLifecycle {
             check(actor === 'provider' || actor === 'controlled-fixture', 'Reply must be verified at the provider boundary');
             check(key(data.source_id) && ['reply', 'decline', 'do_not_contact', 'bounce', 'out_of_office'].includes(data.kind), 'A verified reply/event ID and kind are required');
             r.reply = { ...data, at: event.at }; pauseCold(state, r, eid, data.kind);
+            if (r.restriction) { r.stage = 'Stopped'; break; }
             if (['decline', 'do_not_contact'].includes(data.kind)) { r.restriction = data.kind; r.stage = 'Stopped'; }
             else { r.stage = data.kind === 'reply' ? 'Reply review' : 'Hold'; r.next_check = data.kind === 'reply' ? 'Owner reviews reply and next action' : 'Verify contact/return date; never auto-resume from a bounce or auto-reply'; } break;
+          case 'email_delivered': {
+            check(actor === 'provider' && data.simulated === r.controlled && key(data.message_id), 'Verified provider email identity required');
+            const action = state.actions[data.action_id];
+            check(action?.prospect_id === r.id && action.type === 'email' && r.calls[action.payload.call_id]?.outcome === 'no_answer', 'Delivery must match the explicit call/email handoff');
+            check(r.attempts.filter(a => a.channel === 'email').length < 2, 'Two-email campaign cap reached');
+            r.attempts.push({ id: data.message_id, channel: 'email', at: event.at, simulated: data.simulated });
+            action.status = 'Verified'; action.delivery = { message_id: data.message_id, at: event.at };
+            if (!r.cold_paused && !r.restriction && r.attempts.filter(a => a.channel === 'call').length < 2) {
+              const due = new Date(r.attempts.find(a => a.channel === 'call').at); let days = 0;
+              while (days < 5) { due.setUTCDate(due.getUTCDate() + 1); if (![0, 6].includes(new Date(`${businessDate(due)}T12:00:00Z`).getUTCDay())) days++; }
+              request(state, r, 'call_task', { due_at: due.toISOString(), kind: 'follow-up' }, eid);
+            }
+            break;
+          }
           case 'reply_reviewed':
             owner(actor); check(r.stage === 'Reply review' && data.source_id === r.reply?.source_id, 'Review the exact current reply');
             check(['discovery', 'requested_info', 'hold', 'decline', 'do_not_contact'].includes(data.outcome), 'Unsupported reply disposition');
+            check(data.note === undefined || typeof data.note === 'string' && data.note.length <= 3000, 'Bound the reply review note');
+            r.reply_review = { ...data, at: event.at, actor };
             if (['decline', 'do_not_contact'].includes(data.outcome)) { r.restriction = data.outcome; r.stage = 'Stopped'; }
-            else { r.stage = { discovery: 'Discovery', requested_info: 'Information requested', hold: 'Hold' }[data.outcome]; if (data.outcome === 'requested_info') request(state, r, 'information_task', { summary: data.note }, eid); } break;
+            else { r.stage = { discovery: 'Discovery', requested_info: 'Information requested', hold: 'Hold' }[data.outcome]; if (data.outcome === 'hold') r.next_check = data.note || 'Owner chooses the next conversational action'; if (data.outcome === 'requested_info') request(state, r, 'information_task', { summary: data.note }, eid); } break;
           case 'discovery_confirmed':
             owner(actor); check(['Discovery', 'Information requested'].includes(r.stage), 'Discovery follows reviewed interest');
             check(text(data.goal) && text(data.decision_maker, 200) && data.serious_interest === true && data.paid_fit_discussed === true, 'Goal, decision-maker, serious interest and paid fit are required');
@@ -214,6 +235,10 @@ export class StudioLifecycle {
             owner(actor); check(['Discovery', 'Information requested'].includes(r.stage) && key(data.event_id) && data.owner_verified === true && date(data.start) && date(data.end) &&
               Date.parse(data.end) > Date.parse(data.start) && data.timezone === 'America/New_York', 'Record an exact owner-verified calendar event for this conversation');
             r.meeting = { ...data, reference: safeReference(data.reference), verified_at: event.at }; break;
+          case 'meeting_verified':
+            check(actor === 'provider' && r.controlled && key(data.event_id) && date(data.start) && date(data.end) && Date.parse(data.end) > Date.parse(data.start) && data.timezone === 'America/New_York', 'Exact controlled provider booking evidence required');
+            check(Object.values(state.operations?.bookings ?? {}).some(b => b.id === data.event_id && b.verified && b.start === data.start && b.end === data.end), 'Booking must pass the controller readback boundary');
+            r.meeting = { ...data, reference: safeReference(data.reference), verified_at: event.at, current_status: 'Verified' }; break;
           case 'preview_recorded':
             owner(actor); check(r.stage === 'Preview', 'Preview requires qualified discovery');
             r.preview = { reference: safeReference(data.reference), approved_brief: text(data.brief) ? data.brief : r.discovery.main_flow, reviewed_with_owner: data.reviewed_with_owner === true };
@@ -295,7 +320,7 @@ export class StudioLifecycle {
         actual_call_attempts: real.flatMap(r => r.attempts).filter(a => a.channel === 'call' && businessDate(a.at) === today && !a.simulated).length,
         actual_emails: real.flatMap(r => r.attempts).filter(a => a.channel === 'email' && businessDate(a.at) === today && !a.simulated).length,
         minimum: 50, shortfall: Math.max(0, 50 - contacted.length), due: queue },
-      exceptions: [...state.exceptions, ...Object.values(state.actions).filter(a => ['Uncertain', 'Held'].includes(a.status)).map(a => ({ id: a.id, reason: a.hold })),
+      exceptions: [...state.exceptions, ...Object.entries(state.operations?.holds ?? {}).map(([id, reason]) => ({ id: `operations-${id}`, reason })), ...Object.values(state.actions).filter(a => ['Uncertain', 'Held'].includes(a.status)).map(a => ({ id: a.id, reason: a.hold })),
         ...Object.values(state.prospects).filter(r => r.stage === 'Hold').map(r => ({ id: r.id, reason: r.next_check }))] };
   }
   async backup(output) {
@@ -318,6 +343,8 @@ export class StudioLifecycle {
     check(!Object.values(state.ai_attempts).some(a => a.status === 'Running'), 'Cannot restore running worker state');
     destination = await privateStateDirectory(destination); await mkdir(destination, { mode: 0o700 });
     for (const a of Object.values(state.actions)) if (a.status === 'Pending') { a.status = 'Uncertain'; a.hold = 'Restored pending mutation; read back provider, never resend'; }
+    for (const r of Object.values(state.operations?.requests ?? {})) if (r.status === 'Pending' && ['draft', 'send', 'stop', 'booking_create', 'task_create', 'task_skip'].includes(r.operation)) r.status = 'Uncertain';
+    if (state.operations) delete state.operations.lease;
     await writeFile(join(destination, 'lifecycle-config.json'), JSON.stringify({ ...initialConfig, run_id: state.run_id, mode: state.mode }), { flag: 'wx', mode: 0o600 });
     await writeFile(join(destination, 'lifecycle-state.json'), JSON.stringify(state), { flag: 'wx', mode: 0o600 });
     return { execution: 'disabled', prospects: Object.keys(state.prospects).length };
