@@ -47,8 +47,11 @@ export async function operationsTick(app, { connect = options => new AppConnecto
   let client, calls = 0;
   await mkdir(join(app.directory, 'receipts'), { recursive: true, mode: 0o700 });
   try {
-    try { await syncResearchImports(app); await app.change(s => { s.exceptions = s.exceptions.filter(e => e.id !== 'research-import-system'); }); }
-    catch (error) { await app.change(s => { s.exceptions = s.exceptions.filter(e => e.id !== 'research-import-system'); s.exceptions.push({ id: 'research-import-system', reason: `Research import held: ${String(error.message).slice(0, 300)}` }); }); }
+    const config = await readJson(join(app.directory, 'lifecycle-config.json'));
+    if (config.research?.supervised !== true) {
+      try { await syncResearchImports(app); await app.change(s => { s.exceptions = s.exceptions.filter(e => e.id !== 'research-import-system'); }); }
+      catch (error) { await app.change(s => { s.exceptions = s.exceptions.filter(e => e.id !== 'research-import-system'); s.exceptions.push({ id: 'research-import-system', reason: `Research import held: ${String(error.message).slice(0, 300)}` }); }); }
+    }
     await settleSavedOperations(app);
     for (let count = 0; count < maxOperations; count++) {
       signal?.throwIfAborted();

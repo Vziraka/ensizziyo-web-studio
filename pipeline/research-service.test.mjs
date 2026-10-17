@@ -7,6 +7,7 @@ import { StudioLifecycle } from './lifecycle.mjs';
 import { productionConfig } from './production.mjs';
 import { saveJson } from './engine.mjs';
 import { researchTick, runResearchService, setResearchPriority, researchHandoff } from './research-service.mjs';
+import { operationsTick } from './operations-service.mjs';
 
 const now = () => new Date('2026-10-17T15:00:00Z');
 async function fixture(t) {
@@ -111,6 +112,14 @@ test('unapproved research cannot be enabled through owner priority controls', as
   delete c.research.approval_ref; await saveJson(path, c);
   await assert.rejects(setResearchPriority(f.app, 'research'), /owner-approved/);
   assert.equal(JSON.parse(await readFile(join(f.directory, 'research-control.json'))).priority, 'research');
+});
+
+test('connector ticks leave supervised research import to its single owner', async t => {
+  const f = await fixture(t), path = join(f.app.directory, 'lifecycle-config.json'), c = JSON.parse(await readFile(path));
+  c.research.auto_import = true; await saveJson(path, c);
+  const result = await operationsTick(f.app, { connect: () => { throw Error('Disabled connector must not connect'); } });
+  assert.equal(result.status, 'Disabled');
+  assert.equal((await f.app.snapshot()).exceptions.some(e => e.id === 'research-import-system'), false);
 });
 
 test('reviewed-result handoff retries uncertain projection without repeating import and becomes inert after pause', async t => {
