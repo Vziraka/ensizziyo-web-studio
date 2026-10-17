@@ -22,7 +22,7 @@ function summary(r) {
 }
 function stats() {
   const row = el('div', undefined, 'stats');
-  for (const [label, value, note] of [['Businesses today', `${state.daily.unique_businesses} / 50`, 'Actual contacts · follow-ups included'], ['Call reviews', Object.values(state.prospects).filter(r => r.stage === 'Connected review').length, 'Held until your decision'], ['Open support', Object.values(state.prospects).flatMap(r => r.tickets).filter(t => t.status === 'Open').length, 'Fictional projects in this review'], ['Exceptions', state.exceptions.length, 'No repeated background chat updates']]) {
+  for (const [label, value, note] of [['Businesses today', `${state.daily.unique_businesses} / 50`, 'Actual contacts · follow-ups included'], ['Call reviews', Object.values(state.prospects).filter(r => r.stage === 'Connected review').length, 'Held until your decision'], ['Open support', Object.values(state.prospects).flatMap(r => r.tickets).filter(t => t.status === 'Open').length, 'Fictional projects in this review'], ['Exceptions', state.exceptions.length, 'Consolidated in the private workspace']]) {
     const card = el('div', undefined, 'stat'); card.append(el('p', label, 'eyebrow'), el('strong', String(value)), el('small', note)); row.append(card);
   } return row;
 }
@@ -89,6 +89,10 @@ function nextForm(r, node) {
   const ref = 'fixture:owner-verified evidence — controlled test only';
   if (['Ready to contact', 'Contacting', 'Callback'].includes(r.stage)) node.append(callForm(r));
   if (r.stage === 'Connected review') review(r, node);
+  if (r.stage === 'Reply review') node.append(eventForm(r, 'Review the verified reply', 'reply_reviewed', [
+    ['Next action', 'outcome', 'hold', 'text', ['discovery', 'requested_info', 'hold', 'decline', 'do_not_contact']],
+    ['Your reply review note', 'note', '', 'textarea']
+  ], { source_id: r.reply.source_id }, 'Confirm reply outcome'));
   if (['Discovery', 'Information requested'].includes(r.stage)) node.append(eventForm(r, 'Confirm qualified discovery', 'discovery_confirmed', [
     ['Owner’s goal', 'goal', 'Make preorder pickup details clear', 'textarea'], ['Decision-maker', 'decision_maker', 'Fictional owner'],
     ['Serious interest confirmed in conversation', 'serious_interest', false, 'checkbox'], ['We discussed whether a paid project could fit', 'paid_fit_discussed', false, 'checkbox'],
@@ -143,6 +147,12 @@ function nextForm(r, node) {
 }
 function detail(r) {
   const node = panel(); node.append(pill(r.stage), el('h2', r.name, 'detail-title'), el('p', r.idea, 'idea'), el('p', `Evidence: ${r.qualification.evidence_ref}`, 'source'));
+  for (const [actionId, email] of Object.entries(state.operations?.email ?? {})) if (state.actions[actionId]?.prospect_id === r.id) node.append(el('p', `Controlled email: ${email.status}${email.thread ? ' · sender thread verified' : ''}`, 'notice'));
+  if (r.reply) node.append(el('p', `Verified reply: ${new Date(r.reply.at).toLocaleString()} · cold follow-ups paused · suppression: ${r.suppression ?? 'local only'}`, 'notice'));
+  if (r.meeting) {
+    const reference = el('p'); reference.append(link('Open the calendar record ↗', r.meeting.reference));
+    node.append(el('p', `${r.meeting.current_status === 'Needs review' ? 'Calendar record needs review' : 'Verified private test booking'}: ${new Date(r.meeting.start).toLocaleString()} – ${new Date(r.meeting.end).toLocaleTimeString()}`, 'notice'), reference);
+  }
   if (!r.restriction && !r.agreement) node.append(button('Record do-not-contact now', async () => { try { await api('/api/event', { revision: state.revision, event: { id: crypto.randomUUID(), prospect_id: r.id, type: 'contact_stopped', at: new Date().toISOString(), data: { reason: 'do_not_contact' } } }); tell('Contact stopped. Pending local follow-ups cancelled; provider suppression still needs authoritative readback if enrolled.'); await refresh(); } catch (error) { tell(error.message, true); } }));
   if (r.quote) node.append(el('p', `Fixed test quote: $${(r.quote.price_cents / 100).toFixed(2)} · settled test evidence: $${(r.payments.reduce((n, p) => n + p.amount_cents, 0) / 100).toFixed(2)}`, 'notice'));
   if (r.quote) node.append(link('Open the written project proposal ↗', `/proposal/${r.id}`));
@@ -160,9 +170,10 @@ function render() {
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
   if (view === 'exceptions') {
     const node = panel('Exception inbox');
+    if (state.operations) { const cycle = state.operations.cycle; node.append(el('p', `Controlled monitoring: ${cycle?.completed_cycles ?? 0} completed cycles. Last full cycle: ${cycle?.completed_at ? new Date(cycle.completed_at).toLocaleString() : 'awaiting verification'}. Backup: ${state.operations.maintenance?.backup_date ?? 'awaiting verification'}.`, 'muted')); }
     if (!state.exceptions.length) node.append(el('p', 'No unresolved exceptions.', 'empty'));
     for (const item of state.exceptions) { const row = el('div', undefined, 'check-item'); row.append(el('span', '!'), el('p', item.reason)); node.append(row); }
-    node.append(el('p', 'Routine checks belong in private logs. Production notifications will be consolidated and sent only when a decision or failure needs attention. The earlier test monitor stays paused.', 'muted')); content.append(node); return;
+    node.append(el('p', 'Routine checks stay in private logs. Notifications are consolidated and sent only for a meaningful change or required decision. The earlier test monitor stays paused.', 'muted')); content.append(node); return;
   }
   if (view === 'launch') {
     const node = panel('Required before live automation'), list = el('div', undefined, 'checklist');

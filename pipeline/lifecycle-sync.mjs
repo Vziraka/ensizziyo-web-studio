@@ -14,7 +14,9 @@ export async function publishLifecycle(app, suppliedQueue) {
   let pending, fresh = false;
   await app.change(async state => {
     const records = Object.values(state.prospects); check(records.length <= 90 && records.every(r => r.controlled), 'Controlled projection size/scope exceeded');
-    const rows = [headers, ...records.map(r => [r.id, r.name, r.stage, r.next_check ?? (r.stage === 'Connected review' ? 'Review transcript proposal' : r.stage === 'Support' ? 'Resolve support / close project' : r.stage === 'Contacting' ? 'Unsent email task; native sending remains disabled' : r.stage),
+    const rows = [headers, ...records.map(r => [r.id, r.name, r.stage, [r.next_check ?? (r.stage === 'Connected review' ? 'Review transcript proposal' : r.stage === 'Support' ? 'Resolve support / close project' : r.stage === 'Contacting' ? 'Owner call/email follow-up' : r.stage),
+      ...Object.entries(state.operations?.email ?? {}).filter(([id]) => state.actions[id]?.prospect_id === r.id).map(([, e]) => `Controlled email: ${e.status}`),
+      ...(r.meeting ? [`Private test booking: ${r.meeting.start}`] : [])].join(' · '),
       r.restriction ?? 'None', r.quote ? String(r.quote.price_cents / 100) : '', r.payments.length ? String(r.payments.reduce((n, p) => n + p.amount_cents, 0) / 100) : '', r.updated_at])];
     const range = `'${g.sheet_title}'!A1:H${rows.length}`;
     if (state.sheet_projection?.status === 'Pending') { pending = state.sheet_projection; return; }

@@ -40,7 +40,7 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
       for await (const chunk of req) { bytes += chunk.length; check(bytes <= 120_000, 'Request too large'); chunks.push(chunk); }
       const input = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       if (url.pathname === '/api/event') {
-        check(!['prospect_imported', 'transcript_assessed', 'reply_received'].includes(input.event?.type), 'Provider/research/worker events cannot be submitted as owner decisions');
+        check(!['prospect_imported', 'transcript_assessed', 'reply_received', 'email_delivered', 'meeting_verified'].includes(input.event?.type), 'Provider/research/worker events cannot be submitted as owner decisions');
         const result = await app.apply(input.event, { actor: app.config.mode === 'controlled' ? 'controlled-fixture' : 'owner', expectedRevision: input.revision });
         if (input.event.type === 'transcript_added') {
           const config = await readJson(join(app.directory, 'lifecycle-config.json'));
@@ -52,6 +52,7 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
       if (url.pathname === '/api/pause') {
         const config = await readJson(join(app.directory, 'lifecycle-config.json'));
         config.transcript_ai.enabled = false; config.connector_writes_enabled = false; config.outreach_enabled = false; config.research_enabled = false;
+        if (config.operations) config.operations.enabled = false;
         await saveJson(join(app.directory, 'lifecycle-config.json'), config); app.config = config;
         return json(200, { paused: true });
       }
