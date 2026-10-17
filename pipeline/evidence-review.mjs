@@ -9,7 +9,7 @@ const literal = value => ({ type: typeof value === 'number' ? 'integer' : 'strin
 const nullable = schema => ({ anyOf: [{ type: 'null' }, schema] });
 const checks = (count, extra = {}) => ({ type: 'array', minItems: count, maxItems: count, items: object({ index: { type: 'integer' }, supported: { type: 'boolean' }, note: text, ...extra }) });
 
-export function evidenceReviewSchema(f, reviewer) {
+export function evidenceReviewSchema(f, reviewer, { legacyContact = false } = {}) {
   return object({
     verdict: { type: 'string', enum: ['Accepted', 'Revise'] },
     corrections: { type: 'array', minItems: 0, maxItems: 12, items: text },
@@ -20,7 +20,7 @@ export function evidenceReviewSchema(f, reviewer) {
       identity_note: text, operating_status: { type: 'string', enum: ['Active', 'Unverified', 'Paused or closed'] },
       operating_evidence: nullable(object({ url: text, excerpt: { ...text, maxLength: 160 }, context_id: { type: 'string', maxLength: 40 } })),
       opportunity_index: nullable({ type: 'integer' }),
-      contact: { type: 'object', properties: { url: { type: 'string', maxLength: 2048 }, email: { type: 'string', maxLength: 254 }, phone: { type: 'string', maxLength: 50 } }, required: ['url', 'email'], additionalProperties: false },
+      contact: { type: 'object', properties: { url: { type: 'string', maxLength: 2048 }, email: { type: 'string', maxLength: 254 }, phone: { type: 'string', maxLength: 50 } }, required: legacyContact ? ['url', 'email'] : ['url', 'email', 'phone'], additionalProperties: false },
       observations: checks(f.report.observations.length),
       journey_checks: checks(f.report.journey_checks.length, { area: { type: 'string', enum: f.report.journey_checks.map(c => c.area) } }),
       opportunity_checks: checks(f.report.opportunities.length),
@@ -46,7 +46,8 @@ export function evidenceReviewPrompt(f, reviewer) {
 }
 
 export function validateEvidenceReview(value, f, reviewer, now) {
-  validate(value, evidenceReviewSchema(f, reviewer));
+  // Retained reviews predate phone capture. New worker schemas require every key for Codex strict output.
+  validate(value, evidenceReviewSchema(f, reviewer, { legacyContact: true }));
   validateDecision(value.decision, f, now);
   const d = value.decision;
   if (d.opportunity_checks.some((c, i) => c.index !== i)) throw Error('Review every opportunity in report order');

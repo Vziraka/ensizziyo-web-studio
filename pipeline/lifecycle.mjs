@@ -18,7 +18,7 @@ export const initialConfig = {
   research_enabled: false, outreach_enabled: false, connector_writes_enabled: false,
   priority: 'website', timezone: 'America/New_York', daily_target: 50,
   transcript_ai: { enabled: false, daily_calls: 4, reserve_percent: 30,
-    author_model: 'gpt-6-luna', reviewer_model: 'gpt-6.1-sol', effort: 'high' },
+    author_model: 'gpt-5.6-luna', reviewer_model: 'gpt-5.6-sol', effort: 'high' },
   calendar: { duration_minutes: 20, buffer_minutes: 15, start_hour: 9, end_hour: 17, weekdays: [1, 2, 3, 4, 5] },
   readiness: { owner_design_approved: false, business_sender_verified: false, native_automation_verified: false,
     delivery_and_stop_verified: false, website_inquiry_verified: false, prospect_supply_verified: false, capacity_verified: false }

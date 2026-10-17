@@ -46,6 +46,8 @@ The owner chose Luna and Sol at **high** effort. The dormant configuration initi
 
 Quality worker schemas now bind business/job identity and each source URL, inspection date and checksum to the retained snapshots. This addresses a live Luna response that copied an opaque checksum incorrectly and was safely rejected before qualification. Runtime evidence validation remains independent and historical saved formats remain readable; no failed report is silently corrected or accepted.
 
+The October 17 connected run also exposed two review-transport mismatches: Codex strict output requires the phone key even when its value is empty, and a direct review result has `verdict`/`decision` rather than a top-level research `schema_version`. Both boundaries are covered by regressions. Historical reviews without phone remain readable. The retained valid Sol review was revalidated and settled without another model call. One food/beverage business completed nine observations, five journey checks and independent review, then entered the paused production workspace with a verified public phone/email. Six research reservations remain charged, including rejected calls; this single assisted run does not establish weekly capacity.
+
 ## Executable verification and operation
 
 From `pipeline`, the account-free recipe is:

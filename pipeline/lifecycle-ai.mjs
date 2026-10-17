@@ -43,7 +43,7 @@ export async function assessTranscript(app, prospectId, callId, { invoke = invok
   const ensureAllowed = async () => {
     const config = await readJson(configPath), ai = config.transcript_ai;
     check(ai.enabled === true && ['idle', 'client'].includes(config.priority), 'Transcript AI paused for owner priority or disabled allowance');
-    check(ai.author_model === 'gpt-6-luna' && ai.reviewer_model === 'gpt-6.1-sol' && ai.effort === 'high', 'Use the owner-selected Luna/high and Sol/high models');
+    check([['gpt-5.6-luna', 'gpt-5.6-sol'], ['gpt-6-luna', 'gpt-6.1-sol']].some(([author, reviewer]) => ai.author_model === author && ai.reviewer_model === reviewer) && ai.effort === 'high', 'Use the owner-selected Luna/high and Sol/high models');
     check(Number.isInteger(ai.daily_calls) && ai.daily_calls >= 2 && ai.daily_calls <= 20 && ai.reserve_percent >= 30, 'Invalid bounded subscription allowance');
     active.signal.throwIfAborted(); return ai;
   };
@@ -81,8 +81,10 @@ export async function assessTranscript(app, prospectId, callId, { invoke = invok
     });
     attempts.push(id);
     try {
+      const field = phase === 'author' ? 'transcript_sha256' : 'proposal_sha256';
+      const outputSchema = { ...schema, properties: { ...schema.properties, [field]: { ...schema.properties[field], const: phase === 'author' ? transcript.sha256 : hash(proposal) } } };
       const result = await invoke({ worker: 'codex', phase: 'review', directory, attempt_id: id, signal: active.signal,
-        model: phase === 'author' ? ai.author_model : ai.reviewer_model, effort: ai.effort, outputSchema: schema, promptText: prompt,
+        model: phase === 'author' ? ai.author_model : ai.reviewer_model, effort: ai.effort, outputSchema, promptText: prompt,
         onEvent: async event => app.change(state => { const a = state.ai_attempts[id]; if (event.event === 'worker_started') a.child_pid = event.pid; if (event.event === 'worker_stopped') a.child_pid = null; }) });
       await app.change(state => { Object.assign(state.ai_attempts[id], { status: 'Complete', child_pid: null, result_sha256: hash(result), finished_at: app.now().toISOString() }); });
       return result;

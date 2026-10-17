@@ -117,6 +117,20 @@ test('one fictional intake completes independent source review and idempotent Re
   assert.equal((await saved(f)).calls.length, 3); assert.equal(f.tables.Prospects.length, 2);
 });
 
+test('the dispatched review schema requires every contact key while retained reviews without phone remain readable', async () => {
+  const f = await fixture(); let reviewed = false;
+  const result = await run(f, { invoke: worker(async options => {
+    if (options.phase !== 'review') return assessment(options);
+    reviewed = true;
+    assert.deepEqual(options.outputSchema.properties.decision.properties.contact.required, ['url', 'email', 'phone']);
+    const legacy = await acceptedReview(options); // Existing receipt has no phone; still valid for historical readback.
+    assert.equal(legacy.decision.contact.phone, undefined);
+    return legacy;
+  }) });
+  assert.equal(reviewed, true);
+  assert.equal(result.jobs[0].status, 'Complete');
+});
+
 test('daily budgets persist across restarts and resume from a checkpoint without another collection', async () => {
   const f = await fixture(); f.config.providers.codex.daily_calls = 1;
   f.config.fallback_order = ['codex'];

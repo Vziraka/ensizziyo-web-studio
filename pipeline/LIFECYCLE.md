@@ -2,7 +2,7 @@
 
 Current production preparation, direct connector service, separate records and remaining launch gates are in [PRODUCTION.md](PRODUCTION.md). The earlier chat-supervised controlled proof below remains useful evidence; it is no longer the intended production dispatch loop. Both old test heartbeats are paused.
 
-The owner approved this design on October 17, 2026. [Controlled operations](OPERATIONS.md) connects its email, booking, synchronization and supervision paths. Research, real outreach and the previous heartbeat remain paused. It reuses Node 24, the existing Google library, Apollo/Gmail/Calendar connections and subscription CLIs. No dependency, paid model API or new subscription was added.
+The owner approved this design on October 17, 2026. [Controlled operations](OPERATIONS.md) connects its email, booking, synchronization and supervision paths. The owner later authorized bounded research to prepare the call queue; real outreach and the previous heartbeats remain paused. It reuses Node 24, the existing Google library, Apollo/Gmail/Calendar connections and subscription CLIs. No dependency, paid model API or new subscription was added.
 
 ## Journey and ownership
 
@@ -17,6 +17,8 @@ Research files/Sheets own sources and qualification; Apollo owns outbound execut
 ## Context and subscription use
 
 Durable context lives in source/checkpoint/report/review files, playbooks, lifecycle events and exact document references. Chat history is not the database. Each transcript worker receives only its saved transcript, call time/hash, trusted schema/instructions and bounded review feedback. Credentials, browser cookies, parent connectors and whole client folders are excluded. Redact credentials before intake; recording consent is separate.
+
+October 17 subscription verification: the installed CLI exposes GPT-5.6 Luna and Sol at high effort. New defaults use that matched pair; the prior GPT-6 Luna/GPT-6.1 Sol pair remains readable/configurable for accounts that support it. Mixed or arbitrary model pairs stay blocked. Exact transcript/proposal digests are constrained in worker output schemas and still checked at settlement. One synthetic connected transcript completed both actual subscription phases and independent claim review, with the proposal visible in the controlled console at Connected review. No real call, owner outcome approval, message or meeting followed. Its allowance was disabled afterward; this verifies the response path, not ongoing throughput.
 
 The author uses `gpt-6-luna`/high and the independent reviewer `gpt-6.1-sol`/high in separate restricted ChatGPT-authenticated Codex CLI calls. Exact quotes and complete claim/summary/outcome review precede owner approval. One repair, four calls/job and persistent daily allowance apply; an interrupted reviewer reuses the author result. Default AI is disabled, four calls/day and 30% Codex reserve. Website priority blocks dispatch. Live metadata returned 20% remaining, so this build held before either model ran. Routing/recovery tests pass; live model compatibility/quality remains unverified. No paid fallback exists.
 
