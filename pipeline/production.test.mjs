@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { StudioLifecycle, initialConfig } from './lifecycle.mjs';
 import { fixtureProspect } from './lifecycle-fixtures.mjs';
 import { saveJson } from './engine.mjs';
-import { productionConfig, releaseFingerprint, requireProductionRelease, approveProductionRelease, ProductionOperations, NativeProofOperations, operationsFor, importResearch, queueMeeting } from './production.mjs';
+import { productionConfig, releaseFingerprint, requireProductionRelease, approveProductionRelease, ProductionOperations, NativeProofOperations, operationsFor, importResearch, queueMeeting, pauseStudio } from './production.mjs';
 import { dailyCallQueue } from './apollo-queue.mjs';
 import { intakeCandidate, reviewFiles, reviewTemplate, prospectPurpose } from './prospects.mjs';
 import { sourceContentHash } from './sources.mjs';
@@ -209,4 +209,22 @@ test('an unapproved native proof cannot publish an intent; a foreign recipient f
   assert.equal(s.p.calls.some(c => ['intent', 'personalize', 'task_create'].includes(c.operation)), false);
   const c = structuredClone(s.c); c.operations.native_proof.message.to = 'foreign@example.org'; await saveJson(join(s.directory, 'lifecycle-config.json'), c);
   await assert.rejects(operationsFor(s.app, 'foreign-proof').next(), /owner-controlled test inboxes/);
+});
+test('Pause all stops and reads back the configured research controller, preserving its priority and quota settings', async t => {
+  const s = await setup(t, false), directory = await mkdtemp(join(tmpdir(), 'evz-pause-research-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const control = { schema_version: 1, enabled: true, priority: 'research', quota_resumes: { example: 'unchanged' } };
+  await saveJson(join(directory, 'research-control.json'), control);
+  s.config.research.source_directory = directory; await saveJson(join(s.directory, 'lifecycle-config.json'), s.config);
+  assert.equal((await s.app.dashboard()).controls.research_paused, false);
+  assert.equal((await pauseStudio(s.app)).paused, true);
+  assert.deepEqual(JSON.parse(await readFile(join(directory, 'research-control.json'), 'utf8')), { ...control, enabled: false });
+  assert.equal((await s.app.dashboard()).controls.research_paused, true);
+});
+test('an unavailable research control leaves other execution paused and reports an unverified research stop', async t => {
+  const s = await setup(t, false); s.config.research.source_directory = join(s.directory, 'missing-research');
+  await saveJson(join(s.directory, 'lifecycle-config.json'), s.config);
+  await assert.rejects(pauseStudio(s.app), /research-controller pause is unverified/);
+  const d = await s.app.dashboard(); assert.equal(d.controls.outreach_paused, true); assert.equal(d.controls.ai_enabled, false);
+  assert.ok(d.exceptions.some(e => e.id === 'research-pause'));
 });

@@ -2,11 +2,11 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { StudioLifecycle, initialConfig, check } from './lifecycle.mjs';
-import { readJson, saveJson } from './engine.mjs';
+import { readJson } from './engine.mjs';
 import { seedLifecycle } from './lifecycle-fixtures.mjs';
 import { assessTranscript } from './lifecycle-ai.mjs';
 import { LifecycleBridge } from './lifecycle-bridge.mjs';
-import { productionConfig, operationsFor, importResearch, approveProductionRelease } from './production.mjs';
+import { productionConfig, operationsFor, importResearch, approveProductionRelease, pauseStudio } from './production.mjs';
 
 async function main() {
   const [command, key, operation, actionId, prospectId] = process.argv.slice(2), directory = process.env.STUDIO_LIFECYCLE_STATE_DIR;
@@ -36,7 +36,7 @@ async function main() {
   if (command === 'booking-check') { const { checkCalendarReceipt } = await import('./lifecycle-documents.mjs'); return checkCalendarReceipt(await readJson(key), app.config.calendar, app.now()); }
   if (command === 'serve') { const { serveLifecycle } = await import('./lifecycle-server.mjs'); const server = await serveLifecycle(app, { port: Number(process.env.STUDIO_LIFECYCLE_PORT ?? 8807) }); process.once('SIGINT', () => server.close()); process.once('SIGTERM', () => server.close()); return; }
   if (command === 'backup') { await mkdir(join(app.directory, 'backups'), { recursive: true }); return app.backup(key ?? join(app.directory, 'backups', `lifecycle-${Date.now()}.json`)); }
-  if (command === 'pause') { const config = await readJson(join(app.directory, 'lifecycle-config.json')); config.outreach_enabled = false; config.research_enabled = false; config.connector_writes_enabled = false; config.transcript_ai.enabled = false; if (config.operations) config.operations.enabled = false; await saveJson(join(app.directory, 'lifecycle-config.json'), config); return { execution: 'paused' }; }
+  if (command === 'pause') { await pauseStudio(app); return { execution: 'paused' }; }
   const bridge = new LifecycleBridge(app, process.env.STUDIO_LIFECYCLE_SESSION);
   if (command === 'prepare') return bridge.prepare(key, operation, actionId, prospectId);
   if (command === 'settle') { check(/^[a-zA-Z0-9_-]{1,100}$/.test(key ?? ''), 'Invalid receipt key'); return bridge.settle(key, await readJson(join(app.directory, 'receipts', `${key}.json`))); }
