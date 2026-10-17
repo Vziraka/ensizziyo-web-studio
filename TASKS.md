@@ -7,7 +7,8 @@ The owner selected these changes after a design interview for the public EVZ Dig
 - [x] Implement the studio gallery, hero, return bar, Forma motion, and icon changes in the production `site/` source.
 - [x] Build and verify six studio routes and eight demonstrations; run inquiry tests.
 - [x] Review desktop and mobile layouts, all eight sample return bars, Forma's scroll states, and carousel cycling after manual navigation and picker selection in the local browser.
-- [ ] Complete PR review and publish the reviewed revision through the protected `main` branch; verify the live routes afterward.
+
+[PR #55](https://github.com/Vziraka/ensizziyo-web-studio/pull/55) owns the required check, review, merge, and live-route evidence for this refinement.
 
 The owner explicitly accepted continuous automatic carousel motion without a visitor stop control. This is a known [WCAG 2.2.2 Pause, Stop, Hide](https://www.w3.org/WAI/WCAG22/Understanding/pause-stop-hide.html) gap. The device reduced-motion setting still suppresses automatic motion. The local review does not establish physical iOS Safari behavior; the diagonal arrow is now SVG rather than a Unicode character.
 
