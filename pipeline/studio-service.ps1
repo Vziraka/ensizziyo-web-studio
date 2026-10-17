@@ -8,10 +8,10 @@ $studioConfig = Get-Content -LiteralPath (Join-Path $studioState 'lifecycle-conf
 if ($studioConfig.mode -ne 'production' -or $studioConfig.run_id -ne 'evz-food-beverage') { throw 'Only the private production workspace is supported by this startup task.' }
 if ($studioState.Contains('"') -or $PSCommandPath.Contains('"')) { throw 'Unsupported quote in startup path.' }
 $studioTaskName = 'EVZ Studio Operations'
+$studioArgs = '-NoProfile -NonInteractive -WindowStyle Hidden -File "' + $PSCommandPath + '" -Action Run -StateDirectory "' + $studioState + '"'
 if ($Action -eq 'Install') {
   $studioExisting = Get-ScheduledTask -TaskName $studioTaskName -ErrorAction SilentlyContinue
   if ($studioExisting) { throw 'The startup task already exists; inspect it instead of overwriting it.' }
-  $studioArgs = '-NoProfile -NonInteractive -WindowStyle Hidden -File "' + $PSCommandPath + '" -Action Run -StateDirectory "' + $studioState + '"'
   $studioRun = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $studioArgs -WorkingDirectory $PSScriptRoot
   $studioUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
   $studioTrigger = New-ScheduledTaskTrigger -AtLogOn -User $studioUser
@@ -29,7 +29,30 @@ if ($Action -eq 'Install') {
 } elseif ($Action -eq 'Start') {
   Start-ScheduledTask -TaskName $studioTaskName
 } elseif ($Action -eq 'Stop') {
+  $studioTask = Get-ScheduledTask -TaskName $studioTaskName
+  if ($studioTask.Actions.Count -ne 1 -or $studioTask.Actions[0].Arguments -cne $studioArgs) { throw 'The installed task belongs to a different runtime; use its reviewed Stop script.' }
+  $studioLockPath = Join-Path $studioState 'operations-service.lock'
+  $studioOwnedPid = $null
+  if (Test-Path -LiteralPath $studioLockPath) {
+    $studioLock = Get-Content -LiteralPath $studioLockPath -Raw | ConvertFrom-Json
+    if ($studioLock.run_id -ne $studioConfig.run_id -or ($studioLock.pid -isnot [int] -and $studioLock.pid -isnot [long]) -or $studioLock.pid -le 0 -or $studioLock.pid -gt [int]::MaxValue) { throw 'Unrecognized service lock; preserve it for inspection.' }
+    $studioProcess = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $studioLock.pid)
+    if ($studioProcess) {
+      $studioNode = (Get-Command node.exe).Source
+      $studioCommand = '"' + $studioNode + '" "' + (Join-Path $PSScriptRoot 'lifecycle-cli.mjs') + '" service'
+      $studioStarted = [DateTimeOffset]::Parse($studioLock.started_at).UtcDateTime
+      if ($studioProcess.ExecutablePath -ine $studioNode -or $studioProcess.CommandLine -cne $studioCommand -or $studioProcess.CreationDate.ToUniversalTime() -gt $studioStarted) { throw 'The recorded process identity changed; do not stop it.' }
+      $studioOwnedPid = [int]$studioLock.pid
+    }
+  } elseif ($studioTask.State -eq 'Running') { throw 'The service has not saved its process identity yet; wait and inspect before stopping.' }
   Stop-ScheduledTask -TaskName $studioTaskName
+  if ($studioOwnedPid -and (Get-Process -Id $studioOwnedPid -ErrorAction SilentlyContinue)) {
+    # Task Scheduler stops the PowerShell wrapper but can leave Node and its connector children alive.
+    & (Join-Path $env:SystemRoot 'System32/taskkill.exe') /PID $studioOwnedPid /T /F
+    if ($LASTEXITCODE -ne 0 -and (Get-Process -Id $studioOwnedPid -ErrorAction SilentlyContinue)) { throw 'The owned service process did not stop.' }
+  }
+  if ($studioOwnedPid -and (Get-Process -Id $studioOwnedPid -ErrorAction SilentlyContinue)) { throw 'The owned service process is still running.' }
+  # Retain its reservation/lock files; the exclusive host verifies and archives dead locks on restart.
 } elseif ($Action -eq 'Uninstall') {
   $studioTask = Get-ScheduledTask -TaskName $studioTaskName
   if ($studioTask.State -eq 'Running') { throw 'Stop and verify the owned process first.' }
