@@ -125,7 +125,10 @@ export class StudioLifecycle {
     this.config = await readJson(join(this.directory, 'lifecycle-config.json'));
     check(key(event?.id) && key(event.prospect_id) && text(event.type, 80) && date(event.at), 'Event needs stable IDs and an explicit timestamp');
     check(Date.parse(event.at) <= +this.now() + 60_000, 'An event cannot claim a future action');
-    if (event.type === 'call_logged' && this.config.mode === 'production') { const { requireCallRelease } = await import('./production.mjs'); requireCallRelease(this.config); }
+    if (event.type === 'call_logged' && this.config.mode === 'production') {
+      const { requireCallRelease } = await import('./production.mjs'); requireCallRelease(this.config);
+      check(this.config.operations.allowlist.includes(event.prospect_id), 'Call is outside the approved queue');
+    }
     return this.change(state => {
       const fingerprint = hash({ event, actor });
       if (state.events[event.id]) { check(state.events[event.id].fingerprint === fingerprint, 'Event ID conflicts with saved evidence'); return { duplicate: true, revision: state.revision }; }

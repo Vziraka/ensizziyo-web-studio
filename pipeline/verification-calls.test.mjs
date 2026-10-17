@@ -36,6 +36,8 @@ test('verification import retains first-party checks without becoming an accepte
   assert.equal(r.contact.verified, false); assert.equal(r.contact.phone_verified, true);
   assert.equal((await s.app.dashboard()).daily.prepared.verification, 1);
   assert.equal((await importVerification(s.app, packet())).duplicate_of, s.id);
+  s.app.config.operations.allowlist = []; await saveJson(join(s.directory, 'lifecycle-config.json'), s.app.config);
+  await importVerification(s.app, packet()); assert.ok(s.app.config.operations.allowlist.includes(s.id), 'Retry reconciles a prospect saved before its config staging write');
   const alternatePhone = packet(); alternatePhone.id = 'same-business-second-phone'; alternatePhone.phone = '(202) 555-0109'; alternatePhone.sources[0].text = alternatePhone.sources[0].text.replace('0100', '0109'); alternatePhone.sources[0].content_sha256 = sourceContentHash(alternatePhone.sources[0]); alternatePhone.public_phone.excerpt = alternatePhone.public_phone.excerpt.replace('0100', '0109');
   assert.equal((await importVerification(s.app, alternatePhone)).duplicate_of, s.id);
   await assert.rejects(s.app.apply({ id: 'forged', prospect_id: 'other', type: 'verification_imported', at, data: { ...r, company_id: 'other' } }), /retained verification/);

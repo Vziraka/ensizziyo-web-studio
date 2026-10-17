@@ -80,7 +80,10 @@ export async function importVerification(app, packet) {
   const data = verificationData(packet, app.now(), app.config.mode === 'controlled'), keys = contactKeys(data), state = await app.snapshot();
   const nameKey = s => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
   const prior = Object.values(state.prospects).find(r => nameKey(r.name) === nameKey(data.name) || contactKeys(r).some(k => keys.includes(k)));
-  if (prior) return { imported: false, duplicate_of: prior.id, restricted: Boolean(prior.restriction) };
+  if (prior) {
+    if (app.config.mode === 'production') await stageProspect(app, prior.id);
+    return { imported: false, duplicate_of: prior.id, restricted: Boolean(prior.restriction) };
+  }
   const prospectId = `verify-${hash(data.company_id).slice(0, 24)}`;
   await app.apply({ id: `verify-import-${hash(packet.id).slice(0, 24)}`, prospect_id: prospectId, type: 'verification_imported', at: app.now().toISOString(), data }, { actor: app.config.mode === 'controlled' ? 'controlled-fixture' : 'verification-import' });
   if (app.config.mode === 'production') await stageProspect(app, prospectId);
