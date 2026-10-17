@@ -1,5 +1,13 @@
 # Launch tasks
 
+## Security and branch housekeeping — October 16, 2026
+
+- [x] Verify every obsolete remote branch points to its merged PR's final commit; delete 36 merged remote branches and their matching inactive local pointers. Close superseded draft PR #3, but preserve its design branch and the active worktrees. GitHub now automatically deletes branches after merge; `main` remains protected.
+- [x] Enable GitHub dependency alerts for this private repository. The first alert query returned none; continue reviewing future alerts because the separate pipeline has a locked npm dependency.
+- [x] Add a same-origin Content Security Policy in `netlify.toml` for the static studio and eight demonstrations. Local build, route checks, inquiry tests and TOML parsing pass; private preview and production browser/header checks are release gates.
+- [ ] Owner: enable two-factor authentication on GitHub and Netlify, save recovery codes privately, then confirm Name.com two-step verification after signing in. GitHub API and Netlify user settings showed 2FA off during this review; Name.com required a fresh sign-in and could not be rechecked. Do not share authenticator secrets or recovery codes in the repository or chat.
+- [ ] After Workspace recovery, enable account two-step verification, confirm `hello@evzdigital.studio` delivery and sending, then complete the DKIM/DMARC and mailbox-retention checks in the launch decision.
+
 ## EVZ UI and motion refinement — October 16, 2026
 
 The owner selected these changes after a design interview for the public EVZ Digital site: show three complete desktop work panels with the center largest; keep carousel cycling after arrows and project selection; remove only the small hero note; remove generic Pause motion controls across the studio and eight demonstrations; replace the dark sample return strip with a taller white studio-styled bar that remains at the top; make Forma's room-to-collection scroll transition more expressive within the existing page length; and replace emoji-prone diagonal arrows with consistent SVG icons. Keep the operating-system reduced-motion preference.
