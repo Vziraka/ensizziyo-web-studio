@@ -10,6 +10,8 @@ Acceptance: persistent action reservations, exact account/contact/recipient/mess
 
 Implementation checkpoint: account-free tests cover the full coordinator, including uncertain send/draft/task/booking operations, native future-task cancellation, actual-shaped Calendar string dates/self attendees, progression-safe booking monitoring, pause/leases and stable notifications. Connected historical reply cancellation/native finished readback, one private Calendar create/readback, five-record Sheet projection and daily private backup passed. The no-answer email is held for the connector's exact one-message confirmation; scheduled execution will be recorded separately. No new email, real call/business contact, research, guest invitation or model inference has run in this increment so far.
 
+Scale/recovery correction: a twelve-fictional-record test reproduced starvation when short wakes refreshed all reads and restarted from the first record. Completed record/booking progress now survives refresh epochs and wakes; new lifecycle events dirty the affected record so an owner stop is handled promptly. All 173 account-free tests and syntax checks pass locally. This correction preserves every existing mutation reservation and independent readback rule. The replacement test schedule must use the corrected reviewed source; actual scheduled completion is recorded separately from these synthetic and foreground checks.
+
 
 ## EVZ UI and motion refinement — October 16, 2026
 

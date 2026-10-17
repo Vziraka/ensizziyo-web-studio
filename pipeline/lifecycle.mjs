@@ -300,6 +300,11 @@ export class StudioLifecycle {
           default: throw Error('Unsupported lifecycle event');
         }
       }
+      const cycle = state.operations?.cycle;
+      if (cycle && !cycle.completed_at) {
+        cycle.completed_records = (cycle.completed_records ?? []).filter(id => id !== r.id);
+        cycle.completed_bookings = [];
+      }
       r.updated_at = event.at; state.events[eid] = { fingerprint, actor, ...event }; state.revision++;
       return { prospect_id: r.id, stage: r.stage, revision: state.revision };
     });

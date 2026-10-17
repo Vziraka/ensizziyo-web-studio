@@ -94,8 +94,12 @@ export class ControlledOperations {
       if (o.lease && o.lease.session !== this.session && Date.parse(o.lease.until) > +now) return { status: 'Busy', next_at: o.lease.until };
       o.lease = { session: this.session, until: new Date(+now + 90_000).toISOString() };
       if (o.cycle?.completed_at && +now < Date.parse(o.cycle.started_at) + 300_000) { delete o.lease; return { status: 'Waiting', next_at: new Date(Date.parse(o.cycle.started_at) + 300_000).toISOString() }; }
-      if (!o.cycle || o.cycle.completed_at || +now - Date.parse(o.cycle.started_at) > 120_000) {
-        o.cycle = { id: randomUUID(), started_at: now.toISOString(), completed_cycles: o.cycle?.completed_cycles ?? 0 };
+      if (!o.cycle || o.cycle.completed_at) {
+        o.cycle = { id: randomUUID(), started_at: now.toISOString(), completed_cycles: o.cycle?.completed_cycles ?? 0, completed_records: [], completed_bookings: [] };
+      }
+      o.cycle.completed_records ??= []; o.cycle.completed_bookings ??= [];
+      if (!o.cycle.read_epoch || +now - Date.parse(o.cycle.read_started_at) > 120_000) {
+        o.cycle.read_epoch = randomUUID(); o.cycle.read_started_at = now.toISOString();
         // Retain mutations and durable effects; successful old polls have raw private receipts and need no operating copy.
         for (const [key, r] of Object.entries(o.requests)) if (!mutations.has(r.operation) && ['Done', 'Failed'].includes(r.status) && !r.retain) {
           (o.prune_receipts ??= []).push(r.key); delete o.requests[key];
@@ -110,7 +114,7 @@ export class ControlledOperations {
           cycle.completed_at = now.toISOString(); cycle.completed_cycles++; delete o.lease;
           return { status: 'Complete', completed_cycles: cycle.completed_cycles, ...notification(o, now), research: 'paused', real_outreach: 0 };
         }
-        const request = step.value, logical = mutations.has(request.operation) ? request.logical : `${cycle.id}-${this.session}-${request.logical}`;
+        const request = step.value, logical = mutations.has(request.operation) ? request.logical : `${cycle.read_epoch}-${this.session}-${request.logical}`;
         const saved = o.requests[logical];
         if (saved) {
           check(saved.operation === request.operation && saved.input_sha256 === hash(request.input), 'Saved operation scope changed; reconcile before continuing');
@@ -133,13 +137,13 @@ export class ControlledOperations {
   output(r) { return { key: r.key, operation: r.operation, tool: `mcp__codex_apps__${names[r.operation]}`, input: r.input }; }
   *plan(state, c) {
     const o = state.operations, now = this.app.now(), request = (logical, operation, input) => ({ logical, operation, input });
-    const retain = logical => { const r = o.requests[`${o.cycle.id}-${this.session}-${logical}`]; if (r) r.retain = true; };
+    const retain = logical => { const r = o.requests[`${o.cycle.read_epoch}-${this.session}-${logical}`]; if (r) r.retain = true; };
     const verified = (data, expected, name) => check(!data.failed && data.email === expected, `${name} account unavailable or changed`);
     const ap = yield request('apollo-owner', 'apollo_profile', { include_credit_usage: false });
     check(!ap.failed && ap.id === c.apollo.user_id, 'Apollo account unavailable or changed');
     verified(yield request('gmail-owner', 'gmail_profile', {}), c.calendar.owner_email, 'Gmail');
     verified(yield request('calendar-owner', 'calendar_profile', {}), c.calendar.owner_email, 'Calendar');
-    for (const id of c.operations.allowlist) {
+    for (const id of c.operations.allowlist.filter(id => !o.cycle.completed_records.includes(id))) {
       try {
         const record = state.prospects[id], binding = c.apollo.bindings[id];
         const bounds = [c.operations.threads?.[id], ...Object.entries(o.email).filter(([a]) => state.actions[a]?.prospect_id === id).map(([, e]) => e.thread)].filter(Boolean);
@@ -254,8 +258,9 @@ export class ControlledOperations {
         }
         delete o.holds[id];
       } catch (error) { o.holds[id] = error.message; }
+      o.cycle.completed_records.push(id);
     }
-    for (const [bookingId, b] of Object.entries(c.operations.bookings ?? {})) {
+    for (const [bookingId, b] of Object.entries(c.operations.bookings ?? {}).filter(([id]) => !o.cycle.completed_bookings.includes(id))) {
       try {
         const r = state.prospects[b.prospect_id], createKey = `${bookingId}-create`, prior = o.requests[createKey]; let eventId = o.bookings[bookingId]?.id;
         check(eventId || prior || ['Discovery', 'Information requested'].includes(r.stage) && !r.restriction, 'Booking requires reviewed interest');
@@ -290,6 +295,7 @@ export class ControlledOperations {
         if (o.bookings[bookingId]) o.bookings[bookingId].verified = false;
         if (state.prospects[b.prospect_id].meeting) state.prospects[b.prospect_id].meeting.current_status = 'Needs review';
       }
+      o.cycle.completed_bookings.push(bookingId);
     }
   }
   async settle(key, raw) {
