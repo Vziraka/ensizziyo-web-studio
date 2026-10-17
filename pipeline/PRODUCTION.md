@@ -24,6 +24,8 @@ The independent reviewer can return the exact public business phone alongside em
 
 Optional research.auto_import reads completed independent results from the private source_directory, at most ten per tick and 200 named jobs per controller campaign. It starts no model/source retrieval. Missing/changed evidence holds that import and consolidates an exception while provider monitoring continues. A held import needs fresh reviewed evidence or explicit local reconciliation.
 
+New imports retain a compact call-prep card from the accepted report: a reviewed observation with source/inspection date, current ordering/enquiry route, existing alternatives, one enhancement hypothesis, uncertainties and the report's owner question. The suggested opening and two further questions follow the [food/beverage sales kit](https://docs.google.com/document/d/1qybvO__qBf508RGSAnADSBjIhw1G_kIWIflqpF9ikkU). This deterministic projection uses no model or new source request. Studio Operations shows it at contact/callback stages beside the manual outcome form; older records with no retained card display an explicit missing-evidence notice. It creates no call/send or approval. Existing imports are not silently rewritten; refresh them through reviewed reconciliation if needed.
+
 The owner makes calls and logs the actual outcome in Studio Operations. Completing/skipping an Apollo task proves no call. Connected calls pause cold email, accept permitted/redacted transcripts and require reviewed outcomes. Callbacks/due follow-ups precede new prospects. Daily counts include follow-ups and count each business once across channels; 50 is a minimum, not a cap. There is no owner-hour cap.
 
 ## Native automatic email route to review

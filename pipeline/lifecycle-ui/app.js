@@ -59,6 +59,33 @@ function callForm(r) {
     ['Callback date/time, when requested (ISO timestamp)', 'callback_at', '']
   ], { call_id: crypto.randomUUID(), simulated: r.controlled }, 'Save call outcome');
 }
+function callPrep(r) {
+  const card = el('section', undefined, 'call-prep'); card.setAttribute('aria-label', 'Call preparation');
+  card.append(el('h3', 'Before you call'));
+  const prep = r.call_prep;
+  if (!prep?.observations?.length || prep.observations.some(o => !o.sources?.length || o.sources.some(s => !/^https:\/\//i.test(s.url) || !Number.isFinite(Date.parse(s.checked_at))))) {
+    card.append(el('p', 'Call preparation evidence is missing. Check the saved research and current customer route before choosing an opening; no evidence-based script is available.', 'notice'));
+    return card;
+  }
+  card.append(el('p', r.controlled ? 'Fictional call-prep example · no real business researched.' : `Independent review: ${new Date(prep.reviewed_at).toLocaleDateString()}`, 'source'));
+  card.append(el('h4', 'What we observed'));
+  for (const observation of prep.observations) {
+    card.append(el('p', observation.fact));
+    for (const source of observation.sources) {
+      const cite = el('p', undefined, 'source'); cite.append(link('Checked source ↗', source.url), document.createTextNode(` · inspected ${source.checked_at ? new Date(source.checked_at).toLocaleDateString() : 'date missing — verify before calling'}`));
+      card.append(cite);
+    }
+  }
+  card.append(el('h4', 'Current route / tools'), el('p', prep.current_route ? `${prep.current_route.status}: ${prep.current_route.finding}` : 'Not established by the capture. Ask how orders or enquiries work today.'));
+  if (prep.existing_alternatives?.length) card.append(el('p', `Existing alternatives: ${prep.existing_alternatives.join('; ')}`, 'muted'));
+  card.append(el('h4', 'One idea to explore'), el('p', prep.hypothesis), el('p', `Possible benefit to validate: ${prep.possible_effect}`, 'muted'));
+  card.append(el('h4', 'Suggested opening'), el('blockquote', prep.opening, 'quote'), el('h4', 'Then ask'));
+  const questions = el('ol'); for (const question of prep.questions) questions.append(el('li', question)); card.append(questions);
+  const unknowns = el('details'); unknowns.append(el('summary', 'Uncertainties to confirm'));
+  const list = el('ul'); for (const unknown of prep.unknowns) list.append(el('li', unknown)); unknowns.append(list); card.append(unknowns);
+  card.append(el('p', 'You place the call. If busy, agree a callback time. Log the actual outcome below; a decline or stop ends campaign follow-ups.', 'muted'));
+  return card;
+}
 function review(r, node) {
   const call = Object.values(r.calls).find(c => c.outcome === 'connected' && !r.approved_calls[c.call_id]);
   if (!call) return;
@@ -172,6 +199,10 @@ function detail(r) {
   if (!r.restriction && !r.agreement) node.append(button('Record do-not-contact now', async () => { try { await api('/api/event', { revision: state.revision, event: { id: crypto.randomUUID(), prospect_id: r.id, type: 'contact_stopped', at: new Date().toISOString(), data: { reason: 'do_not_contact' } } }); tell('Contact stopped. Pending local follow-ups cancelled; provider suppression still needs authoritative readback if enrolled.'); await refresh(); } catch (error) { tell(error.message, true); } }));
   if (r.quote) node.append(el('p', `${r.controlled ? 'Test quote' : 'Fixed quote'}: $${(r.quote.price_cents / 100).toFixed(2)} · verified payment evidence: $${(r.payments.reduce((n, p) => n + p.amount_cents, 0) / 100).toFixed(2)}`, 'notice'));
   if (r.quote) node.append(link('Open the written project proposal ↗', `/proposal/${r.id}`));
+  if (r.stage === 'Callback') {
+    node.append(el('p', r.callback_at ? `Requested callback: ${new Date(r.callback_at).toLocaleString()}. Cold email remains paused.` : 'Callback requested. Check the saved agreed time before calling.', 'notice'));
+  }
+  if (['Ready to contact', 'Contacting', 'Callback'].includes(r.stage)) node.append(callPrep(r));
   nextForm(r, node);
   const history = el('details'); history.append(el('summary', 'Review the saved event history'));
   const list = el('ol', undefined, 'timeline');

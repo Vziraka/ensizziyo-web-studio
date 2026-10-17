@@ -14,6 +14,13 @@ export const fixtureQuote = { price_cents: 120000, initial_payment_cents: 60000,
 export function fixtureProspect(id, at, name = 'STUDIO TEST Juniper Bakery') {
   return { id: `import-${id}`, prospect_id: id, type: 'prospect_imported', at, data: { company_id: `company-${id}`, name, category: 'Food / bakery', controlled: true,
     idea: 'A simple preorder page for weekly pastry boxes, keeping Instagram as the discovery channel.',
+    call_prep: { version: 1, reviewed_at: at,
+      observations: [{ fact: 'The fictional menu advertises weekly pastry boxes and DM pickup requests.', sources: [{ url: 'https://example.invalid/menu', checked_at: at, excerpt: 'Weekly pastry boxes; DM for pickup' }] }],
+      current_route: { status: 'Observed', finding: 'The fictional customer route uses Instagram DMs for pickup requests.' }, existing_alternatives: ['Instagram DMs'],
+      hypothesis: 'An optional menu and pickup request page alongside the current DMs.', possible_effect: 'Customers might prepare their request more easily; discuss this with the owner.',
+      unknowns: ['Owner goals, budget and other tools are unknown.'],
+      opening: 'Hi, I’m calling from EVZ Digital. I saw your weekly pastry boxes and had an idea for a small addition alongside your DMs. Have you got a moment for a quick question?',
+      questions: ['Would a menu and pickup request page complement your current DMs?', 'Which tools already handle that step, and what works well?', 'What would you most like to make easier?'] },
     qualification: { verdict: 'Research-qualified', independent_review: 'Accepted', checked_at: at, report_sha256: hash('fictional report'),
       review_sha256: hash('fictional independent review'), evidence_ref: 'fixture:synthetic evidence; not a real researched prospect' },
     contact: { email: `${id}@example.invalid`, verified: true, checked_at: at, source: 'fixture:synthetic public business contact' } } };
