@@ -226,3 +226,38 @@ test('booking supervision survives sales progression and flags a changed guest w
   assert.equal(state.operations.bookings['test-booking'].verified, false); assert.equal(state.prospects.maple.meeting.current_status, 'Needs review');
   assert.equal(p.calls.filter(r => r.operation === 'booking_create').length, 1);
 });
+test('short interrupted wakes eventually monitor every allowlisted record without starving the later records', async t => {
+  const ids = Array.from({ length: 12 }, (_, i) => `record-${i}`), s = await setup(t, ids);
+  s.config.operations.emails = {};
+  s.config.operations.threads = Object.fromEntries(ids.map(id => [id, { thread_id: `thread-${id}`, original_id: `original-${id}`, from: owner, to: recipient,
+    subject: `[STUDIO TEST] ${id}`, sent_after: at, sent_before: at }]));
+  await saveJson(join(s.directory, 'lifecycle-config.json'), s.config); const p = provider(s.config); let complete = false;
+  for (let wake = 0; wake < 6 && !complete; wake++) {
+    const ops = new ControlledOperations(s.app, `short-wake-${wake}`);
+    for (let call = 0; call < 8; call++) {
+      const r = await ops.next(); if (r.status === 'Complete') { complete = true; break; }
+      assert.ok(r.operation); await ops.settle(r.key, { structuredContent: p.respond(r) });
+    }
+    s.advance(301_000);
+  }
+  assert.equal(complete, true, 'the cycle must finish across multiple bounded wakes');
+  assert.equal(new Set(p.calls.filter(c => c.operation === 'thread').map(c => c.input.thread_id)).size, 12);
+});
+test('a new owner stop revisits an already checked record before continuing a partial cycle', async t => {
+  const s = await setup(t, ['first', 'later']), p = provider(s.config);
+  for (;;) {
+    const r = await s.ops.next();
+    if (r.operation === 'contact' && r.input.q_keywords === 'later@example.invalid') break;
+    await s.ops.settle(r.key, { structuredContent: p.respond(r) });
+  }
+  assert.ok((await s.app.snapshot()).operations.cycle.completed_records.includes('first'));
+  await s.app.apply({ id: 'urgent-owner-stop', prospect_id: 'first', type: 'contact_stopped', at, data: { reason: 'do_not_contact' } });
+  let stopped = false;
+  for (let i = 0; i < 6; i++) {
+    const next = await s.ops.next();
+    if (next.operation === 'task_skip') { stopped = true; break; }
+    assert.notEqual(next.input?.q_keywords, 'later@example.invalid', 'cancel the newly stopped record before continuing later work');
+    await s.ops.settle(next.key, { structuredContent: p.respond(next) });
+  }
+  assert.equal(stopped, true);
+});
