@@ -9,6 +9,8 @@ import { syncResearchImports } from './production.mjs';
 import { publishLifecycle } from './lifecycle-sync.mjs';
 import { callSupply } from './call-desk.mjs';
 import { runtimeVersion } from './runtime-version.mjs';
+import { upgradeBatch } from './research-upgrades.mjs';
+import { retainResearchTools } from './research-tools.mjs';
 const runningVersion=runtimeVersion();
 const technicalFailures=result=>(result.jobs??[]).filter(j=>j.status==='Held'&&/^(WORKER_|PROVIDER_|SOURCE_|FETCH_)/.test(j.reason??''));
 export function updateFailureGuard(previous, result, version) {
@@ -26,15 +28,17 @@ const compact = result => {
     ...(held.length ? { reason: `${held.length} research job(s) held. ${held.map(j => `${j.job_id}: ${j.reason ?? 'Reconciliation required'}. ${j.next_action ?? 'Inspect the retained job before retrying.'}`).join(' ')}`.slice(0, 500) } : {}) };
 };
 
-export async function researchTick(app, { signal, run = runController, queueFactory = config => new GoogleQueue(config), monitorMs = 1000 } = {}) {
+export async function researchTick(app, { signal, run = runController, queueFactory = config => new GoogleQueue(config), monitorMs = 1000, inspectTools = retainResearchTools } = {}) {
   check(Number.isInteger(monitorMs) && monitorMs >= 1 && monitorMs <= 5000, 'Bounded research control monitor required');
   const path = join(app.directory, 'lifecycle-config.json'), bound = await readJson(path);
   if (bound.mode !== 'production' || bound.research?.supervised !== true) return { status: 'Disabled' };
   const directory = await privateStateDirectory(bound.research.source_directory);
-  const config = validateControllerConfig(await readPrivateJson(join(directory, 'controller-config.json')));
+  let config = validateControllerConfig(await readPrivateJson(join(directory, 'controller-config.json')));
+  const batch = upgradeBatch(bound, await app.snapshot(), config);
+  if (batch) config = { ...config, job_ids: batch.items.map(i => i.job_id) };
   const progress = await controllerStatus(directory, config, undefined, app.now);
   if (progress.status !== 'Ready') return compact(progress);
-  if (callSupply(await app.snapshot(), app.now()).full) return { ...compact(progress), status: 'Buffer full', reason: 'Two days of eligible call cards are ready; research will resume as they are used.' };
+  if (callSupply(await app.snapshot(), app.now()).pitch_full) return { ...compact(progress), status: 'Buffer full', reason: 'Two days of pitch-ready calls are ready; detailed research will resume as they are used.' };
   const version=(await runningVersion).source_sha256;
   const guard=await app.change(state=>state.research_failure_guard=updateFailureGuard(state.research_failure_guard,progress,version));
   if(guard.blocked)return {...compact(progress),status:'Needs attention',reason:`Repeated technical failure (${guard.blocked}). Review the retained failures and install a verified correction before more research attempts.`};
@@ -47,6 +51,13 @@ export async function researchTick(app, { signal, run = runController, queueFact
     catch (error) { if (error.code !== 'ENOENT') throw error; }
   }
   signal?.throwIfAborted();
+  if (batch) for (const item of batch.items) {
+    const control = await readJson(join(directory,'research-control.json'));
+    if (!control.enabled || control.priority !== 'research') return {...compact(progress),status:'Paused'};
+    const job = await readPrivateJson(join(directory,item.job_id,'job.json')), snapshots = await readPrivateJson(join(directory,item.job_id,'sources.json'));
+    const tools = await inspectTools(directory,job,snapshots,{signal,now:app.now});
+    if ((await app.snapshot()).prospects[item.prospect_id].research_tools?.sha256 !== tools.sha256) await app.change(state=>{state.prospects[item.prospect_id].research_tools=tools;});
+  }
   const active = new AbortController(), monitoring = new AbortController();
   const workerSignal = AbortSignal.any([active.signal, signal].filter(Boolean));
   const monitor = (async () => {
@@ -54,7 +65,7 @@ export async function researchTick(app, { signal, run = runController, queueFact
       while (!monitoring.signal.aborted) {
         await delay(monitorMs, undefined, { signal: monitoring.signal });
         const current = await readJson(path);
-        if (current.mode !== 'production' || current.research?.supervised !== true || current.research.source_directory !== bound.research.source_directory)
+        if (current.mode !== 'production' || current.research?.supervised !== true || current.research.source_directory !== bound.research.source_directory || JSON.stringify(current.research.upgrade_batch) !== JSON.stringify(bound.research.upgrade_batch))
           active.abort(Object.assign(Error('Research supervision or source binding changed; owned work is stopping'), { code: 'CONTROLLER_PAUSED' }));
       }
     } catch (error) { if (!monitoring.signal.aborted) active.abort(error); }
@@ -62,9 +73,14 @@ export async function researchTick(app, { signal, run = runController, queueFact
   try {
     const google = await readPrivateJson(join(directory, 'google-config.json'));
     await app.change(s => { s.research_runtime = { ...s.research_runtime, status: 'Running', checked_at: app.now().toISOString(), campaign: config.campaign }; });
-    const result = await run({ directory, config, queue: queueFactory({ ...google, minRequestIntervalMs: 1250 }), signal: workerSignal, once: true });
-    await app.change(state=>{state.research_failure_guard=updateFailureGuard(state.research_failure_guard,result,version);});
-    return { ...compact(result), ...(active.signal.aborted ? { status: 'Paused' } : {}) };
+    const pending = progress.jobs.filter(j => !['Complete','Held'].includes(j.status));
+    const cursor = config.job_ids.indexOf((await app.snapshot()).research_dispatch_cursor);
+    const next = pending.find(j=>config.job_ids.indexOf(j.job_id)>cursor) ?? pending[0];
+    // Return to the failure guard and live booking loop after each job, before spending on another.
+    const result = await run({ directory, config: { ...config, job_ids:[next.job_id] }, queue: queueFactory({ ...google, minRequestIntervalMs: 1250 }), signal: workerSignal, once: true });
+    const saved = await controllerStatus(directory,config,undefined,app.now);
+    await app.change(state=>{state.research_failure_guard=updateFailureGuard(state.research_failure_guard,saved,version);state.research_dispatch_cursor=next.job_id;});
+    return { ...compact(saved), status:active.signal.aborted?'Paused':config.job_ids.length>1&&result.status==='Complete'&&saved.jobs.some(j=>!['Complete','Held'].includes(j.status))?'Running batch':result.status };
   } catch (error) {
     if (active.signal.aborted && !signal?.aborted) return { ...compact(progress), status: 'Paused' };
     throw error;

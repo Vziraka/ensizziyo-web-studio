@@ -8,6 +8,7 @@ import { ControlledOperations, controlledThread, verifiedContact } from './lifec
 import { researchCallPrep } from './call-prep.mjs';
 import { verificationData, verificationLane, validateVerificationRecord, phoneDigits } from './verification-calls.mjs';
 import { validateBookingSlot } from './lifecycle-documents.mjs';
+import { upgradeResearch } from './research-upgrades.mjs';
 
 const email = value => typeof value === 'string' && /^[^\s@,;<>"\r\n]+@[^\s@,;<>"\r\n]+\.[^\s@,;<>"\r\n]+$/.test(value) && !value.endsWith('.invalid');
 const id = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value);
@@ -119,6 +120,8 @@ export async function importResearch(app, directory, jobId, contactProof) {
     call_prep: researchCallPrep(f, d, receipt.reviewed_at),
     contact: { email: d.contact.email, phone: p.phone, verified: true, checked_at: p.checked_at, source: p.source },
     qualification: { verdict: d.decision, independent_review: 'Accepted', checked_at: `${f.job.as_of}T00:00:00.000Z`, reviewed_at: receipt.reviewed_at, report_sha256: f.report_sha256, review_sha256: hash(raw), evidence_ref: `research:${jobId}` } };
+  const upgraded = await upgradeResearch(app, jobId, data);
+  if (upgraded) return upgraded;
   const keys = contactKeys(data), state = await app.snapshot();
   const existing = Object.values(state.prospects).find(r => contactKeys(r).some(k => keys.includes(k)));
   if (existing) { await stageProspect(app, existing.id); return { imported: false, duplicate_of: existing.id, restricted: Boolean(existing.restriction) }; }
@@ -191,7 +194,8 @@ export async function syncResearchImports(app) {
   const c = await readJson(join(app.directory, 'lifecycle-config.json'));
   if (c.mode !== 'production' || !c.research?.auto_import) return { status: 'Paused' };
   const controller = await readPrivateJson(join(c.research.source_directory, 'controller-state.json'));
-  const jobs = Object.entries(controller.jobs).filter(([, r]) => r.status === 'Complete' && r.stage === 'done' && r.decision === 'Research-qualified');
+  const batch = c.research.upgrade_batch;
+  const jobs = Object.entries(controller.jobs).filter(([id, r]) => (!batch || batch.items.some(i=>i.job_id===id)) && r.status === 'Complete' && r.stage === 'done' && r.decision === 'Research-qualified');
   check(jobs.length <= 200, 'Research import scope exceeds the bounded controller campaign');
   let count = 0;
   for (const [jobId, record] of jobs) {
@@ -302,7 +306,7 @@ export class ProductionOperations extends ControlledOperations {
           check(person && match(person) && person.owner_id === c.apollo.user_id && id(person.id) && (person.account_id == null || id(person.account_id)), 'Existing contact ownership/organization needs review');
           check(!person.contact_campaign_statuses?.some(s => ['active', 'paused'].includes(s.status)), 'Existing contact is already in a sequence; hold to prevent overlapping outreach');
           if (o.requests[create] && o.requests[create].status !== 'Done') Object.assign(o.requests[create], { status: 'Done', result: { contact: person }, reconciliation: { kind: 'unique authoritative contact readback; creation was not retried', contact_id: person.id, at: now.toISOString() } });
-          binding = o.bindings[prospectId] = { contact_id: person.id, account_id: person.account_id ?? null, email: person.email ?? null, phone: r.contact.phone, ...(verificationLane(r) ? { verification: true, business_name: r.name } : {}) };
+          binding = o.bindings[prospectId] = { contact_id: person.id, account_id: person.account_id ?? null, email: person.email ?? null, phone: r.contact.phone, ...(!r.contact.email ? { verification: true, business_name: r.name } : {}) };
         }
         if (binding) {
           if (r.cold_paused || r.restriction) yield* this.suppressNative(state, c, r, binding, request, retain);

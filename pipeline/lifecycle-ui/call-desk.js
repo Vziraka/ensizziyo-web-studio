@@ -1,10 +1,11 @@
 let selected, lane='all', lastSaved, showHistory=false;
+const expanded=new Set();
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const btn=(text,fn,cls='quiet')=>{const n=el('button',text,cls);n.type='button';n.onclick=fn;return n;};
 const when=value=>new Date(value).toLocaleString('en-US',{timeZone:'America/New_York',weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' ET';
 function field(parent,label,value='',type='text') {const wrap=el('label',label),n=el(type==='textarea'?'textarea':'input');n.setAttribute('aria-label',label);if(type!=='textarea')n.type=type;n.value=value;wrap.append(n);parent.append(wrap);return n;}
 function select(parent,label,options,value){const wrap=el('label',label),n=el('select');n.setAttribute('aria-label',label);for(const [v,t] of options){const o=el('option',t);o.value=v;n.append(o);}n.value=value;wrap.append(n);parent.append(wrap);return n;}
-function disclosure(title,child){const d=el('details');d.append(el('summary',title),child);return d;}
+function disclosure(title,child){const d=el('details');d.open=expanded.has(title);d.ontoggle=()=>{if(d.open)expanded.add(title);else expanded.delete(title);};d.append(el('summary',title),child);return d;}
 export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty}) {
   const records=state.supply.queue.map(a=>state.prospects[a.prospect_id]);
   const visible=records.filter(r=>lane==='all'||(r.call_lane==='verification'?'verification':'research')===lane);
@@ -17,6 +18,7 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty}
   top.append(btn(active?'End calling session':'Start calling session',()=>run(async()=>{const s=await api('/api/calling-session',{action:active?'end':'start'});clearDirty();await refresh();tell(active?`Session saved: ${s.summary.attempts} attempts · ${s.summary.conversations} conversations · ${s.summary.interested} interested · ${s.summary.bookings} bookings. Research continues according to your priority.`:'Calling session started.');})));
   root.append(top);
   if(state.supply.low)root.append(el('p',`Call supply is low: ${state.supply.ready} eligible businesses, below the one-day minimum of 50. ${state.controls.research_paused?'Research is paused by your current priority.':'The saved campaign can replenish within its allowance.'}`,'notice'));
+  if(!state.supply.low&&state.supply.pitch_ready<50)root.append(el('p',`Pitch-ready supply: ${state.supply.pitch_ready} / ${state.supply.pitch_target}. Quick-verification cards remain callable; the approved research batch can improve their preparation within its allowance.`,'notice'));
   const technical=state.exceptions.filter(e=>!state.prospects[e.id]);
   if(technical.length)root.append(disclosure(`${technical.length} item${technical.length===1?'':'s'} need attention`,el('p',technical.map(e=>e.reason).join('\n'))));
   const progress=el('div');progress.append(el('p',`Research: ${state.research_runtime?.status??'Waiting'} · priority: ${state.controls.research_priority??state.controls.priority}. Keeps existing attempt limits and 30% reserve.`));
@@ -38,8 +40,13 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty}
   if(r){const card=el('section',undefined,'panel desk-card');
     card.append(el('p',r.call_lane==='verification'?'QUICK VERIFICATION':'READY TO PITCH','eyebrow'),el('h2',r.name,'detail-title'),el('p',r.contact.name??r.verification?.conversation?.decision_maker??r.discovery?.decision_maker??'Decision-maker: confirm on the call','muted'),el('p',r.contact.phone??(r.controlled?'Fictional rehearsal · no dialable phone':'No verified phone'),'desk-phone'),el('h3','Why this call'),el('p',r.idea,'idea'));
     const prep=r.call_prep;
-    card.append(el('h3','Open with'),el('blockquote',r.verification?.opening??prep?.opening??'Review the retained evidence before choosing your opening.','quote'),el('h3','Then ask'),el('p',r.verification?.owner_question??prep?.questions?.[0]??'What would you most like to make easier for your customers?'));
+    card.append(el('h3','Open with'),el('blockquote',(r.call_lane==='verification'?r.verification?.opening:prep?.opening)??'Review the retained evidence before choosing your opening.','quote'),el('h3','Then ask'),el('p',(r.call_lane==='verification'?r.verification?.owner_question:prep?.questions?.[0])??'What would you most like to make easier for your customers?'));
     card.append(disclosure('Research, sources and what is still unknown',evidence(r)));
+    if(r.research_upgrade)card.append(el('p',`Detailed research added ${when(r.research_upgrade.at)}. Original verification and call history retained.`,'muted'));
+    if(r.research_tools?.report){const tools=r.research_tools.report,body=el('div');body.append(el('p',`Checked ${when(tools.checked_at)} · DNS/MX: ${tools.dns_mx.status} · urlscan: ${tools.urlscan.status}`),el('p',tools.limitations,'muted'));
+      if(tools.urlscan.reference){const link=el('a',`Archived page observed ${when(tools.urlscan.observed_at)}`);link.href=tools.urlscan.reference;link.target='_blank';link.rel='noreferrer';body.append(link);}
+      for(const source of tools.routes)body.append(el('p',`${source.source} · ${source.coverage} capture · ${source.links.length} retained route links`));
+      card.append(disclosure('Additional research checks',body));}
     if(state.supplemental_reviews)card.append(el('p','Supplemental review is retained separately; it does not replace the original qualification.','muted'));
     const callable=state.supply.queue.some(a=>a.prospect_id===r.id);
     if(callable){const form=el('form');form.onsubmit=e=>e.preventDefault();
