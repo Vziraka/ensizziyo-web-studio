@@ -31,8 +31,8 @@ export async function upgradeResearch(app, jobId, data) {
       return { imported: false, upgraded: true, prospect_id: r.id, duplicate_of: r.id, restricted: Boolean(r.restriction) };
     }
     check(!r.restriction && !r.cold_paused && ['Ready to verify','Verifying','Callback'].includes(r.stage), 'Preserve stops, active conversations and campaign holds; upgrade needs reconciliation');
-    check(name(r.name) === name(data.name) && phoneDigits(data.contact.phone) === i.phone_digits && (!r.contact.email || r.contact.email.toLowerCase() === data.contact.email.toLowerCase()), 'Independent research must match the exact existing business and public phone');
-    check(!Object.values(state.prospects).some(p => p.id !== r.id && p.contact.email?.toLowerCase() === data.contact.email.toLowerCase()), 'Reviewed email belongs to another card; reconcile identity');
+    check(name(r.name) === name(data.name) && phoneDigits(data.contact.phone) === i.phone_digits && (!r.contact.email || r.contact.email.toLowerCase() === data.contact.email?.toLowerCase()), 'Independent research must match the exact existing business and public phone');
+    check(!data.contact.email || !Object.values(state.prospects).some(p => p.id !== r.id && p.contact.email?.toLowerCase() === data.contact.email.toLowerCase()), 'Reviewed email belongs to another card; reconcile identity');
     const at = app.now().toISOString(), id = `upgrade-${hash(jobId).slice(0, 24)}`;
     r.research_upgrade = { batch_id: b.id, job_id: jobId, at, approval_ref: b.approval_ref, previous: { call_lane:r.call_lane, qualification:r.qualification, contact:r.contact, idea:r.idea } };
     Object.assign(r, { call_lane:'research', qualification:data.qualification, call_prep:data.call_prep, idea:data.idea, research_contact:data.contact, updated_at:at });

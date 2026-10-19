@@ -116,15 +116,16 @@ export async function importResearch(app, directory, jobId, contactProof) {
   check(record.status==='Complete'&&record.stage==='done'&&receipt.result.verdict==='Accepted','An independently accepted completed review is required for call upgrades');
   check(d.decision === 'Research-qualified', 'Only research-qualified businesses enter calls');
   const source = f.snapshots.sources.find(s => s.url === d.contact.url), p = contactProof ?? { ...d.contact, source: d.contact.url, checked_at: source?.fetched_at };
-  check(email(d.contact.email) && p?.email === d.contact.email && p.source === d.contact.url && p.checked_at && Date.parse(p.checked_at) <= +app.now() && +app.now() - Date.parse(p.checked_at) <= 14 * 86400000, 'Fresh first-party contact proof is required');
+  check((!d.contact.email || email(d.contact.email)) && (p?.email ?? '') === d.contact.email && p.source === d.contact.url && p.checked_at && Date.parse(p.checked_at) <= +app.now() && +app.now() - Date.parse(p.checked_at) <= 14 * 86400000, 'Fresh first-party contact proof is required');
   check(Date.parse(p.checked_at) <= Date.parse(source?.fetched_at) + 60000, 'A later review cannot refresh the retained contact inspection date');
   check(phone(p.phone).length >= 10 && source?.text.includes(p.phone) && !/search_snippet/.test(source.capture_method), 'Public business phone must appear exactly in the retained first-party contact source');
   check(/food|beverage|baker|café|cafe|cake|cater|restaurant|coffee|matcha|dessert|drink|pastr|juice|tea vendor/i.test(f.intake.discovery.category), 'The reviewed category is outside the food/beverage campaign');
-  const opportunity = f.report.opportunities[d.opportunity_index], companyId = p.company_id ?? `company-${hash(d.contact.email.toLowerCase()).slice(0, 24)}`;
+  const opportunity = f.report.opportunities[d.opportunity_index], companyId = p.company_id ?? `company-${hash(d.contact.email ? d.contact.email.toLowerCase() : `phone:${phone(p.phone)}`).slice(0, 24)}`;
   const data = { company_id: companyId, name: f.job.business_name, category: `Food / beverage: ${f.intake.discovery.category}`, area: f.intake.discovery.area, controlled: false,
     idea: `${opportunity.observed_basis} Possible improvement: ${opportunity.proposed_solution}`,
     call_prep: researchCallPrep(f, d, receipt.reviewed_at),
-    contact: { email: d.contact.email, phone: p.phone, verified: true, checked_at: p.checked_at, source: p.source },
+    contact: { email: d.contact.email || null, phone: p.phone, verified: true, checked_at: p.checked_at, source: p.source },
+    discovery_source: { channel:f.intake.discovery.channel,source_url:f.intake.discovery.source_url,website_status:f.intake.discovery.website_check.status,website_url:f.job.website||null,customer_channel:typeof f.intake.discovery.customer_channel==='string'?f.intake.discovery.customer_channel.slice(0,300):'Not confirmed',next_check:d.next_action },
     qualification: { verdict: d.decision, independent_review: 'Accepted', checked_at: `${f.job.as_of}T00:00:00.000Z`, reviewed_at: receipt.reviewed_at, report_sha256: f.report_sha256, review_sha256: hash(raw), evidence_ref: `research:${jobId}` } };
   const upgraded = await upgradeResearch(app, jobId, data);
   if (upgraded) return upgraded;

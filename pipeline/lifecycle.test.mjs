@@ -142,6 +142,11 @@ test('two cold calls are a limit; an unverified email holds the handoff without 
   const uncertain = prospect('uncertain-email'); uncertain.data.contact.verified = false; await s.app.apply(uncertain);
   await s.event('call_logged', { call_id: 'uncertain-call', outcome: 'no_answer', simulated: true, performed_at: at }, 'uncertain-attempt', 'uncertain-email');
   const r = (await s.app.snapshot()).prospects['uncertain-email']; assert.equal(r.attempts.length, 1); assert.equal(r.stage, 'Hold'); assert.match(r.next_check, /Verify the public email/);
+  await s.app.apply(prospect('phone-only')); await s.app.change(state => { state.prospects['phone-only'].contact.email = null; });
+  await s.event('call_logged', { call_id: 'phone-call', outcome: 'no_answer', simulated: true, performed_at: at }, 'phone-attempt', 'phone-only');
+  const phoneState = await s.app.snapshot();
+  assert.equal(Object.values(phoneState.actions).some(a => a.prospect_id === 'phone-only' && a.type === 'email'), false);
+  assert.equal(Object.values(phoneState.actions).some(a => a.prospect_id === 'phone-only' && a.type === 'call_task' && a.status === 'Queued'), true);
 });
 test('a late-logged promised callback stays due and a stop cancels that local callback', async t => {
   const s = await setup(t), p = prospect(); p.data.qualification.checked_at = '2026-10-19T12:00:00Z'; p.data.contact.checked_at = '2026-10-19T12:00:00Z'; await s.app.apply(p);

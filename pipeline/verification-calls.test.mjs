@@ -29,6 +29,19 @@ async function setup(t) {
 }
 const event = (id, outcome, stamp = at) => ({ id: `call-${outcome}-${stamp.replace(/\D/g, '')}`, prospect_id: id, type: 'call_logged', at: stamp, data: { call_id: `call-${outcome}-${stamp.replace(/\D/g, '')}`, outcome, performed_at: stamp, simulated: false } });
 
+test('market discovery and phone-only social proof reach a staged card without owner-direct or email; directory phone claims stay blocked',async t=>{
+  const directory=await mkdtemp(join(tmpdir(),'evz-discovery-card-'));t.after(()=>rm(directory,{recursive:true,force:true}));
+  const app=await StudioLifecycle.initialize({directory,config:structuredClone(productionConfig),now:()=>new Date(at)}),p=packet(),social=p.sources[0];
+  social.url='https://www.instagram.com/syntheticbakery/';social.kind='social';social.capture_method='reviewed_page';social.coverage='partial';
+  const market={url:'https://market.example.com/producers/bakery',fetched_at:at,checked_at:at.slice(0,10),text:'SYNTHETIC Bakery. Fairfax, VA. Market vendor profile. Telephone (202) 555-0100 is listed here but still needs primary business proof.',kind:'directory',capture_method:'http',coverage:'full',identity_note:'Fictional market producer roster linked to the exact business name and locality.'};market.content_sha256=sourceContentHash(market);
+  p.sources=[social,market];for(const kind of ['identity','offering','public_phone'])p[kind].url=social.url;p.location.url=market.url;
+  p.discovery={channel:'Local directory',source_url:market.url,website_status:'No verified site found',website_url:'',customer_channel:'Public business social profile; main customer channel unconfirmed',next_check:'Confirm current trading and the owner; no owner-direct number is proven.'};
+  const result=await importVerification(app,p),dashboard=await app.dashboard(),r=dashboard.prospects[result.prospect_id];
+  assert.equal(r.contact.email,null);assert.equal(r.contact.phone,p.phone);assert.equal(r.discovery_source.channel,'Local directory');assert.equal(r.discovery_source.website_status,'No verified site found');assert.equal(dashboard.supply.ready,1);assert.equal(dashboard.controls.calls_paused,true);assert.equal(r.owner_contact_view.classification,'General business line');
+  assert.equal(Object.values(dashboard.actions).some(a=>a.type==='email'),false);assert.equal((await importVerification(app,p)).duplicate_of,r.id);
+  const bad=structuredClone(p);bad.public_phone.url=market.url;bad.public_phone.excerpt='Telephone (202) 555-0100';await assert.rejects(importVerification(app,bad),/Directories cannot/);
+});
+
 test('verification import retains first-party checks without becoming an accepted detailed assessment; owner cannot forge imports', async t => {
   const s = await setup(t), state = await s.app.snapshot(), r = state.prospects[s.id];
   assert.equal(r.stage, 'Ready to verify'); assert.equal(r.call_lane, 'verification');
