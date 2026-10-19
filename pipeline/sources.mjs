@@ -33,6 +33,7 @@ const decode = value => value.replace(/&#(x[0-9a-f]+|\d+);/gi, (match, number) =
 function textFromHtml(html) {
   // shortcut: bounded server-rendered HTML only; JS-only sites need a separately verified collector in S1.
   return decode(html.replace(/<!--[^]*?-->/g, ' ').replace(/<(script|style|noscript|svg)\b[^>]*>[^]*?<\/\1\s*>/gi, ' ')
+    .replace(/<img\b[^>]*\balt=(["'])([^]*?)\1[^>]*>/gi, ' Image: $2 ')
     .replace(/<a\b[^>]*href=["'](https:\/\/[^"']+|\/[^"']*)["'][^>]*>([^]*?)<\/a>/gi, '$2 [$1]')
     .replace(/<\/(?:p|div|h[1-6]|li|section|header|footer|nav|tr)>|<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, ' ')
     .replace(/[\t\r ]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n')).trim();
@@ -106,6 +107,6 @@ export async function collectPublicSources(job, { request = fetch, resolveHost =
       failures.push({ url: original, reason: error.message });
     }
   }
-  if (sources.length < ([2, 3].includes(job.research_version) ? 1 : 2)) throw Error('Fewer than two successfully retrieved public sources for legacy proof, or none for quality research; no research checkpoint accepted');
+  if (sources.length < ([2, 3].includes(job.research_version) ? 1 : 2)) throw Object.assign(Error('Fewer than two successfully retrieved public sources for legacy proof, or none for quality research; no research checkpoint accepted'),{code:'SOURCE_UNAVAILABLE',failures});
   return validateSnapshots({ sources, failures }, job);
 }

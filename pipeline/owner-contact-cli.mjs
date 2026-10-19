@@ -1,11 +1,14 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { StudioLifecycle, check, hash } from './lifecycle.mjs';
 import { AppConnectors } from './app-connectors.mjs';
 import { privateStateDirectory } from './engine.mjs';
 import { ownerContactView, ownerContactSummary, retainContactDiscovery, applyOwnerContact } from './owner-contacts.mjs';
+import { createContactQueue, contactQueueTick, reviewContactQueue, recoverContactTransport, refineContactSearch } from './contact-queue.mjs';
 
-const [command,directory,input,output]=process.argv.slice(2),app=await StudioLifecycle.open({directory});
+const [command,directory,input,output]=process.argv.slice(2);
+let app;for(let attempt=0;!app;attempt++)try{app=await StudioLifecycle.open({directory});}catch(e){if(attempt>=20||e.message!=='Another runner is active; refusing overlapping execution')throw e;await delay(100);}
 const read=async path=>JSON.parse(await readFile(path,'utf8'));
 if(command==='audit'){
   await privateStateDirectory(dirname(resolve(input)));
@@ -22,6 +25,24 @@ if(command==='audit'){
     try{connect=await client.connect();}catch{console.log('Apollo identity adapter unavailable; public-source capture continues without enrichment.');}
     for(const i of plan.items){const saved=await retainContactDiscovery(output,state.prospects[i.prospect_id],i.job,{connect});console.log(JSON.stringify({job:i.job.id,sources:saved.report.snapshots?.sources.length??0,apollo:saved.report.apollo.status,capture_failure:saved.report.capture_failure??null}));}
   }finally{await client.close();}
+}else if(command==='queue-create'){
+  console.log(JSON.stringify(await createContactQueue(output,await read(input),await app.snapshot())));
+}else if(command==='queue-review'){
+  console.log(JSON.stringify(await reviewContactQueue(app,output,await read(input))));
+}else if(command==='queue-run'){
+  let client;
+  try{for(let count=0;count<1000;count++){
+    if(client?.closed||client?.bytes>20_000_000){await client.close();client=null;}
+    if(!client){client=new AppConnectors({cwd:directory,conversationRef:'evzownerqueue7c4'});await client.connect();}
+    const config=await read(resolve(directory,'lifecycle-config.json'));
+    const result=await contactQueueTick(app,input,{connect:client,project:false,priority:config.priority});
+    if(count%10===0||result.captured+result.held===result.total)console.log(JSON.stringify(result));
+    if(result.captured+result.held===result.total||result.status.startsWith('Paused'))break;
+  }}finally{await client?.close();}
+}else if(command==='queue-recover-transport'){
+  console.log(JSON.stringify(await recoverContactTransport(input)));
+}else if(command==='queue-refine-search'){
+  console.log(JSON.stringify(await refineContactSearch(app,output,await read(input))));
 }else if(command==='apply'){
   const packet=await read(input);console.log(JSON.stringify(await applyOwnerContact(app,packet)));
 }else throw Error('Use audit DIRECTORY OUTPUT, collect DIRECTORY PLAN EVIDENCE_DIRECTORY, or apply DIRECTORY REVIEWED_PACKET');

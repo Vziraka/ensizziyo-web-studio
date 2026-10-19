@@ -54,6 +54,16 @@ test('reviewing retained contact evidence preserves its original check date and 
   await applyOwnerContact(app,p);assert.equal(r.owner_contact.direct_phone.source.checked_at,'2026-10-17T05:00:00Z');assert.equal(ownerContactView(r,new Date('2026-11-17T06:00:00Z')).classification,'Unverified number');
 });
 
+test('reviewed professional publications need exact business linkage and never accept search snippets as owner evidence',async()=>{
+  const r=record(),state={revision:0,prospects:{[r.id]:r}},app={now,change:async fn=>fn(state)},p=packet(r),s=p.snapshots.sources[0];
+  s.url=s.final_url='https://chamber.example.org/example-bakery';s.kind='directory';s.text='Example Bakery is a Fairfax business. '+s.text;s.content_sha256=sourceContentHash(s);p.job.seed_urls=[s.url];p.person.source_url=s.url;
+  await assert.rejects(applyOwnerContact(app,p),/External domain/);
+  p.source_approvals=[{url:s.url,business_name:r.name,kind:'Professional publication',identity_excerpt:'Example Bakery is a Fairfax business.'}];
+  await applyOwnerContact(app,p);assert.equal(r.owner_contact.person.name,'Jane Stone');
+  const snippet=structuredClone(p);snippet.id=snippet.job.id='snippet';snippet.snapshots.sources[0].capture_method='search_snippet';snippet.snapshots.sources[0].coverage='partial';await assert.rejects(applyOwnerContact(app,snippet),/snippets|source/);
+  const wrong=structuredClone(p);wrong.id=wrong.job.id='wrong-business';wrong.source_approvals[0].identity_excerpt='Jane Stone, owner';await assert.rejects(applyOwnerContact(app,wrong),/identity/);
+});
+
 test('contact discovery reuses bounded public capture and free identity search once; masked names and Maybe phone flags stay candidates',async t=>{
   const directory=await mkdtemp(join(tmpdir(),'owner-contact-'));t.after(()=>rm(directory,{recursive:true,force:true}));const r=record(),p=packet(r);let gets=0,calls=[];
   const connect={call:async(name,input)=>{calls.push({name,input});return {content:[{type:'text',text:JSON.stringify({total_entries:1,people:[{id:'provider-person',first_name:'Jane',last_name_obfuscated:'St***',title:'Owner',has_direct_phone:'Maybe'}]})}]};}};

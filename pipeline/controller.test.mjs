@@ -257,6 +257,19 @@ test('capacity with no distinct alternative holds without repeating the same mod
   assert.equal((await run(f,{invoke:()=>assert.fail('Held capacity must not retry')})).calls_reserved,1);
 });
 
+test('a verified optional capacity model uses the existing single recovery without changing pinned defaults or skipping review',async()=>{
+  const f=await fixture(),phases=[];for(const w of ['claude','cursor'])f.config.providers[w].enabled=false;
+  const p=f.config.providers.codex;p.model=p.review_model;p.capacity_model='fixture-capacity-model';p.capacity_model_evidence='fixture:account catalog includes this model';
+  const result=await run(f,{invoke:worker(async o=>{phases.push(`${o.model}/${o.phase}`);if(o.model==='fixture-review-model')throw Object.assign(Error('Selected model capacity'),{code:'WORKER_CAPACITY'});return o.phase==='review'?acceptedReview(o):assessment(o);})});
+  assert.equal(result.jobs[0].status,'Complete');assert.deepEqual(phases,['fixture-review-model/collect','fixture-capacity-model/collect','fixture-capacity-model/assess','fixture-capacity-model/review']);assert.equal((await saved(f)).jobs['controller-fixture'].recoveries,1);assert.equal(p.review_model,'fixture-review-model');assert.equal(result.calls_reserved,4);
+});
+
+test('an optional capacity route cannot add a second recovery after the configured review-model handoff',async()=>{
+  const f=await fixture();for(const w of ['claude','cursor'])f.config.providers[w].enabled=false;Object.assign(f.config.providers.codex,{capacity_model:'fixture-capacity-model',capacity_model_evidence:'fixture:account catalog includes this model'});const models=[];
+  const result=await run(f,{invoke:worker(async o=>{models.push(o.model);throw Object.assign(Error('Selected model capacity'),{code:'WORKER_CAPACITY'});})});
+  assert.equal(result.jobs[0].status,'Held');assert.deepEqual(models,['fixture-model','fixture-review-model']);assert.equal(result.calls_reserved,2);assert.equal((await saved(f)).jobs['controller-fixture'].recoveries,1);
+});
+
 test('a shortened reviewed anchor reaches the one recovery as fixed feedback with the original checkpoint', async () => {
   const f = await longAnchorFixture(); let checkpoint, sources, assessments = 0;
   for (const worker of ['claude', 'cursor']) f.config.providers[worker].enabled = false;
