@@ -9,6 +9,7 @@ import { verifySupplementalReviewLedger } from './supplemental-reviews.mjs';
 import { callSupply } from './call-desk.mjs';
 import { ownerContactView, ownerContactSummary } from './owner-contacts.mjs';
 import { providerContactView, providerContactSummary } from './provider-contacts.mjs';
+import {businessType} from './business-types.mjs';
 
 export const hash = value => createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
 export const check = (condition, message) => { if (!condition) throw Error(message); };
@@ -163,7 +164,7 @@ export class StudioLifecycle {
           check(data.qualification?.verdict === 'Research-qualified' && data.qualification.independent_review === 'Accepted' &&
             date(data.qualification.checked_at) && /^[a-f0-9]{64}$/.test(data.qualification.report_sha256 ?? '') &&
             /^[a-f0-9]{64}$/.test(data.qualification.review_sha256 ?? '') && text(data.qualification.evidence_ref), 'Accepted source-backed research and review references required');
-          check(data.controlled || /food|beverage|bakery|café|cafe/i.test(data.category), 'First campaign is food and beverages');
+          check(data.controlled || !businessType(data).unclassified, 'Choose a supported local-business category');
           check(data.controlled || data.contact?.verified === true && date(data.contact.checked_at) && text(data.contact.source), 'Public contact ownership must be verified');
         }
         if (!data.controlled) check(!Object.values(state.prospects).some(x => data.contact.email && x.contact?.email?.toLowerCase() === data.contact.email.toLowerCase() || x.contact?.phone && x.contact.phone.replace(/\D/g, '') === data.contact.phone?.replace(/\D/g, '')), 'Duplicate contact identity already exists; preserve its restrictions');
@@ -406,6 +407,7 @@ export class StudioLifecycle {
     });
   }
   async dashboard() {
+    const {discoverySummary}=await import('./discovery-batches.mjs');
     this.config = await readJson(join(this.directory, 'lifecycle-config.json'));
     const state = await this.snapshot(), today = businessDate(this.now());
     let supplementalReviews = null, supplementalHold;
@@ -424,7 +426,7 @@ export class StudioLifecycle {
     const contacted = real.filter(r => r.attempts.some(a => !a.simulated && businessDate(a.at) === today));
     const first = contacted.filter(r => businessDate(r.attempts.find(a => !a.simulated).at) === today).length;
     const supply = callSupply(state, this.now()), queue = supply.queue;
-    return { ...state, owner_contact_summary:ownerContactSummary(state,this.now()), provider_contact_summary:providerContactSummary(state,this.now()), supply, pending_bookings:Object.entries(this.config.operations?.bookings??{}).filter(([id])=>!state.operations?.bookings?.[id]?.verified).map(([id,b])=>({id,prospect_id:b.prospect_id,start:b.start,mode:b.mode,status:state.operations?.holds?.[id]??'Queued for calendar verification'})), supplemental_reviews: supplementalReviews, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, owner_contact_view:ownerContactView(r,this.now()), provider_contact_view:providerContactView(r,this.now()), quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode, research_paused: researchPaused, research_priority: researchPriority, outreach_paused: !this.config.outreach_enabled, calls_paused: !this.config.outreach_enabled && !this.config.calls_enabled, priority: this.config.priority,
+    return { ...state, discovery_batches:Object.values(state.discovery_batches??{}).map(discoverySummary), discovery_enabled:this.config.discovery?.enabled===true, owner_contact_summary:ownerContactSummary(state,this.now()), provider_contact_summary:providerContactSummary(state,this.now()), supply, pending_bookings:Object.entries(this.config.operations?.bookings??{}).filter(([id])=>!state.operations?.bookings?.[id]?.verified).map(([id,b])=>({id,prospect_id:b.prospect_id,start:b.start,mode:b.mode,status:state.operations?.holds?.[id]??'Queued for calendar verification'})), supplemental_reviews: supplementalReviews, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, owner_contact_view:ownerContactView(r,this.now()), provider_contact_view:providerContactView(r,this.now()), quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode, research_paused: researchPaused, research_priority: researchPriority, outreach_paused: !this.config.outreach_enabled, calls_paused: !this.config.outreach_enabled && !this.config.calls_enabled, priority: this.config.priority,
       runtime_enabled: this.config.runtime?.enabled === true, final_review: this.config.mode === 'production' ? { fingerprint: (await import('./production.mjs')).releaseFingerprint(this.config), gates: (await import('./production.mjs')).productionGates(this.config), approved: this.config.release?.approved === true, verified: this.config.verified_summary ?? [],
         calls: { fingerprint: (await import('./production.mjs')).callReleaseFingerprint(this.config), approved: this.config.call_release?.approved === true, evidence: this.config.call_readiness ?? {}, transcript_daily_calls: this.config.transcript_ai.daily_calls } } : null,
       ai_enabled: this.config.transcript_ai.enabled, connector_writes_enabled: this.config.connector_writes_enabled, readiness: this.config.readiness },

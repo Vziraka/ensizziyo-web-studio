@@ -115,13 +115,17 @@ export async function researchHandoff(app, { importResults = syncResearchImports
   if (config.mode !== 'production' || !config.research?.auto_import || config.research.supervised !== true) return { status: 'Disabled' };
   const control = await readJson(join(await privateStateDirectory(config.research.source_directory), 'research-control.json'));
   check(control.schema_version === 1 && typeof control.enabled === 'boolean', 'Research handoff control is unavailable');
-  if (!control.enabled) return { status: 'Disabled' };
+  if (!control.enabled) {
+    if((await app.snapshot()).discovery_projection_due){check(config.google,'Bind the existing operations tracker before projecting discovery');await publish(app);await app.change(s=>{s.discovery_projection_due=false;});return {status:'Discovery projected',examined:0};}
+    return { status: 'Disabled' };
+  }
   const result = await importResults(app);
+  if((await app.snapshot()).discovery_projection_due)await app.change(s=>{s.research_projection_due=true;});
   if (result.examined) await app.change(s => { s.research_projection_due = true; });
   if ((await app.snapshot()).research_projection_due) {
     check(config.google, 'Bind the existing tracker projection before synchronizing reviewed records');
     await publish(app);
-    await app.change(s => { s.research_projection_due = false; });
+    await app.change(s => { s.research_projection_due = false;s.discovery_projection_due=false; });
   }
   return result;
 }

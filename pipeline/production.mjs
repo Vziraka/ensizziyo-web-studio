@@ -9,6 +9,7 @@ import { researchCallPrep } from './call-prep.mjs';
 import { verificationData, verificationLane, validateVerificationRecord, phoneDigits } from './verification-calls.mjs';
 import { validateBookingSlot } from './lifecycle-documents.mjs';
 import { upgradeResearch, upgradeBatch } from './research-upgrades.mjs';
+import {businessType,businessTypes} from './business-types.mjs';
 
 const email = value => typeof value === 'string' && /^[^\s@,;<>"\r\n]+@[^\s@,;<>"\r\n]+\.[^\s@,;<>"\r\n]+$/.test(value) && !value.endsWith('.invalid');
 const id = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value);
@@ -33,7 +34,7 @@ export function requireProductionRelease(c) {
   check(c.mode === 'production' && c.outreach_enabled && c.connector_writes_enabled, 'Production contact remains paused for the final review');
   check(c.release?.approved === true && c.release.fingerprint === releaseFingerprint(c) && c.release.approval_ref?.length > 5, 'Final owner approval must match the current production connections and rules');
   check(productionGates(c).every(g => g.passed), 'Launch evidence is incomplete; preserve the production hold');
-  check(c.campaign?.category === 'food-and-beverage' && c.campaign.max_calls === 2 && c.campaign.max_emails === 2 && c.campaign.business_days === 10, 'Campaign bounds changed');
+  check(businessTypes.some(t=>t.id===c.campaign?.category) && c.campaign.max_calls === 2 && c.campaign.max_emails === 2 && c.campaign.business_days === 10, 'Campaign bounds changed');
   check(email(c.sender?.email) && c.sender.email === c.calendar.owner_email && id(c.sender.mailbox_id) && c.sender.postal_address?.trim().length > 10, 'Verified business sender, calendar and postal address required');
   check(!/@(?:gmail|googlemail)\.com$/i.test(c.sender.email), 'Production uses the verified business-domain mailbox');
   check(Number.isInteger(c.sender.daily_email_limit) && c.sender.daily_email_limit > 0 && c.sender.daily_email_limit <= 100, 'Use a measured daily mailbox allowance including follow-ups');
@@ -42,14 +43,14 @@ export function requireProductionRelease(c) {
 }
 export function callReleaseFingerprint(c) {
   const ai = c.transcript_ai;
-  return hash({ call_policy: 'call-desk-owner-notes-booking-v2', run_id: c.run_id, apollo_owner: c.apollo?.user_id, campaign: c.campaign, call_readiness: c.call_readiness, calendar: c.calendar, scope: c.operations?.allowlist,
+  return hash({ call_policy: 'call-desk-owner-started-discovery-v3', discovery_policy:c.discovery?.approval_ref??null, run_id: c.run_id, apollo_owner: c.apollo?.user_id, campaign: c.campaign, call_readiness: c.call_readiness, calendar: c.calendar, scope: c.operations?.allowlist,
     transcript_policy: { daily_calls: ai.daily_calls, reserve_percent: ai.reserve_percent, author_model: ai.author_model, reviewer_model: ai.reviewer_model, effort: ai.effort } });
 }
 export function requireCallRelease(c) {
   if (c.outreach_enabled) return requireProductionRelease(c);
   check(c.mode === 'production' && c.calls_enabled === true && c.connector_writes_enabled === true, 'Real calling remains paused pending final call-only release');
   check(c.call_release?.approved === true && c.call_release.fingerprint === callReleaseFingerprint(c) && c.call_release.approval_ref?.length > 5, 'Call-only approval must match the current queue and rules');
-  check(id(c.apollo?.user_id) && c.campaign?.category === 'food-and-beverage' && c.campaign.max_calls === 2 && c.campaign.max_emails === 2 && c.campaign.business_days === 10, 'Reviewed call owner and campaign bounds required');
+  check(id(c.apollo?.user_id) && businessTypes.some(t=>t.id===c.campaign?.category) && c.campaign.max_calls === 2 && c.campaign.max_emails === 2 && c.campaign.business_days === 10, 'Reviewed call owner and campaign bounds required');
   check(['queue_verified', 'outcomes_verified', 'supervision_verified'].every(k => typeof c.call_readiness?.[k] === 'string' && c.call_readiness[k].length > 5), 'Call-only verification evidence is incomplete');
 }
 export async function approveCallRelease(app, fingerprint, approvalRef) {
@@ -84,17 +85,17 @@ export function contactKeys(r) {
   return [r.company_id && `company:${r.company_id}`, r.contact?.email && `email:${r.contact.email.toLowerCase()}`,
     phone(r.contact?.phone).length >= 10 && `phone:${phone(r.contact.phone)}`].filter(Boolean);
 }
-export async function importVerification(app, packet) {
+export async function importVerification(app, packet, {stage=true}={}) {
   const data = verificationData(packet, app.now(), app.config.mode === 'controlled'), keys = contactKeys(data), state = await app.snapshot();
   const nameKey = s => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
   const prior = Object.values(state.prospects).find(r => nameKey(r.name) === nameKey(data.name) || contactKeys(r).some(k => keys.includes(k)));
   if (prior) {
-    if (app.config.mode === 'production') await stageProspect(app, prior.id);
+    if (stage && app.config.mode === 'production') await stageProspect(app, prior.id);
     return { imported: false, duplicate_of: prior.id, restricted: Boolean(prior.restriction) };
   }
   const prospectId = `verify-${hash(data.company_id).slice(0, 24)}`;
   await app.apply({ id: `verify-import-${hash(packet.id).slice(0, 24)}`, prospect_id: prospectId, type: 'verification_imported', at: app.now().toISOString(), data }, { actor: app.config.mode === 'controlled' ? 'controlled-fixture' : 'verification-import' });
-  if (app.config.mode === 'production') await stageProspect(app, prospectId);
+  if (stage && app.config.mode === 'production') await stageProspect(app, prospectId);
   return { imported: true, prospect_id: prospectId, calls: 'paused until final release', email: 'blocked pending qualification and full release' };
 }
 
@@ -119,9 +120,9 @@ export async function importResearch(app, directory, jobId, contactProof) {
   check((!d.contact.email || email(d.contact.email)) && (p?.email ?? '') === d.contact.email && p.source === d.contact.url && p.checked_at && Date.parse(p.checked_at) <= +app.now() && +app.now() - Date.parse(p.checked_at) <= 14 * 86400000, 'Fresh first-party contact proof is required');
   check(Date.parse(p.checked_at) <= Date.parse(source?.fetched_at) + 60000, 'A later review cannot refresh the retained contact inspection date');
   check(phone(p.phone).length >= 10 && source?.text.includes(p.phone) && !/search_snippet/.test(source.capture_method), 'Public business phone must appear exactly in the retained first-party contact source');
-  check(/food|beverage|baker|café|cafe|cake|cater|restaurant|coffee|matcha|dessert|drink|pastr|juice|tea vendor/i.test(f.intake.discovery.category), 'The reviewed category is outside the food/beverage campaign');
+  check(!businessType({category:f.intake.discovery.category}).unclassified, 'The reviewed category needs a supported business type');
   const opportunity = f.report.opportunities[d.opportunity_index], companyId = p.company_id ?? `company-${hash(d.contact.email ? d.contact.email.toLowerCase() : `phone:${phone(p.phone)}`).slice(0, 24)}`;
-  const data = { company_id: companyId, name: f.job.business_name, category: `Food / beverage: ${f.intake.discovery.category}`, area: f.intake.discovery.area, controlled: false,
+  const data = { company_id: companyId, name: f.job.business_name, category: f.intake.discovery.category, area: f.intake.discovery.area, controlled: false,
     idea: `${opportunity.observed_basis} Possible improvement: ${opportunity.proposed_solution}`,
     call_prep: researchCallPrep(f, d, receipt.reviewed_at),
     contact: { email: d.contact.email || null, phone: p.phone, verified: true, checked_at: p.checked_at, source: p.source },
@@ -190,10 +191,11 @@ export async function queueMeeting(app, input) {
   });
 }
 export async function pauseStudio(app) {
-  const c = await app.change(async () => {
+  const c = await app.change(async state => {
     const path = join(app.directory, 'lifecycle-config.json'), c = await readJson(path);
     c.transcript_ai.enabled = false; c.connector_writes_enabled = false; c.outreach_enabled = false; c.calls_enabled = false; c.research_enabled = false;
     if(c.contact_research)c.contact_research.enabled=false;
+    for(const b of Object.values(state.discovery_batches??{}))if(!['Complete','Stopped','Held'].includes(b.status)){b.status='Paused';b.reason='Paused by Pause all';}
     if (c.operations) c.operations.enabled = false;
     await saveJson(path, c); app.config = c; return c;
   });

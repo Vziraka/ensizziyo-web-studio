@@ -1,4 +1,5 @@
-let selected, lane='all', lastSaved, showHistory=false;
+import {businessTypes,businessType,deskQueues,offers,carePlan,suggestedOffer} from '/business-types.mjs';
+let selected, lane='all', lastSaved, showHistory=false,category='all',subtypes=[];
 const expanded=new Set();
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const btn=(text,fn,cls='quiet')=>{const n=el('button',text,cls);n.type='button';n.onclick=fn;return n;};
@@ -8,8 +9,8 @@ function select(parent,label,options,value){const wrap=el('label',label),n=el('s
 function disclosure(title,child){const d=el('details');d.open=expanded.has(title);d.ontoggle=()=>{if(d.open)expanded.add(title);else expanded.delete(title);};d.append(el('summary',title),child);return d;}
 export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty}) {
   const records=state.supply.queue.map(a=>state.prospects[a.prospect_id]);
-  const visible=records.filter(r=>lane==='all'||(lane==='enriched'?r.provider_contact_view?.current:(r.call_lane==='verification'?'verification':'research')===lane));
-  selected??=visible[0]?.id;
+  const {commitments,matching:visible}=deskQueues(state,{category,subtypes,lane,history:showHistory});
+  if(![...commitments,...visible].some(r=>r.id===selected))selected=visible[0]?.id??commitments[0]?.id;
   const run=async fn=>{try{await fn();}catch(e){tell(e.message,true);}};
   const event=async(r,type,data)=>{await api('/api/event',{revision:state.revision,event:{id:crypto.randomUUID(),prospect_id:r.id,type,at:new Date().toISOString(),data}});clearDirty();await refresh();};
   const top=el('section',undefined,'desk-overview');
@@ -20,7 +21,7 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty}
   if(state.owner_contact_summary){const a=state.owner_contact_summary;root.append(el('p',`Owner contacts · Published direct business numbers: ${a.owner_direct} · Sourced identities: ${a.identified} · General business lines: ${a.general_business} · Unverified: ${a.unverified}. Website research readiness is separate from direct access to the owner.`,'notice'));}
   if(state.contact_research){const q=state.contact_research;root.append(el('p',`Contact research · ${q.reviewed}/${q.total} reviewed · ${q.fresh_checked} fresh lookups · ${q.held} held · ${q.status}`,'notice'));}
   if(state.contact_enrichment?.people_processed){const e=state.contact_enrichment,p=state.provider_contact_summary;root.append(el('p',`Approved Apollo enrichment · ${e.people_processed}/${e.total} processed · ${e.matched_records} provider records · ${e.unmatched} unmatched · ${p.with_numbers} business contacts with provider-reported numbers · ${p.dnc_listed} Do Not Call · ${e.credits_used} credits used. Provider results require current role, business-use and screening checks.`,'notice'));}
-  if(state.supply.low)root.append(el('p',`Call supply is low: ${state.supply.ready} eligible businesses, below the one-day minimum of 50. ${state.controls.research_paused?'Research is paused by your current priority.':'The saved campaign can replenish within its allowance.'}`,'notice'));
+  if(state.supply.low)root.append(el('p',`Call supply is low: ${state.supply.ready} eligible businesses, below the one-day minimum of 50. ${state.discovery_enabled?'Use Find more businesses to prepare a bounded research batch.':state.controls.research_paused?'Research is paused by your current priority.':'The saved campaign can replenish within its allowance.'}`,'notice'));
   if(!state.supply.low&&state.supply.pitch_ready<50)root.append(el('p',`Pitch-ready supply: ${state.supply.pitch_ready} / ${state.supply.pitch_target}. Quick-verification cards remain callable; the approved research batch can improve their preparation within its allowance.`,'notice'));
   const technical=state.exceptions.filter(e=>!state.prospects[e.id]);
   if(technical.length)root.append(disclosure(`${technical.length} item${technical.length===1?'':'s'} need attention`,el('p',technical.map(e=>e.reason).join('\n'))));
@@ -29,20 +30,35 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty}
   if(state.research_runtime?.reason)progress.append(el('p',state.research_runtime.reason));
   if(state.controls.mode==='production')for(const [v,label] of [['research','Resume approved research'],['website','Website priority'],['client','Client priority']])progress.append(btn(label,()=>run(async()=>{await api('/api/research-priority',{priority:v});await refresh();})));
   root.append(disclosure('Background research and held work',progress));
+  const due=el('section',undefined,'panel commitments');due.setAttribute('aria-label','Due Today / Promised Follow-ups');due.append(el('h2','Due Today / Promised Follow-ups'),el('p','All business categories. Due callbacks and agreed next steps stay visible.','muted'));
+  for(const r of commitments){const b=btn('',()=>{selected=r.id;clearDirty();refresh();},`record${selected===r.id?' selected':''}`);b.append(el('strong',r.name),el('span',r.stage==='Callback'?`Callback · ${when(r.callback_at)}`:r.stage==='Information requested'?'Information promised':'Discovery next step','badge'));b.setAttribute('aria-pressed',String(selected===r.id));due.append(b);}
+  if(!commitments.length)due.append(el('p','No due callbacks or promised next steps.','muted'));root.append(due);
+  const focus=el('section',undefined,'panel business-focus');focus.append(el('h2','Choose today’s business type'));
+  const group=select(focus,'Business category',[['all','All business categories'],...businessTypes.map(t=>[t.id,`${t.label} (${Object.values(state.prospects).filter(r=>businessType(r).category===t.id).length} saved)`])],category);
+  group.onchange=()=>{category=group.value;subtypes=[];selected=undefined;clearDirty();refresh();};
+  if(category!=='all'){const options=el('fieldset'),legend=el('legend','Optional subtypes');options.append(legend);for(const subtype of businessTypes.find(t=>t.id===category).subtypes){const label=el('label',subtype,'checkbox'),input=el('input');input.type='checkbox';input.checked=subtypes.includes(subtype);input.onchange=()=>{subtypes=input.checked?[...subtypes,subtype]:subtypes.filter(x=>x!==subtype);selected=undefined;clearDirty();refresh();};label.prepend(input);options.append(label);}focus.append(options);}
+  focus.append(el('p',`${visible.length} matching ${showHistory?'saved histories':'calls'} · selecting a category only filters saved leads.`, 'muted'));
+  const research=researchPanel(state,api,refresh,tell,clearDirty);focus.append(btn('Find more businesses',()=>{expanded.add('Research selection');research.open=true;research.scrollIntoView({block:'nearest'});}));root.append(focus,research);
+  const packages=el('div');for(const offer of offers)packages.append(el('h3',`${offer.name} · ${offer.price?`$${offer.price.toLocaleString()}`:`$${offer.price_min.toLocaleString()}–$${offer.price_max.toLocaleString()}`}`),el('p',offer.scope));packages.append(el('p',`Optional care · $${carePlan.price}/month. ${carePlan.scope}`),el('p','Standard scope: one business location and client-supplied content. Hosting, software, messaging, copywriting, photography, ads, complex dashboards and additional locations are separately scoped. Launch support covers delivered defects for 30 days. Confirm tools, costs, access and acceptance checks before quoting.','muted'));root.append(disclosure('Starting packages and optional care',packages));
   const grid=el('div',undefined,'grid call-desk'),left=el('section',undefined,'panel');
   left.append(el('h2','Today’s calls'),el('p','Callbacks first, then prepared opportunities. Call from your phone.','muted'));
   const filter=select(left,'Call queue',[['all','Both queues'],['research','Ready to pitch'],['verification','Quick verification'],['enriched','Enriched contacts']],lane);
   filter.onchange=()=>{lane=filter.value;selected=undefined;clearDirty();refresh();};
   left.append(btn(showHistory?'Show due calls':'Show saved calls & follow-ups',()=>{showHistory=!showHistory;selected=showHistory?Object.values(state.prospects).find(r=>Object.keys(r.calls).length)?.id:records[0]?.id;clearDirty();refresh();}));
   const list=el('div',undefined,'record-list');
-  const listed=showHistory?Object.values(state.prospects).filter(r=>Object.keys(r.calls).length):visible;
+  const listed=visible;
   for(const r of listed){const b=btn('',()=>{selected=r.id;clearDirty();refresh();},`record${selected===r.id?' selected':''}`);b.setAttribute('aria-pressed',String(selected===r.id));b.append(el('strong',r.name),el('span',r.stage==='Callback'?`Callback · ${when(r.callback_at)}`:r.call_lane==='verification'?'Quick verification':'Ready to pitch','badge'),el('small',r.idea));list.append(b);}
   left.append(list);if(!listed.length)left.append(el('p','No eligible calls in this queue right now. Saved work remains available in call history.','empty'));
   grid.append(left);
   const r=state.prospects[selected];
   if(r){const card=el('section',undefined,'panel desk-card');
+    const type=businessType(r);card.append(el('p',`${businessTypes.find(t=>t.id===type.category).label}${type.subtype?` · ${type.subtype}`:''}${type.unclassified?' · Unclassified':''}`,'badge'));
+    if(r.stage==='Callback'&&!state.supply.queue.some(a=>a.prospect_id===r.id))card.append(el('p','This promised callback stays visible. It is not currently in eligible calling supply; check its scheduled time, source freshness and any provider hold.','notice'));
     card.append(el('p',r.call_lane==='verification'?'QUICK VERIFICATION':'READY TO PITCH','eyebrow'),el('h2',r.name,'detail-title'),el('p',r.owner_contact_view?.person?.name??(r.contact_review?'Decision-maker: confirm the current operator on the call':r.contact.name??r.verification?.conversation?.decision_maker??r.discovery?.decision_maker??'Decision-maker: confirm on the call'),'muted'),el('p',r.contact.phone??(r.controlled?'Fictional rehearsal · no dialable phone':'No verified phone'),'desk-phone'));
     if(r.discovery_source){const d=r.discovery_source,link=el('a',`Discovered through ${d.channel}`);link.href=d.source_url;link.target='_blank';link.rel='noreferrer';card.append(link,el('p',`Website: ${d.website_status}. Customer channel: ${d.customer_channel}.`,'muted'),el('p',`Next check: ${d.next_check}`,'muted'));}
+    if(r.verification?.packet.owner_evidence&&!r.owner_contact_view?.person){const o=r.verification.packet.owner_evidence,link=el('a','Published professional source');link.href=o.url;link.target='_blank';link.rel='noreferrer';card.append(el('p',`Published professional: ${o.name} · ${o.role}. Owner/operator status and current role need confirmation.`),link);}
+    card.append(el('p','Offer to explore: choose the smallest scope that fits the owner’s goals. Website packages: $1,500 / $1,995 / $2,495. Systems-only: $1,500–$2,500. Budget and fit remain unconfirmed.','muted'));
+    const suggestion=suggestedOffer(r);if(suggestion)card.append(el('p',`Suggested starting scope: ${suggestion.name}. Confirm needs, tools, scope and price in discovery.`,'notice'));
     if(r.owner_contact_view){const a=r.owner_contact_view,body=el('div');body.append(el('p',a.classification,'badge'),el('p',a.person?`${a.person.name} · ${a.person.role}`:'Owner/operator not yet verified'),el('p',a.confidence),el('p',a.next_action));
       if(a.person?.current_role_status)body.append(el('p',a.person.current_role_status,'muted'));
       for(const note of a.notes)body.append(el('p',note,'muted'));
@@ -102,6 +118,17 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty}
   }
   root.append(grid);
   const undo=state.prospects[lastSaved??selected];if(undo?.call_undo&&!undo.restriction&&!undo.meeting&&!undo.information_draft)root.prepend(btn(`Undo last outcome · ${undo.name}`,()=>run(async()=>{selected=undo.id;await event(undo,'call_undone',{call_id:undo.call_undo.call_id});lastSaved=undefined;tell('Outcome reversed; original event remains in history.');})));
+}
+function researchPanel(state,api,refresh,tell,clearDirty){
+  const body=el('div'),form=el('form');form.onsubmit=e=>e.preventDefault();form.append(el('p','25 candidate businesses TOTAL across your chosen categories and subtypes. Existing duplicates and held candidates do not become new eligible cards. Selecting a filter starts no research.'));
+  const choices=[];
+  for(const type of businessTypes){const section=el('fieldset');section.append(el('legend',type.label));const label=el('label',`Research ${type.label}`,'checkbox'),input=el('input');input.type='checkbox';input.checked=type.id===(category==='all'?'home-services':category);label.prepend(input);section.append(label);const sublabel=el('label',`Research subtypes · ${type.label}`),sub=el('select');sub.multiple=true;sub.size=Math.min(4,type.subtypes.length);sub.setAttribute('aria-label',`Research subtypes · ${type.label}`);for(const name of type.subtypes){const o=el('option',name);o.value=name;o.selected=type.id===category&&subtypes.includes(name);sub.append(o);}sublabel.append(sub);sublabel.hidden=!input.checked;input.onchange=()=>{sublabel.hidden=!input.checked;};section.append(sublabel);form.append(section);choices.push({type,input,sub});}
+  const start=btn('Research 25 candidates',async()=>{start.disabled=true;try{const selections=choices.filter(c=>c.input.checked).map(c=>({category:c.type.id,subtypes:[...c.sub.selectedOptions].map(o=>o.value)}));if(!selections.length)throw Error('Choose at least one category');const result=await api('/api/discovery-batches',{id:crypto.randomUUID(),total:25,selections});clearDirty();expanded.add('Research selection');await refresh();tell(`25-candidate batch ${result.status.toLowerCase()}. Progress and held reasons appear below.`);}catch(e){tell(e.message,true);}finally{start.disabled=false;}},'primary');start.disabled=!state.discovery_enabled||(state.discovery_batches??[]).some(b=>!['Complete','Stopped','Held'].includes(b.status));form.append(start);if(!state.discovery_enabled)form.append(el('p','On-demand discovery is not enabled in this workspace.','muted'));body.append(form);
+  for(const batch of [...(state.discovery_batches??[])].reverse()){const panel=el('section',undefined,'batch-progress');panel.append(el('h3',`${batch.selections.map(s=>businessTypes.find(t=>t.id===s.category).label).join(' + ')} · ${batch.status}`),el('p',`${batch.candidates} / 25 candidates selected · ${batch.reviewed} reviewed · ${batch.imported} new cards · ${batch.duplicates} duplicates · ${batch.held} held. Searches: ${batch.searches_done}/${batch.searches_total}.`));if(batch.reason)panel.append(el('p',batch.reason,'notice'));
+    if(!['Complete','Held','Stopped'].includes(batch.status))for(const [action,label] of [[batch.status==='Paused'?'resume':'pause',batch.status==='Paused'?'Resume batch':'Pause batch'],['stop','Stop batch']])panel.append(btn(label,async()=>{try{await api('/api/discovery-control',{id:batch.id,action});clearDirty();await refresh();}catch(e){tell(e.message,true);}}));
+    if(batch.items.length){const list=el('ul',undefined,'compact-list');for(const item of batch.items){const li=el('li',`${item.name} · ${item.status}`);if(item.reason)li.append(el('small',item.reason));list.append(li);}panel.append(disclosure(`Candidate results · ${batch.id}`,list));}body.append(panel);
+  }
+  return disclosure('Research selection',body);
 }
 async function booking(card,r,state,api,refresh,tell){
   card.querySelector('.desk-next')?.remove();const f=el('form',undefined,'desk-next');f.onsubmit=e=>e.preventDefault();f.append(el('h3','Book discovery · 20 minutes'),el('p','Weekdays 9–5 Eastern · 15-minute buffers. Availability is rechecked before an invitation is created.'));card.append(f);

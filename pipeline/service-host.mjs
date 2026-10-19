@@ -8,6 +8,7 @@ import { serveLifecycle } from './lifecycle-server.mjs';
 import { runOperationsService } from './operations-service.mjs';
 import { runResearchService } from './research-service.mjs';
 import { runContactQueueService } from './contact-queue.mjs';
+import {runDiscoveryService} from './discovery-batches.mjs';
 
 // Windows releases the named pipe on process death. Only its exclusive owner may recover dead local locks.
 export async function acquireServiceHost(directory) {
@@ -34,7 +35,7 @@ export async function startStudioService(directory) {
   try {
     const app = await StudioLifecycle.open({ directory });
     server = await serveLifecycle(app, { port: app.config.runtime?.port ?? 8807 });
-    const runners = [runOperationsService(app, { signal: stop.signal }), runResearchService(app, { signal: stop.signal }), runContactQueueService(app, { signal: stop.signal })];
+    const runners = [runOperationsService(app, { signal: stop.signal }), runResearchService(app, { signal: stop.signal }), runContactQueueService(app, { signal: stop.signal }),runDiscoveryService(app,{signal:stop.signal})];
     try { await Promise.all(runners); }
     finally { shutdown(); await Promise.allSettled(runners); }
   } finally { shutdown(); process.removeListener('SIGINT', shutdown); process.removeListener('SIGTERM', shutdown); await releaseHost(); }
