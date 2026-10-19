@@ -18,6 +18,8 @@ The information message is an editable local draft derived from the selected ide
 
 ## Source tools and limits
 
+The owner's October 19 correction makes [owner/operator professional contact discovery](OWNER-CONTACTS.md) primary. The desk audits contact completeness across every card, independently of research grade, and separates an explicitly sourced owner-direct business number from a general business line or unverified number. Source-backed owner identity, exact number linkage, confidence and missing checks appear on the same card. New contact evidence cannot silently rewrite Apollo bindings or reset outreach/research attempts. General research remains paused for this contact-first measurement.
+
 Retained assessments, source packets, independent reviews and attempt history are reused. The citation correction copies complete context anchors and forwards only a fixed validator diagnostic to bounded recovery. It does not weaken evidence validation or replay exhausted jobs.
 
 Detailed research and next checks shows the selected batch's supported findings, inspected journey areas, uncertainty and next verification, including Hold/Pass outcomes. A terminal revision hold is explicitly labelled unaccepted and shows only independently supported findings. Quick-verification cards retain their label and contact rules until the full qualified import passes. Completion counts and pitch-ready counts are distinct.

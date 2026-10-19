@@ -6,6 +6,7 @@ import { dailyCallQueue } from './apollo-queue.mjs';
 import { verificationLane, verificationData, validateVerificationRecord, verificationFresh, callStages } from './verification-calls.mjs';
 import { verifySupplementalReviewLedger } from './supplemental-reviews.mjs';
 import { callSupply } from './call-desk.mjs';
+import { ownerContactView, ownerContactSummary } from './owner-contacts.mjs';
 
 export const hash = value => createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
 export const check = (condition, message) => { if (!condition) throw Error(message); };
@@ -417,7 +418,7 @@ export class StudioLifecycle {
     const contacted = real.filter(r => r.attempts.some(a => !a.simulated && businessDate(a.at) === today));
     const first = contacted.filter(r => businessDate(r.attempts.find(a => !a.simulated).at) === today).length;
     const supply = callSupply(state, this.now()), queue = supply.queue;
-    return { ...state, supply, pending_bookings:Object.entries(this.config.operations?.bookings??{}).filter(([id])=>!state.operations?.bookings?.[id]?.verified).map(([id,b])=>({id,prospect_id:b.prospect_id,start:b.start,mode:b.mode,status:state.operations?.holds?.[id]??'Queued for calendar verification'})), supplemental_reviews: supplementalReviews, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode, research_paused: researchPaused, research_priority: researchPriority, outreach_paused: !this.config.outreach_enabled, calls_paused: !this.config.outreach_enabled && !this.config.calls_enabled, priority: this.config.priority,
+    return { ...state, owner_contact_summary:ownerContactSummary(state,this.now()), supply, pending_bookings:Object.entries(this.config.operations?.bookings??{}).filter(([id])=>!state.operations?.bookings?.[id]?.verified).map(([id,b])=>({id,prospect_id:b.prospect_id,start:b.start,mode:b.mode,status:state.operations?.holds?.[id]??'Queued for calendar verification'})), supplemental_reviews: supplementalReviews, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, owner_contact_view:ownerContactView(r,this.now()), quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode, research_paused: researchPaused, research_priority: researchPriority, outreach_paused: !this.config.outreach_enabled, calls_paused: !this.config.outreach_enabled && !this.config.calls_enabled, priority: this.config.priority,
       runtime_enabled: this.config.runtime?.enabled === true, final_review: this.config.mode === 'production' ? { fingerprint: (await import('./production.mjs')).releaseFingerprint(this.config), gates: (await import('./production.mjs')).productionGates(this.config), approved: this.config.release?.approved === true, verified: this.config.verified_summary ?? [],
         calls: { fingerprint: (await import('./production.mjs')).callReleaseFingerprint(this.config), approved: this.config.call_release?.approved === true, evidence: this.config.call_readiness ?? {}, transcript_daily_calls: this.config.transcript_ai.daily_calls } } : null,
       ai_enabled: this.config.transcript_ai.enabled, connector_writes_enabled: this.config.connector_writes_enabled, readiness: this.config.readiness },
