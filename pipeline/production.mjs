@@ -41,7 +41,7 @@ export function requireProductionRelease(c) {
 }
 export function callReleaseFingerprint(c) {
   const ai = c.transcript_ai;
-  return hash({ call_policy: 'call-desk-owner-notes-v1', run_id: c.run_id, apollo_owner: c.apollo?.user_id, campaign: c.campaign, call_readiness: c.call_readiness, scope: c.operations?.allowlist,
+  return hash({ call_policy: 'call-desk-owner-notes-booking-v2', run_id: c.run_id, apollo_owner: c.apollo?.user_id, campaign: c.campaign, call_readiness: c.call_readiness, calendar: c.calendar, scope: c.operations?.allowlist,
     transcript_policy: { daily_calls: ai.daily_calls, reserve_percent: ai.reserve_percent, author_model: ai.author_model, reviewer_model: ai.reviewer_model, effort: ai.effort } });
 }
 export function requireCallRelease(c) {
@@ -62,6 +62,12 @@ export async function approveCallRelease(app, fingerprint, approvalRef) {
     requireCallRelease(c); await saveJson(path, c); app.config = c;
     return { calls_released: true, email_released: false, fingerprint };
   });
+}
+export function requireBookingRelease(c) {
+  if (c.outreach_enabled) return requireProductionRelease(c);
+  requireCallRelease(c);
+  check(email(c.calendar?.owner_email) && !/@(?:gmail|googlemail)\.com$/i.test(c.calendar.owner_email) && /^link_[a-zA-Z0-9]+$/.test(c.calendar.link_id ?? '') && c.calendar.calendar_id === 'primary', 'Verified business Calendar connection required');
+  check(typeof c.call_readiness?.booking_verified === 'string' && c.call_readiness.booking_verified.length > 5, 'Business invitation verification evidence required');
 }
 export async function approveProductionRelease(app, fingerprint, approvalRef) {
   return app.change(async () => {
@@ -136,7 +142,7 @@ export async function queueMeeting(app, input) {
   const path = join(app.directory, 'lifecycle-config.json');
   return app.change(async state => {
     const c = await readJson(path);
-    if(c.mode==='production') requireProductionRelease(c);
+    if(c.mode==='production') requireBookingRelease(c);
     const r = state.prospects[input.prospect_id];
     check(r && !r.restriction && ['Discovery', 'Information requested'].includes(r.stage), 'Review the owner conversation before scheduling');
     check(input.revision===undefined||input.revision===state.revision,'Record changed; review the invitation again');
@@ -149,11 +155,12 @@ export async function queueMeeting(app, input) {
     check(!Object.entries(c.operations?.bookings??{}).some(([id,b])=>b.prospect_id===r.id&&id!==key),'An invitation is already reserved for this business; review it before choosing another slot');
     if(c.mode==='controlled') {r.meeting={event_id:key,start:input.start,end:input.end,mode:input.mode??'video',reference:`fixture:${key}`,current_status:'Simulated',verified_at:app.now().toISOString()};state.revision++;return {simulated:true,booked:false,booking_id:key};}
     const booking = { prospect_id: r.id, attendee_email: input.attendee_email, start: input.start, end: input.end, title: input.title, description: input.description,
-      ...(input.mode?{mode:input.mode}:{}), approved: true, approval_ref: `owner-console:${key}` };
+      ...(input.mode?{mode:input.mode}:{}), ...(input.recipient_confirmed === true ? { recipient_confirmed: true } : {}), approved: true, approval_ref: `owner-console:${key}` };
     check(!c.operations.bookings[key] || hash(c.operations.bookings[key]) === hash(booking), 'An existing slot changed; preserve its reservation');
     c.operations.bookings[key] ??= booking;
     await saveJson(path, c); app.config = c;
-    if (state.operations?.cycle) state.operations.cycle.completed_bookings = state.operations.cycle.completed_bookings.filter(id => id !== key);
+    if (state.operations?.cycle) { state.operations.cycle.completed_bookings = state.operations.cycle.completed_bookings.filter(id => id !== key); delete state.operations.cycle.completed_at; }
+    state.runtime = { ...state.runtime, wake_requested: true };
     state.revision++; state.updated_at=app.now().toISOString();
     return { queued: true, booking_id: key, booked: false };
   });
@@ -228,7 +235,7 @@ export class ProductionOperations extends ControlledOperations {
     check(!Object.keys(c.operations.emails ?? {}).length, 'Production email uses reviewed native automation, never test draft approvals');
     for (const [key, b] of Object.entries(c.operations.bookings ?? {})) {
       check(id(key) && c.operations.allowlist.includes(b.prospect_id) && b.approved === true && b.approval_ref?.length > 5 && email(b.attendee_email) && b.title?.startsWith('EVZ Digital') && b.title.length < 200 && b.description?.length < 1500, 'Production invitations require a bounded owner-approved booking');
-      check((await this.app.snapshot()).prospects[b.prospect_id]?.contact.email === b.attendee_email, 'Meeting guest must match the reviewed conversation contact');
+      check((await this.app.snapshot()).prospects[b.prospect_id]?.contact.email === b.attendee_email || b.recipient_confirmed === true, 'Meeting guest must match the reviewed conversation contact or exact owner confirmation');
     }
     if (c.outreach_enabled || c.calls_enabled || c.connector_writes_enabled) requireCallRelease(c);
     return c;
@@ -242,8 +249,13 @@ export class ProductionOperations extends ControlledOperations {
     if (!c.calls_enabled || c.outreach_enabled) {
       const gp = yield request('gmail-owner', 'gmail_profile', {}), cp = yield request('calendar-owner', 'calendar_profile', {});
       check(!gp.failed && !cp.failed && gp.email === c.calendar.owner_email && cp.email === c.calendar.owner_email, 'Business Gmail/Calendar connection is not the configured owner');
+    } else if (Object.keys(c.operations.bookings ?? {}).length) {
+      requireBookingRelease(c);
+      const cp = yield request('calendar-owner', 'calendar_profile', {});
+      check(!cp.failed && cp.email === c.calendar.owner_email, 'Business Calendar connection is not the configured owner');
     }
     const writeReady = this.writeReady(c);
+    if (writeReady && Object.keys(c.operations.bookings ?? {}).length) { requireBookingRelease(c); yield* this.bookings(state, c, request, retain); }
     o.bindings ??= {};
     for (const prospectId of c.operations.allowlist.filter(id => !o.cycle.completed_records.includes(id))) {
       const r = state.prospects[prospectId];
@@ -301,7 +313,6 @@ export class ProductionOperations extends ControlledOperations {
       } catch (error) { o.holds[prospectId] = error.message; }
       o.cycle.completed_records.push(prospectId);
     }
-    if (writeReady && c.outreach_enabled) yield* this.bookings(state, c, request, retain);
   }
   *suppressNative(state, c, r, binding, request, retain) {
     const o = state.operations;
