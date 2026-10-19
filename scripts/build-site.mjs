@@ -1,4 +1,4 @@
-import {cp, mkdir, readFile, rm, writeFile} from 'node:fs/promises';
+import {cp, mkdir, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {join, resolve, sep} from 'node:path';
 import {createViews} from '../site/studio/views.mjs';
@@ -20,7 +20,7 @@ const studioData = JSON.parse(await readFile(join(source, 'studio', 'data.json')
 const blankInquiry = {description: '', name: '', email: '', business: '', website: '', context: ''};
 const views = createViews(studioData, () => ({service: 'websites', filter: 'All', formData: blankInquiry}));
 const studioPages = {
-  home: ['studio', 'Websites. Systems. Automation. Marketing.', 'EVZ Digital designs websites, connected business systems, practical automation and marketing experiences.'],
+  home: ['studio', 'AI solutions. Business systems. Websites. Marketing.', 'EVZ Digital integrates practical AI, business systems, websites and marketing around the way your company works.'],
   about: ['studio/about', 'About', 'Learn how EVZ Digital scopes, designs and hands over practical digital work for businesses and agencies.'],
   services: ['studio/services', 'Services', 'Explore website, business system, automation and marketing services from EVZ Digital.'],
   work: ['studio/work', 'Work', 'Explore eight independent interactive demonstrations of websites, systems, automation and campaigns.'],
@@ -50,4 +50,17 @@ for (const demo of demos) {
 }
 
 await writeFile(join(output, 'robots.txt'), 'User-agent: *\nDisallow: /\n');
-console.log('Built private review site with six studio pages and eight demonstrations.');
+// Exact HTML routes avoid merging contradictory microphone directives from overlapping header rules.
+const policies=[];
+async function microphonePolicies(directory,path=''){
+  for(const entry of await readdir(directory,{withFileTypes:true})){
+    const relative=`${path}/${entry.name}`;
+    if(entry.isDirectory())await microphonePolicies(join(directory,entry.name),relative);
+    else if(entry.name.endsWith('.html')){
+      const allowed=relative==='/studio/demos/voice/index.html',routes=entry.name==='index.html'?[relative,relative.slice(0,-10),relative.slice(0,-11)]:[relative,relative.slice(0,-5)];
+      for(const route of new Set(routes.filter(Boolean)))policies.push(`${route}\n  Permissions-Policy: microphone=${allowed?'(self)':'()'}`);
+    }
+  }
+}
+await microphonePolicies(output);await writeFile(join(output,'_headers'),policies.join('\n\n')+'\n');
+console.log('Built studio, voice-agent demo and eight independent demonstrations.');

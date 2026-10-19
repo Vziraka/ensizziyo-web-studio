@@ -1,5 +1,7 @@
 # Business selection and discovery
 
+October 19 additional-100 extension: [AI operations](AI-OPERATIONS.md#exactly-100-additional-businesses) defines the finite net-new DMV home-service run, 25-candidate child batches, maximum 200 candidates, deduplication, upgraded professional-contact/social evidence and preserved allowance. The 19 cards from the prior first batch do not count toward the additional 100. Internal packages below remain provisional; the owner conversation determines the offer.
+
 Approved October 19 after the owner's interview. This supersedes the earlier food-only research focus; previous evidence and attempts retain their original meaning.
 
 Today offers Home Services; Health & Wellness; Food & Beverage; Real Estate & Property; Professional Services; Other Local Businesses. Optional subtypes narrow the selected group. Existing records are classified from their saved category without rewriting evidence. Unknown categories remain labelled unclassified. Due callbacks and promised next steps remain visible across filters, appear once and count toward the existing 50 unique-business/day total.

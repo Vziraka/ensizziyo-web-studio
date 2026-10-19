@@ -1,6 +1,7 @@
 import { check, hash } from './lifecycle.mjs';
 import { validateJob, validateSnapshots } from './sources.mjs';
 import {businessType,validateBusinessType,businessTypes} from './business-types.mjs';
+import {buildResearchProfile} from './research-profile.mjs';
 
 export const verificationLane = r => r.call_lane === 'verification';
 export const callStages = ['Ready to contact', 'Contacting', 'Ready to verify', 'Verifying', 'Callback'];
@@ -12,7 +13,9 @@ export function verificationData(packet, now, controlled = false) {
   if(packet.business_type)validateBusinessType(packet.business_type);
   else check(!businessType(packet).unclassified,'Choose a supported business category');
   check(text(packet.reviewed_by, 200) && text(packet.first_party_note) && Array.isArray(packet.unknowns) && packet.unknowns.length > 0 && packet.unknowns.length <= 12 && packet.unknowns.every(s => text(s)), 'Record first-party ownership review and explicit unknowns');
-  check(Array.isArray(packet.sources) && packet.sources.length > 0 && packet.sources.length <= 2, 'One or two retained verification sources required');
+  check(packet.profile_version===undefined||packet.profile_version===1,'Unknown business-profile version');
+  check(Array.isArray(packet.sources) && packet.sources.length > 0 && packet.sources.length <= (packet.profile_version===1?4:2), 'Bound the retained verification sources');
+  if(packet.profile_version===1)check(packet.sources.every(s=>s.kind==='business'&&new URL(s.url).hostname.replace(/^www\./,'')===new URL(packet.discovery?.website_url).hostname.replace(/^www\./,'')),'Business profile sources must belong to the verified first-party host');
   for (const s of packet.sources) {
     check(['business', 'social', 'directory'].includes(s.kind) && s.capture_method !== 'search_snippet', 'Snippets cannot establish a public business phone');
     if(s.kind==='directory')check(packet.discovery?.source_url===s.url,'Directories are limited to the retained discovery/locality source');
@@ -43,11 +46,14 @@ export function verificationData(packet, now, controlled = false) {
   check(/fairfax|vienna|arlington|alexandria|chantilly|centreville|herndon|reston|annandale|mclean|falls church|leesburg|ashburn|sterling|loudoun|woodbridge|manassas|virginia|\bva\b|washington|\bdc\b|maryland|\bmd\b|great falls|lorton|burke|oakton|montgomery|prince george|bethesda|rockville|silver spring|gaithersburg|potomac|hyattsville|bowie|springfield|dmv/i.test(packet.location.excerpt), 'Retain the specific DMV location check');
   check(controlled ? !packet.phone : typeof packet.phone === 'string' && /^[+\d(). -]+$/.test(packet.phone) && phoneDigits(packet.phone).length === 10 && phoneDigits(packet.public_phone.excerpt).includes(phoneDigits(packet.phone)), 'Retain the exact public business phone; fictional records have no dialable phone');
   const checked = packet.sources.map(s => s.fetched_at).sort()[0], evidenceRef = `verification:${packet.id}`, digest = hash(packet);
+  if(packet.profile_review)check(hash(packet.profile_review.owner??null)===hash(packet.owner_evidence??null),'Profile owner must match the independently retained owner evidence');
+  const profile=packet.profile_version===1?buildResearchProfile(packet.sources,packet.profile_evidence?.sources??[],packet.profile_review??{},now):null;
   return { company_id: `verification-${hash(controlled ? packet.id : phoneDigits(packet.phone)).slice(0, 24)}`, name: packet.business_name, category: packet.category, area: packet.area,
     controlled, call_lane: 'verification', idea: packet.topic,
     ...(packet.business_type?{business_type:structuredClone(packet.business_type)}:{}),
     ...(d?{discovery_source:structuredClone(d)}:{}),
-    contact: { email: controlled ? `${packet.id}@example.invalid` : null, phone: packet.phone ?? null, verified: false, phone_verified: true, checked_at: checked, source: packet.public_phone.url },
+    ...(profile?{research_profile:profile}:{}),
+    contact: { email: controlled ? `${packet.id}@example.invalid` : profile?.business_email?.email??null, phone: packet.phone ?? null, verified: !controlled&&Boolean(profile?.business_email), phone_verified: true, checked_at: checked, source: packet.public_phone.url,...(profile?.business_email?{email_evidence:profile.business_email.source}: {}) },
     qualification: { verdict: 'Verification call only', independent_review: 'Not a detailed assessment', checked_at: checked, evidence_ref: evidenceRef, packet_sha256: digest },
     verification: { packet: structuredClone(packet), packet_sha256: digest, reviewed_at: now.toISOString(), current_activity: 'Unconfirmed', owner_goals: 'Unknown', opening: verificationOpening(packet), owner_question: text(packet.owner_question) ? packet.owner_question : 'What would you most like to make easier for customers or for yourself?' } };
 }
@@ -64,5 +70,5 @@ export function verificationFresh(r, at) {
 
 export function verificationOpening(r) {
   const type=businessType(r),label=businessTypes.find(t=>t.id===type.category).label.toLowerCase();
-  return `Hi, I’m calling from EVZ Digital. Is this ${r.name??r.business_name}? We help ${label} businesses with websites and digital systems. Is the owner or operator available for a brief question about how enquiries reach you?`;
+  return `Hi, I’m calling from EVZ Digital. Is this ${r.name??r.business_name}? We help ${label} businesses put AI and digital systems to work. Is the owner or operator available for a brief question about how enquiries reach you?`;
 }

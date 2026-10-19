@@ -17,6 +17,7 @@ async function main() {
   const app = await StudioLifecycle.open({ directory });
   if (command === 'seed') return seedLifecycle(app);
   if (command === 'status') return app.dashboard();
+  if(command==='discover-home-100'){const {startDiscoveryCampaign}=await import('./discovery-batches.mjs');return startDiscoveryCampaign(app,{id:key,target:100,verification_ref:operation});}
   if (command === 'ops-next') {
     const ops = operationsFor(app, process.env.STUDIO_LIFECYCLE_SESSION), result = await ops.next();
     if (result.status === 'Complete') { await ops.effects(); const { maintainOperations } = await import('./lifecycle-maintenance.mjs'); result.maintenance = await maintainOperations(app); Object.assign(result, await ops.report()); }
@@ -42,7 +43,7 @@ async function main() {
   const bridge = new LifecycleBridge(app, process.env.STUDIO_LIFECYCLE_SESSION);
   if (command === 'prepare') return bridge.prepare(key, operation, actionId, prospectId);
   if (command === 'settle') { check(/^[a-zA-Z0-9_-]{1,100}$/.test(key ?? ''), 'Invalid receipt key'); return bridge.settle(key, await readJson(join(app.directory, 'receipts', `${key}.json`))); }
-  throw Error('Use init, init-production, import-research, release, seed, status, event, assess, serve, service, prepare, settle, ops-next, ops-settle, ops-ack, pause, backup or restore');
+  throw Error('Use init, init-production, import-research, discover-home-100, release, seed, status, event, assess, serve, service, prepare, settle, ops-next, ops-settle, ops-ack, pause, backup or restore');
 }
 try { const result = await main(); if (result !== undefined) console.log(JSON.stringify(result)); }
 catch (error) { console.error(error.message); process.exitCode = 1; }

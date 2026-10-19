@@ -12,9 +12,11 @@ import { setResearchPriority } from './research-service.mjs';
 import { callingSession, saveInformationDraft, sendInformation, availableMeetingSlots } from './call-desk-actions.mjs';
 import { runtimeVersion } from './runtime-version.mjs';
 import {startDiscoveryBatch,controlDiscoveryBatch} from './discovery-batches.mjs';
+import {renderFollowUpPreview} from './follow-up-template.mjs';
 
 const assets = new Map([['/', ['index.html', 'text/html']], ['/app.js', ['app.js', 'text/javascript']], ['/money.js', ['money.js', 'text/javascript']], ['/app.css', ['app.css', 'text/css']],
-  ['/call-desk.js', ['call-desk.js', 'text/javascript']], ['/business-types.mjs', ['../business-types.mjs', 'text/javascript']], ['/preview/', ['preview.html', 'text/html']], ['/preview.js', ['preview.js', 'text/javascript']]]);
+  ['/call-desk.js', ['call-desk.js', 'text/javascript']], ['/follow-up-template.mjs', ['../follow-up-template.mjs', 'text/javascript']], ['/business-types.mjs', ['../business-types.mjs', 'text/javascript']], ['/preview/', ['preview.html', 'text/html']], ['/preview.js', ['preview.js', 'text/javascript']], ['/assets/evz-wordmark.png',['assets/evz-wordmark.png','image/png']], ['/assets/voice-demo-preview.png',['assets/voice-demo-preview.png','image/png']], ['/assets/manrope-regular.ttf',['assets/manrope-regular.ttf','font/ttf']], ['/assets/manrope-bold.ttf',['assets/manrope-bold.ttf','font/ttf']]]);
+for(const icon of ['house','building-2','mail','calendar-days','file-text','users','circle-alert','settings'])assets.set(`/assets/nav-${icon}.svg`,[`assets/nav-${icon}.svg`,'image/svg+xml']);
 export function serveLifecycle(app, { port = 8807, quiet = false, analyze = assessTranscript } = {}) {
   const version = runtimeVersion();
   check(Number.isInteger(port) && port >= 0 && port <= 65535, 'Invalid local port');
@@ -22,7 +24,7 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
   const abort = new AbortController();
   const server = createServer(async (req, res) => {
     const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
-      'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" };
+      'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" };
     const json = (status, value) => { res.writeHead(status, { ...headers, 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(value)); };
     try {
       const origin = `http://127.0.0.1:${server.address().port}`;
@@ -37,6 +39,10 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
       check(!req.headers['sec-fetch-site'] || ['same-origin', 'none'].includes(req.headers['sec-fetch-site']), 'Cross-site requests are blocked');
       check(req.headers.cookie?.split(';').some(x => x.trim() === `studio_session=${session}`), 'Open the private console first');
       if (req.method === 'GET' && url.pathname === '/api/state') return json(200, { ...await app.dashboard(), build:await version, csrf, workers: [...work.keys()] });
+      if(req.method==='GET'&&/^\/follow-up\/[a-zA-Z0-9_-]{1,100}\/[a-zA-Z0-9_-]{1,100}$/.test(url.pathname)){
+        const [, ,prospectId,callId]=url.pathname.split('/'),record=(await app.snapshot()).prospects[prospectId],entry=record?.follow_ups?.[callId];check(entry?.content,'Unknown saved follow-up');
+        res.writeHead(200,{...headers,'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});res.end(renderFollowUpPreview(entry));return;
+      }
       if (req.method === 'GET' && /^\/proposal\/[a-zA-Z0-9_-]{1,100}$/.test(url.pathname)) {
         const record = (await app.snapshot()).prospects[url.pathname.slice('/proposal/'.length)]; check(record, 'Unknown proposal');
         res.writeHead(200, { ...headers, 'Content-Type': 'text/html; charset=utf-8' }); res.end(renderProposal(record)); return;

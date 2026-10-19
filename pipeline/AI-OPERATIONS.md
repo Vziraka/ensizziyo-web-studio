@@ -1,0 +1,62 @@
+# AI operations and the additional DMV campaign
+
+October 19, 2026. This increment implements the selected three-pane desk and personal email with a large voice-demo card. The owner's conversation determines the offer: AI, business systems, websites and marketing remain available. Existing history, stops, provider receipts, budgets and account bindings stay in place.
+
+## Calling and the email handoff
+
+The calling desk keeps the business contact above Overview, Research, Social media and History. Notes remain in memory when switching businesses. Choose the actual outcome and save the performed call. An unfinished note, a refresh or a historical note correction never creates a follow-up. The saved call ID owns an immutable subject, recipient, body, demo and action ID. An authenticated full-email preview uses the same renderer as native delivery; opening it sends nothing.
+
+`follow_up.enabled` opts this workspace into the new behavior. Eligible desk outcomes are no answer, busy, voicemail, connected and requested callback. Connected calls awaiting conversation confirmation stay held. Declines, do-not-contact, wrong number and unattempted calls create no automatic email. Missing/unverified business addresses stay held; no address is guessed. Private notes select a topic but are never copied verbatim. Copy combines the business, professional name when known, trade, area, topic and actual outcome. The owner can choose Email focus when the notes cover several topics. This deterministic template consumes no additional model call.
+
+Pending and delivered emails share the existing two-email, ten-business-day limits, daily mailbox allowance and weekday business-hours window. Replies, bounces and automatic replies stop release. Provider reply reads take effect before a new intent in the same cycle. A handed-off call cannot be undone into an orphaned live email. Restart reuses saved intent, personalization and sent-thread receipts; uncertain writes require readback, never reenrollment. Apollo remains the single automatic email executor.
+
+The body is the full approved HTML, written to the existing contact custom body field and independently read back before publishing the native intent. The existing sequence already merges that field; no sequence rebuild is needed. Keep the two one-email routes inactive and commercial sending off until actual HTML merge/delivery, sender, footer, demo, reply stops and final release evidence pass. Code tests do not establish Gmail rendering or provider HTML-merge behavior.
+
+Release requires `follow_up.sender_verified`, `follow_up.demo_verified`, an HTTPS `follow_up.booking_url`, sender `hello@evzdigital.studio`, a physical business mailing address, and `native_email.html_verified=true` with `template_version=evz-personal-large-demo-v1`. `sender.account_email` identifies the connected primary Workspace account when the sender is an alias. Exact Apollo mailbox ownership and sending-address readback still apply. Changing the alias does not rename the primary login or silently reconnect an account.
+
+The owner has not selected a physical mailing address. Placeholder footers block commercial release. Research, the call desk and individually confirmed bookings remain independently available.
+
+## Demo and booking
+
+Public route: `/studio/demos/voice/`. The recording is an approximately 41-second fictional receptionist/customer exchange, generated in the existing ElevenLabs allowance. Playback starts only on a visitor click, includes the actual transcript and needs no microphone.
+
+The live option loads the pinned official ElevenLabs widget only on demand. Public agent `agent_6801m5b3wd1pfnntwtqfdm0np72y` represents fictional Oakline Home Services. Its `capture_enquiry` client tool accepts bounded service, town, preferred callback time, fictional name/contact and next-step fields. The browser renders text only and always labels human confirmation as a sample. It does not book service, contact a business, send a request or retain the enquiry card after the page closes. Switching modes ends the captured session and removes its widget.
+
+Account controls: allowed hosts `evzdigital.studio` and `www.evzdigital.studio`, origin required, 90-second conversations, five starts/day, one concurrent conversation, bursting and queue off, attachments off. Agent audio storage is off; transcript retention is one day. These are actual provider settings, separate from the public recording. The widget presents its terms before a conversation. Browser voice testing requires an explicitly allowed microphone permission; text testing does not establish acoustic performance. The privacy notice identifies ElevenLabs processing/session storage and Google booking.
+
+Only the voice page receives `microphone=(self)`. The build emits explicit microphone-denial headers for every other HTML route; global camera/geolocation denial remains. Verify the actual deployed headers, because a local static server does not emulate Netlify policy.
+
+Google Calendar booking: https://calendar.app.google/VntxbUGK6wqxF8AU8 . Title: EVZ Digital — AI & business systems conversation. Twenty minutes, weekdays 9–5 America/New_York, 15-minute buffer, four-hour minimum notice and fourteen-day horizon, with busy-calendar checks and Google Meet. A controlled owner-only appointment was booked, confirmed, cancelled and independently checked absent. This public EVZ booking is distinct from the fictional service enquiry.
+
+## Contact and social evidence
+
+`discovery.profile_version=1` enables the upgraded packet for new batches. Capture the first-party homepage and up to two bounded contact/about pages, then up to four public profiles explicitly linked by that business. A separate existing subscription review binds identity, trade, DMV locality, advertised line, published owner/operator, professional email/phone and observed social metrics to retained exact excerpts. The original general calling number and provider tasks are not automatically replaced by an owner number.
+
+Email is classified as general business unless the excerpt explicitly links the named owner to that address. Owner-phone evidence likewise needs a named person and professional number in one excerpt. The free Apollo identity search is retained privately as a candidate source; it does not reveal email or phone. Paid enrichment is outside the background dispatcher and still requires the connector's exact upfront cost confirmation.
+
+Each linked profile keeps platform, source URL/hash and observation time. Followers require a visible count and label. Posting metrics require distinct retained post URLs and explicit publication dates. Display the latest observed date and a lower bound over the last 30 days, labelled partial visibility. Login walls, missing counts and relative dates stay unavailable, never zero/inactive. This bounded public reader does not promise complete social-feed access.
+
+## Exactly 100 additional businesses
+
+After research/call-preparation verification, run from the reviewed runtime with the existing private state binding:
+
+```powershell
+$env:STUDIO_LIFECYCLE_STATE_DIR='C:\private\studio-operations'
+node lifecycle-cli.mjs discover-home-100 dmv-home-100-20261019 PRIVATE_VERIFICATION_REFERENCE
+```
+
+The finite coordinator records all preexisting IDs and counts only unique new imports. It rotates DC, Montgomery, Fairfax/Arlington/Alexandria, Prince George's and Loudoun/Prince William areas across HVAC, plumbing, electrical, roofing, cleaning and landscaping. Each child batch has at most 25 candidates; the final extraction is limited to the remaining target. Existing names/domains/emails/phones and restrictions are retained and deduplicated. Failed/duplicate candidates are reported separately. Up to eight bounded child batches (200 candidates) permit top-ups, then an explicit shortfall review; never silently increase budgets, widen geography or reuse uncertain mutations.
+
+The existing host advances the finite campaign; no recurring chat automation or second scheduler is added. It shares the original controller ledger, configured Sol review route, daily call ceiling, per-batch 27-call ceiling and 30% reserve. Deferred allowance resumes after its saved window, including UTC-day reset. Pause all and existing priority controls stop dispatch. Stopping an active child leaves the campaign for review. Owner-started, independently reviewed child additions can extend the already approved calls-only queue; no prospect is called or emailed by research.
+
+Apollo's existing saved-contact read hold remains until its recorded provider window. Local cards can be usable while native task creation is queued; report these separately. Never clear the rate limit to meet a target.
+
+## Verification, deployment and rollback
+
+Run `npm run check` and `node --test` in `pipeline`; serial `--test-concurrency=1` is available for Windows file-contention diagnosis. At repository root run `node scripts/build-site.mjs`, `node scripts/verify-site.mjs`, `node --test scripts/inquiry.test.mjs`, and `node --check site/studio/demos/voice/demo.js`.
+
+For browser rehearsal use a separate controlled state outside Git with fictional home-service cards, `.invalid` recipients and no connector worker. `STUDIO_LIFECYCLE_STATE_DIR` selects that directory; `STUDIO_LIFECYCLE_PORT=8810` and `node lifecycle-cli.mjs serve` expose the private console. Readiness is a loopback ready message naming controlled mode. Check desktop/phone overflow, contact card, tab keyboard controls, note switching, actual-outcome preview, saved-call reload, one follow-up, missing-address hold and stop behavior. Use the full email preview for logo/demo/signature verification. Serve `dist` locally for recording/transcript, responsive layout and widget-load checks. Localhost is intentionally not an allowed conversation origin. Real agent/card and microphone-header checks need the published allowed host. Stop only the exact rehearsal process created for the check; retain evidence privately.
+
+Before replacing the installed host, stop it through its current reviewed `studio-service.ps1`, verify owned processes stopped, and make a byte-verified operations/research snapshot outside the live tree. Deploy tracked runtime files and locked dependencies to a new versioned directory. Preserve current state, configuration, calls-only approval, provider limits and receipts. Verify source identity, local health, existing prospects/history/bindings, outbound held state and the saved rate window before starting the 100 campaign.
+
+Rollback preserves all newer state, restrictions, provider receipts and charged attempts. Stop the new runtime with its own reviewed script; point the existing task to the retained known-good release. Disable discovery on an older release that cannot read the new campaign. Never roll state backwards or replay a provider mutation. Verify an execution-disabled backup restore as well as the live health. Local snapshots do not establish off-device, reboot or sleep recovery.
