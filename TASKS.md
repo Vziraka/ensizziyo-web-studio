@@ -1,5 +1,11 @@
 # Launch tasks
 
+## Live call-task activation correction — October 18, 2026
+
+The owner explicitly approved live call tracking, Apollo call-task sync and individually confirmed business Calendar bookings; commercial email remains disabled. The first real task-sync cycle created an exactly matched owned contact with no company-account ID. Verification cards already support that valid Apollo shape, while detailed cards incorrectly hold it. Accept an absent account consistently while retaining exact owner/contact/email/phone checks, optional-ID validation, independent task readback and no-replay reservations. Preserve all contacts already created and the approved release scope. Correct the dashboard's stale statement that all booking remains blocked. Verify the failure through the real service dispatcher with an external fixture, then check actual task readback after versioned installation.
+
+The new dispatcher regression reproduced Queued instead of Verified, then passed with the correction. All 36 affected account-free tests and changed-source syntax checks passed. Requirements review confirmed both call lanes, preserved final approval, individual booking consent and email hold. Engineering review checked absent versus malformed account IDs, contact/owner/email/phone checks, task payload omission, readback and restart/no duplicate behavior. Deployment and live-sync receipts remain private; no new campaign, research attempt or outbound contact is authorized by the correction.
+
 ## Independent Calendar booking and business launch proof — October 18, 2026
 
 The business Gmail delivery, return reply, cancellation of fictional future calls/emails, Google Meet invitation, guest acceptance and organizer readback passed through the connected business accounts. The temporary event was removed and the fictional workspace disabled. Apollo now reports the business mailbox active; its explicit private binding must supersede the personal default. The mailing address remains undecided, so commercial email stays held. Retain existing research and charged attempts.
