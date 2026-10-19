@@ -1,0 +1,86 @@
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { check, hash } from './lifecycle.mjs';
+import { collectPublicSources, validateJob, validateSnapshots } from './sources.mjs';
+
+const domain = value => new URL(value).hostname.toLowerCase().replace(/^www\./,'');
+const digits = value => String(value??'').replace(/\D/g,'').replace(/^1(?=\d{10}$)/,'');
+const normalize = value => value.replace(/\s+/g,' ').trim().toLowerCase();
+const fresh = (at,now) => Number.isFinite(Date.parse(at)) && Date.parse(at)<=+now && +now-Date.parse(at)<=30*86400000;
+const binding = r => hash(r.contact);
+const role = /\b(?:owner|founder|operator|president|ceo|director|principal)\b/i;
+
+export function ownerContactView(r,now=new Date()) {
+  const a=r.owner_contact,valid=a&&a.bound_contact_sha256===binding(r)&&fresh(a.reviewed_at,now)&&(!a.person||fresh(a.person.source?.checked_at,now))&&(!a.direct_phone||fresh(a.direct_phone.source?.checked_at,now));
+  const published=Boolean(r.contact?.phone&&(r.contact.verified||r.contact.phone_verified===true)&&fresh(r.contact.checked_at,now));
+  const stale=Boolean(a&&!valid),direct=valid&&a.direct_phone;
+  return {classification:direct?'Owner/operator direct business':stale||!published?'Unverified number':'General business line',
+    confidence:direct?'Source-linked professional number':valid&&a.person?'Owner identity supported; direct number unverified':published&&!stale?'Business line supported; owner link unverified':'Contact evidence needs verification',
+    person:valid?a.person:null,direct_phone:direct||null,notes:valid?a.notes??[]:[],checked_at:valid?a.reviewed_at:r.contact?.checked_at??null,
+    source:r.contact?.source??null,evidence_ref:valid?a.evidence_ref:null,
+    next_action:direct?'Confirm the person still operates the business and can be reached at this published number.':stale?'Recheck the changed or stale contact evidence before using an owner-direct claim.':valid&&a.person?'Find an explicit public professional number for this person; the shop line alone does not establish direct access.':'Identify the current owner/operator from business-controlled or authoritative professional sources, then verify an explicitly linked business number.'};
+}
+export function ownerContactSummary(state,now=new Date()) {
+  const all=Object.values(state.prospects).map(r=>ownerContactView(r,now));
+  return {total:all.length,owner_direct:all.filter(a=>a.direct_phone).length,general_business:all.filter(a=>a.classification==='General business line').length,unverified:all.filter(a=>a.classification==='Unverified number').length,identified:all.filter(a=>a.person).length};
+}
+function boundJob(r,job) {
+  validateJob(job);
+  check(job.research_version===3&&job.business_name===r.name&&domain(job.website)===domain(r.contact.source)&&job.seed_urls.every(url=>domain(url)===domain(job.website)),'Contact capture must stay on the existing business domain and identity');
+}
+
+export async function retainContactDiscovery(directory,r,job,{connect,now=()=>new Date(),...captureOptions}={}) {
+  boundJob(r,job);const path=join(directory,job.id,'discovery.json'),bound_contact_sha256=binding(r);
+  try {const saved=JSON.parse(await readFile(path,'utf8'));check(saved.sha256===hash(saved.report)&&saved.report.prospect_id===r.id&&saved.report.bound_contact_sha256===bound_contact_sha256&&hash(saved.report.job)===hash(job),'Retained contact discovery changed; reconcile rather than repeat');return saved;}
+  catch(e){if(e.code!=='ENOENT')throw e;}
+  await mkdir(join(directory,job.id),{recursive:true,mode:0o700});
+  const report={schema_version:1,prospect_id:r.id,company_id:r.company_id,bound_contact_sha256,job,checked_at:now().toISOString(),limitations:'Public business sources and identity candidates only. Search results, masked names, number availability flags and general shop phones do not verify an owner-direct line.'};
+  try {report.snapshots=await collectPublicSources(job,{...captureOptions,now});}
+  catch(e){report.capture_failure=String(e.message).slice(0,300);}
+  report.apollo={status:'Not connected'};
+  if(connect){
+    try {
+      const input={q_organization_domains_list:[domain(job.website)],person_titles:['owner','founder','co-owner','operator','CEO','president'],include_similar_titles:false,per_page:5,page:1};
+      const raw=await connect.call('mcp__codex_apps__apollo_io_apollo_mixed_people_api_search',input);
+      check(!raw.isError&&Buffer.byteLength(JSON.stringify(raw))<=200_000,'Identity search unavailable or response exceeds bound');
+      const data=raw.structuredContent??JSON.parse(raw.content.filter(c=>c.type==='text').map(c=>c.text).join(''));
+      check(Array.isArray(data.people)&&data.people.length<=5,'Identity search response changed');
+      report.apollo={status:data.people.length?'Candidates':'No match',input,raw_response:raw,response_sha256:hash(raw),candidates:data.people.map(p=>({id:p.id,first_name:p.first_name,last_name_obfuscated:p.last_name_obfuscated,title:p.title,organization:p.organization?.name,phone_availability:p.has_direct_phone??null,requires_source_verification:true}))};
+    }catch(e){report.apollo={status:'Unavailable',reason:String(e.message).slice(0,200)};}
+  }
+  const saved={report,sha256:hash(report)};await writeFile(path,JSON.stringify(saved,null,2),{flag:'wx',mode:0o600});return saved;
+}
+
+export async function applyOwnerContact(app,p) {
+  check(p?.schema_version===1&&/^[a-z0-9-]{1,60}$/.test(p.id??'')&&typeof p.reviewed_by==='string'&&p.reviewed_by.trim().length>=3&&fresh(p.reviewed_at,app.now()),'A current identified source review is required');
+  return app.change(state=>{
+    const r=state.prospects[p.prospect_id];
+    check(r&&r.company_id===p.company_id&&p.bound_contact_sha256===binding(r),'Existing contact identity/binding changed');
+    boundJob(r,p.job);validateSnapshots(p.snapshots,p.job);
+    check(p.job.id===p.id&&p.job.as_of<=p.reviewed_at.slice(0,10)&&p.snapshots.sources.every(s=>fresh(s.fetched_at,app.now())&&Date.parse(s.fetched_at)<=Date.parse(p.reviewed_at)),'Contact source identity/date changed');
+    const cite=(value)=>{
+      const s=p.snapshots.sources.find(s=>s.url===value.source_url);
+      check(s&&typeof value.excerpt==='string'&&value.excerpt.length>=5&&value.excerpt.length<=350&&normalize(s.text).includes(normalize(value.excerpt)),'Contact excerpt is missing from retained source');
+      return {url:s.url,checked_at:s.fetched_at,source_sha256:s.content_sha256,excerpt:value.excerpt};
+    };
+    let person=null,direct_phone=null;
+    if(p.person){
+      check(typeof p.person.name==='string'&&p.person.name.trim().length>=2&&p.person.name.length<=120&&typeof p.person.role==='string'&&p.person.role.length<=100&&role.test(p.person.role),'Explicit professional owner/operator identity required');
+      const source=cite(p.person);
+      check(normalize(p.person.excerpt).includes(normalize(p.person.name))&&normalize(p.person.excerpt).includes(normalize(p.person.role)),'Owner name and role must be in the exact identity excerpt');
+      person={name:p.person.name,role:p.person.role,source};
+    }
+    if(p.direct_phone){
+      const d=p.direct_phone,source=cite(d);
+      const citedName=d.name_in_excerpt??person?.name;
+      check(person&&typeof citedName==='string'&&[normalize(person.name),normalize(person.name).split(' ')[0]].includes(normalize(citedName))&&typeof d.number==='string'&&d.number.length<=50&&/^\d{10}$/.test(digits(d.number))&&d.public_professional===true&&d.explicit_person_link===true&&normalize(d.excerpt).includes(normalize(citedName))&&digits(d.excerpt).includes(digits(d.number))&&/\b(?:call|phone|telephone|text|direct|reach|contact)\b/i.test(d.excerpt),'Direct number needs an explicit public professional person-to-number link');
+      direct_phone={number:d.number,source};
+    }
+    const packet_sha256=hash(p);
+    if(r.owner_contact?.evidence_ref===`owner-contact:${p.id}`){check(r.owner_contact.packet_sha256===packet_sha256,'Retained owner-contact review changed');return {duplicate:true,prospect_id:r.id};}
+    // Evidence is additive: it never replaces the provider-bound phone or authorizes outreach.
+    check(p.notes===undefined||Array.isArray(p.notes)&&p.notes.length<=4&&p.notes.every(s=>typeof s==='string'&&s.length<=600),'Keep contact-review notes bounded');
+    r.owner_contact={schema_version:1,bound_contact_sha256:p.bound_contact_sha256,reviewed_at:p.reviewed_at,reviewed_by:p.reviewed_by,person,direct_phone,notes:p.notes??[],packet_sha256,evidence_ref:`owner-contact:${p.id}`};
+    state.revision++;state.updated_at=app.now().toISOString();return {duplicate:false,prospect_id:r.id,view:ownerContactView(r,app.now())};
+  });
+}

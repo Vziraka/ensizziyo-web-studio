@@ -17,6 +17,7 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty}
   const active=state.calling_session&&!state.calling_session.ended_at;
   top.append(btn(active?'End calling session':'Start calling session',()=>run(async()=>{const s=await api('/api/calling-session',{action:active?'end':'start'});clearDirty();await refresh();tell(active?`Session saved: ${s.summary.attempts} attempts · ${s.summary.conversations} conversations · ${s.summary.interested} interested · ${s.summary.bookings} bookings. Research continues according to your priority.`:'Calling session started.');})));
   root.append(top);
+  if(state.owner_contact_summary){const a=state.owner_contact_summary;root.append(el('p',`Owner contacts · Published direct business numbers: ${a.owner_direct} · Sourced identities: ${a.identified} · General business lines: ${a.general_business} · Unverified: ${a.unverified}. Website research readiness is separate from direct access to the owner.`,'notice'));}
   if(state.supply.low)root.append(el('p',`Call supply is low: ${state.supply.ready} eligible businesses, below the one-day minimum of 50. ${state.controls.research_paused?'Research is paused by your current priority.':'The saved campaign can replenish within its allowance.'}`,'notice'));
   if(!state.supply.low&&state.supply.pitch_ready<50)root.append(el('p',`Pitch-ready supply: ${state.supply.pitch_ready} / ${state.supply.pitch_target}. Quick-verification cards remain callable; the approved research batch can improve their preparation within its allowance.`,'notice'));
   const technical=state.exceptions.filter(e=>!state.prospects[e.id]);
@@ -38,7 +39,13 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty}
   grid.append(left);
   const r=state.prospects[selected];
   if(r){const card=el('section',undefined,'panel desk-card');
-    card.append(el('p',r.call_lane==='verification'?'QUICK VERIFICATION':'READY TO PITCH','eyebrow'),el('h2',r.name,'detail-title'),el('p',r.contact.name??r.verification?.conversation?.decision_maker??r.discovery?.decision_maker??'Decision-maker: confirm on the call','muted'),el('p',r.contact.phone??(r.controlled?'Fictional rehearsal · no dialable phone':'No verified phone'),'desk-phone'),el('h3','Why this call'),el('p',r.idea,'idea'));
+    card.append(el('p',r.call_lane==='verification'?'QUICK VERIFICATION':'READY TO PITCH','eyebrow'),el('h2',r.name,'detail-title'),el('p',r.owner_contact_view?.person?.name??r.contact.name??r.verification?.conversation?.decision_maker??r.discovery?.decision_maker??'Decision-maker: confirm on the call','muted'),el('p',r.contact.phone??(r.controlled?'Fictional rehearsal · no dialable phone':'No verified phone'),'desk-phone'));
+    if(r.owner_contact_view){const a=r.owner_contact_view,body=el('div');body.append(el('p',a.classification,'badge'),el('p',a.person?`${a.person.name} · ${a.person.role}`:'Owner/operator not yet verified'),el('p',a.confidence),el('p',a.next_action));
+      for(const note of a.notes)body.append(el('p',note,'muted'));
+      for(const [label,value] of [['Owner identity',a.person],['Published owner-direct business number',a.direct_phone]])if(value){const source=value.source,link=el('a',`${label}${value.number?`: ${value.number}`:''} · checked ${when(source.checked_at)}`);link.href=source.url;link.target='_blank';link.rel='noreferrer';body.append(link,el('p',source.excerpt,'muted'));}
+      if(a.direct_phone)body.append(el('p','The calling line above and existing Apollo tasks retain their verified business binding. A newly researched number does not change provider records.','muted'));
+      card.append(el('h3','Owner/operator contact'),body);}
+    card.append(el('h3','Why this call'),el('p',r.idea,'idea'));
     const prep=r.call_prep;
     card.append(el('h3','Open with'),el('blockquote',(r.call_lane==='verification'?r.verification?.opening:prep?.opening)??'Review the retained evidence before choosing your opening.','quote'),el('h3','Then ask'),el('p',(r.call_lane==='verification'?r.verification?.owner_question:prep?.questions?.[0])??'What would you most like to make easier for your customers?'));
     card.append(disclosure('Research, sources and what is still unknown',evidence(r)));

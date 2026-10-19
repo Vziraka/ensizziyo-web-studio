@@ -3,7 +3,7 @@ import { createInterface } from 'node:readline';
 import { subscriptionEnvironment } from './workers.mjs';
 
 const permitted = new Set([
-  'apollo_io.apollo_users_api_profile', 'apollo_io.apollo_email_accounts_index', 'apollo_io.apollo_contacts_search',
+  'apollo_io.apollo_users_api_profile', 'apollo_io.apollo_email_accounts_index', 'apollo_io.apollo_contacts_search', 'apollo_io.apollo_mixed_people_api_search',
   'apollo_io.apollo_contacts_create', 'apollo_io.apollo_contacts_update', 'apollo_io.apollo_accounts_search', 'apollo_io.apollo_accounts_create',
   'apollo_io.apollo_fields_index', 'apollo_io.apollo_emailer_campaigns_search', 'apollo_io.apollo_emailer_campaigns_remove_or_stop_contact_ids',
   'apollo_io.apollo_labels_index', 'apollo_io.apollo_labels_add_entity_ids_to_label_names',
