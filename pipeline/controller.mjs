@@ -11,7 +11,7 @@ import { evidenceReviewSchema, evidenceReviewPrompt, validateEvidenceReview } fr
 import { readCodexUsage } from './usage.mjs';
 
 const workers = ['codex', 'claude', 'cursor'];
-const recoverable = new Set(['WORKER_QUOTA', 'WORKER_TIMEOUT', 'WORKER_OUTPUT_INVALID']);
+const recoverable = new Set(['WORKER_QUOTA', 'WORKER_TIMEOUT', 'WORKER_OUTPUT_INVALID', 'WORKER_CAPACITY']);
 const deferred = new Set(['RESEARCH_BUDGET', 'CONTROLLER_PAUSED', 'CONTROL_TIME_LIMIT', 'QUEUE_PAUSED', 'USAGE_UNAVAILABLE']);
 const problem = (code, message) => Object.assign(Error(message), { code });
 const contextAnchorError = 'Observation must cite the specific reviewed context fact and its exact anchor';
@@ -173,7 +173,8 @@ export async function runController({ directory, config, queue, invoke = invokeC
             for (const worker of alternatives) if (await available(worker)) { alternate = worker; break; }
             const failed = state.calls.findLast(c => c.job_id === record.job_id), policy = config.providers[record.worker];
             if (alternate) record.worker = alternate;
-            else if (failed?.worker === record.worker && ['WORKER_OUTPUT_INVALID', 'WORKER_TIMEOUT'].includes(failed.status) && policy.model !== policy.review_model && await available(record.worker)) record.use_review_model = true;
+            else if (failed?.worker === record.worker && ['WORKER_OUTPUT_INVALID', 'WORKER_TIMEOUT', 'WORKER_CAPACITY'].includes(failed.status) && (failed.status !== 'WORKER_CAPACITY' || failed.model !== policy.review_model) && policy.model !== policy.review_model && await available(record.worker)) record.use_review_model = true;
+            else if (failed?.status === 'WORKER_CAPACITY') throw problem('WORKER_CAPACITY','No distinct configured model is available; preserve the capacity hold');
             else record.worker = await choose(alternatives);
             record.recovery_armed = true; delete record.needs_handoff; await save();
           }

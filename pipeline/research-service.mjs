@@ -72,7 +72,7 @@ export async function researchTick(app, { signal, run = runController, queueFact
   })();
   try {
     const google = await readPrivateJson(join(directory, 'google-config.json'));
-    await app.change(s => { s.research_runtime = { ...s.research_runtime, status: 'Running', checked_at: app.now().toISOString(), campaign: config.campaign }; });
+    await app.change(s => { s.research_runtime = { ...compact(progress), status: 'Running', checked_at: app.now().toISOString(), campaign: config.campaign }; });
     const pending = progress.jobs.filter(j => !['Complete','Held'].includes(j.status));
     const cursor = config.job_ids.indexOf((await app.snapshot()).research_dispatch_cursor);
     const next = pending.find(j=>config.job_ids.indexOf(j.job_id)>cursor) ?? pending[0];

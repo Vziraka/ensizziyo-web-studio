@@ -236,6 +236,27 @@ test('a single subscription recovers invalid author output with its configured r
   assert.equal(state.calls.length, 4); assert.equal(state.calls.filter(c => c.status === 'WORKER_OUTPUT_INVALID').length, 1);
 });
 
+test('model capacity uses the one configured-model recovery, retains charges and still requires fresh review',async()=>{
+  const f=await fixture(),phases=[];for(const w of ['claude','cursor'])f.config.providers[w].enabled=false;
+  let checkpoint;
+  const result=await run(f,{invoke:worker(async o=>{
+    phases.push(`${o.model}/${o.phase}`);
+    if(o.phase==='assess'&&o.model==='fixture-model'){checkpoint=await readFile(join(o.directory,'checkpoint.json'));throw Object.assign(Error('Observed provider model capacity'),{code:'WORKER_CAPACITY'});}
+    if(o.phase==='assess')assert.deepEqual(await readFile(join(o.directory,'checkpoint.json')),checkpoint);
+    return o.phase==='review'?acceptedReview(o):assessment(o);
+  })});
+  assert.equal(result.jobs[0].status,'Complete');assert.deepEqual(phases,['fixture-model/collect','fixture-model/assess','fixture-review-model/assess','fixture-review-model/review']);
+  const state=await saved(f);assert.equal(state.calls.length,4);assert.equal(state.calls.filter(c=>c.status==='WORKER_CAPACITY').length,1);assert.equal(state.jobs['controller-fixture'].recoveries,1);
+});
+
+test('capacity with no distinct alternative holds without repeating the same model or charging on restart',async()=>{
+  const f=await fixture();for(const w of ['claude','cursor'])f.config.providers[w].enabled=false;
+  f.config.providers.codex.model=f.config.providers.codex.review_model;
+  const result=await run(f,{invoke:worker(async()=>{throw Object.assign(Error('Synthetic model capacity'),{code:'WORKER_CAPACITY'});})});
+  assert.equal(result.jobs[0].status,'Held');assert.equal(result.jobs[0].reason,'WORKER_CAPACITY');assert.equal(result.calls_reserved,1);
+  assert.equal((await run(f,{invoke:()=>assert.fail('Held capacity must not retry')})).calls_reserved,1);
+});
+
 test('a shortened reviewed anchor reaches the one recovery as fixed feedback with the original checkpoint', async () => {
   const f = await longAnchorFixture(); let checkpoint, sources, assessments = 0;
   for (const worker of ['claude', 'cursor']) f.config.providers[worker].enabled = false;

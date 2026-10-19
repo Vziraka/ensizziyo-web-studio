@@ -28,6 +28,13 @@ test('only terminal provider quota envelopes enable handoff; research text and t
   assert.equal(workerFailure(JSON.stringify({ type: 'error', message: 'Authentication failed' })).code, 'WORKER_FAILED');
 });
 
+test('the observed model-capacity rejection is distinct from subscription quota and research text',()=>{
+  const message='Selected model is at capacity. Please try a different model.';
+  assert.equal(workerFailure(JSON.stringify({type:'turn.failed',error:{message}})).code,'WORKER_CAPACITY');
+  assert.equal(workerFailure(JSON.stringify({type:'turn.failed',error:{code:'usage_limit_reached',message}})).code,'WORKER_QUOTA');
+  assert.equal(workerFailure(JSON.stringify({type:'result',result:message})),undefined);
+});
+
 async function fixture() {
   const directory = await mkdtemp(join(tmpdir(), 'studio-proof-test-'));
   await writeFile(join(directory, 'job.json'), JSON.stringify(job));
