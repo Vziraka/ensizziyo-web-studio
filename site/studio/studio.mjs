@@ -74,7 +74,7 @@ function render(){
     if(['#review','#complete'].includes(location.hash)&&page==='inquiry')history.replaceState(null,'',location.pathname+location.search);
   }
   $('#main').innerHTML=views.render(page);
-  document.title=(page==='home'?'Websites. Systems. Automation. Marketing.':page.charAt(0).toUpperCase()+page.slice(1))+' — EVZ Digital';
+  document.title=(page==='home'?'AI solutions. Business systems. Websites. Marketing.':page.charAt(0).toUpperCase()+page.slice(1))+' — EVZ Digital';
   const navPage=page==='review'||page==='complete'?'inquiry':page;
   $$('.site-header nav a').forEach(a=>{
     a.removeAttribute('aria-current');

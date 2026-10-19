@@ -1,5 +1,7 @@
 # Production preparation and local operation
 
+October 19 follow-up and research extension: [AI operations](AI-OPERATIONS.md) owns the opt-in saved-call HTML handoff and additional-100 coordinator. When enabled, eligible saved attempts include voicemail/busy and reviewed connected/callback conversations; replies/stops, exact native receipts and two-email/ten-day bounds still apply. The old no-answer-only descriptions below remain the legacy behavior. Calls and research retain separate release from the unresolved commercial-email gates.
+
 October 19 owner-started discovery: [Campaign operation](CAMPAIGNS.md) defines six business groups, subtype filters and finite 25-total research requests. The version-3 calls-only policy binds the approved discovery policy. A completed owner-started batch may append only its exact accepted packet/review-bound, unrestricted cards to an already active calls-only queue, preserving prior IDs/history and email holds. Paused calls remain paused; legacy standalone imports still invalidate their changed release. This prepares native call tasks and does not place calls or send messages.
 
 

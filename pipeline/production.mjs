@@ -1,3 +1,4 @@
+import {followUpOutcomes,followUpSetupIssues,renderFollowUpHtml,composeFollowUp} from './follow-up-template.mjs';
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { check, hash, initialConfig, businessDate, businessDaysBetween } from './lifecycle.mjs';
@@ -25,7 +26,7 @@ export const productionConfig = {
 };
 export function releaseFingerprint(c) {
   return hash({ contact_policy: 'call-desk-owner-notes-exact-gmail-v1', run_id: c.run_id, campaign: c.campaign, sender: c.sender, calendar: c.calendar, apollo_owner: c.apollo?.user_id, research_source: c.research?.source_directory ?? '', readiness_evidence: c.readiness_evidence,
-    native_email: c.native_email, google: c.google ? { spreadsheet_id: c.google.spreadsheet_id, sheet_id: c.google.sheet_id, sheet_title: c.google.sheet_title } : null });
+    native_email: c.native_email,follow_up:c.follow_up?.enabled?c.follow_up:null, google: c.google ? { spreadsheet_id: c.google.spreadsheet_id, sheet_id: c.google.sheet_id, sheet_title: c.google.sheet_title } : null });
 }
 export function productionGates(c) {
   return Object.keys(initialConfig.readiness).map(key => ({ key, passed: c.readiness?.[key] === true && typeof c.readiness_evidence?.[key] === 'string' && c.readiness_evidence[key].length > 5, note: c.readiness_notes?.[key] ?? '' }));
@@ -35,7 +36,9 @@ export function requireProductionRelease(c) {
   check(c.release?.approved === true && c.release.fingerprint === releaseFingerprint(c) && c.release.approval_ref?.length > 5, 'Final owner approval must match the current production connections and rules');
   check(productionGates(c).every(g => g.passed), 'Launch evidence is incomplete; preserve the production hold');
   check(businessTypes.some(t=>t.id===c.campaign?.category) && c.campaign.max_calls === 2 && c.campaign.max_emails === 2 && c.campaign.business_days === 10, 'Campaign bounds changed');
-  check(email(c.sender?.email) && c.sender.email === c.calendar.owner_email && id(c.sender.mailbox_id) && c.sender.postal_address?.trim().length > 10, 'Verified business sender, calendar and postal address required');
+  check(email(c.sender?.email) && (c.sender.account_email??c.sender.email) === c.calendar.owner_email && id(c.sender.mailbox_id) && c.sender.postal_address?.trim().length > 10, 'Verified business sender, calendar and postal address required');
+  if(c.follow_up?.enabled)check(followUpSetupIssues(c).length===0,'Follow-up sender, postal address, demo and booking must be verified');
+  if(c.follow_up?.enabled)check(c.native_email?.html_verified===true&&c.native_email.template_version==='evz-personal-large-demo-v1','Verify the branded HTML merge and exact owner-only delivery before commercial release');
   check(!/@(?:gmail|googlemail)\.com$/i.test(c.sender.email), 'Production uses the verified business-domain mailbox');
   check(Number.isInteger(c.sender.daily_email_limit) && c.sender.daily_email_limit > 0 && c.sender.daily_email_limit <= 100, 'Use a measured daily mailbox allowance including follow-ups');
   check(c.native_email?.enabled && c.native_email.rounds?.length === 2 && c.native_email.rounds.every((r, i) => r.round === i + 1 && id(r.list_id) && r.list_name?.startsWith('EVZ ') && id(r.sequence_id) && r.sequence_name?.startsWith('EVZ ') && id(r.subject_field_id) && id(r.body_field_id) && r.verified === true), 'Two verified single-email native routes required');
@@ -243,7 +246,8 @@ export async function syncResearchImports(app) {
   }
   return { status: 'Checked', examined: Math.min(count, 10) };
 }
-export function nativeMessage(record, round, c) {
+export function nativeMessage(record, round, c,callId) {
+  if(c.follow_up?.enabled){const entry=record.follow_ups?.[callId];check(entry?.status==='Prepared'&&entry.content,'Choose the immutable follow-up for this performed call');check(!/{{|}}|[<>]/.test(entry.content.subject+entry.content.body),'Native personalized copy cannot contain markup');const message={...entry.content,postal_address:c.sender.postal_address,booking_url:c.follow_up.booking_url},body=renderFollowUpHtml(message);check(body.length<=12000&&!/{{|}}/.test(body),'Bound the rendered native HTML and reject unresolved variables');return {subject:entry.content.subject,body};}
   const subject = `${round === 1 ? 'An idea' : 'Following up on an idea'} for ${record.name}`.replace(/["\r\n]/g, ' ').slice(0, 119);
   const idea = record.call_prep?.hypothesis ?? record.idea;
   const question = record.call_prep?.questions?.[0] ?? 'Would an improvement like this fit what you want to do next?';
@@ -253,10 +257,14 @@ export function nativeMessage(record, round, c) {
   return { subject, body };
 }
 
+export function approvedFollowUp(record,action,config){
+  const follow=record.follow_ups?.[action?.payload?.call_id];
+  return Boolean(config.follow_up?.enabled&&action?.payload?.follow_up&&action.prospect_id===record.id&&action.status!=='Cancelled'&&!record.restriction&&!record.reply&&['Prepared','Sending','Awaiting delivery'].includes(follow?.status)&&follow.action_id===action.id&&hash(follow.content)===action.payload.content_sha256&&follow.content.to===record.contact.email&&record.contact.verified&&followUpOutcomes.includes(record.calls[action.payload.call_id]?.outcome));
+}
 export class ProductionOperations extends ControlledOperations {
   writeReady(c) { if ((c.outreach_enabled || c.calls_enabled) && c.connector_writes_enabled) { requireCallRelease(c); return true; } return false; }
   emailReady(c) { return c.outreach_enabled === true; }
-  composeMessage(record, round, c) { return nativeMessage(record, round, c); }
+  composeMessage(record, round, c,callId) { return nativeMessage(record, round, c,callId); }
   async settings() {
     const c = await readJson(join(this.app.directory, 'lifecycle-config.json'));
     check(c.mode === 'production' && c.research_enabled === false, 'Use the separate research controller and production workspace');
@@ -307,10 +315,11 @@ export class ProductionOperations extends ControlledOperations {
             o.effects[effectId] ??= { event: { id: effectId, prospect_id: prospectId, type: 'reply_received', at: reply.at, data: { source_id: reply.id, kind: reply.kind, thread_id: e.thread.thread_id } } };
             if (!o.replies.includes(reply.id)) { o.replies.push(reply.id); retain(`${prospectId}-${e.thread.thread_id}-thread`); }
             r.cold_paused = true;
+            r.reply={...reply,at:reply.at};
           }
         }
         let binding = o.bindings[prospectId];
-        if (!binding && writeReady && !r.restriction && (!r.cold_paused || r.stage === 'Callback')) {
+        if (!binding && writeReady && !r.restriction && (!r.cold_paused || r.stage === 'Callback'||Object.values(state.actions).some(a=>approvedFollowUp(r,a,c)))) {
           if (verificationLane(r)) validateVerificationRecord(r, now);
           const query = r.contact.email || r.name;
           let found = yield request(`${prospectId}-find-contact`, 'contact', { q_keywords: query, per_page: 10, page: 1 });
@@ -345,7 +354,8 @@ export class ProductionOperations extends ControlledOperations {
   }
   *suppressNative(state, c, r, binding, request, retain) {
     const o = state.operations;
-    for (const e of Object.values(o.email).filter(e => e.prospect_id === r.id && e.route)) {
+    for (const [actionId,e] of Object.entries(o.email).filter(([,e]) => e.prospect_id === r.id && e.route)) {
+      if(approvedFollowUp(r,state.actions[actionId],c))continue;
       const found = yield request(`${r.id}-${e.route.round}-stop-contact`, 'contact', { q_keywords: binding.email, per_page: 10, page: 1 });
       const person = verifiedContact(found, binding, c.apollo.user_id, true), status = person.contact_campaign_statuses?.find(s => s.emailer_campaign_id === e.route.sequence_id);
       if (!status) continue;
@@ -360,14 +370,15 @@ export class ProductionOperations extends ControlledOperations {
   }
   *nativeEmails(state, c, r, binding, request, retain, writeReady) {
     const o = state.operations, now = this.app.now();
-    check(!verificationLane(r) || !Object.values(state.actions).some(a => a.prospect_id === r.id && a.type === 'email' && a.status !== 'Cancelled'), 'Verification calls cannot release cold email; qualify the conversation and review its next action');
+    check(c.follow_up?.enabled || !verificationLane(r) || !Object.values(state.actions).some(a => a.prospect_id === r.id && a.type === 'email' && a.status !== 'Cancelled'), 'Verification calls cannot release cold email; qualify the conversation and review its next action');
     for (const a of Object.values(state.actions).filter(a => a.prospect_id === r.id && a.type === 'email' && a.status !== 'Cancelled')) {
       const e = o.email[a.id] ??= { prospect_id: r.id, status: 'Awaiting native release' }, intentKey = `${a.id}-intent`;
       if (e.thread) continue;
       if (!o.requests[intentKey]) {
-        if (!writeReady || r.cold_paused || r.restriction) continue;
+        if (!writeReady || r.restriction||r.reply||r.cold_paused&&!approvedFollowUp(r,a,c)) continue;
         const calls = r.attempts.filter(x => x.channel === 'call'), sent = r.attempts.filter(x => x.channel === 'email');
-        check(r.calls[a.payload.call_id]?.outcome === 'no_answer' && calls.length <= 2 && sent.length < 2 && businessDaysBetween(calls[0].at, now) < 10, 'A saved no-answer within campaign bounds is required');
+        const followUp=approvedFollowUp(r,a,c);
+        check((followUp || r.calls[a.payload.call_id]?.outcome === 'no_answer' && calls.length <= 2) && sent.length < 2 && calls.length>0 && businessDaysBetween(calls[0].at, now) < 10, 'An eligible saved call within the two-email, ten-business-day campaign is required');
         const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', hourCycle: 'h23' }).formatToParts(now).map(p => [p.type, p.value]));
         check(r.controlled || !['Sat', 'Sun'].includes(parts.weekday) && Number(parts.hour) >= 9 && Number(parts.hour) < 17, 'Email release waits for weekday business hours');
         check(+now - Date.parse(r.qualification.checked_at) <= 30 * 86400000, 'Research is stale; hold email');
@@ -387,15 +398,18 @@ export class ProductionOperations extends ControlledOperations {
         check(!person.label_ids?.includes(route.list_id), 'Intent was already published outside this action; reconcile without reenrollment');
         const boxes = yield request(`${a.id}-mailbox`, 'mailboxes', {});
         check(!boxes.failed && boxes.email_accounts?.some(b => b.id === c.sender.mailbox_id && b.email === c.sender.email && b.user_id === c.apollo.user_id && b.active === true), 'Business sender unavailable');
-        e.content ??= this.composeMessage(r, route.round, c); e.route ??= route; e.content_sha256 ??= hash(e.content);
+        if(a.payload.follow_up)check(approvedFollowUp(r,a,c),'Follow-up content, recipient or call eligibility changed');
+        e.content ??= this.composeMessage(r, route.round, c,a.payload.call_id); e.route ??= route; e.content_sha256 ??= hash(e.content);
         check(hash(e.content) === e.content_sha256 && hash(e.route) === hash(route), 'Native message changed after reservation');
         const personalized = { [route.subject_field_id]: e.content.subject, [route.body_field_id]: e.content.body };
         if (!o.requests[`${a.id}-personalize`]) yield request(`${a.id}-personalize`, 'personalize', { id: binding.contact_id, typed_custom_fields: personalized });
         const read = yield request(`${a.id}-personalized-read`, 'contact', { q_keywords: binding.email, per_page: 10, page: 1 });
         const current = verifiedContact(read, binding, c.apollo.user_id, true);
         check(Object.entries(personalized).every(([key, value]) => current.typed_custom_fields?.[key] === value), 'Personalization awaits exact readback; never publish unverified content');
+        if(a.payload.follow_up)r.follow_ups[a.payload.call_id].status='Sending';
         yield request(intentKey, 'intent', { modality: 'contacts', entity_ids: [current.id], label_names: [route.list_name] });
         e.status = 'Released to native sequence';
+        if(a.payload.follow_up)r.follow_ups[a.payload.call_id].status='Awaiting delivery';
       }
       const membershipRead = `${a.id}-intent-readback`, membership = yield request(membershipRead, 'contact', { q_keywords: binding.email, per_page: 10, page: 1 });
       const member = verifiedContact(membership, binding, c.apollo.user_id, true);
@@ -415,13 +429,21 @@ export class ProductionOperations extends ControlledOperations {
     }
   }
 }
+export function nativeProofMessage(c){
+  const m=c.operations.native_proof.message;
+  if(m.template_version!=='evz-personal-large-demo-v1')return {subject:m.subject,body:m.body_text};
+  const message=composeFollowUp({name:'STUDIO TEST Oakline Home Services',area:'Fairfax, Virginia',business_type:{subtype:'HVAC'},contact:{name:'Jordan Test',email:m.to}},{outcome:'no_answer',focus:'ai'},c);
+  message.paragraphs.unshift('CONTROLLED TEST — a fictional example for the owner inbox only. No business was called or contacted.');
+  return {subject:m.subject,body:renderFollowUpHtml(message)};
+}
 export class NativeProofOperations extends ProductionOperations {
   async settings() {
     const c = await readJson(join(this.app.directory, 'lifecycle-config.json')), o = c.operations, p = o?.native_proof, m = p?.message;
     check(c.mode === 'controlled' && !c.research_enabled && !c.outreach_enabled && !c.connector_writes_enabled, 'Native proof cannot enable research or production contact');
     check(c.readiness.owner_design_approved && o?.interval_minutes === 5 && o.allowlist?.length === 1 && !Object.keys(o.emails ?? {}).length && !Object.keys(o.bookings ?? {}).length, 'One isolated fictional native proof required');
-    check(p && typeof p.enabled === 'boolean' && typeof m?.approved === 'boolean' && m.from === c.calendar.owner_email && m.from === c.sender?.email && email(m.to) && m.from !== m.to && o.recipients?.includes(m.to) && o.recipients.includes(m.from) && o.recipients.length <= 2, 'Exact owner-controlled test inboxes required');
-    check(m.subject?.startsWith('[STUDIO TEST]') && m.subject.length < 120 && !/["\r\n]/.test(m.subject) && m.body_text?.startsWith('CONTROLLED TEST') && m.body_text.length < 4000 && !/{{|}}|[<>]/.test(m.body_text), 'Literal controlled email content required');
+    check(p && typeof p.enabled === 'boolean' && typeof m?.approved === 'boolean' && (c.sender?.account_email??m.from) === c.calendar.owner_email && m.from === c.sender?.email && email(m.to) && m.from !== m.to && o.recipients?.includes(m.to) && o.recipients.includes(m.from) && o.recipients.length <= 2, 'Exact owner-controlled test inboxes required');
+    const html=m.template_version==='evz-personal-large-demo-v1',content=nativeProofMessage(c);
+    check(m.subject?.startsWith('[STUDIO TEST]') && m.subject.length < 120 && !/["\r\n]/.test(m.subject) && (html?m.body_html===content.body&&content.body.length<12000&&!/{{|}}/.test(content.body):m.body_text?.startsWith('CONTROLLED TEST')&&m.body_text.length<4000&&!/{{|}}|[<>]/.test(m.body_text)), 'Literal controlled email content required');
     check(!m.approved || m.approval_ref?.length > 5, 'Concrete owner approval must bind the single test email');
     const binding = c.apollo?.bindings?.[o.allowlist[0]], route = c.native_email?.rounds?.[0];
     check(id(c.apollo?.user_id) && id(binding?.contact_id) && id(binding.account_id) && binding.email === m.to && binding.require_no_phone === true && binding.controlled_name?.toLowerCase().includes('studio test'), 'Dedicated owned no-phone fictional recipient required');
@@ -432,7 +454,7 @@ export class NativeProofOperations extends ProductionOperations {
   validateScope(state, c) { check(c.operations.allowlist.every(id => state.prospects[id]?.controlled === true && state.prospects[id].contact.email.endsWith('@example.invalid') && !state.prospects[id].contact.phone), 'Native proof accepts one fictional lifecycle record only'); }
   writeReady(c) { return c.operations.native_proof.enabled && c.operations.native_proof.message.approved; }
   emailReady(c) { return this.writeReady(c); }
-  composeMessage(record, round, c) { const m = c.operations.native_proof.message; return { subject: m.subject, body: m.body_text }; }
+  composeMessage(record, round, c) { return nativeProofMessage(c); }
   *plan(state, c) {
     const id = c.operations.allowlist[0], binding = c.apollo.bindings[id];
     for (const e of Object.values(state.operations.email)) if (e.content) check(hash(e.content) === hash(this.composeMessage(null, 1, c)) && hash(e.route) === hash(c.native_email.rounds[0]), 'Approved native proof message or route changed after reservation');

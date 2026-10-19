@@ -1,5 +1,7 @@
 # Call desk release
 
+October 19 approved desk update: [AI operations](AI-OPERATIONS.md) owns the three-pane contact/notes layout, detail tabs, full saved-email preview and opt-in automatic follow-up. The owner still performs each call and chooses its actual outcome; notes never authorize a send while being typed. Booking and commercial-email setup have separate gates.
+
 October 19 approved category update: Today now supports six business groups and optional subtypes, with due callbacks and promised next steps visible across filters. Find more businesses separately starts 25 candidates total. [Campaign operation](CAMPAIGNS.md) owns category/offer scope and finite discovery. Existing evidence, contact labels, budgets, calls/bookings and email restrictions remain distinct.
 
 The October 18 interview selected the existing local host, a list and call card, two explicit queues, manual phone calls, optional owner notes, booking first and an information email alternative. No additional subscription is installed. This release implements those interactions while retaining the separate production contact gates.

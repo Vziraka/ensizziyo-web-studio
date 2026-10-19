@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { StudioLifecycle, initialConfig } from './lifecycle.mjs';
 import { fixtureProspect } from './lifecycle-fixtures.mjs';
 import { saveJson } from './engine.mjs';
-import { productionConfig, releaseFingerprint, requireProductionRelease, approveProductionRelease, approveCallRelease, callReleaseFingerprint, ProductionOperations, NativeProofOperations, operationsFor, importResearch, importVerification, syncResearchImports, queueMeeting, pauseStudio, nativeMessage } from './production.mjs';
+import { productionConfig, releaseFingerprint, requireProductionRelease, approveProductionRelease, approveCallRelease, callReleaseFingerprint, ProductionOperations, NativeProofOperations, operationsFor, importResearch, importVerification, syncResearchImports, queueMeeting, pauseStudio, nativeMessage,nativeProofMessage } from './production.mjs';
 import { researchCallPrep } from './call-prep.mjs';
 import { dailyCallQueue } from './apollo-queue.mjs';
 import { intakeCandidate, reviewFiles, reviewTemplate, prospectPurpose } from './prospects.mjs';
@@ -39,13 +39,14 @@ test('native email introduces the retained enhancement and owner question withou
   assert.throws(() => nativeMessage({ ...record, call_prep: { hypothesis: {}, questions: ['A question?'] } }, 1, c), /reviewed enhancement/);
 });
 
-async function setup(t, released = true, outcome = 'no_answer') {
+async function setup(t, released = true, outcome = 'no_answer', followUp = false) {
   const directory = await mkdtemp(join(tmpdir(), 'evz-production-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const config = structuredClone(productionConfig); let now = new Date(at);
   config.calendar = { ...config.calendar, owner_email: owner, calendar_id: 'primary' }; config.apollo.user_id = 'owned-user';
   config.sender = { email: owner, mailbox_id: 'business-mailbox', postal_address: 'TEST POSTAL ADDRESS — synthetic fixture', website: 'https://example.com', daily_email_limit: 20 };
   config.operations.enabled = true; config.operations.allowlist = ['synthetic-cafe'];
   config.native_email = { enabled: true, rounds: [1, 2].map(round => ({ round, list_id: `list-${round}`, list_name: `EVZ TEST round ${round}`, sequence_id: `sequence-${round}`, sequence_name: `EVZ TEST one-email ${round}`, subject_field_id: `subject-${round}`, body_field_id: `body-${round}`, verified: true })) };
+  if(followUp){Object.assign(config.sender,{email:'hello@evzdigital.studio',account_email:owner});config.follow_up={enabled:true,sender_verified:true,demo_verified:true,booking_url:'https://calendar.app.google/synthetic'};Object.assign(config.native_email,{html_verified:true,template_version:'evz-personal-large-demo-v1'});}
   for (const key of Object.keys(config.readiness)) { config.readiness[key] = true; config.readiness_evidence[key] = 'fixture:independent verification only'; }
   const app = await StudioLifecycle.initialize({ directory, config, now: () => now });
   if (released) await approveProductionRelease(app, releaseFingerprint(config), 'human-final-fixture-approval');
@@ -53,7 +54,7 @@ async function setup(t, released = true, outcome = 'no_answer') {
     contact: { email: 'cafe@example.net', phone: '+1 202 555 0100', verified: true, checked_at: at, source: 'https://example.net/contact' },
     qualification: { verdict: 'Research-qualified', independent_review: 'Accepted', checked_at: at, report_sha256: 'a'.repeat(64), review_sha256: 'b'.repeat(64), evidence_ref: 'fixture:retained source/review' } };
   await app.apply({ id: 'imported', prospect_id: 'synthetic-cafe', type: 'prospect_imported', at, data }, { actor: 'research-import' });
-  if (released && outcome) await app.apply({ id: 'call-event', prospect_id: 'synthetic-cafe', type: 'call_logged', at, data: { call_id: 'call-one', performed_at: at, outcome, simulated: false, ...(outcome === 'callback' ? { callback_at: '2026-10-20T14:00:00.000Z' } : {}) } });
+  if (released && outcome) await app.apply({ id: 'call-event', prospect_id: 'synthetic-cafe', type: 'call_logged', at, data: { call_id: 'call-one', performed_at: at, outcome, simulated: false, ...(followUp?{desk:true,focus:'ai',note:'Discuss AI enquiry handling. PRIVATE BUDGET NOTE',...(outcome==='connected'?{intent:'requested_info'}:{})}:{}), ...(outcome === 'callback' ? { callback_at: '2026-10-20T14:00:00.000Z' } : {}) } });
   return { app, directory, data, config: app.config, advance(ms = 301000) { now = new Date(+now + ms); } };
 }
 function provider(c) {
@@ -70,14 +71,14 @@ function provider(c) {
     if (r.operation === 'fields') return { fields: c.native_email.rounds.flatMap(v => [{ id: v.subject_field_id, modality: 'contact', type: 'string' }, { id: v.body_field_id, modality: 'contact', type: 'textarea' }]) };
     if (r.operation === 'lists') return { labels: c.native_email.rounds.map(v => ({ id: v.list_id, name: v.list_name, modality: 'contacts' })) };
     if (r.operation === 'sequence') return { emailer_campaigns: [{ id: 'sequence-1', name: c.native_email.rounds[0].sequence_name, user_id: c.apollo.user_id, active: true, num_steps: 1, emailer_steps: [{ type: 'auto_email', wait_time: 0 }], mark_finished_if_reply: true, mark_paused_if_ooo: true }] };
-    if (r.operation === 'mailboxes') return { email_accounts: [{ id: c.sender.mailbox_id, email: owner, user_id: c.apollo.user_id, active: true }] };
+    if (r.operation === 'mailboxes') return { email_accounts: [{ id: c.sender.mailbox_id, email: c.sender.email, user_id: c.apollo.user_id, active: true }] };
     if (r.operation === 'personalize') { Object.assign(person.typed_custom_fields, p.typed_custom_fields); return { contact: person }; }
     if (r.operation === 'intent') { person.label_ids.push('list-1'); sent = { id: 'native-sent', subject: person.typed_custom_fields['subject-1'] }; return { success: true }; }
     if (r.operation === 'gmail_search') return { message_ids: sent ? ['native-sent'] : [], next_page_token: null };
     if (r.operation === 'thread') {
       const h = (name, value) => ({ name, value });
-      return { id: 'native-thread', messages: [{ id: sent.id, thread_id: 'native-thread', internal_date: String(Date.parse(at)), label_ids: ['SENT'], payload: { headers: [h('From', owner), h('To', person.email), h('Subject', sent.subject), h('Message-ID', '<native-original>')] } },
-        ...(reply ? [{ id: 'native-reply', thread_id: 'native-thread', internal_date: String(Date.parse(at) + 1000), payload: { headers: [h('From', person.email), h('To', owner), h('Subject', `Re: ${sent.subject}`), h('In-Reply-To', '<native-original>')] } }] : [])] };
+      return { id: 'native-thread', messages: [{ id: sent.id, thread_id: 'native-thread', internal_date: String(Date.parse(at)), label_ids: ['SENT'], payload: { headers: [h('From', c.sender.email), h('To', person.email), h('Subject', sent.subject), h('Message-ID', '<native-original>')] } },
+        ...(reply ? [{ id: 'native-reply', thread_id: 'native-thread', internal_date: String(Date.parse(at) + 1000), payload: { headers: [h('From', person.email), h('To', c.sender.email), h('Subject', `Re: ${sent.subject}`), h('In-Reply-To', '<native-original>')] } }] : [])] };
     }
     if (r.operation === 'stop') { finished = true; return { success: true }; }
     if (r.operation === 'busy') return { calendars: [{ calendar_id: 'primary', busy: [], errors: null }] };
@@ -96,6 +97,24 @@ async function drive(app, p, session = 'test-session') {
   }
   throw Error('Bound exceeded');
 }
+
+test('a connected follow-up hands the full branded HTML to one native executor and survives restart without another intent',async t=>{
+ const s=await setup(t,true,'connected',true),p=provider(s.config);await drive(s.app,p);
+ let state=await s.app.snapshot(),r=state.prospects['synthetic-cafe'];assert.equal(r.follow_ups['call-one'].status,'Sent');assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.match(p.person.typed_custom_fields['body-1'],/voice-demo-preview\.png/);assert.match(p.person.typed_custom_fields['body-1'],/EVZ Digital team/);assert.doesNotMatch(p.person.typed_custom_fields['body-1'],/PRIVATE BUDGET NOTE/);
+ s.advance();const reopened=await StudioLifecycle.open({directory:s.directory,now:s.app.now});await drive(reopened,p,'followup-restart');assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);
+});
+test('a reply observed in the provider read phase cancels a prepared next follow-up before native release',async t=>{
+ const s=await setup(t,true,'no_answer',true),p=provider(s.config);await drive(s.app,p);s.advance();const next=s.app.now().toISOString();await s.app.apply({id:'second-call',prospect_id:'synthetic-cafe',type:'call_logged',at:next,data:{call_id:'second-call',outcome:'voicemail',performed_at:next,simulated:false,desk:true}});assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['second-call'].status,'Prepared');p.addReply();s.advance();await drive(s.app,p,'reply-before-second-release');assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['second-call'].status,'Cancelled');
+});
+test('a stop after an uncertain native intent keeps delivery uncertain and reconciles a late sent receipt without resending',async t=>{
+ const s=await setup(t,true,'voicemail',true),p=provider(s.config),ops=operationsFor(s.app,'before-lost-handoff');
+ for(;;){const request=await ops.next();if(request.operation==='intent'){p.respond(request);break;}assert.ok(request.operation);await ops.settle(request.key,{structuredContent:p.respond(request)});}
+ await s.app.apply({id:'stop-after-handoff',prospect_id:'synthetic-cafe',type:'contact_stopped',at,data:{reason:'do_not_contact'}});assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['call-one'].status,'Uncertain');
+ s.advance(91000);await drive(s.app,p,'after-handoff-stop');s.advance();await drive(s.app,p,'after-stop-readback');s.advance();await drive(s.app,p,'after-task-stop-readback');const state=await s.app.snapshot();assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.equal(state.prospects['synthetic-cafe'].stage,'Stopped');assert.equal(state.prospects['synthetic-cafe'].follow_ups['call-one'].status,'Sent',JSON.stringify(state.operations.holds));assert.equal(state.prospects['synthetic-cafe'].attempts.filter(x=>x.channel==='email').length,1);
+});
+test('an owner-requested callback after earlier call history can release its first email within the retained bounds',async t=>{
+ const s=await setup(t,true,'callback',true),p=provider(s.config);await s.app.change(state=>{state.prospects['synthetic-cafe'].attempts.unshift(...['old-call-1','old-call-2'].map(id=>({id,channel:'call',at,outcome:'no_answer'})));});await drive(s.app,p);assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['call-one'].status,'Sent');
+});
 test('production release binds final approval to exact connections, evidence and campaign rules', async t => {
   const s = await setup(t, false);
   assert.throws(() => requireProductionRelease(s.config), /paused/);
@@ -385,6 +404,9 @@ test('the bounded native proof uses one exact approved owner-inbox email and cou
   assert.equal(s.p.calls.filter(c => c.operation === 'intent').length, 1);
   const daily = (await s.app.dashboard()).daily; assert.equal(daily.actual_emails, 0); assert.equal(daily.actual_call_attempts, 0);
   assert.equal(s.app.config.outreach_enabled, false);
+});
+test('the owner-only branded HTML proof is generated from the approved template and rejects altered HTML before dispatch',async t=>{
+ const s=await nativeProof(t),m=s.c.operations.native_proof.message;m.template_version='evz-personal-large-demo-v1';m.body_html=nativeProofMessage(s.c).body;await saveJson(join(s.directory,'lifecycle-config.json'),s.c);await drive(s.app,s.p,'html-owner-proof');assert.equal(s.p.calls.filter(c=>c.operation==='intent').length,1);assert.match(s.p.person.typed_custom_fields['body-1'],/CONTROLLED TEST/);assert.match(s.p.person.typed_custom_fields['body-1'],/voice-demo-preview/);assert.equal((await s.app.dashboard()).daily.actual_emails,0);m.body_html+='<p>Changed after approval</p>';await saveJson(join(s.directory,'lifecycle-config.json'),s.c);await assert.rejects(operationsFor(s.app,'changed-html-proof').next(),/Literal controlled/);
 });
 test('an unapproved native proof cannot publish an intent; a foreign recipient fails before dispatch', async t => {
   const s = await nativeProof(t, false); await drive(s.app, s.p);

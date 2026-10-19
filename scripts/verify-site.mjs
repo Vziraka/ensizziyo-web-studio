@@ -7,7 +7,7 @@ import {routeHref} from '../site/studio/views.mjs';
 const root = fileURLToPath(new URL('../dist/', import.meta.url));
 const studioPages = ['studio', 'studio/about', 'studio/services', 'studio/work', 'studio/inquiry', 'studio/privacy'];
 const headings = {
-  studio: 'We build digital products that help businesses grow.',
+  studio: 'AI solutions built around your business.',
   'studio/about': 'Good work starts with<br>understanding your business.',
   'studio/services': 'What needs to work better?',
   'studio/work': 'Explore our work',
@@ -64,11 +64,23 @@ assert.match(studioHome, /id="review-next"[^>]*><svg/);
 assert.doesNotMatch(studioHome, /Pause motion/);
 const privacy = await readFile(join(root, 'studio', 'privacy', 'index.html'), 'utf8');
 assert.match(privacy, /use <a href="\/studio\/inquiry\/">the inquiry form<\/a>/);
-assert.doesNotMatch(privacy, /mailto:hello@evzdigital\.studio/);
+assert.match(privacy, /mailto:hello@evzdigital\.studio/);
+assert.match(privacy, /Voice-agent demonstration/);
+assert.match(privacy, /retained by ElevenLabs for up to one day/);
+const voice=await readFile(join(root,'studio/demos/voice/index.html'),'utf8');
+assert.match(voice, /id="sample-audio" controls preload="none"/);
+assert.match(voice, /calendar\.app\.google\/VntxbUGK6wqxF8AU8/);
+assert.doesNotMatch(voice,/Design preview|not connected|Planned 45-second/);
+for(const [,reference]of voice.matchAll(/(?:src|href)="([^"]+)"/g))await expectAsset(join(root,'studio/demos/voice/index.html'),reference);
+assert.ok((await stat(join(root,'studio/assets/voice-demo-example.mp3'))).size>10000,'The recorded voice example must exist');
+const policies=await readFile(join(root,'_headers'),'utf8');
+assert.match(policies,/\/studio\/demos\/voice\/\n  Permissions-Policy: microphone=\(self\)/);
+assert.match(policies,/\/studio\/\n  Permissions-Policy: microphone=\(\)/);
+assert.match(policies,/\/homekind-motion\/\n  Permissions-Policy: microphone=\(\)/);
 assert.equal(routeHref('#services/systems'), '/studio/services/?service=systems');
 assert.equal(routeHref('#work/Systems'), '/studio/work/?category=Systems');
 assert.equal(routeHref('#inquiry/Arc'), '/studio/inquiry/?sample=Arc');
 assert.equal(routeHref('#edit'), '/studio/inquiry/#edit');
 assert.equal(routeHref('#privacy'), '/studio/privacy/');
 await assert.rejects(stat(join(root, 'README.md')), {code: 'ENOENT'});
-console.log('Verified six studio pages, eight demonstrations and their static HTML assets.');
+console.log('Verified studio pages, voice demo/audio, microphone scope and eight independent demonstrations.');

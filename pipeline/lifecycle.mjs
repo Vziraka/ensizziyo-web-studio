@@ -10,6 +10,7 @@ import { callSupply } from './call-desk.mjs';
 import { ownerContactView, ownerContactSummary } from './owner-contacts.mjs';
 import { providerContactView, providerContactSummary } from './provider-contacts.mjs';
 import {businessType} from './business-types.mjs';
+import {composeFollowUp,followUpOutcomes,followUpSetupIssues} from './follow-up-template.mjs';
 
 export const hash = value => createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
 export const check = (condition, message) => { if (!condition) throw Error(message); };
@@ -28,6 +29,7 @@ export const initialConfig = {
   schema_version: 1, mode: 'controlled', run_id: 'studio-lifecycle-controlled',
   research_enabled: false, outreach_enabled: false, connector_writes_enabled: false,
   priority: 'website', timezone: 'America/New_York', daily_target: 50,
+  follow_up: { enabled: false, sender_verified: false, demo_verified: false, booking_url: '' },
   transcript_ai: { enabled: false, daily_calls: 4, reserve_percent: 30,
     author_model: 'gpt-5.6-luna', reviewer_model: 'gpt-5.6-sol', effort: 'high' },
   calendar: { duration_minutes: 20, buffer_minutes: 15, start_hour: 9, end_hour: 17, weekdays: [1, 2, 3, 4, 5] },
@@ -54,7 +56,12 @@ function request(state, record, type, payload, eventId) {
 function pauseCold(state, record, eventId, reason) {
   record.cold_paused = true;
   for (const action of Object.values(state.actions)) if (action.prospect_id === record.id && ['email', 'call_task', 'callback_task'].includes(action.type)) {
-    if (action.status === 'Queued') action.status = 'Cancelled';
+    if (action.status === 'Queued') {
+      const handedOff=action.type==='email'&&state.operations?.requests?.[`${action.id}-intent`];
+      action.status=handedOff?'Uncertain':'Cancelled';const follow=record.follow_ups?.[action.payload.call_id];
+      if(handedOff)action.hold='Stop arrived after native handoff; verify suppression and delivery before continuing';
+      if(follow){follow.status=handedOff?'Uncertain':'Cancelled';follow.reason=handedOff?action.hold:reason;}
+    }
     if (action.status === 'Pending') { action.status = 'Uncertain'; action.hold = 'Stop arrived after dispatch; reconcile provider before continuing'; }
     if (action.status === 'Verified' && action.provider_task && ['call_task', 'callback_task'].includes(action.type)) action.cancel_requested = true;
   }
@@ -81,6 +88,26 @@ function safeReference(value) {
   return value;
 }
 function owner(actor) { check(actor === 'owner' || actor === 'controlled-fixture', 'This decision requires owner review'); }
+
+function prepareCallFollowUp(state,record,call,config,at,reviewed=false){
+  if(!config.follow_up?.enabled||!call.desk||!followUpOutcomes.includes(call.outcome))return;
+  record.follow_ups??={};
+  // The original performed call owns this message. Historical note changes never regenerate it.
+  const prior=record.follow_ups[call.call_id];
+  if(prior&&(!reviewed||prior.status!=='Held'||prior.action_id))return;
+  const content=prior?{...prior.content,to:record.contact.email??null}:composeFollowUp(record,call,config),issues=[];
+  if(record.restriction||record.reply)issues.push('Contact stopped or a reply needs owner review');
+  if(!content.to||!record.contact.verified)issues.push('A verified business email is needed; follow up with a confirmed address');
+  if(['Verification review','Connected review'].includes(record.stage)||call.outcome==='connected'&&!['Discovery','Information requested','Callback'].includes(record.stage))issues.push('Confirm the saved conversation and next step first');
+  const emails=record.attempts.filter(a=>a.channel==='email').length;
+  const pending=Object.values(record.follow_ups).filter(f=>f.call_id!==call.call_id&&f.action_id&&!['Sent','Cancelled'].includes(f.status)).length;
+  if(emails+pending>=2)issues.push('The two-email campaign limit is already used or reserved');
+  if(record.attempts[0]&&businessDaysBetween(record.attempts[0].at,at)>=10)issues.push('The ten-business-day campaign has ended');
+  const setup=record.controlled?[]:followUpSetupIssues(config);
+  const entry={call_id:call.call_id,call_sha256:hash(call),content,status:issues.length?'Held':'Prepared',reason:[...issues,...setup,...(!record.controlled&&!config.outreach_enabled?['Commercial email sending is held']:[])].join('. '),created_at:prior?.created_at??at};
+  record.follow_ups[call.call_id]=entry;
+  if(!issues.length){request(state,record,'email',{call_id:call.call_id,follow_up:true,content_sha256:hash(content),email:content.to},call.event_id);entry.action_id=`${call.event_id}-email`;}
+}
 
 export function validateTranscriptProposal(proposal, transcript) {
   check(proposal?.schema_version === 1 && proposal.transcript_sha256 === transcript.sha256 && connectedOutcomes.includes(proposal.outcome), 'Transcript proposal does not match the saved call');
@@ -178,9 +205,10 @@ export class StudioLifecycle {
           case 'call_logged': {
             owner(actor); check(key(data.call_id) && !r.calls[data.call_id] && [...coldOutcomes, 'connected', 'callback', 'declined', 'do_not_contact', 'wrong_contact', 'skipped'].includes(data.outcome), 'Explicit unique call outcome required');
             check(data.note === undefined || typeof data.note === 'string' && data.note.length <= 3000, 'Keep the call note within 3000 characters');
+            check(data.focus===undefined||['ai','systems','website','marketing','undecided'].includes(data.focus),'Choose a supported call focus');
             if (data.desk) {
               check(data.desk === true && (data.intent === undefined || data.outcome === 'connected' && ['discovery','requested_info'].includes(data.intent)), 'Choose the interested next step');
-              r.call_undo = {call_id:data.call_id,event_id:eid,record:Object.fromEntries(['stage','cold_paused','callback_at','next_check','suppression','note'].map(k=>[k,r[k]??null])),actions:structuredClone(Object.fromEntries(Object.entries(state.actions).filter(([,a])=>a.prospect_id===r.id)))};
+              r.call_undo = {call_id:data.call_id,event_id:eid,record:Object.fromEntries(['stage','cold_paused','callback_at','next_check','suppression','note','follow_ups'].map(k=>[k,structuredClone(r[k]??null)])),actions:structuredClone(Object.fromEntries(Object.entries(state.actions).filter(([,a])=>a.prospect_id===r.id)))};
             }
             check(data.simulated === r.controlled, 'Simulated and actual calls cannot be mixed');
             check(date(data.performed_at) && Date.parse(data.performed_at) <= Date.parse(event.at) && (!r.attempts.length || Date.parse(data.performed_at) >= Date.parse(r.attempts.at(-1).at)), 'Call time must be performed, ordered and dated');
@@ -224,11 +252,15 @@ export class StudioLifecycle {
               else if (r.attempts.filter(x => x.channel === 'email').length < 2 && !Object.values(state.actions).some(a => a.prospect_id === r.id && a.type === 'email' && ['Queued', 'Pending', 'Uncertain', 'Awaiting readback'].includes(a.status))) request(state, r, 'email', { call_id: data.call_id, idea: r.idea, email: r.contact.email }, eid);
               }
             } else { r.stage = 'Hold'; r.next_check = data.outcome === 'wrong_contact' ? 'Verify the public phone/contact ownership' : 'Record an actual outcome; skipped tasks do not release email'; pauseCold(state, r, eid, r.next_check); }
+            prepareCallFollowUp(state,r,r.calls[data.call_id],this.config,event.at);
             break;
           }
           case 'call_undone': {
             owner(actor); const undo=r.call_undo;
             check(undo?.call_id===data.call_id && r.calls[data.call_id], 'Only the latest quick call can be undone');
+            check(!['Sending','Sent','Uncertain'].includes(r.follow_ups?.[data.call_id]?.status),'Reconcile the reserved follow-up before undoing this call');
+            const followAction=r.follow_ups?.[data.call_id]?.action_id;
+            check(!followAction||!state.operations?.requests?.[`${followAction}-intent`],'A native email handoff already exists; reconcile delivery or cancellation before correcting the call');
             check(!r.information_draft&&!r.meeting&&!Object.values(this.config.operations?.bookings??{}).some(b=>b.prospect_id===r.id),'A draft or booking followed this call; reconcile it before correcting the outcome');
             check(Object.values(state.events).filter(e=>e.prospect_id===r.id).at(-1)?.id===undo.event_id,'Another decision followed this call; review history instead');
             check(!Object.values(state.operations?.requests??{}).some(q=>['Pending','Uncertain'].includes(q.status)) && !Object.values(state.actions).some(a=>a.prospect_id===r.id&&(a.provider_task||['Pending','Verified','Uncertain'].includes(a.status))), 'A provider action exists; reconcile it before correcting the call');
@@ -246,7 +278,7 @@ export class StudioLifecycle {
             check(r.stage==='Verification review' && reviewed?.basis && ['discovery','requested_info'].includes(reviewed.outcome),'Confirm the recorded verification conversation first');
             check(data.identity_confirmed===true && data.active_confirmed===true && text(data.decision_maker,250) && text(data.goal,1600),'Confirm identity, current activity, decision-maker and goal');
             r.verification.conversation={...data,at:event.at,actor,basis:'Owner attestation'};
-            r.stage=reviewed.outcome==='discovery'?'Discovery':'Information requested'; break;
+            r.stage=reviewed.outcome==='discovery'?'Discovery':'Information requested';prepareCallFollowUp(state,r,r.calls[data.call_id],this.config,event.at,true); break;
           }
           case 'contact_stopped':
             owner(actor); check(['decline', 'do_not_contact'].includes(data.reason), 'Record the explicit stop reason');
@@ -278,6 +310,7 @@ export class StudioLifecycle {
             else if (data.outcome === 'discovery') r.stage = 'Discovery';
             else if (data.outcome === 'requested_info') { r.stage = 'Information requested'; request(state, r, 'information_task', { summary: proposal.summary }, eid); }
             else { r.stage = 'Hold'; r.next_check = 'Owner clarification of the connected call'; }
+            prepareCallFollowUp(state,r,r.calls[data.call_id],this.config,event.at,true);
             break;
           }
           case 'verification_confirmed': {
@@ -293,6 +326,7 @@ export class StudioLifecycle {
             r.verification.conversation = { ...data, at: event.at, actor, transcript_sha256: transcript.sha256 };
             r.stage = reviewed.outcome === 'requested_info' ? 'Information requested' : 'Discovery'; r.next_check = 'Continue the confirmed owner conversation; cold email remains paused.';
             if (r.stage === 'Information requested') request(state, r, 'information_task', { summary: data.goal }, eid);
+            prepareCallFollowUp(state,r,r.calls[data.call_id],this.config,event.at,true);
             break;
           }
           case 'reply_received':
@@ -305,9 +339,10 @@ export class StudioLifecycle {
           case 'email_delivered': {
             check(actor === 'provider' && data.simulated === r.controlled && key(data.message_id), 'Verified provider email identity required');
             const action = state.actions[data.action_id];
-            check(action?.prospect_id === r.id && action.type === 'email' && r.calls[action.payload.call_id]?.outcome === 'no_answer', 'Delivery must match the explicit call/email handoff');
+            check(action?.prospect_id === r.id && action.type === 'email' && (r.calls[action.payload.call_id]?.outcome === 'no_answer'||this.config.follow_up?.enabled&&action.payload.follow_up&&followUpOutcomes.includes(r.calls[action.payload.call_id]?.outcome)), 'Delivery must match the explicit call/email handoff');
             check(r.attempts.filter(a => a.channel === 'email').length < 2, 'Two-email campaign cap reached');
             r.attempts.push({ id: data.message_id, channel: 'email', at: event.at, simulated: data.simulated });
+            if(action.payload.follow_up&&r.follow_ups?.[action.payload.call_id])r.follow_ups[action.payload.call_id].status='Sent';
             action.status = 'Verified'; action.delivery = { message_id: data.message_id, at: event.at };
             if (!r.cold_paused && !r.restriction && r.attempts.filter(a => a.channel === 'call').length < 2) {
               const due = new Date(r.attempts.find(a => a.channel === 'call').at); let days = 0;
@@ -407,7 +442,7 @@ export class StudioLifecycle {
     });
   }
   async dashboard() {
-    const {discoverySummary}=await import('./discovery-batches.mjs');
+    const {discoverySummary,discoveryCampaignSummary}=await import('./discovery-batches.mjs');
     this.config = await readJson(join(this.directory, 'lifecycle-config.json'));
     const state = await this.snapshot(), today = businessDate(this.now());
     let supplementalReviews = null, supplementalHold;
@@ -426,7 +461,7 @@ export class StudioLifecycle {
     const contacted = real.filter(r => r.attempts.some(a => !a.simulated && businessDate(a.at) === today));
     const first = contacted.filter(r => businessDate(r.attempts.find(a => !a.simulated).at) === today).length;
     const supply = callSupply(state, this.now()), queue = supply.queue;
-    return { ...state, discovery_batches:Object.values(state.discovery_batches??{}).map(discoverySummary), discovery_enabled:this.config.discovery?.enabled===true, owner_contact_summary:ownerContactSummary(state,this.now()), provider_contact_summary:providerContactSummary(state,this.now()), supply, pending_bookings:Object.entries(this.config.operations?.bookings??{}).filter(([id])=>!state.operations?.bookings?.[id]?.verified).map(([id,b])=>({id,prospect_id:b.prospect_id,start:b.start,mode:b.mode,status:state.operations?.holds?.[id]??'Queued for calendar verification'})), supplemental_reviews: supplementalReviews, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, owner_contact_view:ownerContactView(r,this.now()), provider_contact_view:providerContactView(r,this.now()), quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode, research_paused: researchPaused, research_priority: researchPriority, outreach_paused: !this.config.outreach_enabled, calls_paused: !this.config.outreach_enabled && !this.config.calls_enabled, priority: this.config.priority,
+    return { ...state,follow_up_settings:{follow_up:{booking_url:this.config.follow_up?.booking_url},sender:{postal_address:this.config.sender?.postal_address}}, discovery_batches:Object.values(state.discovery_batches??{}).map(discoverySummary), discovery_campaigns:Object.values(state.discovery_campaigns??{}).map(c=>discoveryCampaignSummary(c,state)), discovery_enabled:this.config.discovery?.enabled===true, owner_contact_summary:ownerContactSummary(state,this.now()), provider_contact_summary:providerContactSummary(state,this.now()), supply, pending_bookings:Object.entries(this.config.operations?.bookings??{}).filter(([id])=>!state.operations?.bookings?.[id]?.verified).map(([id,b])=>({id,prospect_id:b.prospect_id,start:b.start,mode:b.mode,status:state.operations?.holds?.[id]??'Queued for calendar verification'})), supplemental_reviews: supplementalReviews, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, owner_contact_view:ownerContactView(r,this.now()), provider_contact_view:providerContactView(r,this.now()), quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode,follow_up_enabled:this.config.follow_up?.enabled===true, research_paused: researchPaused, research_priority: researchPriority, outreach_paused: !this.config.outreach_enabled, calls_paused: !this.config.outreach_enabled && !this.config.calls_enabled, priority: this.config.priority,
       runtime_enabled: this.config.runtime?.enabled === true, final_review: this.config.mode === 'production' ? { fingerprint: (await import('./production.mjs')).releaseFingerprint(this.config), gates: (await import('./production.mjs')).productionGates(this.config), approved: this.config.release?.approved === true, verified: this.config.verified_summary ?? [],
         calls: { fingerprint: (await import('./production.mjs')).callReleaseFingerprint(this.config), approved: this.config.call_release?.approved === true, evidence: this.config.call_readiness ?? {}, transcript_daily_calls: this.config.transcript_ai.daily_calls } } : null,
       ai_enabled: this.config.transcript_ai.enabled, connector_writes_enabled: this.config.connector_writes_enabled, readiness: this.config.readiness },

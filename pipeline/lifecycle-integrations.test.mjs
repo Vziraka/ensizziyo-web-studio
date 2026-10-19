@@ -157,6 +157,13 @@ test('loopback console rejects unauthenticated, cross-origin, forged-worker and 
   assert.equal((await fetch(`${base}/lifecycle-state.json`, { headers: { cookie } })).status, 400);
   assert.equal((await fetch(`${base}/preview/`)).status, 200);
 });
+test('the full saved-email preview requires the private session, escapes copy and uses local EVZ assets without executing scripts',async t=>{
+ const config=structuredClone(initialConfig);config.follow_up.enabled=true;const {app}=await setup(t,config,false);
+ // Only the next explicitly performed call creates this preview; old calls are not backfilled.
+ await app.apply({id:'preview-call',prospect_id:id,type:'call_logged',at,data:{call_id:'preview-call',outcome:'voicemail',performed_at:at,simulated:true,desk:true}});
+ const server=await serveLifecycle(app,{port:0,quiet:true});t.after(()=>new Promise(resolve=>server.close(resolve)));const base=`http://127.0.0.1:${server.address().port}`,path=`${base}/follow-up/${id}/preview-call`;
+ assert.equal((await fetch(path)).status,400);const page=await fetch(base),cookie=page.headers.get('set-cookie').split(';')[0],response=await fetch(path,{headers:{cookie}}),html=await response.text();assert.equal(response.status,200);assert.match(html,/this page sends nothing/);assert.match(html,/\/assets\/voice-demo-preview.png/);assert.match(html,/EVZ Digital team/);assert.doesNotMatch(response.headers.get('content-security-policy'),/script-src 'unsafe-inline'/);assert.match(response.headers.get('content-security-policy'),/default-src 'none'/);assert.equal((await fetch(`${base}/assets/evz-wordmark.png`)).status,200);
+});
 test('lost Google write response reconciles once, preserves owner edits and never replays a restarted pending publication', async t => {
   const google = { spreadsheet_id: 'owned-sheet', sheet_id: 123, sheet_title: 'Lifecycle proof' };
   const { app } = await setup(t, { ...initialConfig, google }, false); let cells = [], writes = 0;
