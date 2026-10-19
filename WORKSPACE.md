@@ -1,5 +1,9 @@
 # Workspace links
 
+## Business Google cutover — October 18, 2026
+
+The owner completed OAuth for business Gmail and Calendar while retaining personal connections. Both business profiles and live Calendar availability passed through the updated local adapter. Multi-account requests require explicit connection IDs, saved only in private configuration. [Call desk account selection](pipeline/CALL-DESK.md#business-google-account-selection) owns routing, verification and rollback. The private `operations/business-account-deployment.json` records the installed version and final connection proof once deployment completes. Sender delivery, invitations, Apollo mailbox binding and full production release remain separate gates; this cutover enables no prospect contact.
+
 ## Call desk implementation — October 18, 2026
 
 The owner approved the interviewed call-desk plan. [PR #82](https://github.com/Vziraka/ensizziyo-web-studio/pull/82) consolidates the citation correction, supplemental sidecar and Windows task fixes with quick call outcomes, owner notes, explicit message approval and discovery booking. [Call desk operation and verification](pipeline/CALL-DESK.md) owns the behavior, limits and rollout/rollback recipe. The managed `pipeline-call-desk` checkout is isolated from the owner's modified website checkout. Current installed source and the pre-release backup belong in the private deployment manifest; the dashboard reports its startup source fingerprint.

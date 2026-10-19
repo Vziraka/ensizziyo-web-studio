@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events';
 import { PassThrough, Writable } from 'node:stream';
 import { AppConnectors, connectorName } from './app-connectors.mjs';
 
-function transport({ approval = false, silent = false } = {}) {
+function transport({ approval = false, silent = false, linked = false } = {}) {
   const requests = []; let launches = 0, killed = 0, launchArgs;
   const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough();
   const reply = value => setImmediate(() => child.stdout.write(`${JSON.stringify(value)}\n`));
@@ -18,6 +18,9 @@ function transport({ approval = false, silent = false } = {}) {
         'apollo_io.apollo_users_api_profile': { name: 'apollo_io.apollo_users_api_profile', inputSchema: { properties: { include_credit_usage: {}, _conversation_ref: {}, _rationale: {} } } }
       } }] }
     };
+    if (linked) for (const name of ['gmail.get_profile', 'gmail.send_email', 'google_calendar.get_profile', 'google_calendar.get_availability', 'google_calendar.create_event']) {
+      results['mcpServerStatus/list'].data[0].tools[name] = { name, inputSchema: { properties: { link_id: { type: 'string' } }, required: ['link_id'] } };
+    }
     if (r.method === 'mcpServer/tool/call') {
       if (approval) reply({ id: 'approval-id', method: 'tool/requestUserInput', params: { questions: [] } });
       reply({ id: r.id, result: { content: [{ type: 'text', text: 'Original provider receipt' }], structuredContent: { email: 'owner@example.com' }, isError: false } });
@@ -34,6 +37,36 @@ test('supported connector mapping rejects arbitrary tools and namespace lookalik
   assert.equal(connectorName('mcp__codex_apps__gmail_send_email'), 'gmail.send_email');
   assert.throws(() => connectorName('mcp__codex_apps__gmail_delete_email'), /allowlist/);
   assert.throws(() => connectorName('mcp__other__gmail_get_profile'), /allowlist/);
+});
+
+test('Google reads and writes use the configured accounts without changing caller inputs or Apollo', async () => {
+  const p = transport({ linked: true }), accountLinks = { gmail: 'link_businessmail', google_calendar: 'link_businesscalendar' };
+  const c = new AppConnectors({ launch: p.launch, accountLinks });
+  accountLinks.gmail = 'link_personal';
+  try {
+    await c.connect();
+    const input = {};
+    for (const name of ['gmail_get_profile', 'gmail_send_email', 'google_calendar_get_profile', 'google_calendar_get_availability', 'google_calendar_create_event'])
+      await c.call(`mcp__codex_apps__${name}`, input);
+    assert.deepEqual(input, {});
+    const calls = p.requests.filter(r => r.method === 'mcpServer/tool/call');
+    assert.deepEqual(calls.map(r => r.params.arguments.link_id), ['link_businessmail', 'link_businessmail', 'link_businesscalendar', 'link_businesscalendar', 'link_businesscalendar']);
+    await assert.rejects(c.call('mcp__codex_apps__gmail_send_email', { link_id: 'link_personal' }), /account/);
+    assert.equal(p.requests.filter(r => r.method === 'mcpServer/tool/call').length, 5);
+    await c.call('mcp__codex_apps__apollo_io_apollo_users_api_profile', {});
+    assert.equal(p.requests.at(-1).params.arguments.link_id, undefined);
+  } finally { await c.close(); }
+});
+
+test('missing account selection or a provider without explicit routing cannot fall back to a default', async () => {
+  for (const linked of [true, false]) {
+    const p = transport({ linked }), c = new AppConnectors({ launch: p.launch, ...(linked ? {} : { accountLinks: { gmail: 'link_businessmail' } }) });
+    try {
+      await c.connect();
+      await assert.rejects(c.call('mcp__codex_apps__gmail_get_profile', {}), /fields|account/);
+      assert.equal(p.requests.some(r => r.method === 'mcpServer/tool/call'), false);
+    } finally { await c.close(); }
+  }
 });
 test('direct account read uses existing authentication and an ephemeral session without any model turn', async () => {
   const p = transport(), c = new AppConnectors({ launch: p.launch, cwd: '/private/studio' });

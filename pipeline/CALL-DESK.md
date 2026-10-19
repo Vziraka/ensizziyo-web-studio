@@ -22,6 +22,14 @@ SOSA's public business/social browsing, state registries, vendor directories and
 
 The host must remain awake with its owner session and existing authentication available. No active chat is needed for the saved campaign. Automatic discovery beyond the named scope, 50/day sustained replenishment, sleep/reboot recovery, business-mailbox cutover and real video-link delivery remain acceptance work until measured. The dashboard must not label 151 staged records as 151 detailed research acceptances: the observed existing supply was 18 research-reviewed and 133 verification cards, with no new calls or research performed during implementation.
 
+## Business Google account selection
+
+With multiple connected Google accounts, save the verified Gmail connection ID in private `sender.link_id` and Calendar connection ID in private `calendar.link_id`. Obtain IDs from the authenticated tool catalog, then read both profiles and match `sender.email` / `calendar.owner_email`. All three callers pass these to the shared dispatcher, which includes `link_id` on every Gmail/Calendar request, including background reads, sends, availability and event creation. Personal connections remain installed; the UI's Primary label does not determine routing.
+
+The transport rejects caller overrides, missing required selection and a provider contract that cannot accept the saved selection. A changed account during dispatch holds the operation. The production fingerprint already includes the complete sender/calendar configuration, covering these new fields. Account selection does not establish delivery, invitation receipt, Apollo mailbox readiness or production release.
+
+For cutover, preserve private config and task action, keep contact execution disabled, deploy reviewed source in a new runtime and restart the existing service. Read both profiles through that installed adapter and request `/api/slots`; verify the business email, non-simulated availability and matching runtime fingerprint. Store receipts outside Git. Rollback requires the prior runtime and matching config; an older adapter must remain paused because it cannot select among multiple Google accounts.
+
 ## Verification and release
 
 Run `npm ci --ignore-scripts`, `npm run check`, and `npm test -- --test-concurrency=1` in `pipeline` on Windows (Linux CI runs normal concurrency). Focused coverage includes complete context anchors and bounded recovery, call idempotence/undo/restart, callbacks/stops, exact message approval/lost receipts, fictional booking, Eastern DST/hours/buffers, and repeated technical failures. Supplemental sidecar and Windows task identity code were reconciled from the installed runtime; the superseded raw model-error feedback patch was not retained.

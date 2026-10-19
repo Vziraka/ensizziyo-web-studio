@@ -26,9 +26,14 @@ export function connectorName(name) {
 
 // Only the local deterministic dispatcher uses this client. It never starts a model turn.
 export class AppConnectors {
-  constructor({ launch = spawn, timeoutMs = 30_000, cwd, signal, conversationRef = 'm8q2r7v4p9' } = {}) {
+  constructor({ launch = spawn, timeoutMs = 30_000, cwd, signal, conversationRef = 'm8q2r7v4p9', accountLinks = {} } = {}) {
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 120_000) throw Error('Invalid connector timeout');
     this.launch = launch; this.timeoutMs = timeoutMs; this.cwd = cwd; this.signal = signal; this.conversationRef = conversationRef;
+    this.accountLinks = { ...accountLinks };
+    for (const [provider, link] of Object.entries(this.accountLinks)) {
+      if (!['gmail', 'google_calendar'].includes(provider) || link !== undefined && (typeof link !== 'string' || !/^link_[a-zA-Z0-9]+$/.test(link)))
+        throw Error('Invalid configured Google account link');
+    }
     this.pending = new Map(); this.sequence = 0; this.bytes = 0; this.closed = false;
   }
   async connect() {
@@ -95,7 +100,10 @@ export class AppConnectors {
     if (!tool || tool.name !== native) throw Error('Prepared connector tool is unavailable or changed');
     if (!input || typeof input !== 'object' || Array.isArray(input) || Buffer.byteLength(JSON.stringify(input)) > 120_000) throw Error('Invalid bounded connector input');
     const args = native.startsWith('apollo_io.') ? { ...input, _conversation_ref: this.conversationRef,
-      _rationale: 'Execute the exact authorized studio workflow instruction.' } : input;
+      _rationale: 'Execute the exact authorized studio workflow instruction.' } : { ...input };
+    const link = this.accountLinks[native.split('.')[0]];
+    if (Object.hasOwn(input, 'link_id') && input.link_id !== link) throw Error('Requested account differs from the configured connector account');
+    if (link) args.link_id = link;
     for (const field of tool.inputSchema.required ?? []) if (!Object.hasOwn(args, field)) throw Error('Connector required fields changed; no operation dispatched');
     if (tool.inputSchema.properties && Object.keys(args).some(key => !Object.hasOwn(tool.inputSchema.properties, key))) throw Error('Prepared connector fields differ from the current tool contract');
     const result = await this.rpc('mcpServer/tool/call', { threadId: this.threadId, server: 'codex_apps', tool: native, arguments: args });

@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { StudioLifecycle } from './lifecycle.mjs';
 import { fixtureProspect } from './lifecycle-fixtures.mjs';
-import { saveJson } from './engine.mjs';
+import { saveJson,readJson } from './engine.mjs';
 import { productionConfig,releaseFingerprint,queueMeeting } from './production.mjs';
-import { saveInformationDraft,sendInformation,callingSession } from './call-desk-actions.mjs';
+import { saveInformationDraft,sendInformation,callingSession,availableMeetingSlots } from './call-desk-actions.mjs';
 const at='2026-10-19T15:00:00Z';
 async function setup(t,production=false){
   const directory=await mkdtemp(join(tmpdir(),'desk-actions-'));t.after(()=>rm(directory,{recursive:true,force:true}));
@@ -19,10 +19,23 @@ async function setup(t,production=false){
 }
 test('saved exact message sends once and changed approval cannot send',async t=>{
   const {app,draft}=await setup(t,true);let sends=0;
-  const connect=()=>({connect:async()=>{},close:async()=>{},call:async(name,input)=>{if(name.endsWith('get_profile'))return {structuredContent:{email:'owner@example.com'}};sends++;assert.equal(input.payload.body.content,draft.body);assert.equal(input.to,draft.to);return {structuredContent:{id:'message1',thread_id:'thread1'}};}});
+  const configPath=join(app.directory,'lifecycle-config.json'),c=await readJson(configPath);c.sender.link_id='link_businessmail';c.calendar.link_id='link_businesscalendar';c.release.fingerprint=releaseFingerprint(c);await saveJson(configPath,c);
+  const connect=options=>{assert.deepEqual(options.accountLinks,{gmail:'link_businessmail',google_calendar:'link_businesscalendar'});return {connect:async()=>{},close:async()=>{},call:async(name,input)=>{if(name.endsWith('get_profile'))return {structuredContent:{email:'owner@example.com'}};sends++;assert.equal(input.payload.body.content,draft.body);assert.equal(input.to,draft.to);return {structuredContent:{id:'message1',thread_id:'thread1'}};}};};
   await assert.rejects(sendInformation(app,{prospect_id:'bakery',fingerprint:'changed',approved:true},{connect}));
   const input={prospect_id:'bakery',fingerprint:draft.fingerprint,approved:true};
   assert.equal((await sendInformation(app,input,{connect})).status,'Sent');await sendInformation(app,input,{connect});assert.equal(sends,1);
+});
+
+test('live slot lookup uses the configured business account and checked calendar availability',async t=>{
+  const {app}=await setup(t,true);let reads=0;
+  const configPath=join(app.directory,'lifecycle-config.json'),c=await readJson(configPath);c.sender.link_id='link_businessmail';c.calendar.link_id='link_businesscalendar';await saveJson(configPath,c);
+  const connect=options=>{assert.deepEqual(options.accountLinks,{gmail:'link_businessmail',google_calendar:'link_businesscalendar'});return {connect:async()=>{},close:async()=>{},call:async(name,input)=>{
+    reads++;
+    if(name.endsWith('get_profile'))return {structuredContent:{email:'owner@example.com'}};
+    assert.deepEqual(input.calendar_ids,['primary']);
+    return {structuredContent:{calendars:[{calendar_id:'primary',busy:[]}]}};
+  }};};
+  const result=await availableMeetingSlots(app,{connect});assert.equal(result.simulated,false);assert.ok(result.slots.length>0);assert.equal(reads,2);
 });
 test('lost send receipt remains uncertain across restart and never sends again',async t=>{
   const {app,draft}=await setup(t,true);let sends=0;
