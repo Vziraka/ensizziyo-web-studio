@@ -116,7 +116,14 @@ export async function reviewContactQueue(app,directory,review) {
     for(const p of [...i.pages,i.search.previous_read??{},i.search,i.apollo])if(p.receipt){const receipt=await readJson(join(directory,p.receipt));check(hash(receipt)===p.sha256,'Captured contact evidence changed');evidence.push({receipt:p.receipt,sha256:p.sha256});}
     const owner=state.prospects[i.prospect_id].owner_contact;
     let saved={...review,review_input_sha256:hash(review),bound_contact_sha256:i.bound_contact_sha256,evidence,queue_id:q.id,...(owner?.bound_contact_sha256===i.bound_contact_sha256?{owner_evidence_ref:owner.evidence_ref,owner_packet_sha256:owner.packet_sha256}:{})};
-    if(i.review){check(i.review.review_input_sha256===hash(review),'Completed review changed; use a new explicit review rather than overwrite');saved=i.review;}
+    if(i.review?.review_input_sha256===hash(review))saved=i.review;
+    else if(i.review){
+      check(review.supersedes_review_sha256===hash(i.review),'Completed review changed; use a new explicit review bound to its predecessor');
+      const previous_review_ref=`reviews/${hash(i.review)}.json`,path=join(directory,previous_review_ref);await mkdir(join(directory,'reviews'),{recursive:true,mode:0o700});
+      try{await writeFile(path,JSON.stringify(i.review,null,2),{flag:'wx',mode:0o600});}
+      catch(e){if(e.code!=='EEXIST')throw e;check(hash(await readJson(path))===hash(i.review),'Archived review changed; preserve the hold');}
+      saved.previous_review_ref=previous_review_ref;
+    }
     i.review=saved;i.status='Reviewed';await saveJson(queuePath(directory),q);
     await app.change(s=>{check(current(i,s.prospects[i.prospect_id]),'Contact changed during review');s.prospects[i.prospect_id].contact_review=saved;s.contact_research=contactQueueSummary(q);s.revision=(s.revision??0)+1;s.updated_at=stamp(app.now);});
     return contactQueueSummary(q);

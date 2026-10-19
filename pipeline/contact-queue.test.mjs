@@ -44,6 +44,22 @@ test('priority, binding changes, access failures and interrupted reads remain ex
   r.contact.phone='202-555-0199';await assert.rejects(reviewContactQueue(app,directory,review),/binding/);
 });
 
+test('an explicit contact-review correction preserves its predecessor and never repeats reads',async t=>{
+  const {directory,app,plan,state,r}=await fixture(t);await createContactQueue(directory,plan,state,{now});let reads=0;
+  const collect=async()=>{reads++;throw Error('Source unavailable');},connect={call:async()=>{reads++;return {content:[{type:'text',text:'{"people":[]}'}]};}};
+  for(let n=0;n<3;n++)await contactQueueTick(app,directory,{collect,connect});
+  const review={schema_version:1,prospect_id:r.id,reviewed_by:'Source reviewer',reviewed_at:now().toISOString(),outcome:'No owner found in checked sources',notes:'Checked public sources did not establish a current owner.',next_action:'Use the verified business line to confirm the current decision-maker.'};
+  await reviewContactQueue(app,directory,review);const before=structuredClone(r.contact_review),readsBefore=reads;
+  const corrected={...review,notes:'No individual was accepted; the general shop number remains a business fallback.'};
+  await assert.rejects(reviewContactQueue(app,directory,corrected),/explicit review/);
+  await assert.rejects(reviewContactQueue(app,directory,{...corrected,supersedes_review_sha256:hash('wrong')}),/explicit review/);
+  const amendment={...corrected,supersedes_review_sha256:hash(before)};
+  await reviewContactQueue(app,directory,amendment);await reviewContactQueue(app,directory,amendment);
+  assert.deepEqual(JSON.parse(await readFile(join(directory,r.contact_review.previous_review_ref),'utf8')),before);
+  assert.deepEqual(r.contact_review.evidence,before.evidence);assert.equal(r.contact_review.notes,corrected.notes);
+  await contactQueueTick(app,directory,{collect,connect});assert.equal(reads,readsBefore);assert.deepEqual(r.calls,{keep:true});assert.equal(r.restriction,'do_not_contact');
+});
+
 test('scope expansion, evidence tampering and incomplete review are rejected',async t=>{
   const {directory,app,plan,state}=await fixture(t);const invalid=structuredClone(plan);invalid.items.push(invalid.items[0]);await assert.rejects(createContactQueue(directory,invalid,state,{now}),/exact/);
   await createContactQueue(directory,plan,state,{now});await assert.rejects(reviewContactQueue(app,directory,{prospect_id:'existing'}),/retrieval/);
