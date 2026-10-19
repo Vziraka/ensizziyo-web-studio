@@ -6,6 +6,7 @@ import { collectPublicSources, validateJob, validateSnapshots } from './sources.
 const domain = value => new URL(value).hostname.toLowerCase().replace(/^www\./,'');
 const digits = value => String(value??'').replace(/\D/g,'').replace(/^1(?=\d{10}$)/,'');
 const normalize = value => value.replace(/\s+/g,' ').trim().toLowerCase();
+const canonical = value => value.normalize('NFKD').replace(/[^\p{L}\p{N}]/gu,'').toLowerCase();
 const fresh = (at,now) => Number.isFinite(Date.parse(at)) && Date.parse(at)<=+now && +now-Date.parse(at)<=30*86400000;
 const binding = r => hash(r.contact);
 const role = /\b(?:owner|founder|operator|president|ceo|director|principal)\b/i;
@@ -18,15 +19,22 @@ export function ownerContactView(r,now=new Date()) {
     confidence:direct?'Source-linked professional number':valid&&a.person?'Owner identity supported; direct number unverified':published&&!stale?'Business line supported; owner link unverified':'Contact evidence needs verification',
     person:valid?a.person:null,direct_phone:direct||null,notes:valid?a.notes??[]:[],checked_at:valid?a.reviewed_at:r.contact?.checked_at??null,
     source:r.contact?.source??null,evidence_ref:valid?a.evidence_ref:null,
+    review:r.contact_review?{...r.contact_review,current:r.contact_review.bound_contact_sha256===binding(r)&&fresh(r.contact_review.reviewed_at,now)}:null,
     next_action:direct?'Confirm the person still operates the business and can be reached at this published number.':stale?'Recheck the changed or stale contact evidence before using an owner-direct claim.':valid&&a.person?'Find an explicit public professional number for this person; the shop line alone does not establish direct access.':'Identify the current owner/operator from business-controlled or authoritative professional sources, then verify an explicitly linked business number.'};
 }
 export function ownerContactSummary(state,now=new Date()) {
   const all=Object.values(state.prospects).map(r=>ownerContactView(r,now));
   return {total:all.length,owner_direct:all.filter(a=>a.direct_phone).length,general_business:all.filter(a=>a.classification==='General business line').length,unverified:all.filter(a=>a.classification==='Unverified number').length,identified:all.filter(a=>a.person).length};
 }
-function boundJob(r,job) {
+function boundJob(r,job,{source_approvals=[],snapshots}={}) {
   validateJob(job);
-  check(job.research_version===3&&job.business_name===r.name&&domain(job.website)===domain(r.contact.source)&&job.seed_urls.every(url=>domain(url)===domain(job.website)),'Contact capture must stay on the existing business domain and identity');
+  check(job.research_version===3&&job.business_name===r.name&&domain(job.website)===domain(r.contact.source),'Contact capture must stay on the existing business domain and identity');
+  check(Array.isArray(source_approvals)&&source_approvals.length<=4,'Bound reviewed professional sources');
+  for(const url of job.seed_urls)if(domain(url)!==domain(job.website)){
+    const approval=source_approvals.find(a=>a.url===url),source=snapshots?.sources.find(s=>s.url===url);
+    let linked=false;if(approval?.business_url)try{validateJob({...job,seed_urls:[approval.business_url]});linked=domain(approval.business_url)===domain(job.website)&&source?.text.includes(approval.business_url);}catch{}
+    check(approval&&approval.business_name===r.name&&['Business-linked profile','Professional publication','Official business registry'].includes(approval.kind)&&source&&source.capture_method!=='search_snippet'&&typeof approval.identity_excerpt==='string'&&approval.identity_excerpt.length>=10&&approval.identity_excerpt.length<=350&&(canonical(approval.identity_excerpt).includes(canonical(r.name.split(' / ')[0]))||linked)&&normalize(source.text).includes(normalize(approval.identity_excerpt))&&!/(?:^|\.)(?:whitepages\.com|spokeo\.com|truthfinder\.com|radaris\.com|beenverified\.com|fastpeoplesearch\.com)$/.test(domain(url)),'External domain contact evidence needs an explicit reviewed business identity; private-person brokers and search snippets are excluded');
+  }
 }
 
 export async function retainContactDiscovery(directory,r,job,{connect,now=()=>new Date(),...captureOptions}={}) {
@@ -56,19 +64,22 @@ export async function applyOwnerContact(app,p) {
   return app.change(state=>{
     const r=state.prospects[p.prospect_id];
     check(r&&r.company_id===p.company_id&&p.bound_contact_sha256===binding(r),'Existing contact identity/binding changed');
-    boundJob(r,p.job);validateSnapshots(p.snapshots,p.job);
+    boundJob(r,p.job,p);validateSnapshots(p.snapshots,p.job);
     check(p.job.id===p.id&&p.job.as_of<=p.reviewed_at.slice(0,10)&&p.snapshots.sources.every(s=>fresh(s.fetched_at,app.now())&&Date.parse(s.fetched_at)<=Date.parse(p.reviewed_at)),'Contact source identity/date changed');
     const cite=(value)=>{
       const s=p.snapshots.sources.find(s=>s.url===value.source_url);
-      check(s&&typeof value.excerpt==='string'&&value.excerpt.length>=5&&value.excerpt.length<=350&&normalize(s.text).includes(normalize(value.excerpt)),'Contact excerpt is missing from retained source');
+      check(s&&s.capture_method!=='search_snippet'&&typeof value.excerpt==='string'&&value.excerpt.length>=5&&value.excerpt.length<=350&&normalize(s.text).includes(normalize(value.excerpt)),'Contact excerpt is missing from retained primary/professional source');
       return {url:s.url,checked_at:s.fetched_at,source_sha256:s.content_sha256,excerpt:value.excerpt};
     };
     let person=null,direct_phone=null;
     if(p.person){
       check(typeof p.person.name==='string'&&p.person.name.trim().length>=2&&p.person.name.length<=120&&typeof p.person.role==='string'&&p.person.role.length<=100&&role.test(p.person.role),'Explicit professional owner/operator identity required');
       const source=cite(p.person);
-      check(normalize(p.person.excerpt).includes(normalize(p.person.name))&&normalize(p.person.excerpt).includes(normalize(p.person.role)),'Owner name and role must be in the exact identity excerpt');
-      person={name:p.person.name,role:p.person.role,source};
+      const phrase=p.person.source_role_phrase??p.person.role;
+      check(typeof phrase==='string'&&phrase.length<=100&&(/\b(?:owners?|founders?|operator|president|ceo|director|principal|founded|owns|owned|operated)\b/i.test(phrase))&&normalize(p.person.excerpt).includes(normalize(p.person.name))&&normalize(p.person.excerpt).includes(normalize(phrase)),'Owner name and role must be in the exact identity excerpt');
+      if(p.person.source_role_phrase)check((/founder/i.test(p.person.role)&&/founder|founded/i.test(phrase))||(/owner/i.test(p.person.role)&&/owner|owns|owned/i.test(phrase))||(/operator/i.test(p.person.role)&&/operator|operated/i.test(phrase))||normalize(p.person.role).includes(normalize(phrase)),'Source wording must support the stated professional role');
+      check(p.person.current_role_status===undefined||['Business currently lists this role','Historical founder; current role unconfirmed','Professional source; current role unconfirmed'].includes(p.person.current_role_status),'Keep current operating role separate from identity evidence');
+      person={name:p.person.name,role:p.person.role,source,...(p.person.current_role_status?{current_role_status:p.person.current_role_status}:{})};
     }
     if(p.direct_phone){
       const d=p.direct_phone,source=cite(d);

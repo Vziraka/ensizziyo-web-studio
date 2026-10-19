@@ -3,6 +3,7 @@ import { createInterface } from 'node:readline';
 import { subscriptionEnvironment } from './workers.mjs';
 
 const permitted = new Set([
+  'search_service.web_run',
   'apollo_io.apollo_users_api_profile', 'apollo_io.apollo_email_accounts_index', 'apollo_io.apollo_contacts_search', 'apollo_io.apollo_mixed_people_api_search',
   'apollo_io.apollo_contacts_create', 'apollo_io.apollo_contacts_update', 'apollo_io.apollo_accounts_search', 'apollo_io.apollo_accounts_create',
   'apollo_io.apollo_fields_index', 'apollo_io.apollo_emailer_campaigns_search', 'apollo_io.apollo_emailer_campaigns_remove_or_stop_contact_ids',
@@ -14,7 +15,7 @@ const permitted = new Set([
   'google_calendar.search_events', 'google_calendar.read_event'
 ]);
 export function connectorName(name) {
-  for (const prefix of ['apollo_io', 'google_calendar', 'gmail']) {
+  for (const prefix of ['apollo_io', 'google_calendar', 'gmail', 'search_service']) {
     const start = `mcp__codex_apps__${prefix}_`;
     if (name?.startsWith(start)) {
       const native = `${prefix}.${name.slice(start.length)}`;

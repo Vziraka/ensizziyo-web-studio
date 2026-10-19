@@ -30,6 +30,7 @@ export function validateControllerConfig(c) {
     const p = c.providers[worker];
     if (!p || typeof p.enabled !== 'boolean' || !integer(p.daily_calls, 0, 100) || typeof p.included_usage_only_confirmed !== 'boolean' || !integer(p.reserve_percent, 0, 99) || p.usage_source !== (worker === 'codex' ? 'codex' : 'call-cap')) throw Error('Invalid subscription policy');
     modelArguments(worker, { model: p.model, effort: p.effort }); modelArguments(worker, { model: p.review_model, effort: p.review_effort });
+    if(p.capacity_model!==undefined){modelArguments(worker,{model:p.capacity_model,effort:p.review_effort});if(worker!=='codex'||!p.capacity_model||[p.model,p.review_model].includes(p.capacity_model)||typeof p.capacity_model_evidence!=='string'||p.capacity_model_evidence.length<10)throw Error('A distinct verified included Codex capacity route is required');}
     if (!p.model || !p.review_model || (p.enabled && (!p.daily_calls || !p.included_usage_only_confirmed))) throw Error('Enabled providers require explicit models, a call budget and verified included-only billing');
   }
   return c;
@@ -124,7 +125,8 @@ export async function runController({ directory, config, queue, invoke = invokeC
       }
       await guard(); options.signal?.throwIfAborted();
       const stronger = options.phase === 'review' || record.stage === 'repair' || record.use_review_model === true;
-      const model = stronger ? p.review_model : p.model, effort = worker === 'codex' ? (stronger ? p.review_effort : p.effort) : undefined;
+      if(record.use_capacity_model&&!p.capacity_model)throw problem('RECONCILIATION_REQUIRED','Retained capacity route is no longer configured');
+      const model = record.use_capacity_model ? p.capacity_model : stronger ? p.review_model : p.model, effort = worker === 'codex' ? (stronger||record.use_capacity_model ? p.review_effort : p.effort) : undefined;
       const call = { id: randomUUID(), job_id: record.job_id, day: now().toISOString().slice(0, 10), reserved_at: now().toISOString(), worker, model, effort: effort ?? null, phase: options.phase, status: 'Reserved' };
       if (record.recovery_armed) { record.recoveries++; delete record.recovery_armed; }
       state.calls.push(call); record.status = 'Running'; await save(); // Never refund an uncertain/failed call.
@@ -173,7 +175,8 @@ export async function runController({ directory, config, queue, invoke = invokeC
             for (const worker of alternatives) if (await available(worker)) { alternate = worker; break; }
             const failed = state.calls.findLast(c => c.job_id === record.job_id), policy = config.providers[record.worker];
             if (alternate) record.worker = alternate;
-            else if (failed?.worker === record.worker && ['WORKER_OUTPUT_INVALID', 'WORKER_TIMEOUT', 'WORKER_CAPACITY'].includes(failed.status) && (failed.status !== 'WORKER_CAPACITY' || failed.model !== policy.review_model) && policy.model !== policy.review_model && await available(record.worker)) record.use_review_model = true;
+            else if (failed?.worker === record.worker && ['WORKER_OUTPUT_INVALID', 'WORKER_TIMEOUT', 'WORKER_CAPACITY'].includes(failed.status) && (failed.status !== 'WORKER_CAPACITY' || failed.model !== policy.review_model) && !(failed.status==='WORKER_CAPACITY'&&policy.capacity_model&&state.calls.findLast(c=>c.worker===record.worker&&c.model===policy.review_model)?.status==='WORKER_CAPACITY') && policy.model !== policy.review_model && await available(record.worker)) record.use_review_model = true;
+            else if(failed?.worker===record.worker&&failed.status==='WORKER_CAPACITY'&&policy.capacity_model&&failed.model!==policy.capacity_model&&await available(record.worker))record.use_capacity_model=true;
             else if (failed?.status === 'WORKER_CAPACITY') throw problem('WORKER_CAPACITY','No distinct configured model is available; preserve the capacity hold');
             else record.worker = await choose(alternatives);
             record.recovery_armed = true; delete record.needs_handoff; await save();

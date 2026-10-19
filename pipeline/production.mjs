@@ -193,6 +193,7 @@ export async function pauseStudio(app) {
   const c = await app.change(async () => {
     const path = join(app.directory, 'lifecycle-config.json'), c = await readJson(path);
     c.transcript_ai.enabled = false; c.connector_writes_enabled = false; c.outreach_enabled = false; c.calls_enabled = false; c.research_enabled = false;
+    if(c.contact_research)c.contact_research.enabled=false;
     if (c.operations) c.operations.enabled = false;
     await saveJson(path, c); app.config = c; return c;
   });

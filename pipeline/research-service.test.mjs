@@ -150,12 +150,14 @@ test('the local loop consolidates a failure, clears it after recovery and stops 
 
 test('owner priority controls preserve scope, quota and outbound gates while changing the shared research control', async t => {
   const f = await fixture(t);
+  const configPath=join(f.app.directory,'lifecycle-config.json'),initial=JSON.parse(await readFile(configPath));initial.contact_research={enabled:false,directory:f.directory,approval_ref:'Owner exact contact scope'};await saveJson(configPath,initial);
   await saveJson(join(f.directory, 'research-control.json'), { ...f.control, quota_resumes: { claude: '2026-10-16T12:00:00Z' } });
   for (const priority of ['website', 'client', 'research']) {
     await setResearchPriority(f.app, priority);
     const c = JSON.parse(await readFile(join(f.app.directory, 'lifecycle-config.json'))), r = JSON.parse(await readFile(join(f.directory, 'research-control.json')));
     assert.equal(r.priority, priority); assert.equal(r.enabled, true);
     assert.equal(c.priority, priority === 'research' ? 'idle' : priority);
+    assert.deepEqual(c.contact_research,{...initial.contact_research,enabled:priority==='research'});
     assert.equal(r.quota_resumes.claude, '2026-10-16T12:00:00Z');
     assert.equal(c.outreach_enabled, false); assert.equal(c.connector_writes_enabled, false); assert.equal(c.release.approved, false);
     assert.deepEqual(JSON.parse(await readFile(join(f.directory, 'controller-config.json'))).job_ids, ['fictional-service']);
