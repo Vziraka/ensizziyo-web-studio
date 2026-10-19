@@ -357,10 +357,11 @@ test('Pause all stops and reads back the configured research controller, preserv
   t.after(() => rm(directory, { recursive: true, force: true }));
   const control = { schema_version: 1, enabled: true, priority: 'research', quota_resumes: { example: 'unchanged' } };
   await saveJson(join(directory, 'research-control.json'), control);
-  s.config.research.source_directory = directory; await saveJson(join(s.directory, 'lifecycle-config.json'), s.config);
+  s.config.research.source_directory = directory;s.config.contact_research={enabled:true,directory,approval_ref:'Owner exact contact scope'}; await saveJson(join(s.directory, 'lifecycle-config.json'), s.config);
   assert.equal((await s.app.dashboard()).controls.research_paused, false);
   assert.equal((await pauseStudio(s.app)).paused, true);
   assert.deepEqual(JSON.parse(await readFile(join(directory, 'research-control.json'), 'utf8')), { ...control, enabled: false });
+  assert.deepEqual(JSON.parse(await readFile(join(s.directory,'lifecycle-config.json'),'utf8')).contact_research,{...s.config.contact_research,enabled:false});
   assert.equal((await s.app.dashboard()).controls.research_paused, true);
 });
 test('an unavailable research control leaves other execution paused and reports an unverified research stop', async t => {

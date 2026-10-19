@@ -146,7 +146,7 @@ export async function refineContactSearch(app,directory,ids) {
   }finally{await release();}
 }
 
-export async function runContactQueueService(app,{signal,wait=delay,intervalMs=15_000}={}) {
+export async function runContactQueueService(app,{signal,wait=delay,intervalMs=15_000,clientFactory=options=>new AppConnectors(options)}={}) {
   let client;
   try{
     while(!signal?.aborted){
@@ -156,15 +156,18 @@ export async function runContactQueueService(app,{signal,wait=delay,intervalMs=1
           check(c.approval_ref?.length>5,'Approve contact research scope first');
           const q=await readJson(queuePath(await privateStateDirectory(c.directory)));check(q.scope_sha256===scope(q.items),'Contact queue scope changed');
           if(!q.items.some(i=>!final(i)&&!['Awaiting review','Held'].includes(i.status))){
-            await client?.close();client=null;const result=contactQueueSummary(q);await app.change(s=>{for(const i of q.items)if(i.review&&current(i,s.prospects[i.prospect_id]))s.prospects[i.prospect_id].contact_review=i.review;s.contact_research=result;s.contact_research_runtime={...result,checked_at:stamp(app.now)};});
+            await client?.close();client=null;const result=contactQueueSummary(q),state=await app.snapshot();
+            if(hash(state.contact_research??null)!==hash(result)||state.contact_research_runtime?.status!==result.status||q.items.some(i=>i.review&&current(i,state.prospects[i.prospect_id])&&hash(state.prospects[i.prospect_id].contact_review??null)!==hash(i.review)))await app.change(s=>{for(const i of q.items)if(i.review&&current(i,s.prospects[i.prospect_id]))s.prospects[i.prospect_id].contact_review=i.review;s.contact_research=result;s.contact_research_runtime={...result,checked_at:stamp(app.now)};});
+          }else if(['website','client'].includes(config.priority)){
+            await client?.close();client=null;const result={...contactQueueSummary(q),status:'Paused for priority'};await app.change(s=>{s.contact_research=result;s.contact_research_runtime={...result,checked_at:stamp(app.now)};});
           }else{
           if(client?.closed||client?.bytes>20_000_000){await client.close();client=null;}
-          if(!client){client=new AppConnectors({cwd:app.directory,signal,conversationRef:'evzownerqueue7c4'});await client.connect();}
+          if(!client){client=clientFactory({cwd:app.directory,signal,conversationRef:'evzownerqueue7c4'});await client.connect();}
           const result=await contactQueueTick(app,c.directory,{connect:client,signal,priority:config.priority});
-          await app.change(s=>{s.contact_research_runtime={...result,checked_at:stamp(app.now)};});
+          await app.change(s=>{s.contact_research=result;s.contact_research_runtime={...result,checked_at:stamp(app.now)};});
           }
         }catch(e){if(signal?.aborted)break;await client?.close();client=null;await app.change(s=>{s.contact_research_runtime={status:'Held',reason:String(e.message).slice(0,350),checked_at:stamp(app.now)};});}
-      }
+      }else{await client?.close();client=null;}
       try{await wait(intervalMs,undefined,{signal});}catch{if(!signal?.aborted)throw Error('Contact service wait failed');}
     }
   }finally{await client?.close();}

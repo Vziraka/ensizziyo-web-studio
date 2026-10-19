@@ -30,7 +30,7 @@ test('the durable contact queue bounds linked capture, keeps primary evidence an
   const review={schema_version:1,prospect_id:r.id,reviewed_by:'Identified source reviewer',reviewed_at:now().toISOString(),outcome:'Owner identified; no direct number found',notes:'Jane Stone is listed as owner; the published shop number has no explicit direct-person link.',next_action:'Use the verified business line and confirm the decision-maker in conversation.'};
   await reviewContactQueue(app,directory,review);await reviewContactQueue(app,directory,review);assert.equal(state.contact_research.reviewed,1);assert.deepEqual({...r,contact_review:undefined},{...before,contact_review:undefined});
   await contactQueueTick(app,directory,{now,collect,connect});assert.equal(gets,4);assert.equal(searches,2);assert.equal(apollo,1);
-  delete r.contact_review;app.directory=directory;await writeFile(join(directory,'lifecycle-config.json'),JSON.stringify({priority:'idle',contact_research:{enabled:true,directory,approval_ref:'Owner exact existing-card review'}}));const stop=new AbortController();await runContactQueueService(app,{signal:stop.signal,wait:async()=>stop.abort()});assert.equal(r.contact_review.outcome,review.outcome);assert.equal(searches,2);assert.equal(apollo,1);
+  delete r.contact_review;state.contact_research_runtime={status:'Complete'};app.directory=directory;await writeFile(join(directory,'lifecycle-config.json'),JSON.stringify({priority:'idle',contact_research:{enabled:true,directory,approval_ref:'Owner exact existing-card review'}}));const stop=new AbortController();await runContactQueueService(app,{signal:stop.signal,wait:async()=>stop.abort()});assert.equal(r.contact_review.outcome,review.outcome);assert.equal(searches,2);assert.equal(apollo,1);
 });
 
 test('priority, binding changes, access failures and interrupted reads remain explicit without retries or inferred identity',async t=>{
@@ -63,4 +63,8 @@ test('public image-alt role evidence survives capture and an unavailable URL ret
   const options={now,resolveHost:async()=>[{address:'8.8.8.8'}]};
   const s=await collectPublicSources(job,{...options,request:async()=>new Response('<h1>Example Bakery</h1><img alt="Jane Stone, Owner and Baker" src="portrait.jpg"><p>'+('Fresh bread for the neighborhood. '.repeat(10))+'</p>',{headers:{'content-type':'text/html'}})});assert.match(s.sources[0].text,/Jane Stone, Owner and Baker/);
   await assert.rejects(collectPublicSources(job,{...options,request:async()=>new Response('Forbidden',{status:403})}),e=>e.code==='SOURCE_UNAVAILABLE'&&e.failures[0].url===job.seed_urls[0]&&/readable/.test(e.failures[0].reason));
+});
+
+test('the supervised contact loop does not open a connector during website/client priority',async t=>{
+  const {directory,app,plan,state}=await fixture(t);app.directory=directory;await createContactQueue(directory,plan,state,{now});await writeFile(join(directory,'lifecycle-config.json'),JSON.stringify({priority:'website',contact_research:{enabled:true,directory,approval_ref:'Owner exact existing-card review'}}));const stop=new AbortController();await runContactQueueService(app,{signal:stop.signal,clientFactory:()=>assert.fail('Priority must prevent even connector startup'),wait:async()=>stop.abort()});assert.equal(state.contact_research_runtime.status,'Paused for priority');
 });
