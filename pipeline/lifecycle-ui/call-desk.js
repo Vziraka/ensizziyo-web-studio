@@ -42,6 +42,14 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty}
     const prep=r.call_prep;
     card.append(el('h3','Open with'),el('blockquote',(r.call_lane==='verification'?r.verification?.opening:prep?.opening)??'Review the retained evidence before choosing your opening.','quote'),el('h3','Then ask'),el('p',(r.call_lane==='verification'?r.verification?.owner_question:prep?.questions?.[0])??'What would you most like to make easier for your customers?'));
     card.append(disclosure('Research, sources and what is still unknown',evidence(r)));
+    if(r.research_assessment){const a=r.research_assessment,body=el('div');body.append(el('p',`Independent review: ${a.independent_verdict} · decision: ${a.decision} · activity: ${a.operating_status} · reviewed ${when(a.reviewed_at)}`),el('p',a.rationale),el('h4','Next verification'),el('p',a.next_action));
+      if(a.independent_verdict!=='Accepted')body.append(el('p','Review remains held. Only the independently supported findings are shown; the report is not accepted.','notice'));
+      if(r.call_lane==='verification')body.append(el('p','This remains a quick-verification call. Detailed review does not waive missing activity or exact contact checks.','notice'));
+      for(const o of a.opportunities){body.append(el('h4','Possible improvement to validate'),el('p',o.proposed_solution),el('p',`Existing alternatives: ${o.existing_alternatives.join('; ')}`),el('p',o.owner_question));}
+      for(const o of a.observations){const line=el('p',o.fact);for(const s of o.sources){const link=el('a',` Source checked ${when(s.checked_at)}`);link.href=s.url;link.target='_blank';link.rel='noreferrer';line.append(link);}body.append(line);}
+      for(const j of a.journey_checks)body.append(el('p',`${j.area.replaceAll('_',' ')} · ${j.status}: ${j.finding}`));
+      for(const u of a.unknowns)body.append(el('p',u,'muted'));
+      card.append(disclosure('Detailed research and next checks',body));}
     if(r.research_upgrade)card.append(el('p',`Detailed research added ${when(r.research_upgrade.at)}. Original verification and call history retained.`,'muted'));
     if(r.research_tools?.report){const tools=r.research_tools.report,body=el('div');body.append(el('p',`Checked ${when(tools.checked_at)} · DNS/MX: ${tools.dns_mx.status} · urlscan: ${tools.urlscan.status}`),el('p',tools.limitations,'muted'));
       if(tools.urlscan.reference){const link=el('a',`Archived page observed ${when(tools.urlscan.observed_at)}`);link.href=tools.urlscan.reference;link.target='_blank';link.rel='noreferrer';body.append(link);}

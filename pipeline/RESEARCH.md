@@ -63,6 +63,8 @@ Tie one practical addition or improvement to an observed offering/customer journ
 
 Put current facts in observations with citations. In version-2/3 reports, each opportunity supplies observed_basis, a specific proposed_solution, possible_effect as a hypothesis, existing_alternatives, validation_needed and one focused owner_question. Clearly describe whether the proposal is an enhancement or addresses an observed problem. Follow the supplied version's schema exactly; older schemas express checks in their existing owner_question/unknowns fields, without adding fields.
 
+With adequate primary evidence and a supported enhancement, the report can use Needs review while current activity, identity or a usable contact remains unverified. Preserve the idea and exact verification gap. Hold/Pass belong to the independent decision schema; they are not report-recommendation values. Repair a specific unsupported claim without discarding valid uncertainty or raising readiness on unchanged evidence. An Accepted fidelity review can still have a Hold business decision; current dated activity and full contact checks remain necessary for qualification.
+
 Evaluate a tailored enhancement before choosing No strong public case. If none is defensible after adequate inspection, explain why in unknowns. Unknown goals, budget or buying interest alone are not reasons to dismiss a relevant enhancement. Directory-only/unsupported evidence still cannot qualify an opportunity under the evidence contract.
 
 ## Decisions and priority

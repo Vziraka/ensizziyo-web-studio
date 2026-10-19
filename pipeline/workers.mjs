@@ -74,6 +74,7 @@ export function researchPrompt({ phase, job, checkpoint, snapshots, feedback }) 
     detailed ? 'Prefer 3-6 words only for literal excerpts with context_id=""; a nonempty context_id requires its complete saved anchor regardless of length.' : 'Prefer 3-6 words per excerpt.',
     'Budget at most 25 quoted words total per source across distinct excerpts.',
     detailed ? 'If complete context anchors would exceed the budget, cite fewer distinct facts rather than trimming them.' : '',
+    quality ? 'With otherwise adequate primary evidence and a supported enhancement, use report recommendation "Needs review" while identity, current activity or a usable public contact remains unverified. Unknown budget or buying interest alone does not require it. "Hold" and "Pass" are reviewer decision values, not report recommendations. During repair, preserve supported limitations and do not raise the recommendation without newly supported prerequisites.' : '',
     'Reuse an excerpt when appropriate; do not paraphrase excerpts. Every opportunity must acknowledge existing_alternatives and specify validation_needed before a solution is warranted.'
   ].filter(Boolean).join(' ') : '';
   return [
