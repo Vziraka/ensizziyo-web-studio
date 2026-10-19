@@ -1,4 +1,4 @@
-import {followUpOutcomes,followUpSetupIssues,renderFollowUpHtml} from './follow-up-template.mjs';
+import {followUpOutcomes,followUpSetupIssues,renderFollowUpHtml,composeFollowUp} from './follow-up-template.mjs';
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { check, hash, initialConfig, businessDate, businessDaysBetween } from './lifecycle.mjs';
@@ -429,13 +429,21 @@ export class ProductionOperations extends ControlledOperations {
     }
   }
 }
+export function nativeProofMessage(c){
+  const m=c.operations.native_proof.message;
+  if(m.template_version!=='evz-personal-large-demo-v1')return {subject:m.subject,body:m.body_text};
+  const message=composeFollowUp({name:'STUDIO TEST Oakline Home Services',area:'Fairfax, Virginia',business_type:{subtype:'HVAC'},contact:{name:'Jordan Test',email:m.to}},{outcome:'no_answer',focus:'ai'},c);
+  message.paragraphs.unshift('CONTROLLED TEST — a fictional example for the owner inbox only. No business was called or contacted.');
+  return {subject:m.subject,body:renderFollowUpHtml(message)};
+}
 export class NativeProofOperations extends ProductionOperations {
   async settings() {
     const c = await readJson(join(this.app.directory, 'lifecycle-config.json')), o = c.operations, p = o?.native_proof, m = p?.message;
     check(c.mode === 'controlled' && !c.research_enabled && !c.outreach_enabled && !c.connector_writes_enabled, 'Native proof cannot enable research or production contact');
     check(c.readiness.owner_design_approved && o?.interval_minutes === 5 && o.allowlist?.length === 1 && !Object.keys(o.emails ?? {}).length && !Object.keys(o.bookings ?? {}).length, 'One isolated fictional native proof required');
-    check(p && typeof p.enabled === 'boolean' && typeof m?.approved === 'boolean' && m.from === c.calendar.owner_email && m.from === c.sender?.email && email(m.to) && m.from !== m.to && o.recipients?.includes(m.to) && o.recipients.includes(m.from) && o.recipients.length <= 2, 'Exact owner-controlled test inboxes required');
-    check(m.subject?.startsWith('[STUDIO TEST]') && m.subject.length < 120 && !/["\r\n]/.test(m.subject) && m.body_text?.startsWith('CONTROLLED TEST') && m.body_text.length < 4000 && !/{{|}}|[<>]/.test(m.body_text), 'Literal controlled email content required');
+    check(p && typeof p.enabled === 'boolean' && typeof m?.approved === 'boolean' && (c.sender?.account_email??m.from) === c.calendar.owner_email && m.from === c.sender?.email && email(m.to) && m.from !== m.to && o.recipients?.includes(m.to) && o.recipients.includes(m.from) && o.recipients.length <= 2, 'Exact owner-controlled test inboxes required');
+    const html=m.template_version==='evz-personal-large-demo-v1',content=nativeProofMessage(c);
+    check(m.subject?.startsWith('[STUDIO TEST]') && m.subject.length < 120 && !/["\r\n]/.test(m.subject) && (html?m.body_html===content.body&&content.body.length<12000&&!/{{|}}/.test(content.body):m.body_text?.startsWith('CONTROLLED TEST')&&m.body_text.length<4000&&!/{{|}}|[<>]/.test(m.body_text)), 'Literal controlled email content required');
     check(!m.approved || m.approval_ref?.length > 5, 'Concrete owner approval must bind the single test email');
     const binding = c.apollo?.bindings?.[o.allowlist[0]], route = c.native_email?.rounds?.[0];
     check(id(c.apollo?.user_id) && id(binding?.contact_id) && id(binding.account_id) && binding.email === m.to && binding.require_no_phone === true && binding.controlled_name?.toLowerCase().includes('studio test'), 'Dedicated owned no-phone fictional recipient required');
@@ -446,7 +454,7 @@ export class NativeProofOperations extends ProductionOperations {
   validateScope(state, c) { check(c.operations.allowlist.every(id => state.prospects[id]?.controlled === true && state.prospects[id].contact.email.endsWith('@example.invalid') && !state.prospects[id].contact.phone), 'Native proof accepts one fictional lifecycle record only'); }
   writeReady(c) { return c.operations.native_proof.enabled && c.operations.native_proof.message.approved; }
   emailReady(c) { return this.writeReady(c); }
-  composeMessage(record, round, c) { const m = c.operations.native_proof.message; return { subject: m.subject, body: m.body_text }; }
+  composeMessage(record, round, c) { return nativeProofMessage(c); }
   *plan(state, c) {
     const id = c.operations.allowlist[0], binding = c.apollo.bindings[id];
     for (const e of Object.values(state.operations.email)) if (e.content) check(hash(e.content) === hash(this.composeMessage(null, 1, c)) && hash(e.route) === hash(c.native_email.rounds[0]), 'Approved native proof message or route changed after reservation');

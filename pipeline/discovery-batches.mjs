@@ -216,7 +216,7 @@ export async function discoveryTick(app,{signal,connect,collect=collectPublicSou
 export function discoveryOwnerPacket(packet,record,now){
   const o=packet.owner_evidence,id=`oc-${hash(packet.id).slice(0,30)}`;
   check(o,'A reviewed published operator is required');
-  if(!/\b(?:owner|founder|operator|president|ceo|director|principal)\b/i.test(o.role)||o.name.length>120||o.role.length>100||o.excerpt.length>350)return null;
+  if(!/\b(?:owner|founder|operator|president|ceo|director|principal)\b/i.test(o.role)||o.name.length>120||o.role.length>100||o.excerpt.length>350||!o.excerpt.toLowerCase().includes(o.role.toLowerCase()))return null;
   return {schema_version:1,id,prospect_id:record.id,company_id:record.company_id,bound_contact_sha256:hash(record.contact),reviewed_by:'Independent discovery source review',reviewed_at:now.toISOString(),
     job:{id,business_name:record.name,website:packet.discovery.website_url,research_version:3,as_of:packet.sources[0].checked_at,seed_urls:packet.sources.map(s=>s.url)},snapshots:{sources:packet.sources},
     person:{name:o.name,role:o.role,source_url:o.url,excerpt:o.excerpt,current_role_status:'Professional source; current role unconfirmed'},direct_phone:null,notes:['Published operator identity retained; confirm the current role in conversation. The advertised general business number is not classified as owner-direct.']};

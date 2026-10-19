@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { StudioLifecycle, initialConfig } from './lifecycle.mjs';
 import { fixtureProspect } from './lifecycle-fixtures.mjs';
 import { saveJson } from './engine.mjs';
-import { productionConfig, releaseFingerprint, requireProductionRelease, approveProductionRelease, approveCallRelease, callReleaseFingerprint, ProductionOperations, NativeProofOperations, operationsFor, importResearch, importVerification, syncResearchImports, queueMeeting, pauseStudio, nativeMessage } from './production.mjs';
+import { productionConfig, releaseFingerprint, requireProductionRelease, approveProductionRelease, approveCallRelease, callReleaseFingerprint, ProductionOperations, NativeProofOperations, operationsFor, importResearch, importVerification, syncResearchImports, queueMeeting, pauseStudio, nativeMessage,nativeProofMessage } from './production.mjs';
 import { researchCallPrep } from './call-prep.mjs';
 import { dailyCallQueue } from './apollo-queue.mjs';
 import { intakeCandidate, reviewFiles, reviewTemplate, prospectPurpose } from './prospects.mjs';
@@ -105,6 +105,12 @@ test('a connected follow-up hands the full branded HTML to one native executor a
 });
 test('a reply observed in the provider read phase cancels a prepared next follow-up before native release',async t=>{
  const s=await setup(t,true,'no_answer',true),p=provider(s.config);await drive(s.app,p);s.advance();const next=s.app.now().toISOString();await s.app.apply({id:'second-call',prospect_id:'synthetic-cafe',type:'call_logged',at:next,data:{call_id:'second-call',outcome:'voicemail',performed_at:next,simulated:false,desk:true}});assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['second-call'].status,'Prepared');p.addReply();s.advance();await drive(s.app,p,'reply-before-second-release');assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['second-call'].status,'Cancelled');
+});
+test('a stop after an uncertain native intent keeps delivery uncertain and reconciles a late sent receipt without resending',async t=>{
+ const s=await setup(t,true,'voicemail',true),p=provider(s.config),ops=operationsFor(s.app,'before-lost-handoff');
+ for(;;){const request=await ops.next();if(request.operation==='intent'){p.respond(request);break;}assert.ok(request.operation);await ops.settle(request.key,{structuredContent:p.respond(request)});}
+ await s.app.apply({id:'stop-after-handoff',prospect_id:'synthetic-cafe',type:'contact_stopped',at,data:{reason:'do_not_contact'}});assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['call-one'].status,'Uncertain');
+ s.advance(91000);await drive(s.app,p,'after-handoff-stop');s.advance();await drive(s.app,p,'after-stop-readback');s.advance();await drive(s.app,p,'after-task-stop-readback');const state=await s.app.snapshot();assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.equal(state.prospects['synthetic-cafe'].stage,'Stopped');assert.equal(state.prospects['synthetic-cafe'].follow_ups['call-one'].status,'Sent',JSON.stringify(state.operations.holds));assert.equal(state.prospects['synthetic-cafe'].attempts.filter(x=>x.channel==='email').length,1);
 });
 test('an owner-requested callback after earlier call history can release its first email within the retained bounds',async t=>{
  const s=await setup(t,true,'callback',true),p=provider(s.config);await s.app.change(state=>{state.prospects['synthetic-cafe'].attempts.unshift(...['old-call-1','old-call-2'].map(id=>({id,channel:'call',at,outcome:'no_answer'})));});await drive(s.app,p);assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['call-one'].status,'Sent');
@@ -398,6 +404,9 @@ test('the bounded native proof uses one exact approved owner-inbox email and cou
   assert.equal(s.p.calls.filter(c => c.operation === 'intent').length, 1);
   const daily = (await s.app.dashboard()).daily; assert.equal(daily.actual_emails, 0); assert.equal(daily.actual_call_attempts, 0);
   assert.equal(s.app.config.outreach_enabled, false);
+});
+test('the owner-only branded HTML proof is generated from the approved template and rejects altered HTML before dispatch',async t=>{
+ const s=await nativeProof(t),m=s.c.operations.native_proof.message;m.template_version='evz-personal-large-demo-v1';m.body_html=nativeProofMessage(s.c).body;await saveJson(join(s.directory,'lifecycle-config.json'),s.c);await drive(s.app,s.p,'html-owner-proof');assert.equal(s.p.calls.filter(c=>c.operation==='intent').length,1);assert.match(s.p.person.typed_custom_fields['body-1'],/CONTROLLED TEST/);assert.match(s.p.person.typed_custom_fields['body-1'],/voice-demo-preview/);assert.equal((await s.app.dashboard()).daily.actual_emails,0);m.body_html+='<p>Changed after approval</p>';await saveJson(join(s.directory,'lifecycle-config.json'),s.c);await assert.rejects(operationsFor(s.app,'changed-html-proof').next(),/Literal controlled/);
 });
 test('an unapproved native proof cannot publish an intent; a foreign recipient fails before dispatch', async t => {
   const s = await nativeProof(t, false); await drive(s.app, s.p);

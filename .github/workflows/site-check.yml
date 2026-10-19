@@ -17,6 +17,7 @@ jobs:
         with:
           node-version: 24
       - run: find site scripts -name '*.mjs' -print0 | xargs -0 -n1 node --check
+      - run: node --check site/studio/demos/voice/demo.js
       - run: node scripts/build-site.mjs
       - run: node scripts/verify-site.mjs
       - run: node --test scripts/inquiry.test.mjs

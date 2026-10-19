@@ -56,7 +56,12 @@ function request(state, record, type, payload, eventId) {
 function pauseCold(state, record, eventId, reason) {
   record.cold_paused = true;
   for (const action of Object.values(state.actions)) if (action.prospect_id === record.id && ['email', 'call_task', 'callback_task'].includes(action.type)) {
-    if (action.status === 'Queued') {action.status = 'Cancelled';const follow=record.follow_ups?.[action.payload.call_id];if(follow){follow.status='Cancelled';follow.reason=reason;}}
+    if (action.status === 'Queued') {
+      const handedOff=action.type==='email'&&state.operations?.requests?.[`${action.id}-intent`];
+      action.status=handedOff?'Uncertain':'Cancelled';const follow=record.follow_ups?.[action.payload.call_id];
+      if(handedOff)action.hold='Stop arrived after native handoff; verify suppression and delivery before continuing';
+      if(follow){follow.status=handedOff?'Uncertain':'Cancelled';follow.reason=handedOff?action.hold:reason;}
+    }
     if (action.status === 'Pending') { action.status = 'Uncertain'; action.hold = 'Stop arrived after dispatch; reconcile provider before continuing'; }
     if (action.status === 'Verified' && action.provider_task && ['call_task', 'callback_task'].includes(action.type)) action.cancel_requested = true;
   }
