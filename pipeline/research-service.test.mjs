@@ -6,7 +6,17 @@ import { join } from 'node:path';
 import { StudioLifecycle } from './lifecycle.mjs';
 import { productionConfig } from './production.mjs';
 import { saveJson } from './engine.mjs';
-import { researchTick, runResearchService, setResearchPriority, researchHandoff } from './research-service.mjs';
+import { researchTick, runResearchService, setResearchPriority, researchHandoff, updateFailureGuard } from './research-service.mjs';
+
+test('repeated new technical failures stop spending; old holds and commercial holds do not reset or trip the guard',()=>{
+  const job=(job_id,reason='WORKER_OUTPUT_INVALID')=>({job_id,reason,status:'Held'});
+  let g=updateFailureGuard(null,{jobs:[job('old')]},'release1');
+  g=updateFailureGuard(g,{jobs:[job('old'),job('new1'),job('commercial','No supported opportunity')]},'release1');
+  assert.equal(g.blocked,null);g=updateFailureGuard(g,{jobs:[job('new1')]},'release1');assert.equal(g.counts.WORKER_OUTPUT_INVALID,1);
+  g=updateFailureGuard(g,{jobs:[job('new2')]},'release1');assert.equal(g.blocked,'WORKER_OUTPUT_INVALID');
+  assert.equal(updateFailureGuard(g,{jobs:[job('new2')]},'release1').blocked,'WORKER_OUTPUT_INVALID');
+  assert.deepEqual(updateFailureGuard(g,{jobs:[job('old'),job('new1'),job('new2')]},'reviewed-release2').counts,{});
+});
 import { operationsTick } from './operations-service.mjs';
 
 const now = () => new Date('2026-10-17T15:00:00Z');

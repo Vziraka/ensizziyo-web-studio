@@ -53,7 +53,7 @@ SOSA starts with bounded local Search/Maps, public Instagram/Facebook business p
 
 Follow public business links to the website/profile, offering, menu/rates, enquiry/order routes, existing alternatives and current activity. Record what works as well as potential additions. Check exact name/location and bounded website searches; say No verified site found when appropriate. Claim Instagram-only sales or absence of another route only when evidence establishes it.
 
-Use 1–4 approved source URLs per quality job. Capture dates, scope, factual context and exact citations; retain partial coverage and access failures honestly. Inspect the five journey areas: discovery, offer, enquiry/ordering, trust/activity and follow-up. No private content, unrelated personal information, login bypass, forms, business contact or purchases. Workers assess supplied evidence only; the runner retrieves approved business-host pages. Unseen internal tools stay unknown.
+Use 1–4 approved source URLs per quality job. Capture dates, scope, factual context and exact citations; retain partial coverage and access failures honestly. A citation with a reviewed context ID must copy that fact's complete saved short anchor, even when a shorter substring appears in the capture. Select fewer distinct facts if complete anchors would exceed the per-source quote budget; never trim or split an anchor to pass it. Inspect the five journey areas: discovery, offer, enquiry/ordering, trust/activity and follow-up. No private content, unrelated personal information, login bypass, forms, business contact or purchases. Workers assess supplied evidence only; the runner retrieves approved business-host pages. Unseen internal tools stay unknown.
 
 ## What makes an opportunity
 

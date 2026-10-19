@@ -7,6 +7,7 @@ import { validateEvidenceReview } from './evidence-review.mjs';
 import { ControlledOperations, controlledThread, verifiedContact } from './lifecycle-operations.mjs';
 import { researchCallPrep } from './call-prep.mjs';
 import { verificationData, verificationLane, validateVerificationRecord, phoneDigits } from './verification-calls.mjs';
+import { validateBookingSlot } from './lifecycle-documents.mjs';
 
 const email = value => typeof value === 'string' && /^[^\s@,;<>"\r\n]+@[^\s@,;<>"\r\n]+\.[^\s@,;<>"\r\n]+$/.test(value) && !value.endsWith('.invalid');
 const id = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value);
@@ -21,7 +22,7 @@ export const productionConfig = {
   native_email: { enabled: false, rounds: [] }, research: { auto_import: false, supervised: false, source_directory: '' }, release: { approved: false }, readiness_evidence: {}
 };
 export function releaseFingerprint(c) {
-  return hash({ run_id: c.run_id, campaign: c.campaign, sender: c.sender, calendar: c.calendar, apollo_owner: c.apollo?.user_id, research_source: c.research?.source_directory ?? '', readiness_evidence: c.readiness_evidence,
+  return hash({ contact_policy: 'call-desk-owner-notes-exact-gmail-v1', run_id: c.run_id, campaign: c.campaign, sender: c.sender, calendar: c.calendar, apollo_owner: c.apollo?.user_id, research_source: c.research?.source_directory ?? '', readiness_evidence: c.readiness_evidence,
     native_email: c.native_email, google: c.google ? { spreadsheet_id: c.google.spreadsheet_id, sheet_id: c.google.sheet_id, sheet_title: c.google.sheet_title } : null });
 }
 export function productionGates(c) {
@@ -40,7 +41,7 @@ export function requireProductionRelease(c) {
 }
 export function callReleaseFingerprint(c) {
   const ai = c.transcript_ai;
-  return hash({ run_id: c.run_id, apollo_owner: c.apollo?.user_id, campaign: c.campaign, call_readiness: c.call_readiness, scope: c.operations?.allowlist,
+  return hash({ call_policy: 'call-desk-owner-notes-v1', run_id: c.run_id, apollo_owner: c.apollo?.user_id, campaign: c.campaign, call_readiness: c.call_readiness, scope: c.operations?.allowlist,
     transcript_policy: { daily_calls: ai.daily_calls, reserve_percent: ai.reserve_percent, author_model: ai.author_model, reviewer_model: ai.reviewer_model, effort: ai.effort } });
 }
 export function requireCallRelease(c) {
@@ -134,18 +135,26 @@ async function stageProspect(app, prospectId) {
 export async function queueMeeting(app, input) {
   const path = join(app.directory, 'lifecycle-config.json');
   return app.change(async state => {
-    const c = await readJson(path); requireProductionRelease(c);
+    const c = await readJson(path);
+    if(c.mode==='production') requireProductionRelease(c);
     const r = state.prospects[input.prospect_id];
     check(r && !r.restriction && ['Discovery', 'Information requested'].includes(r.stage), 'Review the owner conversation before scheduling');
-    check(input.slot_agreed === true && email(input.attendee_email) && input.attendee_email === r.contact.email, 'Confirm the exact guest agreed to this invitation');
+    check(input.revision===undefined||input.revision===state.revision,'Record changed; review the invitation again');
+    check(input.slot_agreed === true && (email(input.attendee_email)||r.controlled&&input.attendee_email?.endsWith('@example.invalid')) && (input.attendee_email === r.contact.email || input.recipient_confirmed===true), 'Confirm the exact guest agreed to this invitation');
     check(input.title?.startsWith('EVZ Digital') && input.title.length <= 200 && typeof input.description === 'string' && input.description.length < 1500 && Number.isFinite(Date.parse(input.start)) && Number.isFinite(Date.parse(input.end)), 'Bound the exact meeting title, description and times');
+    check(input.mode===undefined||['video','phone'].includes(input.mode),'Choose video or phone');
+    validateBookingSlot({start:input.start,end:input.end,timezone:'America/New_York'},[],c.calendar,app.now().toISOString(),app.now());
     const key = `meeting-${hash({ prospect_id: r.id, start: input.start, end: input.end, attendee: input.attendee_email }).slice(0, 32)}`;
+    check(!r.meeting||r.meeting.event_id===key,'A meeting already exists; reconcile or reschedule that event instead of creating another');
+    check(!Object.entries(c.operations?.bookings??{}).some(([id,b])=>b.prospect_id===r.id&&id!==key),'An invitation is already reserved for this business; review it before choosing another slot');
+    if(c.mode==='controlled') {r.meeting={event_id:key,start:input.start,end:input.end,mode:input.mode??'video',reference:`fixture:${key}`,current_status:'Simulated',verified_at:app.now().toISOString()};state.revision++;return {simulated:true,booked:false,booking_id:key};}
     const booking = { prospect_id: r.id, attendee_email: input.attendee_email, start: input.start, end: input.end, title: input.title, description: input.description,
-      approved: true, approval_ref: `owner-console:${key}` };
+      ...(input.mode?{mode:input.mode}:{}), approved: true, approval_ref: `owner-console:${key}` };
     check(!c.operations.bookings[key] || hash(c.operations.bookings[key]) === hash(booking), 'An existing slot changed; preserve its reservation');
     c.operations.bookings[key] ??= booking;
     await saveJson(path, c); app.config = c;
     if (state.operations?.cycle) state.operations.cycle.completed_bookings = state.operations.cycle.completed_bookings.filter(id => id !== key);
+    state.revision++; state.updated_at=app.now().toISOString();
     return { queued: true, booking_id: key, booked: false };
   });
 }

@@ -9,7 +9,7 @@ const permitted = new Set([
   'apollo_io.apollo_labels_index', 'apollo_io.apollo_labels_add_entity_ids_to_label_names',
   'apollo_io.apollo_emailer_messages_create', 'apollo_io.apollo_emailer_messages_send_now', 'apollo_io.apollo_emailer_messages_email_send_status',
   'apollo_io.apollo_tasks_create', 'apollo_io.apollo_tasks_show', 'apollo_io.apollo_tasks_search', 'apollo_io.apollo_tasks_skip',
-  'gmail.get_profile', 'gmail.search_email_ids', 'gmail.read_email_thread',
+  'gmail.get_profile', 'gmail.search_email_ids', 'gmail.read_email_thread', 'gmail.send_email',
   'google_calendar.get_profile', 'google_calendar.get_availability', 'google_calendar.create_event',
   'google_calendar.search_events', 'google_calendar.read_event'
 ]);

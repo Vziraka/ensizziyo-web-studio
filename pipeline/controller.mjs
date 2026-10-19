@@ -14,6 +14,8 @@ const workers = ['codex', 'claude', 'cursor'];
 const recoverable = new Set(['WORKER_QUOTA', 'WORKER_TIMEOUT', 'WORKER_OUTPUT_INVALID']);
 const deferred = new Set(['RESEARCH_BUDGET', 'CONTROLLER_PAUSED', 'CONTROL_TIME_LIMIT', 'QUEUE_PAUSED', 'USAGE_UNAVAILABLE']);
 const problem = (code, message) => Object.assign(Error(message), { code });
+const contextAnchorError = 'Observation must cite the specific reviewed context fact and its exact anchor';
+const contextAnchorFeedback = 'The previous report shortened or split a reviewed context anchor. For each nonempty context_id, copy the complete saved reviewed_context.facts[].excerpt into evidence.excerpt. Do not shorten, split or paraphrase it; select fewer distinct facts if the per-source quote budget requires it.';
 const optionalJson = async path => { try { return await readJson(path); } catch (e) { if (e.code !== 'ENOENT') throw e; } };
 const exists = async path => { try { await lstat(path); return true; } catch (e) { if (e.code !== 'ENOENT') throw e; return false; } };
 const integer = (n, min, max) => Number.isInteger(n) && n >= min && n <= max;
@@ -130,7 +132,7 @@ export async function runController({ directory, config, queue, invoke = invokeC
         const result = await invoke({ ...options, model, effort });
         if (options.phase !== 'review') {
           try { validateEvidence(result, options.job, options.phase === 'assess', options.snapshots); }
-          catch { throw problem('WORKER_OUTPUT_INVALID', 'Worker output failed the saved-evidence contract'); }
+          catch (error) { throw problem('WORKER_OUTPUT_INVALID', error.message === contextAnchorError ? contextAnchorError : 'Worker output failed the saved-evidence contract'); }
         }
         call.status = 'Returned'; await save(); return result;
       } catch (e) {
@@ -177,20 +179,23 @@ export async function runController({ directory, config, queue, invoke = invokeC
           }
           if (!prior || prior.status !== 'Complete' || record.stage === 'repair') {
             if (!(await available(record.worker))) { record.worker = await choose(config.fallback_order); await save(); }
+            const feedback = [...(record.revision_notes ?? []), ...(record.validation_feedback ?? [])];
             try {
               await executeJob({ directory, queue, jobId: record.job_id, worker: record.worker, requestedWorker: record.requested_worker,
                 resume: prior ? { attempt_id: prior.attempt_id, status: prior.status } : undefined,
-                revisionNotes: record.revision_notes, signal: jobSignal,
+                revisionNotes: feedback.length ? feedback : undefined, signal: jobSignal,
                 invoke: options => modelCall(record, options), onEvent: event });
             } catch (e) {
               const stopped = await optionalJson(join(target, 'state.json'));
               if (recoverable.has(e.code) && stopped?.attempt_id === record.attempt_id && !stopped.child_pid && record.recoveries < config.max_recoveries) {
+                if (e.code === 'WORKER_OUTPUT_INVALID' && e.message === contextAnchorError) record.validation_feedback = [contextAnchorFeedback];
+                else delete record.validation_feedback;
                 record.needs_handoff = true; await save(); continue;
               }
               throw e;
             }
           }
-          record.stage = 'review'; delete record.revision_notes; delete record.review_file; await save();
+          record.stage = 'review'; delete record.revision_notes; delete record.validation_feedback; delete record.review_file; await save();
         }
         if (record.stage === 'review') {
           let f = await reviewFiles(directory, record.job_id);

@@ -107,6 +107,20 @@ function worker(callback = async options => options.phase === 'review' ? accepte
 const run = (f, extra = {}) => runController({ ...f, now, readUsage: usage, invoke: worker(), ...extra });
 const saved = (f, name = 'controller-state.json') => readFile(join(f.directory, name), 'utf8').then(JSON.parse);
 
+async function longAnchorFixture() {
+  const f = await fixture();
+  const row = f.tables['Discovery intake'][1], packet = JSON.parse(row[7]);
+  const captured = packet.captures.sources[0];
+  const anchor = 'DM to order; include pickup date and your preferred cake size.';
+  captured.text = `${anchor}\nFriday pickup`;
+  captured.reviewed_context.scope = 'The public ordering line and Friday pickup caption only; other routes are unverified.';
+  captured.reviewed_context.facts[0].statement = 'The inspected ordering line invites direct messages with cake and pickup details.';
+  captured.reviewed_context.facts[0].excerpt = anchor;
+  captured.content_sha256 = sourceContentHash(captured);
+  row[7] = JSON.stringify(packet);
+  return { ...f, anchor };
+}
+
 test('one fictional intake completes independent source review and idempotent Research-only publication', async () => {
   const f = await fixture(), phases = [];
   const result = await run(f, { invoke: worker(async options => { phases.push([options.worker, options.phase, options.model]); return options.phase === 'review' ? acceptedReview(options) : assessment(options); }) });
@@ -220,6 +234,72 @@ test('a single subscription recovers invalid author output with its configured r
   assert.deepEqual(phases, ['fixture-model/collect', 'fixture-model/assess', 'fixture-review-model/assess', 'fixture-review-model/review']);
   const state = await saved(f); assert.equal(state.jobs['controller-fixture'].recoveries, 1);
   assert.equal(state.calls.length, 4); assert.equal(state.calls.filter(c => c.status === 'WORKER_OUTPUT_INVALID').length, 1);
+});
+
+test('a shortened reviewed anchor reaches the one recovery as fixed feedback with the original checkpoint', async () => {
+  const f = await longAnchorFixture(); let checkpoint, sources, assessments = 0;
+  for (const worker of ['claude', 'cursor']) f.config.providers[worker].enabled = false;
+  const result = await run(f, { invoke: worker(async o => {
+    if (o.phase === 'review') return acceptedReview(o);
+    const output = assessment(o);
+    if (o.phase === 'assess') {
+      assessments++;
+      if (assessments === 1) {
+        checkpoint = await readFile(join(o.directory, 'checkpoint.json'));
+        sources = await readFile(join(o.directory, 'sources.json'));
+        output.observations[0].evidence[0].excerpt = 'DM to order';
+      } else {
+        assert.equal(o.model, 'fixture-review-model');
+        assert.match(o.feedback?.join(' '), /complete saved reviewed_context.*excerpt/i);
+        assert.deepEqual(await readFile(join(o.directory, 'checkpoint.json')), checkpoint);
+        assert.deepEqual(await readFile(join(o.directory, 'sources.json')), sources);
+        output.observations[0].evidence[0].excerpt = f.anchor;
+      }
+    }
+    return output;
+  }) });
+  assert.equal(result.jobs[0].status, 'Complete'); assert.equal(assessments, 2);
+  const state = await saved(f);
+  assert.equal(state.jobs['controller-fixture'].recoveries, 1);
+  assert.equal(state.calls.length, 4);
+  assert.equal(state.calls.filter(call => call.status === 'WORKER_OUTPUT_INVALID').length, 1);
+});
+
+test('a second shortened anchor remains Held after one recovery with no checkpoint rewrite', async () => {
+  const f = await longAnchorFixture(); let checkpoint, sources, assessments = 0;
+  for (const worker of ['claude', 'cursor']) f.config.providers[worker].enabled = false;
+  const result = await run(f, { invoke: worker(async o => {
+    if (o.phase === 'review') assert.fail('Invalid reports cannot reach independent review');
+    const output = assessment(o);
+    if (o.phase === 'assess') {
+      assessments++;
+      output.observations[0].evidence[0].excerpt = 'DM to order';
+      if (assessments === 1) {
+        checkpoint = await readFile(join(o.directory, 'checkpoint.json'));
+        sources = await readFile(join(o.directory, 'sources.json'));
+      } else assert.match(o.feedback?.join(' '), /complete saved reviewed_context.*excerpt/i);
+    }
+    return output;
+  }) });
+  assert.equal(result.jobs[0].status, 'Held'); assert.equal(result.jobs[0].reason, 'WORKER_OUTPUT_INVALID');
+  assert.equal(assessments, 2);
+  assert.deepEqual(await readFile(join(f.directory, 'controller-fixture/checkpoint.json')), checkpoint);
+  assert.deepEqual(await readFile(join(f.directory, 'controller-fixture/sources.json')), sources);
+  const state = await saved(f); assert.equal(state.jobs['controller-fixture'].recoveries, 1); assert.equal(state.calls.length, 3);
+});
+
+test('model-controlled schema keys never become trusted recovery instructions', async () => {
+  const f = await fixture(); let assessments = 0;
+  for (const worker of ['claude', 'cursor']) f.config.providers[worker].enabled = false;
+  const result = await run(f, { invoke: worker(async o => {
+    if (o.phase === 'review') return acceptedReview(o);
+    const output = assessment(o);
+    if (o.phase === 'assess' && ++assessments === 1) output['arbitrary-model-key'] = true;
+    else if (o.phase === 'assess') assert.equal(o.feedback, undefined);
+    return output;
+  }) });
+  assert.equal(result.jobs[0].status, 'Complete'); assert.equal(assessments, 2);
+  const state = await saved(f); assert.equal(state.jobs['controller-fixture'].recoveries, 1);
 });
 
 test('single-subscription recovery preserves its charged calls and checkpoint across a daily-budget restart', async () => {

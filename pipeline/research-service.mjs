@@ -7,6 +7,18 @@ import { GoogleQueue } from './google.mjs';
 import { check } from './lifecycle.mjs';
 import { syncResearchImports } from './production.mjs';
 import { publishLifecycle } from './lifecycle-sync.mjs';
+import { callSupply } from './call-desk.mjs';
+import { runtimeVersion } from './runtime-version.mjs';
+const runningVersion=runtimeVersion();
+const technicalFailures=result=>(result.jobs??[]).filter(j=>j.status==='Held'&&/^(WORKER_|PROVIDER_|SOURCE_|FETCH_)/.test(j.reason??''));
+export function updateFailureGuard(previous, result, version) {
+  const failures=technicalFailures(result);
+  if(!previous||previous.version!==version)return {version,seen:failures.map(j=>j.job_id),counts:{}};
+  const guard=structuredClone(previous);
+  for(const job of failures)if(!guard.seen.includes(job.job_id)){guard.seen.push(job.job_id);guard.counts[job.reason]=(guard.counts[job.reason]??0)+1;}
+  guard.blocked=Object.entries(guard.counts).find(([,count])=>count>=2)?.[0]??null;
+  return guard;
+}
 
 const compact = result => {
   const held = result.jobs?.filter(j => j.status === 'Held') ?? [];
@@ -22,6 +34,10 @@ export async function researchTick(app, { signal, run = runController, queueFact
   const config = validateControllerConfig(await readPrivateJson(join(directory, 'controller-config.json')));
   const progress = await controllerStatus(directory, config, undefined, app.now);
   if (progress.status !== 'Ready') return compact(progress);
+  if (callSupply(await app.snapshot(), app.now()).full) return { ...compact(progress), status: 'Buffer full', reason: 'Two days of eligible call cards are ready; research will resume as they are used.' };
+  const version=(await runningVersion).source_sha256;
+  const guard=await app.change(state=>state.research_failure_guard=updateFailureGuard(state.research_failure_guard,progress,version));
+  if(guard.blocked)return {...compact(progress),status:'Needs attention',reason:`Repeated technical failure (${guard.blocked}). Review the retained failures and install a verified correction before more research attempts.`};
   if (!config.job_ids.length) return { ...compact(progress), status: 'Waiting' };
   if (progress.jobs.every(j => ['Complete', 'Held'].includes(j.status)))
     return { ...compact(progress), status: progress.counts.Held ? 'Needs attention' : 'Complete' };
@@ -47,6 +63,7 @@ export async function researchTick(app, { signal, run = runController, queueFact
     const google = await readPrivateJson(join(directory, 'google-config.json'));
     await app.change(s => { s.research_runtime = { ...s.research_runtime, status: 'Running', checked_at: app.now().toISOString(), campaign: config.campaign }; });
     const result = await run({ directory, config, queue: queueFactory({ ...google, minRequestIntervalMs: 1250 }), signal: workerSignal, once: true });
+    await app.change(state=>{state.research_failure_guard=updateFailureGuard(state.research_failure_guard,result,version);});
     return { ...compact(result), ...(active.signal.aborted ? { status: 'Paused' } : {}) };
   } catch (error) {
     if (active.signal.aborted && !signal?.aborted) return { ...compact(progress), status: 'Paused' };
@@ -106,7 +123,7 @@ export async function runResearchService(app, { signal, tick = researchTick, han
       await app.change(state => {
         state.research_runtime = { ...result, checked_at: app.now().toISOString() };
         state.exceptions = state.exceptions.filter(e => e.id !== 'research-service');
-        if (result.reason) state.exceptions.push({ id: 'research-service', reason: result.reason });
+        if (result.reason && ['Held','Needs attention'].includes(result.status)) state.exceptions.push({ id: 'research-service', reason: result.reason });
       });
       try { await wait(intervalMs, undefined, { signal }); } catch { if (!signal?.aborted) throw Error('Research service wait failed'); }
     }
