@@ -54,7 +54,7 @@ export async function acquireLock(directory) {
   } catch (error) {
     if (error.code !== 'EEXIST') throw error;
     const owner = await readJson(path);
-    if (!Number.isInteger(owner.pid) || alive(owner.pid)) throw Error('Another runner is active; refusing overlapping execution');
+    if (!Number.isInteger(owner.pid) || owner.pid <= 0 || alive(owner.pid)) throw Object.assign(Error('Another runner is active; refusing overlapping execution'), Number.isInteger(owner.pid) && owner.pid > 0 ? { code: 'RUNNER_BUSY' } : {});
     // shortcut: hard-crash lock recovery is manual during this controlled proof; never race to remove a competing lock.
     throw Error('Stale runner lock: confirm all recorded processes stopped before manual recovery');
   }

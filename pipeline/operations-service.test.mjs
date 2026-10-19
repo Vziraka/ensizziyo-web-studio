@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { StudioLifecycle, initialConfig } from './lifecycle.mjs';
 import { ControlledOperations } from './lifecycle-operations.mjs';
 import { operationsTick, runOperationsService } from './operations-service.mjs';
-import { saveJson } from './engine.mjs';
+import { saveJson, acquireLock } from './engine.mjs';
 
 async function setup(t) {
   const directory = await mkdtemp(join(tmpdir(), 'studio-service-')); t.after(() => rm(directory, { recursive: true, force: true }));
@@ -67,4 +67,12 @@ test('an approved invitation wakes the existing service before its ordinary poll
   await s.app.change(state=>{state.runtime={next_at:'2026-10-19T13:05:00Z',wake_requested:true};});
   await runOperationsService(s.app,{signal:abort.signal,intervalMs:1000,tick:async()=>{ticks++;abort.abort();return {status:'Complete',calls:0};}});
   assert.equal(ticks,1);assert.equal((await s.app.snapshot()).runtime.wake_requested,false);
+});
+
+test('a brief external backup lock cannot tear down service settlement',async t=>{
+  const s=await setup(t),stop=new AbortController();
+  await runOperationsService(s.app,{signal:stop.signal,intervalMs:1000,tick:async()=>{
+    const release=await acquireLock(s.directory);setTimeout(()=>{void release();},60);stop.abort();return {status:'Complete',calls:0};
+  }});
+  const state=await s.app.snapshot();assert.equal(state.runtime.status,'Stopped');assert.equal(state.runtime.last_error,null);
 });

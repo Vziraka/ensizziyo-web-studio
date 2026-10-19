@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile, lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { acquireLock, privateStateDirectory, readJson, saveJson } from './engine.mjs';
 import { dailyCallQueue } from './apollo-queue.mjs';
 import { verificationLane, verificationData, validateVerificationRecord, verificationFresh, callStages } from './verification-calls.mjs';
@@ -13,6 +14,10 @@ export const check = (condition, message) => { if (!condition) throw Error(messa
 const text = (value, max = 3000) => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
 const key = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value);
 const date = value => typeof value === 'string' && /Z$|[+-]\d\d:\d\d$/.test(value) && Number.isFinite(Date.parse(value));
+async function acquireLifecycleLock(directory) {
+  for(let attempt=0;;attempt++)try{return await acquireLock(directory);}
+  catch(error){if(error.code!=='RUNNER_BUSY'||attempt===7)throw error;await delay(Math.min(20*2**attempt,200));}
+}
 const money = value => Number.isSafeInteger(value) && value > 0 && value <= 100_000_000;
 const services = ['website', 'systems', 'ai', 'marketing'];
 const coldOutcomes = ['no_answer', 'busy', 'voicemail'];
@@ -114,7 +119,7 @@ export class StudioLifecycle {
     await previous;
     let release;
     try {
-      release = await acquireLock(this.directory);
+      release = await acquireLifecycleLock(this.directory);
       const state = await readJson(join(this.directory, 'lifecycle-state.json'));
       check(state.schema_version === 1, 'Unknown state version');
       const result = await fn(state);
@@ -432,7 +437,7 @@ export class StudioLifecycle {
   }
   async backup(output) {
     output = await privateStateDirectory(output);
-    const release = await acquireLock(this.directory);
+    const release = await acquireLifecycleLock(this.directory);
     try {
       const state = await this.snapshot();
       check(!Object.values(state.ai_attempts).some(a => a.status === 'Running'), 'Stop workers before backup');

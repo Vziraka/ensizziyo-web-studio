@@ -4,6 +4,7 @@ import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { StudioLifecycle, hash, initialConfig, businessDaysBetween } from './lifecycle.mjs';
+import { acquireLock } from './engine.mjs';
 
 export const at = '2026-10-19T15:00:00Z';
 export const prospect = (id = 'fictional-bakery') => ({ id: `import-${id}`, prospect_id: id, type: 'prospect_imported', at,
@@ -45,6 +46,31 @@ test('a rejected same-host change does not block the following valid change', as
   ]);
   assert.deepEqual(results.map(r => r.status), ['rejected', 'fulfilled']);
   assert.equal((await app.snapshot()).after_failure, true);
+});
+
+test('a brief external state lock delays one change without losing or repeating it', async t => {
+  const { app, directory } = await setup(t), release = await acquireLock(directory);
+  let writes=0;
+  const pending=Promise.allSettled([app.change(state=>{writes++;state.after_external_lock=true;})]);
+  await new Promise(resolve=>setTimeout(resolve,60));await release();
+  assert.equal((await pending)[0].status,'fulfilled');assert.equal(writes,1);
+  assert.equal((await app.snapshot()).after_external_lock,true);
+});
+
+test('backup waits for a brief writer and keeps an unknown lock intact', async t => {
+  const { app, directory }=await setup(t),release=await acquireLock(directory),output=join(directory,'brief-lock-backup.json');
+  const pending=Promise.allSettled([app.backup(output)]);
+  await new Promise(resolve=>setTimeout(resolve,60));await release();
+  assert.equal((await pending)[0].status,'fulfilled');
+  const lock=join(directory,'.runner.lock');await writeFile(lock,'{}');
+  await assert.rejects(app.change(()=>assert.fail('Unknown owner must block')),/Another runner/);
+  assert.equal(await readFile(lock,'utf8'),'{}');
+});
+
+test('a persistent live lock remains owned and the waiting writer stops within its bound',async t=>{
+  const {app,directory}=await setup(t),release=await acquireLock(directory),path=join(directory,'.runner.lock'),before=await readFile(path,'utf8');
+  try{await assert.rejects(app.change(()=>assert.fail('Live owner must exclude this writer')),{code:'RUNNER_BUSY'});assert.equal(await readFile(path,'utf8'),before);}
+  finally{await release();}
 });
 async function connected(s) {
   await s.app.apply(prospect());
