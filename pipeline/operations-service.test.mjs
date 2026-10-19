@@ -23,10 +23,18 @@ function provider(onConnect = async () => {}) {
     call: async (tool, input) => { calls.push({ tool, input }); return { structuredContent: tool.includes('apollo') ? { id: 'owner' } : { email: 'owner@example.com' }, content: [] }; } }) };
 }
 test('one bounded service cycle invokes native connectors, retains receipts and flushes maintenance', async t => {
-  const s = await setup(t), p = provider(); const result = await operationsTick(s.app, { connect: p.connect, paceMs: 0 });
+  const s = await setup(t), p = provider();
+  s.config.sender = { link_id: 'link_businessmail' };s.config.calendar.link_id='link_businesscalendar';await saveJson(join(s.directory,'lifecycle-config.json'),s.config);
+  const result = await operationsTick(s.app, { connect: options => {assert.deepEqual(options.accountLinks,{gmail:'link_businessmail',google_calendar:'link_businesscalendar'});return p.connect();}, paceMs: 0 });
   assert.equal(result.status, 'Complete'); assert.equal(result.calls, 3); assert.equal(result.maintenance.synchronized, true);
   assert.equal(p.closed, 1); assert.equal((await readdir(join(s.directory, 'receipts'))).length, 3);
   assert.equal((await s.app.snapshot()).operations.cycle.completed_cycles, 1);
+});
+
+test('changing the selected Calendar account during a cycle holds before its next dispatch', async t => {
+  const s=await setup(t),p=provider(async()=>{s.config.calendar.link_id='link_changedcalendar';await saveJson(join(s.directory,'lifecycle-config.json'),s.config);});
+  await assert.rejects(operationsTick(s.app,{connect:p.connect,paceMs:0}),/Calendar account changed/);
+  assert.equal(p.calls.some(c=>c.tool.includes('google_calendar')),false);assert.equal(p.closed,1);
 });
 test('an owner pause while the connector connects blocks the prepared call before dispatch', async t => {
   const s = await setup(t), p = provider(async () => { s.config.operations.enabled = false; await saveJson(join(s.directory, 'lifecycle-config.json'), s.config); });

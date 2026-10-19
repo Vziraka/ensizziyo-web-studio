@@ -1,5 +1,11 @@
 # Launch tasks
 
+## Business Google routing — October 18, 2026
+
+The owner connected business Gmail and Calendar and requested both for the dashboard. Both profiles match the business owner. The refreshed multi-account connector requires `link_id`; old empty-input calls fail instead of selecting the new account. Bind private sender/calendar IDs through the shared adapter and all three callers, retain personal connections, reject overrides/default fallback and hold if selection changes during dispatch. Existing release fingerprints cover the new fields; contact gates remain closed. No new dependency or purchase.
+
+Two regressions failed before the fix. All 264 account-free tests and syntax pass, including exact sends, live-slot caller routing, background routing and mid-cycle account changes. Read-only profiles through the updated adapter and live business availability passed. Requirements review covered both identities, all callers and retained personal connections. Engineering review checked schema validation, account-change guards, unchanged caller inputs, release fingerprints and uncertain-write handling. CI and versioned installation follow; private deployment receipts own final installed status. Actual business message delivery and invitations remain untested.
+
 ## Approved call desk and dependable research — October 18, 2026
 
 Owner approved implementation after the design interview. Keep the existing local controller and private evidence store; avoid a migration or new subscription. Today opens a business list beside a focused call card, with due callbacks first and distinct pitch-ready and quick-verification queues. Show contact, reason, tailored idea, opener and key question first; expand retained research on demand. Calls are made manually on the owner's phone. Save outcomes with optional typed/dictated owner notes, advance, and retain an auditable correction/undo path. Interested leads offer booking first and an editable information email as an alternative. Confirm any guest/recipient and exact content before delivery. Discovery is 20 minutes, weekdays 9–5 Eastern, with 15-minute buffers, video by default and phone selectable. No recording is required.

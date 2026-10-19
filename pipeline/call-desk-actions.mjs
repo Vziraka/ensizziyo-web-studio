@@ -33,7 +33,7 @@ export async function saveInformationDraft(app,input) {
     return r.information_draft;
   });
 }
-export async function sendInformation(app,input,{connect=()=>new AppConnectors()}={}) {
+export async function sendInformation(app,input,{connect=options=>new AppConnectors(options)}={}) {
   check(key(input.prospect_id)&&typeof input.fingerprint==='string','Choose the exact saved draft');
   let client;
   try {
@@ -55,14 +55,14 @@ export async function sendInformation(app,input,{connect=()=>new AppConnectors()
     });
     let d=(await app.snapshot()).prospects[input.prospect_id].information_draft;
     if(d.status!=='Sending')return d;
-    client=connect();await client.connect();
+    client=connect({accountLinks:{gmail:c.sender?.link_id,google_calendar:c.calendar?.link_id}});await client.connect();
     const profile=unpack(await client.call('mcp__codex_apps__gmail_get_profile',{}));
     check(profile.email===c.sender.email,'Business sender differs from the connected Gmail account');
     // The durable reservation precedes all network effects. A lost receipt never authorizes a resend.
     await app.change(async state=>{
       const current=await readJson(join(app.directory,'lifecycle-config.json'));requireProductionRelease(current);
       const r=state.prospects[input.prospect_id];d=r.information_draft;
-      check(!r.restriction&&['Discovery','Information requested'].includes(r.stage)&&d.status==='Sending'&&d.fingerprint===input.fingerprint&&current.sender.email===profile.email,'Approval changed before dispatch');
+      check(!r.restriction&&['Discovery','Information requested'].includes(r.stage)&&d.status==='Sending'&&d.fingerprint===input.fingerprint&&current.sender.email===profile.email&&current.sender.link_id===c.sender.link_id,'Approval changed before dispatch');
       try {
         const receipt=unpack(await client.call('mcp__codex_apps__gmail_send_email',{to:d.to,from_address:profile.email,subject:d.subject,payload:{mime_type:'text/plain',body:{content:d.body}}}));
         check(key(receipt.id)&&key(receipt.thread_id),'Send returned no authoritative message identity');
@@ -76,13 +76,13 @@ export async function sendInformation(app,input,{connect=()=>new AppConnectors()
     throw error;
   } finally {await client?.close();}
 }
-export async function availableMeetingSlots(app,{connect=()=>new AppConnectors()}={}) {
+export async function availableMeetingSlots(app,{connect=options=>new AppConnectors(options)}={}) {
   const c=await readJson(join(app.directory,'lifecycle-config.json')),now=app.now();
   if(c.mode==='controlled')return {slots:meetingSlots(now),checked_at:now.toISOString(),simulated:true};
   check(c.calendar.owner_email&&c.calendar.calendar_id,'Verify the business calendar connection before checking slots');
   let client;
   try {
-    client=connect();await client.connect();
+    client=connect({accountLinks:{gmail:c.sender?.link_id,google_calendar:c.calendar?.link_id}});await client.connect();
     const p=unpack(await client.call('mcp__codex_apps__google_calendar_get_profile',{}));check(p.email===c.calendar.owner_email,'Calendar account changed');
     const a=unpack(await client.call('mcp__codex_apps__google_calendar_get_availability',{calendar_ids:[c.calendar.calendar_id],time_min:now.toISOString(),time_max:new Date(+now+11*86400000).toISOString(),response_timezone_str:'America/New_York'}));
     check(a.calendars?.length===1&&a.calendars[0].calendar_id===c.calendar.calendar_id&&!a.calendars[0].errors,'Calendar availability is incomplete');

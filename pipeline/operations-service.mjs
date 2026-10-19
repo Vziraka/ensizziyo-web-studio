@@ -10,9 +10,11 @@ import { check, hash } from './lifecycle.mjs';
 import { readJson } from './engine.mjs';
 
 const writes = mutations;
-async function dispatchGuard(app, next, session) {
+async function dispatchGuard(app, next, session, accountLinks) {
   const config = await readJson(join(app.directory, 'lifecycle-config.json'));
   check(config.operations.enabled, 'Owner paused connector work before dispatch');
+  if (next.tool.startsWith('mcp__codex_apps__gmail_')) check(config.sender?.link_id === accountLinks.gmail, 'Gmail account changed before dispatch');
+  if (next.tool.startsWith('mcp__codex_apps__google_calendar_')) check(config.calendar?.link_id === accountLinks.google_calendar, 'Calendar account changed before dispatch');
   const state = await app.snapshot(), r = Object.values(state.operations.requests).find(r => r.key === next.key);
   check(r?.session === session && r.status === 'Pending' && r.input_sha256 === hash(next.input), 'Prepared operation identity changed before dispatch');
   if (!writes.has(next.operation) || ['stop', 'task_skip'].includes(next.operation)) return;
@@ -51,6 +53,7 @@ export async function operationsTick(app, { connect = options => new AppConnecto
   await mkdir(join(app.directory, 'receipts'), { recursive: true, mode: 0o700 });
   try {
     const config = await readJson(join(app.directory, 'lifecycle-config.json'));
+    const accountLinks = { gmail: config.sender?.link_id, google_calendar: config.calendar?.link_id };
     if (config.research?.supervised !== true) {
       try { await syncResearchImports(app); await app.change(s => { s.exceptions = s.exceptions.filter(e => e.id !== 'research-import-system'); }); }
       catch (error) { await app.change(s => { s.exceptions = s.exceptions.filter(e => e.id !== 'research-import-system'); s.exceptions.push({ id: 'research-import-system', reason: `Research import held: ${String(error.message).slice(0, 300)}` }); }); }
@@ -69,9 +72,9 @@ export async function operationsTick(app, { connect = options => new AppConnecto
       let receipt;
       try { receipt = JSON.parse(await readFile(path, 'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
       if (!receipt) {
-        if (!client) { client = connect({ cwd: app.directory, signal }); await client.connect(); }
+        if (!client) { client = connect({ cwd: app.directory, signal, accountLinks }); await client.connect(); }
         if (calls && paceMs) await delay(paceMs, undefined, { signal });
-        await dispatchGuard(app, next, session);
+        await dispatchGuard(app, next, session, accountLinks);
         receipt = await client.call(next.tool, next.input); calls++;
         await writeFile(path, JSON.stringify(receipt), { flag: 'wx', mode: 0o600 });
       }
