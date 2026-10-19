@@ -42,7 +42,7 @@ export async function settleSavedOperations(app) {
     try { raw = JSON.parse(await readFile(join(app.directory, 'receipts', `${r.key}.json`), 'utf8')); }
     catch (error) { if (error.code === 'ENOENT') continue; throw error; }
     const result = await operationsFor(app, r.session).settle(r.key, raw);
-    check(result.status === 'Done', 'Retained provider receipt failed; preserve the held operation');
+    check(['Done', 'Deferred'].includes(result.status), 'Retained provider receipt failed; preserve the held operation');
   }
 }
 
@@ -64,8 +64,9 @@ export async function operationsTick(app, { connect = options => new AppConnecto
       signal?.throwIfAborted();
       const next = await ops.next();
       if (!next.operation) {
+        await ops.effects();
         if (next.status === 'Complete') {
-          await ops.effects(); next.maintenance = await maintainOperations(app); Object.assign(next, await ops.report());
+          next.maintenance = await maintainOperations(app); Object.assign(next, await ops.report());
         }
         return { ...next, calls };
       }
@@ -80,6 +81,7 @@ export async function operationsTick(app, { connect = options => new AppConnecto
         await writeFile(path, JSON.stringify(receipt), { flag: 'wx', mode: 0o600 });
       }
       const settled = await ops.settle(next.key, receipt);
+      if (settled.status === 'Deferred') return { status: 'Waiting', next_at: settled.next_at, reason: settled.reason, calls };
       check(settled.status === 'Done', 'Provider operation failed; inspect the retained receipt and hold');
     }
     await app.change(state => { if (state.operations?.lease?.session === session) delete state.operations.lease; });

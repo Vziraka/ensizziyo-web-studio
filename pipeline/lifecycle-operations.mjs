@@ -29,6 +29,8 @@ const header = (message, name) => {
 const address = value => { const values = value.match(/[^\s<>\",;]+@[^\s<>\",;]+\.[^\s<>\",;]+/g) ?? []; return values.length === 1 ? values[0].toLowerCase() : ''; };
 const message = data => data.emailer_message ?? data;
 const eventData = data => data.event ?? data;
+export const taskVerificationScope = (action, binding, record, owner) => hash({ prospect_id: action.prospect_id, type: action.type, payload: action.payload,
+  request: action.request, provider_task: action.provider_task, binding, contact: record.contact, owner });
 function notification(o, now, actions) {
   const stable = { replies: [...new Set(o.replies)].sort(), holds: o.holds,
     bookings: Object.fromEntries(Object.entries(o.bookings).map(([id, b]) => [id, { id: b.id, start: b.start, end: b.end, verified: b.verified }])), suppression: o.suppression ?? {},
@@ -135,10 +137,13 @@ export class ControlledOperations {
           cycle.completed_at = now.toISOString(); cycle.completed_cycles++; delete o.lease;
           return { status: 'Complete', completed_cycles: cycle.completed_cycles, ...notification(o, now, state.actions), research: 'paused', real_outreach: Object.values(state.prospects).filter(r => !r.controlled).reduce((n, r) => n + r.attempts.length, 0) };
         }
-        const request = step.value, logical = mutations.has(request.operation) ? request.logical : `${cycle.read_epoch}-${this.session}-${request.logical}`;
-        const saved = o.requests[logical];
+        const request = step.value, limit = o.rate_limits?.[request.operation];
+        if (Date.parse(limit?.retry_at) > +now) { delete o.lease; return { status: 'Waiting', next_at: limit.retry_at, reason: 'Apollo rate limit; waiting for the provider window to reset' }; }
+        const logical = mutations.has(request.operation) ? request.logical : `${cycle.read_epoch}-${this.session}-${request.logical}`;
+        let saved = o.requests[logical];
+        if (saved) check(saved.operation === request.operation && saved.input_sha256 === hash(request.input), 'Saved operation scope changed; reconcile before continuing');
+        if (saved?.status === 'Deferred') { check(!mutations.has(request.operation), 'Uncertain mutation cannot be replayed'); delete o.requests[logical]; saved = undefined; }
         if (saved) {
-          check(saved.operation === request.operation && saved.input_sha256 === hash(request.input), 'Saved operation scope changed; reconcile before continuing');
           if (saved.status === 'Done') { value = saved.result; continue; }
           if (saved.status === 'Failed') { value = { failed: saved.error }; continue; }
           check(!mutations.has(request.operation), 'Uncertain mutation cannot be replayed');
@@ -260,6 +265,8 @@ export class ControlledOperations {
           const createLogical = `${a.id}-task-create`, prior = o.requests[createLogical];
           const coldHold = record.cold_paused && (a.type !== 'callback_task' || record.stage !== 'Callback');
           if (!a.provider_task && !prior && (coldHold || record.restriction)) { a.status = 'Cancelled'; continue; }
+          if (a.status === 'Verified' && a.verified_at && !a.cancel_requested && !coldHold && !record.restriction &&
+            a.verification_scope_sha256 === taskVerificationScope(a, binding, record, c.apollo.user_id)) continue;
           const found = yield request(`${a.id}-contact`, 'contact', { q_keywords: binding.email || binding.business_name, per_page: 10, page: 1 }); verifiedContact(found, binding, c.apollo.user_id, !record.controlled || Boolean(c.operations.native_proof));
           a.request ??= { contact_id: binding.contact_id, ...(binding.account_id ? { account_id: binding.account_id } : {}), user_id: c.apollo.user_id, type: 'call', status: 'scheduled', priority: a.type === 'callback_task' ? 'high' : 'low',
             due_at: new Date(Math.floor(Date.parse(a.payload.due_at) / 1000) * 1000).toISOString(), title: `${record.controlled ? 'STUDIO TEST' : 'EVZ'} ${c.run_id} ${a.id}`,
@@ -281,6 +288,7 @@ export class ControlledOperations {
           if (detail.status === 'skipped' && a.cancel_requested) { retain(`${a.id}-task-read`); a.status = 'Cancelled'; a.cancellation = 'Verified skipped at Apollo'; a.cancel_requested = false; continue; }
           a.provider_task = controlledTaskIdentity(detail, a.request, a.provider_task, true); a.status = 'Verified';
           if (!a.verified_at) { retain(`${a.id}-task-read`); a.verified_at = now.toISOString(); }
+          a.verification_scope_sha256 = taskVerificationScope(a, binding, record, c.apollo.user_id);
           if (a.cancel_requested || coldHold || record.restriction) {
             a.cancel_requested = true;
             const skipKey = `${a.id}-task-skip`;
@@ -338,6 +346,15 @@ export class ControlledOperations {
       check(r?.status === 'Pending' && r.session === this.session && names[r.operation], 'Unknown, stale or settled operations receipt');
       try {
         let data = unwrapApollo(raw); check(data && typeof data === 'object' && !Array.isArray(data), 'Malformed provider receipt');
+        if (data.error_details?.code === 'USAGE.RATE_LIMIT.API_RATE_LIMIT_EXCEEDED' && !mutations.has(r.operation)) {
+          const window = data.error_details.context?.window?.value, wait = { minute: 60_000, hour: 3_600_000, day: 86_400_000 }[window] ?? 86_400_000;
+          r.status = 'Deferred'; r.error = 'Apollo rate limit'; r.receipt_sha256 = hash(raw); r.finished_at = this.app.now().toISOString();
+          r.retry_at = new Date(+this.app.now() + wait).toISOString(); r.retain = true;
+          (state.operations.rate_limits ??= {})[r.operation] = { retry_at: r.retry_at, window, receipt_key: r.key, receipt_sha256: r.receipt_sha256 };
+          delete state.operations.lease;
+          return { key, status: r.status, next_at: r.retry_at, reason: r.error };
+        }
+        check(!data.error_details, 'Provider returned a structured error');
         if (r.operation === 'lists' && 'success' in data) {
           check(data.success === true && Array.isArray(data.data), 'Malformed contact-list receipt');
           data = { labels: data.data };
@@ -345,11 +362,12 @@ export class ControlledOperations {
         // Gmail bodies are unnecessary for matching replies; keep only protocol headers in operating state.
         r.result = r.operation === 'thread' ? { id: data.id, messages: data.messages?.map(m => ({ id: m.id, thread_id: m.thread_id, internal_date: m.internal_date, label_ids: m.label_ids, payload: { headers: m.payload?.headers } })) } : data;
         r.status = 'Done'; r.receipt_sha256 = hash(raw); r.finished_at = this.app.now().toISOString();
+        if (state.operations.rate_limits) delete state.operations.rate_limits[r.operation];
         if (['apollo_profile', 'gmail_profile', 'calendar_profile'].includes(r.operation)) {
           state.operations.owner_evidence ??= {};
           if (!state.operations.owner_evidence[r.operation]) { r.retain = true; state.operations.owner_evidence[r.operation] = r.key; }
         }
-      } catch { r.status = 'Failed'; r.error = 'Provider operation returned an error or malformed receipt'; r.receipt_sha256 = hash(raw); }
+      } catch { r.status = 'Failed'; r.error = 'Provider operation returned an error or malformed receipt'; r.receipt_sha256 = hash(raw); r.finished_at = this.app.now().toISOString(); }
       return { key, status: r.status };
     });
   }
