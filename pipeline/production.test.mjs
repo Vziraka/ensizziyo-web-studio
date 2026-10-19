@@ -245,6 +245,14 @@ test('a mismatched native phone holds the task and never publishes email', async
   await drive(s.app, p); assert.equal(p.calls.some(r => ['task_create', 'intent'].includes(r.operation)), false);
   assert.match((await s.app.snapshot()).operations.holds['synthetic-cafe'], /phone differs/);
 });
+test('a detailed call card can synchronize a contact-only Apollo task without a company account', async t => {
+  const s=await setup(t,true,'callback'),p=provider(s.config);delete p.person.account_id;
+  const connect=()=>({connect:async()=>{},close:async()=>{},call:async(tool,input)=>({structuredContent:p.respond({operation:Object.keys(operationNames).find(k=>tool===`mcp__codex_apps__${operationNames[k]}`),input})})});
+  assert.equal((await operationsTick(s.app,{connect,paceMs:0})).status,'Complete');
+  const action=Object.values((await s.app.snapshot()).actions).find(a=>a.type==='callback_task');
+  assert.equal(action.status,'Verified');assert.equal(Object.hasOwn(p.calls.find(r=>r.operation==='task_create').input,'account_id'),false);
+  s.advance();await operationsTick(s.app,{connect,paceMs:0});assert.equal(p.calls.filter(r=>r.operation==='task_create').length,1);
+});
 test('changed reply subjects still stop contact; an unverified incoming thread message holds the route', () => {
   const h = (name, value) => ({ name, value }), expected = { thread_id: 'thread', original_id: 'sent', from: owner, to: 'cafe@example.net', subject: 'Original idea', sent_after: at, sent_before: at };
   const original = { id: 'sent', thread_id: 'thread', internal_date: String(Date.parse(at)), label_ids: ['SENT'], payload: { headers: [h('From', owner), h('To', expected.to), h('Subject', expected.subject), h('Message-ID', '<original>')] } };

@@ -299,7 +299,7 @@ export class ProductionOperations extends ControlledOperations {
             found = yield request(`${prospectId}-created-contact`, 'contact', { q_keywords: query, per_page: 10, page: 1 });
             check(!found.failed && found.contacts?.length === 1 && !found.pagination?.next_page && (!found.pagination || found.pagination.total_pages <= 1), 'Created contact is missing, ambiguous or truncated; never recreate'); person = found.contacts[0];
           }
-          check(person && match(person) && person.owner_id === c.apollo.user_id && id(person.id) && (verificationLane(r) ? !person.account_id || id(person.account_id) : id(person.account_id)), 'Existing contact ownership/organization needs review');
+          check(person && match(person) && person.owner_id === c.apollo.user_id && id(person.id) && (person.account_id == null || id(person.account_id)), 'Existing contact ownership/organization needs review');
           check(!person.contact_campaign_statuses?.some(s => ['active', 'paused'].includes(s.status)), 'Existing contact is already in a sequence; hold to prevent overlapping outreach');
           if (o.requests[create] && o.requests[create].status !== 'Done') Object.assign(o.requests[create], { status: 'Done', result: { contact: person }, reconciliation: { kind: 'unique authoritative contact readback; creation was not retried', contact_id: person.id, at: now.toISOString() } });
           binding = o.bindings[prospectId] = { contact_id: person.id, account_id: person.account_id ?? null, email: person.email ?? null, phone: r.contact.phone, ...(verificationLane(r) ? { verification: true, business_name: r.name } : {}) };
