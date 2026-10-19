@@ -192,3 +192,5 @@ test('reviewed-result handoff retries uncertain projection without repeating imp
   await saveJson(join(f.directory, 'research-control.json'), { ...f.control, enabled: false });
   const before = checks; assert.equal((await researchHandoff(f.app, options)).status, 'Disabled'); assert.equal(checks, before);
 });
+
+test('a completed on-demand batch projects while the old research campaign stays paused',async t=>{const f=await fixture(t);const path=join(f.app.directory,'lifecycle-config.json'),c=JSON.parse(await readFile(path));c.research.auto_import=true;c.google={sheet_title:'Studio operations'};await saveJson(path,c);await saveJson(join(f.directory,'research-control.json'),{...f.control,enabled:false});await f.app.change(s=>{s.discovery_projection_due=true;});let writes=0;const options={importResults:()=>{throw Error('Old campaign must stay paused');},publish:async()=>{writes++;}};assert.equal((await researchHandoff(f.app,options)).status,'Discovery projected');assert.equal(writes,1);assert.equal((await f.app.snapshot()).discovery_projection_due,false);assert.equal((await researchHandoff(f.app,options)).status,'Disabled');assert.equal(writes,1);});

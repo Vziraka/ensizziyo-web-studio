@@ -1,5 +1,7 @@
 # Controlled research proof
 
+October 19 multi-category increment: [Campaign operation](CAMPAIGNS.md) owns the category desk, globally visible commitments, on-demand 25-total discovery and approved internal packages/care. The new service reuses existing public search/page reading, source validation, subscription allowance/ledger and the verification-card import. No new subscription, model API, automatic stocking or prospect messaging. Current deployment and batch evidence belongs in WORKSPACE.md.
+
 The approved [call desk](CALL-DESK.md) documents quick outcomes, owner notes, exact-message approval, booking, research buffering, verification evidence and rollout limits.
 
 Same-day discovery support accepts retained Maps/social/market provenance separately from website status/customer channel. Use the existing reviewed verification packet/import for an identity/food offering/DMV locality/public phone check; email and owner-direct access are not prerequisites for calling. A retained named-business directory may supply locality only, alongside primary business/social identity, offering and phone. Optional packet `discovery` fields are `channel`, `source_url`, `website_status`, `website_url`, `customer_channel` and `next_check`; the discovery source must be retained. New candidates require separate live-scope review. The single E2E and staged packet remain private; no unattended Maps/social collector or wider campaign is implied.
