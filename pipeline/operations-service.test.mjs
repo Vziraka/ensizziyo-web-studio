@@ -49,6 +49,18 @@ test('a crash after receipt persistence settles the exact saved receipt before c
   const saved = Object.values((await s.app.snapshot()).operations.requests).find(r => r.key === prepared.key);
   assert.equal(saved.status, 'Done'); assert.equal(saved.session, 'before-crash');
 });
+test('a persisted rate response survives a crash and the expired read gets a new receipt without replaying the error', async t => {
+  const s = await setup(t), ops = new ControlledOperations(s.app, 'rate-crash'), prepared = await ops.next();
+  await mkdir(join(s.directory, 'receipts')); await writeFile(join(s.directory, 'receipts', `${prepared.key}.json`), JSON.stringify({ isError: false,
+    structuredContent: { error_details: { code: 'USAGE.RATE_LIMIT.API_RATE_LIMIT_EXCEEDED', context: { window: { value: 'minute' } } } } }));
+  s.advance(91_000); const p = provider();
+  const waiting = await operationsTick(s.app, { connect: p.connect, paceMs: 0 });
+  assert.equal(waiting.status, 'Waiting'); assert.equal(p.calls.length, 0);
+  s.advance(61_000); assert.equal((await operationsTick(s.app, { connect: p.connect, paceMs: 0 })).status, 'Complete');
+  assert.equal(p.calls.filter(r => r.tool.includes('apollo')).length, 1);
+  assert.equal(Object.values((await s.app.snapshot()).operations.requests).find(r => r.key === prepared.key).status, 'Deferred');
+  assert((await readFile(join(s.directory, 'receipts', `${prepared.key}.json`), 'utf8')).includes('API_RATE_LIMIT_EXCEEDED'));
+});
 test('a short service tick yields without reserving an unexecuted extra call or retaining its lease', async t => {
   const s = await setup(t), p = provider(); const r = await operationsTick(s.app, { connect: p.connect, maxOperations: 1, paceMs: 0 });
   assert.equal(r.status, 'Yielded'); assert.equal(p.calls.length, 1);

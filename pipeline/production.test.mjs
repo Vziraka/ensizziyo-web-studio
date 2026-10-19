@@ -152,6 +152,65 @@ test('the actual service dispatch path honors a requested callback while keeping
   const callback = Object.values((await s.app.snapshot()).actions).find(a => a.type === 'callback_task');
   assert.equal(callback.status, 'Verified'); assert.equal(p.calls.some(c => c.operation === 'intent'), false);
 });
+test('restarting completed task synchronization makes no contact/task reads, but cancellation and changed bindings do', async t => {
+  const s = await setup(t, true, 'callback'), p = provider(s.config);
+  await drive(s.app, p);
+  const original = structuredClone(Object.values((await s.app.snapshot()).actions).find(a => a.type === 'callback_task'));
+  s.advance(); const before = p.calls.length;
+  await drive(s.app, p, 'idle-restart');
+  assert.equal(p.calls.slice(before).some(r => ['contact', 'task_read', 'task_create'].includes(r.operation)), false);
+  assert.equal(Object.values((await s.app.snapshot()).actions).find(a => a.id === original.id).verified_at, original.verified_at);
+  await s.app.change(state => { state.operations.bindings['synthetic-cafe'].phone = '+1 202 555 0199'; });
+  s.advance(); const changed = await drive(s.app, p, 'changed-binding');
+  assert.match(changed.holds['synthetic-cafe'], /phone differs/);
+  await s.app.change(state => { state.operations.bindings['synthetic-cafe'].phone = '+1 202 555 0100'; state.actions[original.id].cancel_requested = true; });
+  s.advance(); const cancelBefore = p.calls.length; await drive(s.app, p, 'cancel');
+  assert(p.calls.slice(cancelBefore).some(r => r.operation === 'contact'));
+  assert.equal(p.calls.filter(r => r.operation === 'task_skip').length, 1);
+  s.advance(); await drive(s.app, p, 'cancel-readback');
+  assert.equal((await s.app.snapshot()).actions[original.id].status, 'Cancelled');
+  const now = s.app.now().toISOString(), callbackBefore = p.calls.length;
+  await s.app.apply({ id: 'second-callback', prospect_id: 'synthetic-cafe', type: 'call_logged', at: now,
+    data: { call_id: 'call-two', performed_at: now, outcome: 'callback', simulated: false, callback_at: '2026-10-21T14:00:00.000Z' } });
+  s.advance(); await drive(s.app, p, 'new-callback');
+  assert(p.calls.slice(callbackBefore).some(r => r.operation === 'contact'));
+  assert.equal(p.calls.filter(r => r.operation === 'task_create').length, 2);
+});
+test('structured Apollo rate errors wait across service restarts, retain proof and retry only reads after the window', async t => {
+  const s = await setup(t, true, 'callback'), p = provider(s.config); let limited = true;
+  const connect = () => ({ connect: async () => {}, close: async () => {}, call: async (tool, input) => {
+    const operation = Object.keys(operationNames).find(key => tool === `mcp__codex_apps__${operationNames[key]}`);
+    if (operation === 'contact' && limited) { p.calls.push({ operation, input }); return { isError: false, structuredContent: {
+      error_details: { code: 'USAGE.RATE_LIMIT.API_RATE_LIMIT_EXCEEDED', context: { window: { value: 'hour' } } }
+    } }; }
+    return { structuredContent: p.respond({ operation, input }) };
+  } });
+  const first = await operationsTick(s.app, { connect, paceMs: 0 });
+  assert.equal(first.status, 'Waiting'); assert.equal(first.next_at, '2026-10-19T15:00:00.000Z');
+  const held = await s.app.snapshot(); assert.deepEqual(held.operations.holds, {});
+  const receipt = Object.values(held.operations.requests).find(r => r.operation === 'contact');
+  assert.equal(receipt.status, 'Deferred'); assert.match(receipt.receipt_sha256, /^[a-f0-9]{64}$/);
+  s.advance(91_000); await operationsTick(s.app, { connect, paceMs: 0 });
+  assert.equal(p.calls.filter(r => r.operation === 'contact').length, 1);
+  assert.equal(p.calls.some(r => r.operation === 'task_create'), false);
+  limited = false; s.advance(3_600_000);
+  assert.equal((await operationsTick(s.app, { connect, paceMs: 0 })).status, 'Complete');
+  assert.equal(p.calls.filter(r => r.operation === 'task_create').length, 1);
+  assert.equal(Object.values((await s.app.snapshot()).actions).find(a => a.type === 'callback_task').status, 'Verified');
+});
+test('a rate error on a task mutation remains uncertain and cannot reserve a second creation', async t => {
+  const s = await setup(t, true, 'callback'), p = provider(s.config);
+  const connect = () => ({ connect: async () => {}, close: async () => {}, call: async (tool, input) => {
+    const operation = Object.keys(operationNames).find(key => tool === `mcp__codex_apps__${operationNames[key]}`);
+    if (operation === 'task_create') { p.calls.push({ operation, input }); return { structuredContent: { error_details: { code: 'USAGE.RATE_LIMIT.API_RATE_LIMIT_EXCEEDED' } } }; }
+    if (operation === 'task_search') return { structuredContent: { tasks: [] } };
+    return { structuredContent: p.respond({ operation, input }) };
+  } });
+  await assert.rejects(operationsTick(s.app, { connect, paceMs: 0 }), /Provider operation failed/);
+  s.advance(3_601_000); const result = await operationsTick(s.app, { connect, paceMs: 0 });
+  assert.match(result.holds['synthetic-cafe'], /not uniquely reconciled/);
+  assert.equal(p.calls.filter(r => r.operation === 'task_create').length, 1);
+});
 test('daily call queue puts callbacks and saved follow-ups ahead of new businesses with both spellings', () => {
   const make = (company_id, kind) => ({ company_id, kind, due_at: at, status: 'scheduled' });
   assert.deepEqual(dailyCallQueue([make('new', 'new'), make('follow', 'follow-up'), make('callback', 'callback')], new Date(at)).map(x => x.company_id), ['callback', 'follow', 'new']);
@@ -245,7 +304,7 @@ test('production booking requires a reviewed exact guest and keeps one reservati
   assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].meeting.event_id, 'agreed-event');
   s.advance(); await drive(s.app, p, 'booking-restart'); assert.equal(p.calls.filter(r => r.operation === 'booking_create').length, 1);
 });
-test('calls-only booking uses the confirmed guest and business calendar without releasing email', async t => {
+test('calls-only booking uses the confirmed guest despite a contact rate limit, without releasing email', async t => {
   const s = await setup(t, false), c = s.app.config;
   c.sender.mailbox_id = ''; c.sender.postal_address = ''; c.native_email.enabled = false;
   c.calendar.link_id = 'link_businesscalendar';
@@ -260,13 +319,15 @@ test('calls-only booking uses the confirmed guest and business calendar without 
   await saveJson(join(s.directory,'lifecycle-config.json'),s.app.config);
   await assert.rejects(queueMeeting(s.app,{...input,recipient_confirmed:false}),/exact guest/);
   await queueMeeting(s.app,input);
+  await s.app.change(state => { (state.operations ??= { requests: {}, effects: {}, bookings: {}, email: {}, holds: {}, replies: [] }).rate_limits = { contact: { retry_at: '2026-10-19T15:00:00.000Z' } }; });
   const p=provider(s.app.config),connect=()=>({connect:async()=>{},close:async()=>{},call:async(tool,input)=>({structuredContent:p.respond({operation:Object.keys(operationNames).find(k=>tool===`mcp__codex_apps__${operationNames[k]}`),input})})});
-  assert.equal((await operationsTick(s.app,{connect,paceMs:0})).status,'Complete');
+  assert.equal((await operationsTick(s.app,{connect,paceMs:0})).status,'Waiting');
   assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].meeting.event_id,'agreed-event');
   assert.deepEqual(p.calls.find(r=>r.operation==='booking_create').input.attendees,['confirmed@example.net']);
+  assert.equal(p.calls.some(r=>r.operation==='contact'),false);
   assert.equal(p.calls.some(r=>['gmail_profile','mailboxes','intent','send','draft'].includes(r.operation)),false);
   assert.throws(()=>requireProductionRelease(s.app.config),/paused/);
-  s.advance(); await operationsTick(s.app,{connect,paceMs:0});
+  s.advance(3_601_000); await operationsTick(s.app,{connect,paceMs:0});
   assert.equal(p.calls.filter(r=>r.operation==='booking_create').length,1);
   const changed=structuredClone(s.app.config);changed.calendar.owner_email='other@example.org';await saveJson(join(s.directory,'lifecycle-config.json'),changed);
   await assert.rejects(queueMeeting(s.app,input),/must match/);
