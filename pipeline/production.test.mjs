@@ -181,6 +181,15 @@ test('retained detailed research and independent review import once, preserve su
   assert.equal(importedRecord.call_prep.observations[0].fact, report.observations[0].fact);
   assert.deepEqual(importedRecord.call_prep.observations[0].sources, [{ url: source.url, checked_at: source.fetched_at, excerpt: 'DM to order' }]);
   assert.equal(importedRecord.call_prep.hypothesis, report.opportunities[0].proposed_solution);
+  const phoneOnly = await setup(t, false), phoneDirectory = await mkdtemp(join(tmpdir(), 'evz-phone-only-research-'));
+  t.after(() => rm(phoneDirectory, { recursive: true, force: true })); await cp(directory, phoneDirectory, { recursive: true });
+  const phoneDecision = { ...d, contact: { ...d.contact, email: '' } };
+  await saveJson(join(phoneDirectory, job.id, 'qualification.json'), { ...phoneDecision, reviewed_at: at });
+  await saveJson(join(phoneDirectory, job.id, 'auto-review-fixture.json'), { schema_version: 1, reviewer: d.reviewed_by, reviewed_at: at, result: { verdict: 'Accepted', corrections: [], decision: phoneDecision } });
+  const phoneResult = await importResearch(phoneOnly.app, phoneDirectory, job.id), phoneCard = (await phoneOnly.app.dashboard()).prospects[phoneResult.prospect_id];
+  assert.equal(phoneCard.contact.email, null); assert.equal(phoneCard.contact.phone, '+1 202 555 0101'); assert.equal(phoneCard.qualification.verdict, 'Research-qualified');
+  assert.equal((await phoneOnly.app.dashboard()).controls.calls_paused, true);
+  assert.equal((await importResearch(phoneOnly.app, phoneDirectory, job.id)).duplicate_of, phoneResult.prospect_id);
   assert.ok(importedRecord.call_prep.unknowns.includes(report.unknowns[0]));
   const up = await setup(t,false), url = 'https://example.org/contact';
   const vsource = {url,checked_at:job.as_of,fetched_at:at,text:'SYNTHETIC bakery. Fairfax, VA. Custom cakes. Call +1 202 555 0101.',kind:'business',capture_method:'http',coverage:'full',identity_note:'Fictional first-party business source.'};

@@ -202,7 +202,7 @@ export class StudioLifecycle {
               check(date(data.callback_at) && Date.parse(data.callback_at) > Date.parse(data.performed_at), 'Callback needs an exact time after the performed call');
               r.stage = 'Callback'; r.callback_at = data.callback_at; pauseCold(state, r, eid, 'Requested callback'); request(state, r, 'callback_task', { due_at: data.callback_at, kind: 'callback' }, eid);
             } else if (coldOutcomes.includes(data.outcome)) {
-              if (data.desk || verificationLane(r) || !this.config.outreach_enabled && !r.controlled) {
+              if (data.desk || verificationLane(r) || !r.contact.email || !this.config.outreach_enabled && !r.controlled) {
                 r.stage = verificationLane(r) ? 'Verifying' : 'Contacting';
                 if (r.cold_paused || r.attempts.filter(x => x.channel === 'call').length >= 2) {
                   r.stage = 'Hold'; r.next_check = r.cold_paused ? 'Requested callback was unanswered; owner reviews the next conversational step. Email stays blocked.' : 'Two call attempts used; hold for owner review. No email is released by this call-only lane.';
