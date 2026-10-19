@@ -8,7 +8,7 @@ import { ControlledOperations, controlledThread, verifiedContact } from './lifec
 import { researchCallPrep } from './call-prep.mjs';
 import { verificationData, verificationLane, validateVerificationRecord, phoneDigits } from './verification-calls.mjs';
 import { validateBookingSlot } from './lifecycle-documents.mjs';
-import { upgradeResearch } from './research-upgrades.mjs';
+import { upgradeResearch, upgradeBatch } from './research-upgrades.mjs';
 
 const email = value => typeof value === 'string' && /^[^\s@,;<>"\r\n]+@[^\s@,;<>"\r\n]+\.[^\s@,;<>"\r\n]+$/.test(value) && !value.endsWith('.invalid');
 const id = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value);
@@ -98,17 +98,23 @@ export async function importVerification(app, packet) {
   return { imported: true, prospect_id: prospectId, calls: 'paused until final release', email: 'blocked pending qualification and full release' };
 }
 
-// Reads retained source/review files, never an editable Sheet verdict or an owner HTTP event.
-export async function importResearch(app, directory, jobId, contactProof) {
-  check(app.config.mode === 'production', 'Research imports belong in the production workspace');
+async function retainedResearchReview(app, directory, jobId) {
   const f = await reviewFiles(directory, jobId), d = await readPrivateJson(join(f.target, 'qualification.json'));
-  validateDecision(d, f, app.now); check(d.decision === 'Research-qualified', 'Only research-qualified businesses enter calls');
+  validateDecision(d, f, app.now);
   const controller = await readPrivateJson(join(directory, 'controller-state.json')), record = controller.jobs[jobId];
-  check(record?.status === 'Complete' && record.stage === 'done' && /^[a-z0-9.-]+\.json$/.test(record.review_file ?? ''), 'An independently completed controller review is required');
+  check(record && (record.status === 'Complete' && record.stage === 'done' || record.status === 'Held' && record.stage === 'held') && /^[a-z0-9.-]+\.json$/.test(record.review_file ?? ''), 'An independently completed controller review is required');
   const raw = await readFile(join(f.target, record.review_file)), receipt = JSON.parse(raw);
   validateEvidenceReview(receipt.result, f, receipt.reviewer, app.now);
   check(Number.isFinite(Date.parse(receipt.reviewed_at)) && Date.parse(receipt.reviewed_at) <= +app.now() && +app.now() - Date.parse(receipt.reviewed_at) <= 14 * 86400000, 'Independent review is stale or from the future');
-  check(receipt.result.verdict === 'Accepted' && hash(receipt.result.decision) === hash(Object.fromEntries(Object.entries(d).filter(([k]) => k !== 'reviewed_at'))), 'Qualification differs from the independently accepted decision');
+  check(hash(receipt.result.decision) === hash(Object.fromEntries(Object.entries(d).filter(([k]) => k !== 'reviewed_at'))), 'Qualification differs from the independently reviewed decision');
+  return {f,d,raw,receipt,record};
+}
+// Reads retained source/review files, never an editable Sheet verdict or an owner HTTP event.
+export async function importResearch(app, directory, jobId, contactProof) {
+  check(app.config.mode === 'production', 'Research imports belong in the production workspace');
+  const {f,d,raw,receipt,record}=await retainedResearchReview(app,directory,jobId);
+  check(record.status==='Complete'&&record.stage==='done'&&receipt.result.verdict==='Accepted','An independently accepted completed review is required for call upgrades');
+  check(d.decision === 'Research-qualified', 'Only research-qualified businesses enter calls');
   const source = f.snapshots.sources.find(s => s.url === d.contact.url), p = contactProof ?? { ...d.contact, source: d.contact.url, checked_at: source?.fetched_at };
   check(email(d.contact.email) && p?.email === d.contact.email && p.source === d.contact.url && p.checked_at && Date.parse(p.checked_at) <= +app.now() && +app.now() - Date.parse(p.checked_at) <= 14 * 86400000, 'Fresh first-party contact proof is required');
   check(Date.parse(p.checked_at) <= Date.parse(source?.fetched_at) + 60000, 'A later review cannot refresh the retained contact inspection date');
@@ -129,6 +135,20 @@ export async function importResearch(app, directory, jobId, contactProof) {
   await app.apply({ id: `import-${hash(jobId).slice(0, 24)}`, prospect_id: prospectId, type: 'prospect_imported', at: app.now().toISOString(), data }, { actor: 'research-import' });
   await stageProspect(app, prospectId);
   return { imported: true, prospect_id: prospectId, outreach: 'paused until release' };
+}
+
+async function projectBatchReview(app,directory,jobId) {
+  const {f,d,raw,receipt,record}=await retainedResearchReview(app,directory,jobId);
+  return app.change(async state=>{
+    const c=await readJson(join(app.directory,'lifecycle-config.json')),batch=upgradeBatch(c,state),item=batch?.items.find(i=>i.job_id===jobId),r=state.prospects[item?.prospect_id];
+    check(r&&r.name===f.job.business_name,'Detailed review must match its approved existing card');
+    if(r.research_assessment?.report_sha256===f.report_sha256&&r.research_assessment?.review_sha256===hash(raw))return {reviewed:true,prospect_id:r.id};
+    r.research_assessment={job_id:jobId,status:record.status,independent_verdict:receipt.result.verdict,decision:d.decision,operating_status:d.operating_status,rationale:d.rationale,next_action:d.next_action,reviewed_at:receipt.reviewed_at,report_sha256:f.report_sha256,review_sha256:hash(raw),unknowns:f.report.unknowns,
+      observations:f.report.observations.filter((_,i)=>d.observations[i]?.supported).map(o=>({fact:o.fact,sources:o.evidence.map(e=>({...e,checked_at:f.snapshots.sources.find(s=>s.url===e.url).fetched_at}))})),
+      opportunities:f.report.opportunities.filter((_,i)=>d.opportunity_checks?.find(c=>c.index===i)?.supported),journey_checks:f.report.journey_checks.filter((_,i)=>d.journey_checks[i]?.supported)};
+    state.revision++;state.updated_at=app.now().toISOString();
+    return {reviewed:true,prospect_id:r.id,decision:d.decision};
+  });
 }
 async function stageProspect(app, prospectId) {
   await app.change(async () => {
@@ -195,7 +215,7 @@ export async function syncResearchImports(app) {
   if (c.mode !== 'production' || !c.research?.auto_import) return { status: 'Paused' };
   const controller = await readPrivateJson(join(c.research.source_directory, 'controller-state.json'));
   const batch = c.research.upgrade_batch;
-  const jobs = Object.entries(controller.jobs).filter(([id, r]) => (!batch || batch.items.some(i=>i.job_id===id)) && r.status === 'Complete' && r.stage === 'done' && r.decision === 'Research-qualified');
+  const jobs = Object.entries(controller.jobs).filter(([id, r]) => (!batch || batch.items.some(i=>i.job_id===id)) && (r.status === 'Complete' && r.stage === 'done' && (batch || r.decision === 'Research-qualified') || batch && r.status === 'Held' && r.stage === 'held' && r.review_file));
   check(jobs.length <= 200, 'Research import scope exceeds the bounded controller campaign');
   let count = 0;
   for (const [jobId, record] of jobs) {
@@ -203,9 +223,10 @@ export async function syncResearchImports(app) {
     if (prior?.review_file === record.review_file) continue;
     if (count++ === 10) break;
     try {
-      const result = await importResearch(app, c.research.source_directory, jobId);
+      const reviewed = batch ? await projectBatchReview(app,c.research.source_directory,jobId) : null;
+      const result = record.status==='Complete'&&record.decision === 'Research-qualified' ? {...reviewed,...await importResearch(app, c.research.source_directory, jobId)} : reviewed;
       await app.change(state => {
-        (state.research_imports ??= {})[jobId] = { status: 'Verified', review_file: record.review_file, ...result, checked_at: app.now().toISOString() };
+        (state.research_imports ??= {})[jobId] = { status: record.status==='Held'?'Held review':'Verified', review_file: record.review_file, ...result, checked_at: app.now().toISOString() };
         state.exceptions = state.exceptions.filter(e => e.id !== `import-${jobId}`);
       });
     } catch (error) {
