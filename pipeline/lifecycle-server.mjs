@@ -9,10 +9,13 @@ import { readJson } from './engine.mjs';
 import { renderProposal } from './lifecycle-documents.mjs';
 import { queueMeeting, pauseStudio } from './production.mjs';
 import { setResearchPriority } from './research-service.mjs';
+import { callingSession, saveInformationDraft, sendInformation, availableMeetingSlots } from './call-desk-actions.mjs';
+import { runtimeVersion } from './runtime-version.mjs';
 
 const assets = new Map([['/', ['index.html', 'text/html']], ['/app.js', ['app.js', 'text/javascript']], ['/money.js', ['money.js', 'text/javascript']], ['/app.css', ['app.css', 'text/css']],
-  ['/preview/', ['preview.html', 'text/html']], ['/preview.js', ['preview.js', 'text/javascript']]]);
+  ['/call-desk.js', ['call-desk.js', 'text/javascript']], ['/preview/', ['preview.html', 'text/html']], ['/preview.js', ['preview.js', 'text/javascript']]]);
 export function serveLifecycle(app, { port = 8807, quiet = false, analyze = assessTranscript } = {}) {
+  const version = runtimeVersion();
   check(Number.isInteger(port) && port >= 0 && port <= 65535, 'Invalid local port');
   const session = randomBytes(32).toString('hex'), csrf = randomBytes(32).toString('hex'), work = new Map();
   const abort = new AbortController();
@@ -32,7 +35,7 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
       }
       check(!req.headers['sec-fetch-site'] || ['same-origin', 'none'].includes(req.headers['sec-fetch-site']), 'Cross-site requests are blocked');
       check(req.headers.cookie?.split(';').some(x => x.trim() === `studio_session=${session}`), 'Open the private console first');
-      if (req.method === 'GET' && url.pathname === '/api/state') return json(200, { ...await app.dashboard(), csrf, workers: [...work.keys()] });
+      if (req.method === 'GET' && url.pathname === '/api/state') return json(200, { ...await app.dashboard(), build:await version, csrf, workers: [...work.keys()] });
       if (req.method === 'GET' && /^\/proposal\/[a-zA-Z0-9_-]{1,100}$/.test(url.pathname)) {
         const record = (await app.snapshot()).prospects[url.pathname.slice('/proposal/'.length)]; check(record, 'Unknown proposal');
         res.writeHead(200, { ...headers, 'Content-Type': 'text/html; charset=utf-8' }); res.end(renderProposal(record)); return;
@@ -52,6 +55,10 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
       }
       if (url.pathname === '/api/analyze') { start(input.prospect_id, input.call_id); return json(202, { queued: true }); }
       if (url.pathname === '/api/booking') return json(202, await queueMeeting(app, input));
+      if (url.pathname === '/api/slots') return json(200, await availableMeetingSlots(app));
+      if (url.pathname === '/api/calling-session') return json(200, await callingSession(app,input));
+      if (url.pathname === '/api/information-draft') return json(200, await saveInformationDraft(app,input));
+      if (url.pathname === '/api/information-send') return json(200, await sendInformation(app,input));
       if (url.pathname === '/api/pause') {
         return json(200, await pauseStudio(app));
       }

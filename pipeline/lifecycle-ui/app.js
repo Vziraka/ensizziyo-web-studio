@@ -1,7 +1,8 @@
+import { renderCallDesk } from '/call-desk.js';
 import { centsFromDollars } from '/money.js';
 let state, view = 'today', selected = 'juniper', lane = 'all', dirty = false, refreshAfter = 0;
 const content = document.querySelector('#content'), message = document.querySelector('#message');
-const titles = { today: ['Your operating desk', 'Make the next move clear.', 'Calls, decisions and client work, with the evidence beside them.'], reviews: ['Evidence → owner decision', 'Review the conversation.', 'A connected call pauses cold follow-ups until you confirm its next action.'], clients: ['From scope to support', 'Deliver what you agreed.', 'Track materials, payment evidence, delivery checks and open requests.'], exceptions: ['Bounded recovery', 'Handle the exceptions.', 'Held work stays visible while unrelated records continue.'], launch: ['Before the first real contact', 'Approve a working system.', 'These gates stay closed until their evidence and your final approval are recorded.'] };
+const titles = { today: ['Your calling desk', 'Your next conversation.', 'Prepared leads, clear next steps and your notes in one place.'], reviews: ['Evidence → owner decision', 'Review the conversation.', 'A connected call pauses cold follow-ups until you confirm its next action.'], clients: ['From scope to support', 'Deliver what you agreed.', 'Track materials, payment evidence, delivery checks and open requests.'], exceptions: ['Bounded recovery', 'Handle the exceptions.', 'Held work stays visible while unrelated records continue.'], launch: ['Before the first real contact', 'Approve a working system.', 'These gates stay closed until their evidence and your final approval are recorded.'] };
 function el(tag, text, className) { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; }
 function button(text, fn, className = 'quiet') { const node = el('button', text, className); node.type = 'button'; node.addEventListener('click', fn); return node; }
 function tell(text, error = false) { message.textContent = text; message.className = error ? 'error' : ''; }
@@ -270,6 +271,7 @@ function render() {
     if (state.controls.final_review?.verified?.length) { node.append(el('h3', 'Verified so far')); for (const line of state.controls.final_review.verified) node.append(el('p', line, 'muted')); }
     node.append(list, el('p', 'Readiness values are evidence-based gates, not checkboxes that activate sending. No production activation is available from this review screen.', 'muted')); content.append(node); return;
   }
+  if (view === 'today') { renderCallDesk(content,state,{api,refresh,tell,evidence:callPrep,clearDirty:()=>{dirty=false;}}); return; }
   if (view === 'today') content.append(stats(), el('p', `Prepared due call cards: ${state.daily.prepared.research} research-reviewed · ${state.daily.prepared.verification} verification only. These are prepared records, not calls made or accepted detailed assessments.`, 'notice'));
   const grid = el('div', undefined, 'grid'), records = Object.values(state.prospects).filter(r => view === 'reviews' ? ['Connected review', 'Verification review'].includes(r.stage) : view === 'clients' ? r.handover || r.quote || ['Preview', 'Delivery', 'Client review', 'Onboarding'].includes(r.stage) : lane === 'all' || (r.call_lane === 'verification' ? lane === 'verification' : lane === 'research'));
   if (view === 'today') { const order = new Map(state.daily.due.map((a, i) => [a.prospect_id, i])); records.sort((a, b) => (order.get(a.id) ?? 10000) - (order.get(b.id) ?? 10000)); }
@@ -292,6 +294,6 @@ document.querySelector('#pause').addEventListener('click', async () => { try { a
 document.querySelector('#backup').addEventListener('click', async () => { try { const result = await api('/api/backup', {}); tell(`Private backup saved and checksummed (${result.prospects} records).`); } catch (error) { tell(error.message, true); } });
 refresh().catch(error => tell(error.message, true));
 setInterval(() => {
-  if (dirty || document.visibilityState !== 'visible' || Date.now() < refreshAfter || document.activeElement?.closest('form')) return;
+  if (dirty || document.querySelector('.desk-next') || document.visibilityState !== 'visible' || Date.now() < refreshAfter || document.activeElement?.closest('form')) return;
   refresh().catch(error => { refreshAfter = Date.now() + 60000; if (message.textContent !== error.message) tell(error.message, true); });
 }, 15000);

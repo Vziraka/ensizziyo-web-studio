@@ -8,6 +8,7 @@ import { GoogleQueue } from './google.mjs';
 import { watchJob } from './runner.mjs';
 import { backupJob, restoreBackup } from './backup.mjs';
 import { runJob } from './engine.mjs';
+import { researchPrompt } from './workers.mjs';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -175,6 +176,39 @@ test('context import rejects uncaptured anchors, excessive copying, undated insp
   for (const mutate of [s => { s.reviewed_context.facts[0].excerpt = 'Guaranteed instant responses'; }, s => { s.text += ' extra'.repeat(26); }, s => { s.reviewed_context.inspected_at = 'unknown'; }, s => { s.reviewed_context.facts[0].published_at = '2030-01-01'; }, s => { s.reviewed_context.scope = ''; }]) {
     const changed = structuredClone(source); mutate(changed); changed.content_sha256 = sourceContentHash(changed);
     assert.throws(() => validateSnapshots({ ...snapshots, sources: [changed] }, job), /context|anchor|date|inspection|scope|quote/i);
+  }
+});
+
+test('context citations require the complete saved anchor even when shorter fragments appear in the capture', () => {
+  const event = 'Fictional Autumn Market 2026! We loved meeting our test visitors!';
+  const ordering = 'Call (703) 555-0123 to order or place an online order.';
+  const captured = structuredClone(source);
+  captured.text = `${event}\n${ordering}`;
+  captured.reviewed_context.scope = 'The public festival caption and its phone and online ordering line only.';
+  captured.reviewed_context.facts = [
+    { id: 'event', statement: 'The inspected caption mentions a festival and meeting its visitors.', excerpt: event, published_at: null },
+    { id: 'ordering', statement: 'The inspected line advertises both phone and online ordering.', excerpt: ordering, published_at: null }
+  ];
+  captured.content_sha256 = sourceContentHash(captured);
+  const evidence = { sources: [captured], failures: [] };
+  validateSnapshots(evidence, job);
+  const candidate = structuredClone(report);
+  candidate.sources[0].content_sha256 = captured.content_sha256;
+  candidate.sources[0].facts = captured.reviewed_context.facts.map(fact => fact.statement);
+  candidate.observations = captured.reviewed_context.facts.map(fact => ({
+    fact: fact.statement, source_urls: [captured.url],
+    evidence: [{ url: captured.url, excerpt: fact.excerpt, context_id: fact.id }]
+  }));
+  candidate.journey_checks = candidate.journey_checks.map(check => ({ ...check, status: 'Unknown', observation_indexes: [], finding: 'This narrow capture does not establish the complete journey area.' }));
+  const authorPrompt = researchPrompt({ phase: 'assess', job, checkpoint, snapshots: evidence });
+  assert.ok(authorPrompt.includes(event));
+  assert.match(authorPrompt, /nonempty context_id requires its complete saved anchor regardless of length/);
+  assert.match(authorPrompt, /Prefer 3-6 words only for literal excerpts/);
+  assert.doesNotThrow(() => validateEvidence(candidate, job, true, evidence));
+  for (const [index, excerpt] of [[0, 'Fictional Autumn Market 2026!'], [1, 'Call (703) 555-0123'], [1, 'place an online order.']]) {
+    const shortened = structuredClone(candidate);
+    shortened.observations[index].evidence[0].excerpt = excerpt;
+    assert.throws(() => validateEvidence(shortened, job, true, evidence), /specific reviewed context fact and its exact anchor/);
   }
 });
 

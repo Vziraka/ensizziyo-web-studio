@@ -31,7 +31,8 @@ function transport({ approval = false, silent = false } = {}) {
 test('supported connector mapping rejects arbitrary tools and namespace lookalikes', () => {
   assert.equal(connectorName('mcp__codex_apps__gmail_get_profile'), 'gmail.get_profile');
   assert.equal(connectorName('mcp__codex_apps__apollo_io_apollo_tasks_show'), 'apollo_io.apollo_tasks_show');
-  assert.throws(() => connectorName('mcp__codex_apps__gmail_send_email'), /allowlist/);
+  assert.equal(connectorName('mcp__codex_apps__gmail_send_email'), 'gmail.send_email');
+  assert.throws(() => connectorName('mcp__codex_apps__gmail_delete_email'), /allowlist/);
   assert.throws(() => connectorName('mcp__other__gmail_get_profile'), /allowlist/);
 });
 test('direct account read uses existing authentication and an ephemeral session without any model turn', async () => {

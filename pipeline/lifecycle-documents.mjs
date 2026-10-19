@@ -23,7 +23,7 @@ export function validateBookingSlot(slot, busy, config, checkedAt, now = new Dat
   const endParts = Object.fromEntries(local.formatToParts(new Date(end)).map(p => [p.type, p.value]));
   const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.weekday);
   check(start > +now && end - start === config.duration_minutes * 60_000 && config.weekdays.includes(weekday) &&
-    Number(parts.hour) >= config.start_hour && Number(endParts.hour) * 60 + Number(endParts.minute) <= config.end_hour * 60, 'Slot is outside the configured duration/hours');
+    parts.weekday === endParts.weekday && Number(parts.hour) >= config.start_hour && Number(parts.hour) < config.end_hour && Number(endParts.hour) * 60 + Number(endParts.minute) <= config.end_hour * 60, 'Slot is outside the configured duration/hours');
   check(Array.isArray(busy) && busy.every(b => Number.isFinite(Date.parse(b.start)) && Number.isFinite(Date.parse(b.end))) &&
     !busy.some(b => Date.parse(b.start) < end + buffer && Date.parse(b.end) > start - buffer), 'Slot overlaps a busy window or buffer');
   return slot;

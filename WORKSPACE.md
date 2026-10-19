@@ -1,5 +1,11 @@
 # Workspace links
 
+## Call desk implementation — October 18, 2026
+
+The owner approved the interviewed call-desk plan. [PR #82](https://github.com/Vziraka/ensizziyo-web-studio/pull/82) consolidates the citation correction, supplemental sidecar and Windows task fixes with quick call outcomes, owner notes, explicit message approval and discovery booking. [Call desk operation and verification](pipeline/CALL-DESK.md) owns the behavior, limits and rollout/rollback recipe. The managed `pipeline-call-desk` checkout is isolated from the owner's modified website checkout. Current installed source and the pre-release backup belong in the private deployment manifest; the dashboard reports its startup source fingerprint.
+
+Observed private supply before deployment: 151 cards, comprising 18 independently research-reviewed and 133 verification cards; zero new contact during implementation. Existing client priority and all contact gates remain off. Completed research is retained; pending named jobs and exhausted failures are distinct. Do not restart the current set from scratch or describe the supplemental advisory review as official qualification. Automatic discovery integrations, connected business-mail/video proof and sustained replenishment remain open. No new tool subscription or enrichment spend is included.
+
 ## Production preparation — October 17, 2026
 
 Latest continuation: the owner approved a separate [verification-call lane](pipeline/PRODUCTION.md#verification-calls). Eighteen independently accepted assessments and thirty-two checked verification cards form the first-50 review. All have distinct call purposes; verification cards retain unknown activity/goals and never trigger no-answer email. The finite same-194 backlog follow-up is complete, with two detailed additions and 192 held; its original hash/history and one logged third-URL deviation are preserved. No new discovery or real contact is implied. The console/private deployment manifest owns current installed source and dynamic counts; the earlier 19:31 deployment/snapshot details below remain dated checkpoints. Final calls-only release and business-email cutover remain separate, with postal address explicitly pending. Local operation continues through Studio Operations and its supervised controller; this chat is not its dispatch loop.

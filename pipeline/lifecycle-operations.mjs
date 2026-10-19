@@ -80,6 +80,8 @@ export function bookingIdentity(data, expected, owner) {
     e.visibility === 'private' && e.transparency === 'opaque' && e.reminders?.use_default === false && !e.reminders.overrides?.length &&
     (expected.attendee_email ? e.attendees?.filter(a => a.email !== owner).length === 1 && e.attendees.some(a => a.email === expected.attendee_email) : !e.attendees || e.attendees.length <= 1 && e.attendees.every(a => a.email === owner && a.is_self === true)) && e.organizer?.email === owner && e.organizer.is_self !== false && !e.recurrence?.length,
   'Calendar event differs from the exact private, owner-only booking');
+  const meetingLink=e.hangoutLink??e.hangout_link??e.conference_data?.entry_points?.find(p=>p.entry_point_type==='video')?.uri??e.conferenceData?.entryPoints?.find(p=>p.entryPointType==='video')?.uri;
+  check(expected.mode!=='video'||typeof meetingLink==='string'&&/^https:\/\/meet\.google\.com\//.test(meetingLink),'Video meeting link is missing; review the existing event, never create a duplicate');
   return { id: e.id, start: expected.start, end: expected.end, timezone: 'America/New_York', reference: e.htmlLink ?? e.url ?? `calendar:${e.id}`, status: e.status };
 }
 
@@ -307,7 +309,7 @@ export class ControlledOperations {
           check(!busy.failed && busy.calendars?.length === 1 && busy.calendars[0].calendar_id === c.calendar.calendar_id && !busy.calendars[0].errors, 'Calendar availability failed or changed');
           validateBookingSlot({ start: b.start, end: b.end, timezone: 'America/New_York' }, busy.calendars[0].busy, c.calendar, now.toISOString(), now);
           const created = yield request(createKey, 'booking_create', { calendar_id: c.calendar.calendar_id, title: b.title, description: b.description, start_time: b.start, end_time: b.end,
-            timezone_str: 'America/New_York', attendees: b.attendee_email ? [b.attendee_email] : [], add_google_meet: false, visibility: 'private', transparency: 'opaque', reminders: { use_default: false, overrides: [] } });
+            timezone_str: 'America/New_York', attendees: b.attendee_email ? [b.attendee_email] : [], add_google_meet: b.mode==='video', visibility: 'private', transparency: 'opaque', reminders: { use_default: false, overrides: [] } });
           check(!created.failed, 'Calendar create failed; reconcile without replay'); eventId = eventData(created).id;
         }
         check(identifier(eventId), 'Booking returned no event ID');

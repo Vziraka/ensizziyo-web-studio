@@ -9,6 +9,29 @@ if ($studioConfig.mode -ne 'production' -or $studioConfig.run_id -ne 'evz-food-b
 if ($studioState.Contains('"') -or $PSCommandPath.Contains('"')) { throw 'Unsupported quote in startup path.' }
 $studioTaskName = 'EVZ Studio Operations'
 $studioArgs = '-NoProfile -NonInteractive -WindowStyle Hidden -File "' + $PSCommandPath + '" -Action Run -StateDirectory "' + $studioState + '"'
+function Test-StudioPathIdentity([string]$Candidate, [string]$Expected) {
+  if ([string]::IsNullOrWhiteSpace($Candidate) -or [string]::IsNullOrWhiteSpace($Expected) -or
+      $Candidate -cnotmatch '^[A-Za-z]:[\\/]' -or $Expected -cnotmatch '^[A-Za-z]:[\\/]') { return $false }
+  # Accept only Windows slash direction and path-letter case differences.
+  # Exact equality after that normalization rejects prefixes, dot segments,
+  # alternate release directories and other ambiguous path spellings.
+  $left = $Candidate.Replace('/', '\')
+  $right = $Expected.Replace('/', '\')
+  return [string]::Equals($left, $right, [System.StringComparison]::OrdinalIgnoreCase)
+}
+function Assert-StudioTaskAction($Task, [string]$ScriptPath, [string]$StatePath, [string]$WorkingDirectory) {
+  $mismatch = 'The installed task belongs to a different runtime; use its reviewed service script.'
+  if (-not $Task -or $Task.TaskName -cne $studioTaskName -or $Task.Actions.Count -ne 1) { throw $mismatch }
+  $taskAction = $Task.Actions[0]
+  if (-not [string]::Equals($taskAction.Execute, 'powershell.exe', [System.StringComparison]::OrdinalIgnoreCase) -or
+      -not (Test-StudioPathIdentity $taskAction.WorkingDirectory $WorkingDirectory)) { throw $mismatch }
+  $argumentsPattern = '^-NoProfile -NonInteractive -WindowStyle Hidden -File "([^"]+)" -Action Run -StateDirectory "([^"]+)"$'
+  if ($taskAction.Arguments -cnotmatch $argumentsPattern) { throw $mismatch }
+  $taskScriptPath = $Matches[1]
+  $taskStatePath = $Matches[2]
+  if (-not (Test-StudioPathIdentity $taskScriptPath $ScriptPath) -or
+      -not (Test-StudioPathIdentity $taskStatePath $StatePath)) { throw $mismatch }
+}
 if ($Action -eq 'Install') {
   $studioExisting = Get-ScheduledTask -TaskName $studioTaskName -ErrorAction SilentlyContinue
   if ($studioExisting) { throw 'The startup task already exists; inspect it instead of overwriting it.' }
@@ -27,10 +50,12 @@ if ($Action -eq 'Install') {
   & $studioNode (Join-Path $PSScriptRoot 'lifecycle-cli.mjs') service *> $studioLog
   exit $LASTEXITCODE
 } elseif ($Action -eq 'Start') {
+  $studioTask = Get-ScheduledTask -TaskName $studioTaskName
+  Assert-StudioTaskAction $studioTask $PSCommandPath $studioState $PSScriptRoot
   Start-ScheduledTask -TaskName $studioTaskName
 } elseif ($Action -eq 'Stop') {
   $studioTask = Get-ScheduledTask -TaskName $studioTaskName
-  if ($studioTask.Actions.Count -ne 1 -or $studioTask.Actions[0].Arguments -cne $studioArgs) { throw 'The installed task belongs to a different runtime; use its reviewed Stop script.' }
+  Assert-StudioTaskAction $studioTask $PSCommandPath $studioState $PSScriptRoot
   $studioLockPath = Join-Path $studioState 'operations-service.lock'
   $studioOwnedPid = $null
   if (Test-Path -LiteralPath $studioLockPath) {
@@ -55,6 +80,7 @@ if ($Action -eq 'Install') {
   # Retain its reservation/lock files; the exclusive host verifies and archives dead locks on restart.
 } elseif ($Action -eq 'Uninstall') {
   $studioTask = Get-ScheduledTask -TaskName $studioTaskName
+  Assert-StudioTaskAction $studioTask $PSCommandPath $studioState $PSScriptRoot
   if ($studioTask.State -eq 'Running') { throw 'Stop and verify the owned process first.' }
   Unregister-ScheduledTask -TaskName $studioTaskName -Confirm:$false
 } else {

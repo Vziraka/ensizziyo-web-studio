@@ -1,5 +1,7 @@
 # Controlled research proof
 
+The approved [call desk](CALL-DESK.md) documents quick outcomes, owner notes, exact-message approval, booking, research buffering, verification evidence and rollout limits.
+
 The owner-approved [verification-call lane](PRODUCTION.md#verification-calls) supplements full research without changing its grade. `node lifecycle-cli.mjs import-verification <private-packet.json>` stages checked identity/public-phone evidence with a tailored conversation topic; it creates no contact. `node lifecycle-cli.mjs release-calls <current-fingerprint> <exact-owner-approval-ref>` is reserved for final owner approval of the reviewed queue, task supervision and bounded transcript analysis; it never releases email/booking. Use the same private `STUDIO_LIFECYCLE_STATE_DIR`. Adding a new queue identity pauses that calls-only release. The console separates prepared lane counts from actual contacts; full research and production email keep their existing checks.
 
 The current [production preparation and local service](PRODUCTION.md) separates production from fictional state, imports independently reviewed research, and runs deterministic connected-tool checks without this chat relaying each call. The business sender, final native email route/rehearsal, prospect supply and measured capacity remain launch holds; no real business has been contacted. Historical proof commands below remain available for explicitly bounded work.

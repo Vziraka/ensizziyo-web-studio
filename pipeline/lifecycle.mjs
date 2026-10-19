@@ -4,6 +4,8 @@ import { randomUUID, createHash } from 'node:crypto';
 import { acquireLock, privateStateDirectory, readJson, saveJson } from './engine.mjs';
 import { dailyCallQueue } from './apollo-queue.mjs';
 import { verificationLane, verificationData, validateVerificationRecord, verificationFresh, callStages } from './verification-calls.mjs';
+import { verifySupplementalReviewLedger } from './supplemental-reviews.mjs';
+import { callSupply } from './call-desk.mjs';
 
 export const hash = value => createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
 export const check = (condition, message) => { if (!condition) throw Error(message); };
@@ -163,10 +165,15 @@ export class StudioLifecycle {
         request(state, r, 'call_task', { due_at: event.at, kind: 'new' }, eid);
       } else {
         check(r, 'Unknown prospect');
-        if (r.restriction) check(['support_opened', 'support_closed', 'note_added', 'reply_received', 'email_delivered', 'meeting_verified'].includes(event.type), 'Restriction cannot be cleared by a later event');
+        if (r.restriction) check(['support_opened', 'support_closed', 'note_added', 'call_note_updated', 'reply_received', 'email_delivered', 'meeting_verified'].includes(event.type), 'Restriction cannot be cleared by a later event');
         switch (event.type) {
           case 'call_logged': {
             owner(actor); check(key(data.call_id) && !r.calls[data.call_id] && [...coldOutcomes, 'connected', 'callback', 'declined', 'do_not_contact', 'wrong_contact', 'skipped'].includes(data.outcome), 'Explicit unique call outcome required');
+            check(data.note === undefined || typeof data.note === 'string' && data.note.length <= 3000, 'Keep the call note within 3000 characters');
+            if (data.desk) {
+              check(data.desk === true && (data.intent === undefined || data.outcome === 'connected' && ['discovery','requested_info'].includes(data.intent)), 'Choose the interested next step');
+              r.call_undo = {call_id:data.call_id,event_id:eid,record:Object.fromEntries(['stage','cold_paused','callback_at','next_check','suppression','note'].map(k=>[k,r[k]??null])),actions:structuredClone(Object.fromEntries(Object.entries(state.actions).filter(([,a])=>a.prospect_id===r.id)))};
+            }
             check(data.simulated === r.controlled, 'Simulated and actual calls cannot be mixed');
             check(date(data.performed_at) && Date.parse(data.performed_at) <= Date.parse(event.at) && (!r.attempts.length || Date.parse(data.performed_at) >= Date.parse(r.attempts.at(-1).at)), 'Call time must be performed, ordered and dated');
             if (data.outcome !== 'skipped') {
@@ -182,12 +189,19 @@ export class StudioLifecycle {
               else if (a.provider_task) a.cancel_requested = true;
             }
             if (['declined', 'do_not_contact'].includes(data.outcome)) { r.restriction = data.outcome; r.stage = 'Stopped'; pauseCold(state, r, eid, data.outcome); }
-            else if (data.outcome === 'connected') { r.stage = 'Connected review'; pauseCold(state, r, eid, 'Connected call awaiting transcript/owner review'); }
+            else if (data.outcome === 'connected') {
+              r.stage = 'Connected review'; pauseCold(state, r, eid, 'Connected call awaiting owner decision');
+              if (data.desk && data.intent) {
+                r.approved_calls[data.call_id]={outcome:data.intent,at:event.at,actor,note:data.note??'',basis:'Owner-reported conversation; no recording'};
+                if(verificationLane(r)) { r.stage='Verification review'; r.next_check='Confirm identity, current activity, decision-maker and goal from your conversation.'; }
+                else r.stage=data.intent==='discovery'?'Discovery':'Information requested';
+              }
+            }
             else if (data.outcome === 'callback') {
               check(date(data.callback_at) && Date.parse(data.callback_at) > Date.parse(data.performed_at), 'Callback needs an exact time after the performed call');
               r.stage = 'Callback'; r.callback_at = data.callback_at; pauseCold(state, r, eid, 'Requested callback'); request(state, r, 'callback_task', { due_at: data.callback_at, kind: 'callback' }, eid);
             } else if (coldOutcomes.includes(data.outcome)) {
-              if (verificationLane(r) || !this.config.outreach_enabled && !r.controlled) {
+              if (data.desk || verificationLane(r) || !this.config.outreach_enabled && !r.controlled) {
                 r.stage = verificationLane(r) ? 'Verifying' : 'Contacting';
                 if (r.cold_paused || r.attempts.filter(x => x.channel === 'call').length >= 2) {
                   r.stage = 'Hold'; r.next_check = r.cold_paused ? 'Requested callback was unanswered; owner reviews the next conversational step. Email stays blocked.' : 'Two call attempts used; hold for owner review. No email is released by this call-only lane.';
@@ -203,6 +217,28 @@ export class StudioLifecycle {
               }
             } else { r.stage = 'Hold'; r.next_check = data.outcome === 'wrong_contact' ? 'Verify the public phone/contact ownership' : 'Record an actual outcome; skipped tasks do not release email'; pauseCold(state, r, eid, r.next_check); }
             break;
+          }
+          case 'call_undone': {
+            owner(actor); const undo=r.call_undo;
+            check(undo?.call_id===data.call_id && r.calls[data.call_id], 'Only the latest quick call can be undone');
+            check(!r.information_draft&&!r.meeting&&!Object.values(this.config.operations?.bookings??{}).some(b=>b.prospect_id===r.id),'A draft or booking followed this call; reconcile it before correcting the outcome');
+            check(Object.values(state.events).filter(e=>e.prospect_id===r.id).at(-1)?.id===undo.event_id,'Another decision followed this call; review history instead');
+            check(!Object.values(state.operations?.requests??{}).some(q=>['Pending','Uncertain'].includes(q.status)) && !Object.values(state.actions).some(a=>a.prospect_id===r.id&&(a.provider_task||['Pending','Verified','Uncertain'].includes(a.status))), 'A provider action exists; reconcile it before correcting the call');
+            for(const k of Object.keys(state.actions)) if(state.actions[k].prospect_id===r.id) delete state.actions[k];
+            Object.assign(state.actions,undo.actions);
+            for(const [k,v] of Object.entries(undo.record)) { if(v===null) delete r[k]; else r[k]=v; }
+            r.attempts=r.attempts.filter(a=>a.id!==data.call_id); delete r.calls[data.call_id]; delete r.approved_calls[data.call_id]; delete r.call_undo;
+            break;
+          }
+          case 'call_note_updated':
+            owner(actor); check(r.calls[data.call_id] && typeof data.note==='string' && data.note.length<=3000,'Choose a saved call and bounded note');
+            r.calls[data.call_id].note=data.note; break;
+          case 'conversation_confirmed': {
+            owner(actor); const reviewed=r.approved_calls[data.call_id];
+            check(r.stage==='Verification review' && reviewed?.basis && ['discovery','requested_info'].includes(reviewed.outcome),'Confirm the recorded verification conversation first');
+            check(data.identity_confirmed===true && data.active_confirmed===true && text(data.decision_maker,250) && text(data.goal,1600),'Confirm identity, current activity, decision-maker and goal');
+            r.verification.conversation={...data,at:event.at,actor,basis:'Owner attestation'};
+            r.stage=reviewed.outcome==='discovery'?'Discovery':'Information requested'; break;
           }
           case 'contact_stopped':
             owner(actor); check(['decline', 'do_not_contact'].includes(data.reason), 'Record the explicit stop reason');
@@ -365,6 +401,13 @@ export class StudioLifecycle {
   async dashboard() {
     this.config = await readJson(join(this.directory, 'lifecycle-config.json'));
     const state = await this.snapshot(), today = businessDate(this.now());
+    let supplementalReviews = null, supplementalHold;
+    try {
+      const ledger = JSON.parse(await readFile(join(this.directory, 'supplemental-reviews.json'), 'utf8'));
+      supplementalReviews = verifySupplementalReviewLedger(ledger, state);
+    } catch (error) {
+      if (error.code !== 'ENOENT') supplementalHold = 'Supplemental review sidecar failed validation. Keep the original verification cards and review its source files.';
+    }
     let researchPaused = !this.config.research_enabled, researchHold, researchPriority;
     if (this.config.research?.source_directory) {
       try { const control = await readJson(join(this.config.research.source_directory, 'research-control.json')); check(control.schema_version === 1 && typeof control.enabled === 'boolean', 'Unknown control'); researchPaused = !control.enabled || control.priority !== 'research'; researchPriority = control.priority; }
@@ -373,11 +416,8 @@ export class StudioLifecycle {
     const real = Object.values(state.prospects).filter(r => !r.controlled);
     const contacted = real.filter(r => r.attempts.some(a => !a.simulated && businessDate(a.at) === today));
     const first = contacted.filter(r => businessDate(r.attempts.find(a => !a.simulated).at) === today).length;
-    const candidates = Object.values(state.actions).filter(a => ['call_task', 'callback_task'].includes(a.type) && ['Queued', 'Verified'].includes(a.status))
-      .map(a => ({ ...a, company_id: state.prospects[a.prospect_id].company_id, kind: a.payload.kind, due_at: a.payload.due_at,
-        status: 'scheduled', stopped: state.prospects[a.prospect_id].restriction || !callStages.includes(state.prospects[a.prospect_id].stage) || verificationLane(state.prospects[a.prospect_id]) && !verificationFresh(state.prospects[a.prospect_id], this.now().toISOString()) }));
-    const queue = dailyCallQueue(candidates, this.now());
-    return { ...state, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode, research_paused: researchPaused, research_priority: researchPriority, outreach_paused: !this.config.outreach_enabled, calls_paused: !this.config.outreach_enabled && !this.config.calls_enabled, priority: this.config.priority,
+    const supply = callSupply(state, this.now()), queue = supply.queue;
+    return { ...state, supply, pending_bookings:Object.entries(this.config.operations?.bookings??{}).filter(([id])=>!state.operations?.bookings?.[id]?.verified).map(([id,b])=>({id,prospect_id:b.prospect_id,start:b.start,mode:b.mode,status:state.operations?.holds?.[id]??'Queued for calendar verification'})), supplemental_reviews: supplementalReviews, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode, research_paused: researchPaused, research_priority: researchPriority, outreach_paused: !this.config.outreach_enabled, calls_paused: !this.config.outreach_enabled && !this.config.calls_enabled, priority: this.config.priority,
       runtime_enabled: this.config.runtime?.enabled === true, final_review: this.config.mode === 'production' ? { fingerprint: (await import('./production.mjs')).releaseFingerprint(this.config), gates: (await import('./production.mjs')).productionGates(this.config), approved: this.config.release?.approved === true, verified: this.config.verified_summary ?? [],
         calls: { fingerprint: (await import('./production.mjs')).callReleaseFingerprint(this.config), approved: this.config.call_release?.approved === true, evidence: this.config.call_readiness ?? {}, transcript_daily_calls: this.config.transcript_ai.daily_calls } } : null,
       ai_enabled: this.config.transcript_ai.enabled, connector_writes_enabled: this.config.connector_writes_enabled, readiness: this.config.readiness },
@@ -386,7 +426,7 @@ export class StudioLifecycle {
         actual_emails: real.flatMap(r => r.attempts).filter(a => a.channel === 'email' && businessDate(a.at) === today && !a.simulated).length,
         minimum: 50, shortfall: Math.max(0, 50 - contacted.length), due: queue,
         prepared: { research: queue.filter(a => !verificationLane(state.prospects[a.prospect_id])).length, verification: queue.filter(a => verificationLane(state.prospects[a.prospect_id])).length } },
-      exceptions: [...state.exceptions, ...(researchHold ? [{ id: 'research-control', reason: researchHold }] : []), ...(state.runtime?.last_error ? [{ id: 'runtime', reason: state.runtime.last_error }] : []), ...Object.entries(state.operations?.holds ?? {}).map(([id, reason]) => ({ id: `operations-${id}`, reason })), ...Object.values(state.actions).filter(a => ['Uncertain', 'Held'].includes(a.status)).map(a => ({ id: a.id, reason: a.hold })),
+      exceptions: [...state.exceptions, ...Object.values(state.prospects).filter(r=>r.information_draft?.status==='Uncertain'||r.information_draft?.status==='Sending'&&+this.now()-Date.parse(r.information_draft.approved_at)>120000).map(r=>({id:`information-${r.id}`,reason:`${r.name}: information email needs sender-side reconciliation; do not resend.`})), ...(researchHold ? [{ id: 'research-control', reason: researchHold }] : []), ...(supplementalHold ? [{ id: 'supplemental-review', reason: supplementalHold }] : []), ...(state.runtime?.last_error ? [{ id: 'runtime', reason: state.runtime.last_error }] : []), ...Object.entries(state.operations?.holds ?? {}).map(([id, reason]) => ({ id: `operations-${id}`, reason })), ...Object.values(state.actions).filter(a => ['Uncertain', 'Held'].includes(a.status)).map(a => ({ id: a.id, reason: a.hold })),
         ...Object.values(state.prospects).filter(r => r.stage === 'Hold').map(r => ({ id: r.id, reason: r.next_check }))] };
   }
   async backup(output) {
