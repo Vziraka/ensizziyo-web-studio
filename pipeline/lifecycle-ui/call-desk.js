@@ -8,7 +8,7 @@ function select(parent,label,options,value){const wrap=el('label',label),n=el('s
 function disclosure(title,child){const d=el('details');d.open=expanded.has(title);d.ontoggle=()=>{if(d.open)expanded.add(title);else expanded.delete(title);};d.append(el('summary',title),child);return d;}
 export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty}) {
   const records=state.supply.queue.map(a=>state.prospects[a.prospect_id]);
-  const visible=records.filter(r=>lane==='all'||(r.call_lane==='verification'?'verification':'research')===lane);
+  const visible=records.filter(r=>lane==='all'||(lane==='enriched'?r.provider_contact_view?.current:(r.call_lane==='verification'?'verification':'research')===lane));
   selected??=visible[0]?.id;
   const run=async fn=>{try{await fn();}catch(e){tell(e.message,true);}};
   const event=async(r,type,data)=>{await api('/api/event',{revision:state.revision,event:{id:crypto.randomUUID(),prospect_id:r.id,type,at:new Date().toISOString(),data}});clearDirty();await refresh();};
@@ -19,6 +19,7 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty}
   root.append(top);
   if(state.owner_contact_summary){const a=state.owner_contact_summary;root.append(el('p',`Owner contacts · Published direct business numbers: ${a.owner_direct} · Sourced identities: ${a.identified} · General business lines: ${a.general_business} · Unverified: ${a.unverified}. Website research readiness is separate from direct access to the owner.`,'notice'));}
   if(state.contact_research){const q=state.contact_research;root.append(el('p',`Contact research · ${q.reviewed}/${q.total} reviewed · ${q.fresh_checked} fresh lookups · ${q.held} held · ${q.status}`,'notice'));}
+  if(state.contact_enrichment?.people_processed){const e=state.contact_enrichment,p=state.provider_contact_summary;root.append(el('p',`Approved Apollo enrichment · ${e.people_processed}/${e.total} processed · ${e.matched_records} provider records · ${e.unmatched} unmatched · ${p.with_numbers} business contacts with provider-reported numbers · ${p.dnc_listed} Do Not Call · ${e.credits_used} credits used. Provider results require current role, business-use and screening checks.`,'notice'));}
   if(state.supply.low)root.append(el('p',`Call supply is low: ${state.supply.ready} eligible businesses, below the one-day minimum of 50. ${state.controls.research_paused?'Research is paused by your current priority.':'The saved campaign can replenish within its allowance.'}`,'notice'));
   if(!state.supply.low&&state.supply.pitch_ready<50)root.append(el('p',`Pitch-ready supply: ${state.supply.pitch_ready} / ${state.supply.pitch_target}. Quick-verification cards remain callable; the approved research batch can improve their preparation within its allowance.`,'notice'));
   const technical=state.exceptions.filter(e=>!state.prospects[e.id]);
@@ -30,7 +31,7 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty}
   root.append(disclosure('Background research and held work',progress));
   const grid=el('div',undefined,'grid call-desk'),left=el('section',undefined,'panel');
   left.append(el('h2','Today’s calls'),el('p','Callbacks first, then prepared opportunities. Call from your phone.','muted'));
-  const filter=select(left,'Call queue',[['all','Both queues'],['research','Ready to pitch'],['verification','Quick verification']],lane);
+  const filter=select(left,'Call queue',[['all','Both queues'],['research','Ready to pitch'],['verification','Quick verification'],['enriched','Enriched contacts']],lane);
   filter.onchange=()=>{lane=filter.value;selected=undefined;clearDirty();refresh();};
   left.append(btn(showHistory?'Show due calls':'Show saved calls & follow-ups',()=>{showHistory=!showHistory;selected=showHistory?Object.values(state.prospects).find(r=>Object.keys(r.calls).length)?.id:records[0]?.id;clearDirty();refresh();}));
   const list=el('div',undefined,'record-list');
@@ -48,6 +49,15 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty}
       for(const [label,value] of [['Owner identity',a.person],['Published owner-direct business number',a.direct_phone]])if(value){const source=value.source,link=el('a',`${label}${value.number?`: ${value.number}`:''} · checked ${when(source.checked_at)}`);link.href=source.url;link.target='_blank';link.rel='noreferrer';body.append(link,el('p',source.excerpt,'muted'));}
       if(a.direct_phone)body.append(el('p','The calling line above and existing Apollo tasks retain their verified business binding. A newly researched number does not change provider records.','muted'));
       card.append(el('h3','Owner/operator contact'),body);}
+    if(r.provider_contact_view){const a=r.provider_contact_view;card.append(el('h3','Enriched professional contact'),el('p',a.outcome,'badge'));
+      if(a.person)card.append(el('p',`${a.person.name} · ${a.person.role||'Role unconfirmed'}${a.person.organization?` · ${a.person.organization}`:''}`));
+      for(const note of a.notes)card.append(el('p',note,'muted'));
+      for(const p of a.phones){const box=el('div',undefined,`provider-phone${p.blocked?' dnc':''}`);
+        if(p.blocked){const warning=el('p','⚠️ Do Not Call — this number is listed on a Do Not Call registry. Check applicable telemarketing regulations before dialing; this may implicate the TCPA and other applicable regulations. Consider removing it from active dialing sequences and do not call this number unless you have a separate legal basis.','dnc-warning');warning.setAttribute('role','alert');box.append(warning);}
+        box.append(el('p',`${p.number}${p.blocked?' (Do Not Call)':''} · Apollo-reported ${p.kind.replace('_phone','')}`,'provider-number'));
+        box.append(el('p',p.blocked?'Held from use.':p.dnc_status==='not_found'?'Apollo reports no DNC registry match. Confirm current identity and professional use before dialing.':p.dnc_status==='pending'?'DNC screening is pending. This number is not cleared for use.':'Apollo supplied no DNC screening status. This number is not cleared for use.','muted'));
+        if(p.same_business_line)box.append(el('p','This is the existing business line; no new number was found.','muted'));card.append(box);}
+      if(a.current)card.append(el('p',`Provider result received ${when(a.received_at)}; reviewed ${when(a.reviewed_at)}. The calling line and existing Apollo tasks retain their verified business binding.`,'muted'));}
     if(r.owner_contact_view?.review){const a=r.owner_contact_view.review;card.append(el('h3','Contact research review'),el('p',a.current?a.outcome:'Needs recheck'),el('p',`Reviewed ${when(a.reviewed_at)}`,'muted'),el('p',a.notes,'muted'),el('p',`Next step: ${a.current?a.next_action:'The contact changed or the review is stale. Recheck the current business/operator before relying on this outcome.'}`));}
     card.append(el('h3','Why this call'),el('p',r.idea,'idea'));
     const prep=r.call_prep;

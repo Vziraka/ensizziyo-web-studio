@@ -1,6 +1,6 @@
 # Owner/operator business contacts
 
-The full October 19 continuation covers **all 151 existing cards**, including the 18 accepted detailed cards. The ten-card pilot is a preserved increment. A retained-evidence audit, fresh lookup, semantic review and current operating-role confirmation are different results. The owner authorized use of the existing included Apollo allowance; its connector still requires the exact upfront count/cost confirmation before enrichment or phone reveal. A private deduplicated manifest binds each proposed person to an existing card and match input. No personal email reveal, purchase, prospect contact or expanded live discovery follows from that preparation.
+The full October 19 continuation covers **all 151 existing cards**, including the originally accepted detailed cards. Retained evidence, fresh lookup, semantic review and current operating-role confirmation remain different results. The owner explicitly approved the prepared deduplicated 36-person Apollo batch and additional successful phone-reveal credits. All 36 requests have returned a match/no-match outcome and all four asynchronous phone jobs are terminal. Further people, purchases, top-ups, personal-email reveal, prospect outreach or expanded discovery need their own scope. The private plan and card bindings remain the authority.
 
 The October 19 owner correction makes finding an explicitly published professional number for the owner/operator the primary research goal. Website, social, systems and pitch findings support that goal. Assess contact completeness on every existing card, including accepted detailed research. Keep valid research, original captures, exhausted attempts and provider bindings; rerun only missing or stale contact work within a separately bounded scope.
 
@@ -22,6 +22,14 @@ The contact-completeness view covers all cards. The existing business-phone veri
 | DNS/MX, urlscan, Wappalyzer, BuiltWith, Screaming Frog | Website/technical context, not owner-number discovery. Only bounded DNS/MX and archived-urlscan reads are installed; other integrations remain as described in TOOLKIT.md. |
 
 Do not discover private personal contact details, infer numbers, or promote a broker's mobile/home-phone result into public professional contact evidence. No added recurring cost, paid model/API fallback or new provider activation. The existing 30% subscription reserve remains.
+
+## Reviewed provider results
+
+The approved 36-person batch uses a private create-only approval, exact-input reservations and immutable match/phone receipts; no paid operation is added to the background dispatcher. Unknown outcomes are reconciled by the saved request ID, never replayed. Credit accounting compares response costs with the actual before/after balance. The original person inputs, contact bindings, source dates and model ledger remain intact.
+
+A private semantic import verifies all 36 results against the approved plan, exact match indices/IDs and terminal request-bound phone receipts. High-confidence matching business roles are accepted as provider-reported professional identities; a currently published owner role can resolve a narrower provider job title. Wrong employers, insufficient identities, home numbers and unspecified phone types are held or excluded. Provider names/phones do not become publicly verified owner-direct evidence. The new field preserves the verified calling number and every call, restriction, native task and booking. Reimport of the identical reviewed packet is idempotent; changed evidence must be reconciled.
+
+The Enriched contacts filter and card section show every processed outcome. Original receipt age, review age and company/contact changes hide stale provider names/numbers. A later semantic review cannot refresh the provider retrieval date. A DNC-listed number carries a prominent warning immediately beside the number and is held from use. Missing or pending screening stays explicitly uncleared; it never becomes a not-found flag. An existing business-line duplicate is labelled. The completed batch retains 21 typed numbers for 19 businesses, including one duplicate and one DNC hold; 19 new candidates remain. The public-source direct count remains one. Twenty displayed numbers lack screening data; the connector omission was reported without sharing identities or numbers.
 
 ## Bounded execution
 
