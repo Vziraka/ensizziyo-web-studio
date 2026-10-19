@@ -1,5 +1,19 @@
 # Subscription research controller
 
+## Existing verification upgrades — October 19
+
+Owner approved ten existing verification leads, up to four approved source URLs each, under the existing six-call/job, repair/recovery, daily budget and 30% reserve. The private `research.upgrade_batch` binds distinct job IDs to exact existing card/company IDs, public phone and original verification hash, with the owner's approval reference. The controller configuration retains its prior IDs and ledger; supervision narrows dispatch to this batch. It returns to the repeated-failure guard after each job, so two new identical technical failures stop the next dispatch. No attempts or provider reservations are reset. Existing exhausted jobs and four earlier Waiting jobs retain their state.
+
+Total callable supply and independently pitch-ready supply now have separate counts. Verification cards cannot fill the 100-card detailed-research target. Only named batch jobs execute; a lower pitch-ready count never discovers or authorizes more jobs. Completion/holds need review before another batch.
+
+New version-3 worker output schemas bind reviewed source/context IDs to their complete saved anchors, while preserving exact runtime validation and independent review. Jobs 143/144's four original invalid outputs reproducibly failed the exact-anchor validator; they remain Held. The two older wording holds and job 135's additional activity/location/contact gaps are reconciliation work, not fresh retry budgets.
+
+For the current batch, the same host retains public route inventories, DNS/MX records and one read-only urlscan archived search per approved website in `research-tools.json`. The receipt binds the job and source hash and is displayed beside its card. Failure/no-result/rate-limit evidence is retained once without a retry loop; technical data is advisory and cannot qualify a business. It does not enter the research report as unsupported primary evidence. No paid enrichment, scanning submission, account creation or installation is included.
+
+An independently accepted Research-qualified report with exact first-party contact proof can upgrade its selected verification card through `importResearch`. Exact name and normalized public phone must match; a conflicting email, restriction, active conversation or campaign hold requires reconciliation. The original packet, qualification/contact history, calls, callback, company/card ID, actions, provider bindings and released scope survive. A newly found email stays separate as `research_contact`, preserving the provider-bound identity. It authorizes neither an Apollo edit nor sending. Re-import is idempotent across restart. Full qualification/contact criteria remain unchanged; a reviewed Hold or missing contact proof stays in verification.
+
+Private staging uses the existing `intakeCandidate`/Google queue contract after scope/identity and source validation. Keep immutable packet/selection receipts and preserve the root ledger before configuring new named records. Start only the existing supervised host; never run a second controller against it. Roll back source/task action without restoring stale state over later calls. Actual execution/results belong in the private phase receipts and TASKS checkpoint.
+
 The controller implements the three stages below and is **disabled by default**. The table records the original October 15 fictional verification; the October 17 continuation additionally verified the live allowance reader, eight independently accepted assessments and a bounded held repair. The opt-in [Studio Operations supervisor](PRODUCTION.md#research-and-contact-contract) now runs the exact-ID controller without a chat dispatch loop. No weekly capacity or production readiness follows from these bounded checks.
 
 | Stage | Implemented behavior | Verification boundary |

@@ -18,6 +18,34 @@ test('repeated new technical failures stop spending; old holds and commercial ho
   assert.deepEqual(updateFailureGuard(g,{jobs:[job('old'),job('new1'),job('new2')]},'reviewed-release2').counts,{});
 });
 import { operationsTick } from './operations-service.mjs';
+import { fixtureProspect } from './lifecycle-fixtures.mjs';
+import { verificationData } from './verification-calls.mjs';
+import { sourceContentHash } from './sources.mjs';
+
+test('a full verification buffer does not block the approved detailed research scope', async t => {
+  const f = await fixture(t);
+  await f.app.change(state => {
+    for (let i = 0; i < 100; i++) {
+      let data = fixtureProspect(`sample-${i}`, now().toISOString()).data;
+      if (i >= 18) {
+        const name = `SYNTHETIC Bakery ${i}`, url = 'https://example.org/contact';
+        const source = { url, text: `${name}. Fairfax, VA. Custom cakes and public business contact information.`, fetched_at: now().toISOString(), checked_at: '2026-10-17', kind: 'business', capture_method: 'http', coverage: 'full', identity_note: 'Fictional business source.' };
+        source.content_sha256 = sourceContentHash(source);
+        data = verificationData({ schema_version: 1, id: `sample-${i}`, business_name: name, category: 'Food bakery', area: 'Fairfax', topic: 'Discuss custom cake ordering.', reviewed_by: 'fixture operator', first_party_note: 'Fictional first-party source.', unknowns: ['Activity unknown.'], sources: [source], identity: {url, excerpt: name}, location: {url, excerpt: 'Fairfax, VA'}, offering: {url, excerpt: 'Custom cakes'}, public_phone: {url, excerpt: 'public business contact'} }, now(), true);
+      }
+      state.prospects[`sample-${i}`] = { ...data, id: `sample-${i}`, stage: 'Ready to contact', attempts: [], calls: {}, call_lane: i < 18 ? 'research' : 'verification' };
+      state.actions[`task-${i}`] = { id: `task-${i}`, prospect_id: `sample-${i}`, type: 'call_task', status: 'Queued', payload: { kind: 'new', due_at: now().toISOString() } };
+    }
+  });
+  const s = await f.app.snapshot();
+  const { callSupply } = await import('./call-desk.mjs');
+  assert.equal(callSupply(s, now()).ready, 100);
+  let dispatched = 0;
+  const result = await researchTick(f.app, { queueFactory: () => ({}), run: async () => { dispatched++; return {status:'Complete'}; } });
+  assert.equal(dispatched, 1);
+  assert.equal(result.status, 'Complete');
+  assert.equal(callSupply(s, now()).pitch_ready, 18);
+});
 
 const now = () => new Date('2026-10-17T15:00:00Z');
 async function fixture(t) {
@@ -83,6 +111,13 @@ test('one eligible tick passes the exact configured directory, queue and abort s
   const result = await researchTick(f.app, { queueFactory: c => { assert.equal(c.spreadsheetId, 'fictional-only'); assert.equal(c.minRequestIntervalMs, 1250); return queue; },
     run: async options => { count++; assert.equal(options.directory, f.directory); assert.deepEqual(options.config.job_ids, ['fictional-service']); assert.equal(options.queue, queue); assert.equal(options.once, true); assert.ok(options.signal instanceof AbortSignal); return { status: 'Complete', counts: { Complete: 1 }, calls_reserved: 3 }; } });
   assert.equal(count, 1); assert.equal(result.status, 'Complete');
+});
+
+test('the service dispatches one named job before returning to its repeated-failure guard', async t => {
+  const f=await fixture(t);f.config.job_ids.push('second-approved-job');await saveJson(join(f.directory,'controller-config.json'),f.config);
+  let calls=0;const options={queueFactory:()=>({}),run:async({config})=>{calls++;assert.deepEqual(config.job_ids,[calls===1?'fictional-service':'second-approved-job']);return{status:'Complete'};}};
+  await researchTick(f.app,options);assert.equal(calls,1);
+  await researchTick(f.app,options);assert.equal(calls,2);
 });
 
 test('changing the supervision binding aborts and awaits the owned controller', async t => {

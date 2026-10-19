@@ -1,5 +1,13 @@
 # Launch tasks
 
+## Existing-lead research upgrades — October 19, 2026
+
+Owner approved an initial measured batch of **10 existing verification leads**, up to four approved public source URLs each and the existing model-call/repair limits. Preserve the 18 accepted detailed cards, exhausted jobs, global reservations, live call/booking approval and commercial-email hold. No new campaign identities, purchases or provider activation. Separate the pitch-ready target from total callable supply; use a named private batch and upgrade only an independently accepted, exactly matched existing card in place. Retain prior verification evidence, call outcomes, restrictions, callbacks, provider bindings and task IDs. New evidence never resets outreach or research attempts.
+
+Integrate bounded public-route inspection and DNS/MX checks through the existing local host, with retained evidence, honest failures and dashboard readback. Reviewed social/registry/directory captures remain source evidence; technical checks do not prove activity, ownership, email deliverability or demand. Verify actual current provider capabilities/costs before adopting any extra service; no unverified free allowance or new paid integration.
+
+Acceptance: reproduce the buffer and citation failures; test the actual dispatcher, exact-identity upgrade, restart/no duplicates and negative evidence cases; exercise useful adapters; stage and measure this finite live batch under the existing reserve/priority; browser-check the dashboard; complete requirements/engineering reviews, CI, versioned deployment and rollback. Record measured results separately from built/tested capability. Implementation in progress on `feature/pipeline-research-depth` from merged PR86.
+
 ## Live call-task activation correction — October 18, 2026
 
 The owner explicitly approved live call tracking, Apollo call-task sync and individually confirmed business Calendar bookings; commercial email remains disabled. The first real task-sync cycle created an exactly matched owned contact with no company-account ID. Verification cards already support that valid Apollo shape, while detailed cards incorrectly hold it. Accept an absent account consistently while retaining exact owner/contact/email/phone checks, optional-ID validation, independent task readback and no-replay reservations. Preserve all contacts already created and the approved release scope. Correct the dashboard's stale statement that all booking remains blocked. Verify the failure through the real service dispatcher with an external fixture, then check actual task readback after versioned installation.

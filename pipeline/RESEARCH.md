@@ -49,6 +49,8 @@ These outcomes are discovery notes, not replacements for the final Research-qual
 
 ## Discovery and evidence
 
+October 19 continuation: the owner approved ten named existing verification cards for deeper assessment under [the bounded upgrade flow](CONTROLLER.md#existing-verification-upgrades--october-19). Preserve original captures and accepted reports; inspect additional approved customer routes where they fill a concrete gap, without refreshing an old inspection date by merely copying a source. Retain access failures and all exhausted attempts. The added DNS/MX and archived-urlscan checks are advisory technical context only; they never establish present activity, contact ownership, need or buying interest. The existing full qualification and independent-review criteria below still apply.
+
 SOSA starts with bounded local Search/Maps, public Instagram/Facebook business pages and suitable local/vendor directories, using the tools actually available. Example searches: Fairfax independent bakery; Burke home bakery Instagram; Fairfax café Facebook; Northern Virginia pop-up drinks. Follow business-controlled links and verify identity/location rather than relying only on polished websites at the top of search results. Record the actual query and identity/location checks. Directories are discovery leads, not proof of current operation or first-party contact ownership.
 
 Follow public business links to the website/profile, offering, menu/rates, enquiry/order routes, existing alternatives and current activity. Record what works as well as potential additions. Check exact name/location and bounded website searches; say No verified site found when appropriate. Claim Instagram-only sales or absence of another route only when evidence establishes it.

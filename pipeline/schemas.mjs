@@ -42,7 +42,15 @@ export function schemasFor(job, snapshots) {
       url: { ...text, const: s.url }, checked_at: { ...text, const: s.checked_at }, content_sha256: { ...text, const: s.content_sha256 }
     } })) } }
   } };
-  return { checkpoint: bind(job.research_version === 3 ? detailedCheckpointSchema : qualityCheckpointSchema), report: bind(report) };
+  const boundReport = bind(report);
+  if (job.research_version === 3 && snapshots) {
+    const citations = snapshots.sources.flatMap(s => [
+      object({ url: { ...text, const: s.url }, excerpt: { ...text, maxLength: 160 }, context_id: { type: 'string', const: '' } }),
+      ...(s.reviewed_context?.facts ?? []).map(f => object({ url: { ...text, const: s.url }, excerpt: { ...text, const: f.excerpt }, context_id: { type: 'string', const: f.id } }))
+    ]);
+    boundReport.properties.observations = { ...boundReport.properties.observations, items: { ...boundReport.properties.observations.items, properties: { ...boundReport.properties.observations.items.properties, evidence: boundedArray({ anyOf: citations }, 1, 2) } } };
+  }
+  return { checkpoint: bind(job.research_version === 3 ? detailedCheckpointSchema : qualityCheckpointSchema), report: boundReport };
 }
 
 export function validate(value, schema, path = 'result') {
