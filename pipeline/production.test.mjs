@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { StudioLifecycle, initialConfig } from './lifecycle.mjs';
 import { fixtureProspect } from './lifecycle-fixtures.mjs';
 import { saveJson } from './engine.mjs';
-import { productionConfig, releaseFingerprint, requireProductionRelease, approveProductionRelease, ProductionOperations, NativeProofOperations, operationsFor, importResearch, queueMeeting, pauseStudio, nativeMessage } from './production.mjs';
+import { productionConfig, releaseFingerprint, requireProductionRelease, approveProductionRelease, approveCallRelease, callReleaseFingerprint, ProductionOperations, NativeProofOperations, operationsFor, importResearch, queueMeeting, pauseStudio, nativeMessage } from './production.mjs';
 import { researchCallPrep } from './call-prep.mjs';
 import { dailyCallQueue } from './apollo-queue.mjs';
 import { intakeCandidate, reviewFiles, reviewTemplate, prospectPurpose } from './prospects.mjs';
@@ -191,15 +191,55 @@ test('retained detailed research and independent review import once, preserve su
 test('production booking requires a reviewed exact guest and keeps one reservation for the same agreed slot', async t => {
   const s = await setup(t, true, 'callback');
   await s.app.change(state => { state.prospects['synthetic-cafe'].stage = 'Discovery'; });
+  const p = provider(s.app.config); await drive(s.app, p);
   const input = { prospect_id: 'synthetic-cafe', attendee_email: 'cafe@example.net', start: '2026-10-20T14:00:00.000Z', end: '2026-10-20T14:20:00.000Z', title: 'EVZ Digital discovery', description: 'Discuss the owner goal.', slot_agreed: true };
   await assert.rejects(queueMeeting(s.app, { ...input, attendee_email: 'foreign@example.org' }), /exact guest/);
   const a = await queueMeeting(s.app, input), b = await queueMeeting(s.app, input);
   assert.equal(a.booking_id, b.booking_id); assert.equal(Object.keys(s.app.config.operations.bookings).length, 1); assert.equal(a.booked, false);
-  const p = provider(s.app.config); await drive(s.app, p);
+  assert.equal((await s.app.snapshot()).runtime.wake_requested,true);
+  await drive(s.app, p);
   assert.deepEqual(p.calls.find(r => r.operation === 'booking_create').input.attendees, ['cafe@example.net']);
   assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].meeting.event_id, 'agreed-event');
   s.advance(); await drive(s.app, p, 'booking-restart'); assert.equal(p.calls.filter(r => r.operation === 'booking_create').length, 1);
 });
+test('calls-only booking uses the confirmed guest and business calendar without releasing email', async t => {
+  const s = await setup(t, false), c = s.app.config;
+  c.sender.mailbox_id = ''; c.sender.postal_address = ''; c.native_email.enabled = false;
+  c.calendar.link_id = 'link_businesscalendar';
+  c.call_readiness = Object.fromEntries(['queue_verified','outcomes_verified','supervision_verified','booking_verified'].map(k => [k,'fixture:independent proof']));
+  await saveJson(join(s.directory,'lifecycle-config.json'),c);
+  await approveCallRelease(s.app,callReleaseFingerprint(c),'fixture:owner calls and booking approval');
+  await s.app.change(state => { state.prospects['synthetic-cafe'].stage = 'Discovery'; });
+  const input = { prospect_id:'synthetic-cafe',attendee_email:'confirmed@example.net',recipient_confirmed:true,start:'2026-10-20T14:00:00.000Z',end:'2026-10-20T14:20:00.000Z',title:'EVZ Digital discovery',description:'Discuss the agreed goal.',slot_agreed:true,mode:'phone' };
+  const noProof=structuredClone(s.app.config);delete noProof.call_readiness.booking_verified;noProof.call_release.fingerprint=callReleaseFingerprint(noProof);
+  await saveJson(join(s.directory,'lifecycle-config.json'),noProof);
+  await assert.rejects(queueMeeting(s.app,input),/invitation verification/);
+  await saveJson(join(s.directory,'lifecycle-config.json'),s.app.config);
+  await assert.rejects(queueMeeting(s.app,{...input,recipient_confirmed:false}),/exact guest/);
+  await queueMeeting(s.app,input);
+  const p=provider(s.app.config),connect=()=>({connect:async()=>{},close:async()=>{},call:async(tool,input)=>({structuredContent:p.respond({operation:Object.keys(operationNames).find(k=>tool===`mcp__codex_apps__${operationNames[k]}`),input})})});
+  assert.equal((await operationsTick(s.app,{connect,paceMs:0})).status,'Complete');
+  assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].meeting.event_id,'agreed-event');
+  assert.deepEqual(p.calls.find(r=>r.operation==='booking_create').input.attendees,['confirmed@example.net']);
+  assert.equal(p.calls.some(r=>['gmail_profile','mailboxes','intent','send','draft'].includes(r.operation)),false);
+  assert.throws(()=>requireProductionRelease(s.app.config),/paused/);
+  s.advance(); await operationsTick(s.app,{connect,paceMs:0});
+  assert.equal(p.calls.filter(r=>r.operation==='booking_create').length,1);
+  const changed=structuredClone(s.app.config);changed.calendar.owner_email='other@example.org';await saveJson(join(s.directory,'lifecycle-config.json'),changed);
+  await assert.rejects(queueMeeting(s.app,input),/must match/);
+});
+
+test('calls-only booking rejects a different connected Calendar owner before creating an invitation', async t => {
+  const s=await setup(t,false),c=s.app.config;c.calendar.link_id='link_businesscalendar';
+  c.call_readiness=Object.fromEntries(['queue_verified','outcomes_verified','supervision_verified','booking_verified'].map(k=>[k,'fixture:independent proof']));
+  await saveJson(join(s.directory,'lifecycle-config.json'),c);await approveCallRelease(s.app,callReleaseFingerprint(c),'fixture:owner calls and booking approval');
+  await s.app.change(state=>{state.prospects['synthetic-cafe'].stage='Discovery';});
+  await queueMeeting(s.app,{prospect_id:'synthetic-cafe',attendee_email:'cafe@example.net',start:'2026-10-20T14:00:00.000Z',end:'2026-10-20T14:20:00.000Z',title:'EVZ Digital discovery',description:'Discuss the agreed goal.',slot_agreed:true,mode:'phone'});
+  const p=provider(s.app.config),connect=()=>({connect:async()=>{},close:async()=>{},call:async(tool,input)=>({structuredContent:tool.includes('google_calendar')?{email:'personal@gmail.com'}:p.respond({operation:Object.keys(operationNames).find(k=>tool===`mcp__codex_apps__${operationNames[k]}`),input})})});
+  const result=await operationsTick(s.app,{connect,paceMs:0});assert.equal(result.status,'Held');assert.match(result.reason,/Calendar connection/);
+  assert.equal(p.calls.some(r=>r.operation==='booking_create'),false);
+});
+
 test('a mismatched native phone holds the task and never publishes email', async t => {
   const s = await setup(t, true, 'callback'), p = provider(s.config); p.person.phone_numbers = [{ raw_number: '+1 202 555 0199' }];
   await drive(s.app, p); assert.equal(p.calls.some(r => ['task_create', 'intent'].includes(r.operation)), false);

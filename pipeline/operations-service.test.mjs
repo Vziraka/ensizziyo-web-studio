@@ -62,3 +62,9 @@ test('a service preserves an existing process lock and shuts down its own lock c
   await runOperationsService(s.app, { signal: abort.signal, tick: async () => { abort.abort(); return { status: 'Complete', calls: 0 }; }, intervalMs: 1000 });
   assert.equal((await s.app.snapshot()).runtime.status, 'Stopped'); await assert.rejects(readFile(lock), { code: 'ENOENT' });
 });
+test('an approved invitation wakes the existing service before its ordinary polling deadline', async t => {
+  const s=await setup(t),abort=new AbortController();let ticks=0;
+  await s.app.change(state=>{state.runtime={next_at:'2026-10-19T13:05:00Z',wake_requested:true};});
+  await runOperationsService(s.app,{signal:abort.signal,intervalMs:1000,tick:async()=>{ticks++;abort.abort();return {status:'Complete',calls:0};}});
+  assert.equal(ticks,1);assert.equal((await s.app.snapshot()).runtime.wake_requested,false);
+});

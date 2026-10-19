@@ -1,5 +1,7 @@
 # Workspace links
 
+October 18 Eastern business proof: owner-only business Gmail delivery/reply and future-action cancellation passed. A business Calendar Meet invitation reached the guest calendar, was accepted and independently read back, then removed. Apollo now lists the connected business mailbox as active; the personal mailbox remains the provider default, so use the explicit private business ID. Commercial email remains held while the mailing address is undecided. Current booking independence and release rules are in [CALL-DESK.md](pipeline/CALL-DESK.md). Private receipts are under the existing operations directory's `business-launch-proof-20261018`; never copy account IDs or prospect records into Git.
+
 ## Business Google cutover — October 18, 2026
 
 The owner completed OAuth for business Gmail and Calendar while retaining personal connections. Both business profiles and live Calendar availability passed through the updated local adapter. Multi-account requests require explicit connection IDs, saved only in private configuration. [Call desk account selection](pipeline/CALL-DESK.md#business-google-account-selection) owns routing, verification and rollback. The private `operations/business-account-deployment.json` records the installed version and final connection proof once deployment completes. Sender delivery, invitations, Apollo mailbox binding and full production release remain separate gates; this cutover enables no prospect contact.

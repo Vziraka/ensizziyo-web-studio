@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { mutations } from './lifecycle-operations.mjs';
-import { operationsFor, requireProductionRelease, requireCallRelease, syncResearchImports } from './production.mjs';
+import { operationsFor, requireProductionRelease, requireCallRelease, requireBookingRelease, syncResearchImports } from './production.mjs';
 import { maintainOperations } from './lifecycle-maintenance.mjs';
 import { AppConnectors } from './app-connectors.mjs';
 import { check, hash } from './lifecycle.mjs';
@@ -20,6 +20,7 @@ async function dispatchGuard(app, next, session, accountLinks) {
   if (!writes.has(next.operation) || ['stop', 'task_skip'].includes(next.operation)) return;
   if (config.mode === 'production') {
     if (['contact_create', 'task_create'].includes(next.operation)) requireCallRelease(config);
+    else if (next.operation === 'booking_create') requireBookingRelease(config);
     else requireProductionRelease(config);
   }
   const suffix = { draft: 'draft', send: 'send', task_create: 'task-create', personalize: 'personalize', intent: 'intent' }[next.operation];
@@ -103,11 +104,11 @@ export async function runOperationsService(app, { signal, tick = operationsTick,
           await app.change(state => { state.runtime = { ...state.runtime, status: 'Paused', pid: process.pid, transport: 'app-server', checked_at: now.toISOString() }; });
         } else {
           const saved = (await app.snapshot()).runtime;
-          if (!saved?.next_at || Date.parse(saved.next_at) <= +now) {
-            await app.change(state => { state.runtime = { ...state.runtime, status: 'Checking', pid: process.pid, transport: 'app-server', checked_at: now.toISOString() }; });
+          if (saved?.wake_requested || !saved?.next_at || Date.parse(saved.next_at) <= +now) {
+            await app.change(state => { state.runtime = { ...state.runtime, wake_requested: false, status: 'Checking', pid: process.pid, transport: 'app-server', checked_at: now.toISOString() }; });
             const result = await tick(app, { signal });
             const nextAt = result.next_at ?? new Date(+now + (result.status === 'Complete' ? 300_000 : result.status === 'Held' ? 60_000 : intervalMs)).toISOString();
-            await app.change(state => { state.runtime = { status: result.status, pid: process.pid, transport: 'app-server', checked_at: app.now().toISOString(), next_at: nextAt,
+            await app.change(state => { state.runtime = { wake_requested: state.runtime?.wake_requested === true, status: result.status, pid: process.pid, transport: 'app-server', checked_at: app.now().toISOString(), next_at: nextAt,
               completed_cycles: state.operations?.cycle?.completed_cycles ?? 0, last_error: result.reason ?? null, calls: result.calls }; });
           }
         }
