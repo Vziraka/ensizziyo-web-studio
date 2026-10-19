@@ -45,6 +45,8 @@ October 19 measured result: all 151 cards and 220 retained captures were assesse
 
 The supervised host runs contact capture alongside the existing booking/call and general-research loops. Configuration is opt-in: `contact_research` contains `enabled`, an owner `approval_ref`, and the private queue `directory`. Website/client priority pauses new reads. Completed retrieval does not mean reviewed; the dashboard shows fresh lookups and semantic reviews separately. All private plans, receipts, review packets and results stay outside Git.
 
+Pause all disables this contact loop as well as the existing controls. Selecting research priority resumes only the already approved configured contact scope. Website/client priority prevents connector startup. Completed queues repair a missing dashboard projection after restart and then remain idle without repeating reads or unchanged state writes.
+
 ```powershell
 node owner-contact-cli.mjs queue-create <operations-directory> <exact-existing-card-plan.json> <new-queue-directory>
 node owner-contact-cli.mjs queue-run <operations-directory> <queue-directory>

@@ -97,9 +97,11 @@ export async function setResearchPriority(app, priority) {
     const progress = await controllerStatus(directory, controller, undefined, app.now);
     check(progress.priority !== 'unknown', 'Research control is unavailable; preserve the hold');
     if (priority === 'research') check(controller.job_ids.length && Object.values(controller.providers).some(p => p.enabled && p.included_usage_only_confirmed), 'An approved named campaign and included subscription allowance are required');
+    if(priority==='research'&&config.contact_research)check(config.contact_research.approval_ref?.length>5,'An approved existing-card contact scope is required');
     const control = await readJson(controlPath);
     await saveJsonControl(controlPath, { ...control, enabled: false });
     config.priority = priority === 'research' ? 'idle' : priority;
+    if(priority==='research'&&config.contact_research)config.contact_research.enabled=true;
     await saveJsonControl(path, config);
     await saveJsonControl(controlPath, { ...control, enabled: true, priority });
     const saved = await readJson(controlPath);
