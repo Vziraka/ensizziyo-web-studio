@@ -6,7 +6,8 @@
 - [x] Implement the selected desktop/mobile UI with larger readable type, subtle reduced-motion-aware animation and studio SVG arrows.
 - [x] Keep the existing agent/configuration, recording, privacy and native consent flow; verify latest exchange, recording, capture-after-call, no-capture, retry and booking paths locally.
 - [x] Complete focused tests, browser/visual checks and requirements/engineering reviews.
-- [ ] Open the reviewable PR and receive owner UI review. Public deployment and a fresh spoken check on the allowed domain remain separate.
+- [x] Open [PR117](https://github.com/Vziraka/ensizziyo-web-studio/pull/117) for review.
+- [ ] Owner UI review, then a separately authorized public release and fresh spoken check on the allowed domain.
 
 [Design, scope and repeatable checks](docs/voice-demo-ui/README.md). Existing pipeline work below is separate and unchanged.
 
