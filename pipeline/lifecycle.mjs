@@ -19,7 +19,7 @@ const key = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(
 const date = value => typeof value === 'string' && /Z$|[+-]\d\d:\d\d$/.test(value) && Number.isFinite(Date.parse(value));
 async function acquireLifecycleLock(directory) {
   for(let attempt=0;;attempt++)try{return await acquireLock(directory);}
-  catch(error){if(error.code!=='RUNNER_BUSY'||attempt===7)throw error;await delay(Math.min(20*2**attempt,200));}
+  catch(error){if(error.code!=='RUNNER_BUSY'||attempt===15)throw error;await delay(Math.min(20*2**attempt,200));}
 }
 const money = value => Number.isSafeInteger(value) && value > 0 && value <= 100_000_000;
 const services = ['website', 'systems', 'ai', 'marketing'];

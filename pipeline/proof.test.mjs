@@ -9,6 +9,24 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { runJob } from './engine.mjs';
 import { subscriptionEnvironment, workerFailure } from './workers.mjs';
+import fsPromises from 'node:fs/promises';
+import {syncBuiltinESMExports} from 'node:module';
+import {saveJson} from './engine.mjs';
+
+test('a longer transient Windows replacement lock preserves old state until one atomic save succeeds',async t=>{
+ const directory=await mkdtemp(join(tmpdir(),'evz-atomic-write-')),path=join(directory,'state.json');assert.ok(directory.startsWith(join(tmpdir(),'evz-atomic-write-')));t.after(()=>fsPromises.rm(directory,{recursive:true,force:true}));
+ await writeFile(path,JSON.stringify({version:1}));const replace=fsPromises.rename;let attempts=0;
+ t.mock.method(fsPromises,'rename',async(from,to)=>{if(to!==path)return replace(from,to);assert.equal(JSON.parse(await readFile(path,'utf8')).version,1);if(++attempts<=6)throw Object.assign(Error('Synthetic Windows file lock'),{code:'EPERM'});return replace(from,to);});syncBuiltinESMExports();
+ try{await saveJson(path,{version:2});assert.equal(JSON.parse(await readFile(path,'utf8')).version,2);assert.equal(attempts,7);}
+ finally{t.mock.restoreAll();syncBuiltinESMExports();}
+});
+
+test('a persistent replacement lock stops within a bound and never deletes the previous state',async t=>{
+ const directory=await mkdtemp(join(tmpdir(),'evz-atomic-write-')),path=join(directory,'state.json');assert.ok(directory.startsWith(join(tmpdir(),'evz-atomic-write-')));t.after(()=>fsPromises.rm(directory,{recursive:true,force:true}));await writeFile(path,JSON.stringify({version:1}));const replace=fsPromises.rename;let attempts=0;
+ t.mock.method(fsPromises,'rename',async(from,to)=>{if(to!==path)return replace(from,to);attempts++;throw Object.assign(Error('Synthetic persistent Windows lock'),{code:'EPERM'});});syncBuiltinESMExports();
+ try{await assert.rejects(saveJson(path,{version:2}),{code:'EPERM'});assert.ok(attempts>1&&attempts<=12);assert.equal(JSON.parse(await readFile(path,'utf8')).version,1);assert.deepEqual(await fsPromises.readdir(directory),['state.json']);}
+ finally{t.mock.restoreAll();syncBuiltinESMExports();}
+});
 
 test('the observed terminal HTTP 429 enables retained provider handoff, while research text does not',()=>{
  const message='exceeded retry limit, last status: 429 Too Many Requests';
