@@ -1,5 +1,20 @@
 # Launch tasks
 
+## Company website and campaign concept skill - October 20, 2026
+
+- [x] Interview the owner and record the agreed website, campaign, imagery and presentation scope in [the brief](BRIEF.md).
+- [x] Author and validate the portable [company-design-concepts skill](skills/company-design-concepts/SKILL.md), with discoverable UI metadata and mode-specific references.
+- [x] Install the tested first-party version for personal Codex use and record its scope and verification in TOOLKIT.md.
+- [x] Complete separate requirements and instruction-quality reviews; prepare the isolated documentation/skill-source change for PR review.
+- [x] Replace optional inspiration with required visual research, deliberate typography and composition exploration, and a separate design-quality review; refresh the installed personal skill.
+- [x] Forward-check the revised skill on a bounded independent design trial and record observed limitations.
+- [x] Follow-up interview: require image-generation-led exploration and target-to-final comparison; allow palette/type exploration and supporting artwork, preserve original logo/photos, and keep main directions within the agreed budget.
+- [x] Review the updated instruction paths and validate source structure, links, UI metadata and installed equality. This revision changes the skill; no fresh client design trial or visual-quality acceptance is claimed.
+
+Acceptance: website mode specifies five distinct desktop openings plus 2-3 key sections, mobile after selection, exact company imagery and verified wording; optional campaign mode specifies three client-company ideas with actual sample social/ad/landing-page designs in a PDF only. Prospect and paying-client presentation differ. Validate skill structure, references, installation equality and the reviewed diff. The first owner-supplied website trial produced a private seven-page review of five directions; all pages were visually inspected and all 20 embedded company assets were checked against source receipts. The subsequent owner-requested campaign trial produced a private eight-page review of three ideas, each with an actual social post, ad and matching landing-page design. All eight pages were visually inspected, all 12 original company assets matched source receipts, text bounds passed and render diagnostics were empty. Owner website/campaign selection remains pending.
+
+Visual correction acceptance: inspect relevant Awwwards, Godly/Recent and 21st.dev references and connect observed principles to the directions; explore actual font families and composition rather than repeated utility typography and ornamented templates. Compare opening silhouettes and real type settings, develop the visual premise through the page, and rework weak or repetitive studies before PDF packaging. Earlier trial counts/export checks remain historical evidence, not owner acceptance of their visual quality or proof of the revised standard. The revised skill was exercised on a private five-direction comparison and two 1280-by-720 browser-inspected openings with actual local font families and original imagery. The first pair was too conservative; that observation prompted the more explicit adventurous-direction guidance and one expressive replacement. This verifies a bounded iterative opening trial, not all five complete pages or a regenerated campaign PDF.
+
 ## Voice demo UI — October 20, 2026
 
 - [x] Complete the design interview and select the supplied centered layout and dotted waveform.

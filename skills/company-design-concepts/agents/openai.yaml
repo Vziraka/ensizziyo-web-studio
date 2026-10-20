@@ -1,0 +1,4 @@
+interface:
+  display_name: "Company Design Concepts"
+  short_description: "Company website and campaign concept PDFs"
+  default_prompt: "Use $company-design-concepts to research this company, explore and critique directions with image generation, then faithfully compose five strong desktop mockups with its real logo/photos, expressive colors/fonts and supporting artwork in a PDF within the agreed scope."
