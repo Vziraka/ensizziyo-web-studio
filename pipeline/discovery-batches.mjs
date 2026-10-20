@@ -94,7 +94,11 @@ async function modelCall(app,b,prompt,schema,{invoke=invokeCLI,usage=readCodexUs
     const deferred=reason=>Object.assign(Error(reason),{code:'DISCOVERY_DEFERRED'}),control=await readJson(join(root,'research-control.json'));
     check(control.schema_version===1&&typeof control.enabled==='boolean'&&['research','website','client'].includes(control.priority)&&control.quota_resumes&&typeof control.quota_resumes==='object','Shared research controls are unavailable');
     if(!control.enabled||control.priority!=='research')throw deferred('Research yielded to the shared pause or priority control');
-    if(ledger.calls.filter(c=>c.day===day).length>=100)throw deferred('The shared 100-call daily ceiling has been reached');
+    const override=control.discovery_daily_override,campaign=override?(await app.snapshot()).discovery_campaigns?.[b.campaign_id]:null;
+    const approved=override?.daily_calls===200&&override.day===day&&override.campaign_id===campaign?.id&&b.campaign_id===campaign?.id&&typeof override.approval_ref==='string'&&override.approval_ref.length>10
+      &&campaign?.target===100&&['Queued','Researching','Deferred'].includes(campaign.status)&&campaign.approval_ref===`owner-campaign:${campaign.id}`&&b.approval_ref===campaign.approval_ref&&campaign.batch_ids.includes(b.id);
+    const dailyLimit=approved?200:100;
+    if(ledger.calls.filter(c=>c.day===day).length>=dailyLimit)throw deferred(`The shared ${dailyLimit}-call daily ceiling has been reached`);
     const job_id=`db-${b.id}`,stage=b.extraction==='Complete'?'review':'extract',author=ledger.calls.findLast(c=>c.job_id===job_id&&c.discovery_stage==='extract'&&c.status==='Returned')?.worker;
     const order=stage==='extract'?policy.fallback_order:policy.review_order.toSorted((a,b)=>Number(a===author)-Number(b===author));
     let worker,p;

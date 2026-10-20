@@ -85,6 +85,28 @@ test('the 100-call daily ceiling counts retained calls across all subscriptions'
  ledger.calls.push(...Array.from({length:100},(_,i)=>({id:`prior-${i}`,worker:['codex','claude','cursor'][i%3],day:at.slice(0,10),job_id:'retained-other',status:'Returned'})));await saveJson(path,ledger);
  await discoveryTick(app,{collect:async()=>sources(),usage,invoke:()=>{throw Error('No dispatch beyond the shared ceiling');}});assert.equal((await app.snapshot()).discovery_batches[request.id].status,'Deferred');assert.equal(JSON.parse(await readFile(path)).calls.length,101);
 });
+
+test('a dated owner-approved campaign override permits 200 shared calls without changing ordinary discovery',async t=>{
+ const {app,research}=await setup(t);await seed(app);const path=join(research,'controller-state.json'),ledger=JSON.parse(await readFile(path));
+ ledger.calls.push(...Array.from({length:100},(_,i)=>({id:`prior-${i}`,worker:['codex','claude','cursor'][i%3],day:at.slice(0,10),job_id:'retained-other',status:'Returned'})));await saveJson(path,ledger);
+ const campaignId='approved-home-100',approval=`owner-campaign:${campaignId}`;
+ await app.change(s=>{s.discovery_campaigns={[campaignId]:{id:campaignId,target:100,status:'Researching',batch_ids:[request.id],approval_ref:approval}};Object.assign(s.discovery_batches[request.id],{campaign_id:campaignId,approval_ref:approval});});
+ const controlPath=join(research,'research-control.json'),control=JSON.parse(await readFile(controlPath));control.discovery_daily_override={campaign_id:campaignId,day:at.slice(0,10),daily_calls:200,approval_ref:'owner:allow-200-calls'};await saveJson(controlPath,control);
+ await discoveryTick(app,{collect:async()=>sources(),usage,invoke:review});assert.equal((await app.snapshot()).discovery_batches[request.id].candidates[0].status,'Imported');assert.equal(JSON.parse(await readFile(path)).calls.length,102);
+ const retained=JSON.parse(await readFile(path));retained.calls.push(...Array.from({length:99},(_,i)=>({id:`later-${i}`,worker:['claude','cursor'][i%2],day:at.slice(0,10),job_id:'retained-other',status:'Returned'})));await saveJson(path,retained);
+ await app.change(s=>{s.discovery_batches[request.id].candidates[0].status='Awaiting review';delete s.prospects[s.discovery_batches[request.id].candidates[0].prospect_id];});
+ await discoveryTick(app,{usage,invoke:()=>{throw Error('No dispatch beyond 200');}});assert.match((await app.snapshot()).discovery_batches[request.id].reason,/shared 200-call/);assert.equal(JSON.parse(await readFile(path)).calls.length,201);
+});
+
+test('a campaign budget override cannot apply without its exact approval, date and active batch binding',async t=>{
+ for(const variant of ['ordinary','other-campaign','other-day','missing-approval','unbound-batch','finished','larger-limit'])await t.test(variant,async t=>{
+  const {app,research}=await setup(t);await seed(app);const path=join(research,'controller-state.json'),ledger=JSON.parse(await readFile(path));ledger.calls.push(...Array.from({length:100},(_,i)=>({id:`prior-${i}`,worker:'cursor',day:at.slice(0,10),job_id:'retained-other',status:'Returned'})));await saveJson(path,ledger);
+  const campaignId='approved-home-100',approval=`owner-campaign:${campaignId}`;
+  await app.change(s=>{s.discovery_campaigns={[campaignId]:{id:campaignId,target:100,status:variant==='finished'?'Complete':'Researching',batch_ids:variant==='unbound-batch'?[]:[request.id],approval_ref:approval}};if(variant!=='ordinary')Object.assign(s.discovery_batches[request.id],{campaign_id:campaignId,approval_ref:approval});});
+  const controlPath=join(research,'research-control.json'),control=JSON.parse(await readFile(controlPath));control.discovery_daily_override={campaign_id:variant==='other-campaign'?'other':campaignId,day:variant==='other-day'?'2026-10-18':at.slice(0,10),daily_calls:variant==='larger-limit'?201:200,approval_ref:variant==='missing-approval'?'':'owner:allow-200-calls'};await saveJson(controlPath,control);
+  await discoveryTick(app,{collect:async()=>sources(),usage,invoke:()=>{throw Error('No dispatch outside the exact owner scope');}});assert.match((await app.snapshot()).discovery_batches[request.id].reason,/shared 100-call/);assert.equal(JSON.parse(await readFile(path)).calls.length,101);
+ });
+});
 test('a terminal provider quota stays charged and defers to another verified provider',async t=>{
  const {app,research}=await setup(t);await seed(app);await providerPolicy(research,p=>{p.providers.codex.enabled=false;for(const w of ['claude','cursor'])Object.assign(p.providers[w],{enabled:true,included_usage_only_confirmed:true});});
  await discoveryTick(app,{collect:async()=>sources(),invoke:async o=>{assert.equal(o.worker,'claude');throw Object.assign(Error('Included quota reached'),{code:'WORKER_QUOTA'});}});
