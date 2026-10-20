@@ -1,0 +1,2 @@
+# Preserve the approved PDF's byte offsets on Windows checkouts.
+skills/evz-proposals/assets/*.pdf binary

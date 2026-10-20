@@ -7,7 +7,7 @@
 - [x] Capture starting packages, optional care/software costs, service-specific scope and approved commercial rules.
 - [x] Bundle the unchanged visual master, original EVZ assets, Manrope license and portable reproduction source.
 - [x] Verify source/installed skill, relative links, reproduction and unchanged page appearance; install personally and record checks in TOOLKIT.md.
-- [ ] Publish source changes for review. No live client proposal or external message is part of this task.
+- [x] Publish source changes in draft [PR122](https://github.com/Vziraka/ensizziyo-web-studio/pull/122). Personal skill installed; source PR awaits review. No live client proposal or external message is part of this task.
 
 ## Voice demo UI — October 20, 2026
 
