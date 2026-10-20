@@ -5,6 +5,14 @@ import {linkedSocialProfiles,buildResearchProfile} from './research-profile.mjs'
 const at='2026-10-19T15:00:00Z',now=new Date(at);
 const source=(url,text,kind='business')=>{const s={url,text,kind,fetched_at:at,checked_at:'2026-10-19',coverage:'partial',capture_method:'http',identity_note:'Controlled public-source fixture for business contact and profile evidence.'};s.content_sha256=sourceContentHash(s);return s;};
 const primary=source('https://oakline.example.com/','Oakline Home Services, Fairfax. Owner Jordan Test. Email our office hello@oakline.example.com. Follow us [https://www.instagram.com/oakline/] [https://facebook.com/sharer.php?u=example]');
+
+test('an email shown only as a contact-form example is not a published business route',()=>{
+ const page=source('https://oakline.example.com/','Oakline Home Services contact form. Name [Input: Name] Email [Input: office@oakline.example.com] Message [Input: Message]');
+ const claim={business_email:{email:'office@oakline.example.com',kind:'General business',person_name:null,url:page.url,excerpt:'office@oakline.example.com'}};
+ assert.throws(()=>buildResearchProfile([page],[],claim,now),/form.*example|placeholder/);
+ const published=source(page.url,page.text+' Email our office office@oakline.example.com.');
+ claim.business_email.excerpt='Email our office office@oakline.example.com.';assert.equal(buildResearchProfile([published],[],claim,now).business_email.email,'office@oakline.example.com');
+});
 test('only business-linked profiles are retained; missing metrics never imply no followers or inactivity',()=>{
  const links=linkedSocialProfiles([primary]);assert.equal(links.length,1);assert.equal(links[0].platform,'Instagram');const p=buildResearchProfile([primary],[],{},now);assert.equal(p.business_email,null);assert.equal(p.social[0].followers,null);assert.equal(p.social[0].posts_30_days,null);assert.match(p.social[0].frequency,/Unavailable/);
 });
