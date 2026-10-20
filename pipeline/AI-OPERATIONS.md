@@ -61,7 +61,7 @@ Apollo's existing saved-contact read hold remains until its recorded provider wi
 
 ## Verification, deployment and rollback
 
-Run `npm run check` and `node --test` in `pipeline`; serial `--test-concurrency=1` is available for Windows file-contention diagnosis. At repository root run `node scripts/build-site.mjs`, `node scripts/verify-site.mjs`, `node --test scripts/inquiry.test.mjs`, and `node --check site/studio/demos/voice/demo.js`.
+Run `npm run check` and `node --test` in `pipeline`; serial `--test-concurrency=1` is available for Windows file-contention diagnosis. At repository root run `node scripts/build-site.mjs`, `node scripts/verify-site.mjs`, `node --test scripts/inquiry.test.mjs scripts/voice-demo.test.mjs`, and `node --check site/studio/demos/voice/demo.mjs`.
 
 For browser rehearsal use a separate controlled state outside Git with fictional home-service cards, `.invalid` recipients and no connector worker. `STUDIO_LIFECYCLE_STATE_DIR` selects that directory; `STUDIO_LIFECYCLE_PORT=8810` and `node lifecycle-cli.mjs serve` expose the private console. Readiness is a loopback ready message naming controlled mode. Check desktop/phone overflow, contact card, tab keyboard controls, note switching, actual-outcome preview, saved-call reload, one follow-up, missing-address hold and stop behavior. Use the full email preview for logo/demo/signature verification. Serve `dist` locally for recording/transcript, responsive layout and widget-load checks. Localhost is intentionally not an allowed conversation origin. Real agent/card and microphone-header checks need the published allowed host. Stop only the exact rehearsal process created for the check; retain evidence privately.
 

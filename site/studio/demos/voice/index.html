@@ -1,29 +1,87 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow">
-<title>Meet your AI receptionist — EVZ Digital</title>
-<link rel="stylesheet" href="/studio/demos/voice/demo.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="description" content="Talk to Evan and explore how an AI receptionist could answer a customer call and prepare a clear enquiry for your team.">
+  <title>Meet your AI receptionist — EVZ Digital</title>
+  <link rel="icon" type="image/svg+xml" href="/shared/favicon.svg">
+  <link rel="stylesheet" href="/studio/demos/voice/demo.css">
 </head>
 <body>
-<div class="preview-strip"><strong>EVZ Digital demonstration</strong> · Fictional business. Please use made-up details.</div>
-<div class="wrap">
-<header class="site-header"><a class="brand" href="https://evzdigital.studio/studio/" aria-label="EVZ Digital studio"><span class="wordmark">EVZ</span><span class="brand-description">AI solutions &amp;<br>digital systems</span></a><nav class="header-links" aria-label="Main navigation"><a class="email-top" href="mailto:hello@evzdigital.studio">Email the team</a><a class="back" href="https://evzdigital.studio/studio/">Visit the studio <span aria-hidden="true">↗</span></a></nav></header>
-<main>
-<section class="hero" aria-labelledby="page-title"><div><p class="eyebrow">Voice agent demo / Home services</p><h1 id="page-title">Meet your<br><span>AI receptionist.</span></h1></div><div class="intro"><p>A helpful conversation. The right details. A clear next step for your team. Explore how an AI receptionist could handle a new enquiry.</p><p class="fiction">Featuring Oakline Home Services, a fictional business.</p></div></section>
-<div class="mode-bar"><div class="tabs" role="tablist" aria-label="Choose a demo experience"><button class="tab" id="listen-tab" role="tab" aria-selected="true" aria-controls="demo-experience" tabindex="0"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 11V9a7 7 0 0 1 14 0v2M3 10h3v7H3a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1Zm14 0h-3v7h3a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1Z"/></svg>Listen to an example</button><button class="tab" id="try-tab" role="tab" aria-selected="false" aria-controls="demo-experience" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="7" y="2" width="6" height="10" rx="3"/><path d="M4.5 9.5v1a5.5 5.5 0 0 0 11 0v-1M10 16v3M7 19h6"/></svg>Try the agent</button></div><span class="mode-hint" id="mode-hint">A short example, from first question to follow-up.</span></div>
-<div class="demo-grid" id="demo-experience" role="tabpanel" aria-labelledby="listen-tab">
-<section class="conversation-panel" aria-label="Sample customer conversation"><div class="panel-top"><div><div class="business-name">Oakline Home Services</div><div class="business-label">AI receptionist · Demonstration business</div></div><div class="status"><i aria-hidden="true"></i><span id="call-status">Sample call</span></div></div>
-<div class="standby" id="standby"><div class="voice-disc" aria-hidden="true"><div class="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div><h2 id="standby-title">From “hello” to a clear enquiry.</h2><p id="standby-copy">A customer needs help with their AC. See how the receptionist collects the details for the team.</p><button class="light-button" id="start-example"><svg viewBox="0 0 18 18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 3 8 6-8 6V3Z"/></svg><span id="start-label">Preview sample call</span></button></div>
-<div class="script" id="script" hidden><audio id="sample-audio" controls preload="none" src="/studio/assets/voice-demo-evan.mp3">Read the transcript below if audio is unavailable.</audio><details class="audio-transcript"><summary>Read the sample transcript</summary><p>AI receptionist: Hi, I'm Evan, an AI receptionist in an EVZ Digital demo for the fictional Oakline Home Services. Please use made-up details. How can I help?</p><p>Customer: My AC is running, but it isn't cooling. I'm in Fairfax, and tomorrow afternoon would work for a callback.</p><p>AI receptionist: I can collect that request for the team. We'll use Jordan Lee and the fictional callback number 202-555-0147. To confirm: AC not cooling, Fairfax, callback preferred tomorrow afternoon. A real team member would confirm availability. This is a sample only; no appointment has been booked and no request has been delivered.</p></details></div>
-<div id="live-demo" hidden></div><div class="panel-bottom"><span id="panel-footnote">Recorded example · Transcript included</span><button id="reset-example" hidden>Start over</button><span id="standby-footnote">Sound starts when you press play</span></div></section>
-<aside class="summary-panel" aria-labelledby="summary-title"><div class="summary-heading"><h2 id="summary-title">What your team receives</h2><span class="sample-pill" id="summary-status">Sample enquiry</span></div><p class="summary-intro">The useful details, ready for a human follow-up.</p><div aria-live="polite" aria-atomic="true" id="lead-summary"><div class="lead-name"><div class="initials" id="lead-initials" aria-hidden="true">JL</div><div><strong id="lead-name">Jordan Lee</strong><small id="lead-contact">(202) 555-0147 · Sample number</small></div></div><dl class="lead-details"><div><dt>Service</dt><dd id="lead-service">AC not cooling</dd></div><div><dt>Location</dt><dd id="lead-location">Fairfax, Virginia</dd></div><div><dt>Preferred time</dt><dd id="lead-time">Tomorrow afternoon</dd></div></dl><div class="next-action"><span>Next step</span><p id="lead-next">Call Jordan to confirm availability and arrange service.</p></div></div><p class="summary-note">Illustrative enquiry only. No appointment has been booked and no business has been contacted.</p></aside>
-</div>
-<section class="outcomes" aria-label="What the demo shows"><div><span class="step-number">01</span><div><strong>A natural first conversation</strong><p>Understand what the customer needs and ask useful follow-up questions.</p></div></div><div><span class="step-number">02</span><div><strong>The details in one place</strong><p>Collect the request, service area and preferred next step.</p></div></div><div><span class="step-number">03</span><div><strong>A handoff to your team</strong><p>Turn the conversation into an enquiry someone can act on.</p></div></div></section>
-<p class="demo-privacy">The live demo is processed by ElevenLabs. Agent audio storage is off; its transcript may be retained for up to one day. The sample enquiry card stays in your browser. The widget uses browser storage for its session. Please use fictional details. <a href="https://elevenlabs.io/privacy-policy" target="_blank" rel="noreferrer">ElevenLabs privacy</a> · <a href="/studio/privacy/">EVZ privacy</a></p>
-<section class="contact-strip"><div><h2>What could this do for your business?</h2><p>Let’s start with your calls, your team and the work you want to improve. We’ll explore where AI would fit.</p></div><div class="contact-actions"><a class="dark-button" href="https://calendar.app.google/VntxbUGK6wqxF8AU8" target="_blank" rel="noreferrer">Book a conversation <span aria-hidden="true">↗</span></a><a class="reply-link" href="mailto:hello@evzdigital.studio">Or email the team</a></div></section>
-</main>
-<footer class="site-footer"><span>EVZ Digital · AI solutions, business systems, websites &amp; marketing</span><span><a href="mailto:hello@evzdigital.studio">hello@evzdigital.studio</a> &nbsp; / &nbsp; <a href="tel:+15717529610">571-752-9610</a></span></footer>
-</div>
-<script type="module" src="/studio/demos/voice/demo.js"></script>
-</body></html>
+  <a class="skip" href="#main">Skip to the demo</a>
+  <div class="page-shell">
+    <header class="site-header">
+      <a class="wordmark" href="/studio/" aria-label="EVZ Digital studio">EVZ</a>
+      <a class="back-link" href="/studio/">Back to studio <img src="/studio/demos/voice/assets/arrow-up-right.svg" width="25" height="25" alt=""></a>
+    </header>
+    <main id="main" data-state="ready">
+      <section class="intro" id="intro" aria-labelledby="page-title">
+        <h1 id="page-title"><span>An AI receptionist</span><span>for your business.</span></h1>
+        <p>Talk to Evan. See how a customer call becomes a clear enquiry.</p>
+      </section>
+      <section class="experience" id="experience" aria-label="Try the AI receptionist">
+        <div class="voice-visual" aria-hidden="true"><img src="/studio/demos/voice/assets/voice-wave.png" width="1254" height="1254" alt="" fetchpriority="high"></div>
+        <p id="call-status" class="call-status" role="status" hidden></p>
+        <button class="primary-button" id="talk-button"><img src="/studio/demos/voice/assets/mic.svg" width="30" height="30" alt=""><span id="talk-label">Talk to Evan</span></button>
+        <button class="text-link listen-link" id="listen-button">Listen to an example</button>
+        <p class="suggestion" id="suggestion">Try asking about an AC repair.</p>
+        <p class="demo-note">Fictional business demo. Please use made-up details.</p>
+        <section class="conversation" id="conversation" aria-label="Latest exchange" hidden>
+          <p class="speaker" id="turn-speaker">Evan</p>
+          <p class="latest-message" id="latest-message" aria-live="polite" aria-atomic="true"></p>
+          <details id="full-transcript"><summary>View full transcript</summary><ol id="transcript"></ol></details>
+        </section>
+        <form id="text-chat" class="text-chat" hidden>
+          <label for="chat-message">Your message</label>
+          <div><input id="chat-message" maxlength="1000" autocomplete="off" required><button class="small-button" type="submit">Send</button></div>
+        </form>
+        <section id="recording" class="recording" aria-label="Recorded example" hidden>
+          <audio id="sample-audio" controls preload="none" src="/studio/assets/voice-demo-evan.mp3">Read the transcript below if audio is unavailable.</audio>
+          <details><summary>Read the sample transcript</summary>
+            <p><strong>Evan:</strong> Hi, I'm Evan, an AI receptionist in an EVZ Digital demo for the fictional Oakline Home Services. Please use made-up details. How can I help?</p>
+            <p><strong>Customer:</strong> My AC is running, but it isn't cooling. I'm in Fairfax, and tomorrow afternoon would work for a callback.</p>
+            <p><strong>Evan:</strong> I can collect that request for the team. We'll use Jordan Lee and the fictional callback number 202-555-0147. To confirm: AC not cooling, Fairfax, callback preferred tomorrow afternoon. A real team member would confirm availability. This is a sample only; no appointment has been booked and no request has been delivered.</p>
+          </details>
+          <button class="text-link" id="close-recording">Back to the live demo</button>
+        </section>
+      </section>
+      <section class="result" id="result" aria-labelledby="result-title" hidden>
+        <p class="result-label" id="result-label">Demo complete</p>
+        <h1 id="result-title" tabindex="-1">A clear next step<br>for your team.</h1>
+        <p class="result-intro" id="result-intro">Explore what an AI receptionist could do for your business.</p>
+        <div class="result-actions">
+          <a class="primary-button" href="https://calendar.app.google/VntxbUGK6wqxF8AU8" target="_blank" rel="noreferrer">Book a conversation <img src="/studio/demos/voice/assets/arrow-up-right.svg" width="25" height="25" alt=""></a>
+          <a class="text-link" href="mailto:hello@evzdigital.studio">Or email the team</a>
+        </div>
+        <section class="enquiry" id="enquiry" aria-labelledby="enquiry-title" hidden>
+          <h2 id="enquiry-title">What your team receives</h2>
+          <dl>
+            <div><dt>Customer</dt><dd id="lead-name"></dd></div>
+            <div><dt>Contact</dt><dd id="lead-contact"></dd></div>
+            <div><dt>Request</dt><dd id="lead-service"></dd></div>
+            <div><dt>Location</dt><dd id="lead-location"></dd></div>
+            <div><dt>Preferred callback</dt><dd id="lead-time"></dd></div>
+          </dl>
+          <p class="handoff-note">A team member would confirm availability and the next step.</p>
+        </section>
+        <p class="result-note">This is a fictional demo. No appointment was booked and no request was sent.</p>
+        <button class="text-link" id="try-again">Try again</button>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <p><a href="/studio/">EVZ</a><span>AI solutions &amp; digital systems</span></p>
+      <nav aria-label="Footer"><a href="/studio/privacy/">Privacy</a><a href="https://calendar.app.google/VntxbUGK6wqxF8AU8" target="_blank" rel="noreferrer">Book a conversation <img src="/studio/demos/voice/assets/arrow-up-right.svg" width="17" height="17" alt=""></a></nav>
+    </footer>
+  </div>
+  <dialog id="voice-dialog" aria-labelledby="dialog-title">
+    <div class="dialog-heading"><h2 id="dialog-title">Talk to Evan</h2><button class="text-link" id="close-dialog">Close</button></div>
+    <p>Choose voice or type instead. Use a made-up request for Oakline Home Services.</p>
+    <p id="widget-loading" role="status">Getting the demo ready…</p>
+    <div id="live-demo"></div>
+    <p class="privacy-copy">90-second demo. ElevenLabs processes the live conversation; audio storage is off and its transcript may be retained for up to one day. The enquiry stays in this browser. The widget uses browser storage for its session. <a href="https://elevenlabs.io/privacy-policy" target="_blank" rel="noreferrer">ElevenLabs privacy</a> · <a href="/studio/privacy/">EVZ privacy</a></p>
+  </dialog>
+  <script type="module" src="/studio/demos/voice/demo.mjs"></script>
+</body>
+</html>
