@@ -57,6 +57,12 @@ test('an invalid returned review stays held without stopping or replaying the ot
  const second=sources();second.sources[0].url='https://second.example.com/';second.sources[0].text=second.sources[0].text.replace('Comfort','Second').replace('555-0100','555-0101');second.sources[0].content_sha256=sourceContentHash(second.sources[0]);
  await discoveryTick(app,{collect:async()=>second,usage,invoke:review});s=await app.snapshot();assert.equal(s.discovery_batches[request.id].candidates[0].status,'Held');assert.equal(s.discovery_batches[request.id].candidates[1].status,'Imported');assert.equal(JSON.parse(await readFile(join(research,'controller-state.json'))).calls.length,3);
 });
+
+test('a paraphrased owner role is held before import instead of stopping the batch',async t=>{
+ const {app}=await setup(t);await seed(app);const captured=sources();captured.sources[0].text+=' Morgan Test founded this business.';captured.sources[0].content_sha256=sourceContentHash(captured.sources[0]);
+ await discoveryTick(app,{collect:async()=>captured,usage,invoke:async o=>({...await review(o),owner:{name:'Morgan Test',role:'Founder and owner',url:captured.sources[0].url,excerpt:'Morgan Test founded this business.'}})});
+ const s=await app.snapshot(),b=s.discovery_batches[request.id];assert.equal(b.status,'Researching');assert.equal(b.candidates[0].status,'Held');assert.match(b.candidates[0].reason,/exact name and role/);assert.equal(Object.keys(s.prospects).length,0);
+});
 test('discovery uses verified Claude allowance when Codex reaches its reserve',async t=>{
  const {app,research}=await setup(t);await seed(app);await providerPolicy(research,p=>Object.assign(p.providers.claude,{enabled:true,included_usage_only_confirmed:true}));let worker;
  await discoveryTick(app,{collect:async()=>sources(),usage:async()=>({authenticated_subscription:true,checked_at:at,buckets:[{remaining_percent:29,resets_at:+now()/1000+3600}]}),invoke:async o=>{worker=o.worker;assert.equal(o.model,'sonnet');return review(o);}});
