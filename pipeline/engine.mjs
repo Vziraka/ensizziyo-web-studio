@@ -53,7 +53,13 @@ export async function acquireLock(directory) {
     return async () => { if ((await readJson(path)).token === token) await unlink(path); };
   } catch (error) {
     if (error.code !== 'EEXIST') throw error;
-    const owner = await readJson(path);
+    let owner;
+    try { owner = await readJson(path); }
+    catch (readError) {
+      if (readError.code !== 'ENOENT') throw readError;
+      // The previous owner can release after EEXIST; only a fresh exclusive open may claim it.
+      throw Object.assign(Error('Runner lock changed during acquisition; retry within the existing wait bound'), { code: 'RUNNER_BUSY' });
+    }
     if (!Number.isInteger(owner.pid) || owner.pid <= 0 || alive(owner.pid)) throw Object.assign(Error('Another runner is active; refusing overlapping execution'), Number.isInteger(owner.pid) && owner.pid > 0 ? { code: 'RUNNER_BUSY' } : {});
     // shortcut: hard-crash lock recovery is manual during this controlled proof; never race to remove a competing lock.
     throw Error('Stale runner lock: confirm all recorded processes stopped before manual recovery');

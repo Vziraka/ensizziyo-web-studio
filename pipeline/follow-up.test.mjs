@@ -8,6 +8,16 @@ import {fixtureProspect} from './lifecycle-fixtures.mjs';
 import {composeFollowUp,renderFollowUpHtml,followUpSetupIssues} from './follow-up-template.mjs';
 import {approvedFollowUp,nativeMessage} from './production.mjs';
 const at='2026-10-19T15:00:00Z';
+test('blank postal address is omitted from the preview while commercial setup stays held',()=>{
+  const config={sender:{email:'hello@evzdigital.studio',postal_address:''},follow_up:{sender_verified:true,demo_verified:true,booking_url:'https://calendar.app.google/example'}};
+  const message=composeFollowUp({name:'STUDIO TEST Oakline',contact:{email:'owner@example.invalid'}},{outcome:'no_answer',focus:'ai'},config);
+  assert.equal(message.postal_address,'');
+  assert.doesNotMatch(message.text,/Business mailing address pending/);
+  const html=renderFollowUpHtml(message);
+  assert.doesNotMatch(html,/Business mailing address pending/);
+  assert.ok(html.includes('Reply “stop”'));
+  assert.deepEqual(followUpSetupIssues(config),['Choose the business mailing address for the footer']);
+});
 async function setup(t){const directory=await mkdtemp(join(tmpdir(),'evz-followup-'));t.after(()=>rm(directory,{recursive:true,force:true}));const config=structuredClone(initialConfig);config.follow_up.enabled=true;const app=await StudioLifecycle.initialize({directory,config,now:()=>new Date(at)});await app.apply(fixtureProspect('sample',at));return app;}
 const call=(outcome='no_answer',extra={})=>({id:'call-one',prospect_id:'sample',type:'call_logged',at,data:{call_id:'call-one',performed_at:at,outcome,simulated:true,desk:true,note:'Explore AI enquiry handling. Private internal note: do not quote this.',...extra}});
 
