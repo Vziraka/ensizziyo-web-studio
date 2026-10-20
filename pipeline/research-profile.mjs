@@ -3,7 +3,12 @@ import {validateSnapshots} from './sources.mjs';
 
 const host=value=>new URL(value).hostname.toLowerCase().replace(/^www\./,'');
 const platforms={'facebook.com':'Facebook','instagram.com':'Instagram','linkedin.com':'LinkedIn','youtube.com':'YouTube','tiktok.com':'TikTok','x.com':'X','twitter.com':'X'};
-const profileKey=value=>{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password&&!u.port&&platforms[host(value)]==='X'?`https://x.com${u.pathname.replace(/\/$/,'').toLowerCase()}`:value.replace(/\/$/,'');};
+const profileKey=value=>{
+  const u=new URL(value),domain=host(value),path=u.pathname.replace(/\/$/,'');
+  if(u.protocol!=='https:'||u.username||u.password||u.port||u.hash||!platforms[domain])return value.replace(/\/$/,'');
+  const query=domain==='facebook.com'&&path==='/profile.php'?`?id=${u.searchParams.get('id')}`:'';
+  return `https://${domain==='twitter.com'?'x.com':domain}${platforms[domain]==='X'?path.toLowerCase():path}${query}`;
+};
 const emailPattern=/^[^\s@,;<>"\r\n]+@[^\s@,;<>"\r\n]+\.[^\s@,;<>"\r\n]+$/;
 const months=['january','february','march','april','may','june','july','august','september','october','november','december'];
 function publicationDate(label){
@@ -89,7 +94,7 @@ export async function applyResearchProfile(app,p){
     for(const layer of layers)for(const m of layer.social){
       const key=profileKey(m.url),source=layer.sources.findLast(s=>profileKey(s.url)===key);if(!source)continue;
       const previous=metrics.get(key)??{},posts=new Map((previous.posts??[]).map(post=>[post.post_url,post]));
-      for(const post of m.posts??[])posts.set(post.post_url,{...post,source_sha256:source.content_sha256});
+      for(const post of m.posts??[]){check(!posts.has(post.post_url)||posts.get(post.post_url).date===post.date,'Observed post date conflicts with a previously retained observation');posts.set(post.post_url,{...post,source_sha256:source.content_sha256});}
       metrics.set(key,{...previous,...m,followers:Object.hasOwn(m,'followers')?m.followers&&{...m.followers,source_sha256:source.content_sha256}:previous.followers,posts:[...posts.values()]});
     }
     for(const [key,m] of metrics){const available=claim=>current.some(s=>profileKey(s.url)===key&&s.content_sha256===claim.source_sha256);if(m.followers&&!available(m.followers))m.followers=null;m.posts=m.posts.filter(available).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,40);}

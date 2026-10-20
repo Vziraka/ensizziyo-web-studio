@@ -13,6 +13,13 @@ test('Facebook numeric page IDs survive link normalization and tracking paramete
  const links=linkedSocialProfiles([page]);assert.equal(links.length,1);assert.equal(links[0].url,'https://www.facebook.com/profile.php?id=100012345678901');
 });
 
+test('public www aliases match the linked profile while distinct Facebook page IDs remain separate',()=>{
+ const page=source(primary.url,'Oakline Home Services in Fairfax. Profiles [https://www.facebook.com/profile.php?id=100012345678901] [https://www.instagram.com/oakline/]'),facebook=source('https://facebook.com/profile.php?id=100012345678901','Oakline Home Services public business page in Fairfax. 30 followers.','social'),instagram=source('https://instagram.com/oakline','Oakline Home Services public business profile in Fairfax. 240 followers.','social');
+ const result=buildResearchProfile([page],[facebook,instagram],{social:[{url:facebook.url,followers:{display:'30',excerpt:'30 followers'}},{url:instagram.url,followers:{display:'240',excerpt:'240 followers'}}]},now);
+ assert.equal(result.social[0].followers.source.url,facebook.url);assert.equal(result.social[1].followers.display,'240');
+ assert.throws(()=>buildResearchProfile([page],[{...facebook,url:'https://facebook.com/profile.php?id=100012345678902'}],{},now),/linked by the business/);
+});
+
 test('a retained X post can belong to a business-linked Twitter profile and uses the profile capture date',()=>{
  const page=source(primary.url,'Oakline Home Services, Fairfax. Public updates [https://twitter.com/Oakline]'),post_url='https://x.com/oakline/status/12345',excerpt=`October 10, 2026 [${post_url}]`,social=source('https://x.com/oakline',`Oakline Home Services. 25 Followers. ${excerpt}`,'social');
  social.checked_at='2026-10-20';social.fetched_at='2026-10-20T12:00:00Z';
@@ -30,6 +37,9 @@ test('fresh partial updates retain each post citation and hold stale metrics sep
  const fresh=source(instagram.url,'Oakline Home Services public business profile in Fairfax. 250 followers.','social');fresh.checked_at='2026-10-20';fresh.fetched_at=clock.toISOString();
  await profiles.applyResearchProfile(app,{...p,id:'new-follower-only-review',reviewed_at:clock.toISOString(),previous_profile_sha256:hash(r.research_profile),sources:[fresh],social:[{url:fresh.url,followers:{display:'250',excerpt:'250 followers'}}]});
  assert.equal(r.research_profile.social[0].followers.display,'250');assert.equal(r.research_profile.social[0].followers.source.source_sha256,fresh.content_sha256);assert.equal(r.research_profile.social[0].latest_post.date,'2026-10-10');assert.equal(r.research_profile.social[0].latest_post.source.source_sha256,instagram.content_sha256);assert.equal(r.research_profile.social[0].posts_30_days,1);
+ const changedExcerpt=`October 15, 2026 [${post_url}]`,conflict=source(instagram.url,`Oakline Home Services public business profile. ${changedExcerpt}`,'social');conflict.checked_at='2026-10-20';conflict.fetched_at=clock.toISOString();
+ await assert.rejects(profiles.applyResearchProfile(app,{...p,id:'conflicting-post-review',reviewed_at:clock.toISOString(),previous_profile_sha256:hash(r.research_profile),sources:[conflict],social:[{url:conflict.url,posts:[{date:'2026-10-15',date_text:'October 15, 2026',post_url,excerpt:changedExcerpt}]}]}),/post date conflicts/);
+ assert.equal(r.research_profile.social[0].latest_post.date,'2026-10-10');assert.equal(r.research_profile_reviews.length,2);
  clock=new Date('2026-11-05T15:00:00Z');fresh.checked_at='2026-11-05';fresh.fetched_at=clock.toISOString();
  await profiles.applyResearchProfile(app,{...p,id:'later-partial-review',reviewed_at:clock.toISOString(),previous_profile_sha256:hash(r.research_profile),sources:[fresh],social:[{url:fresh.url,followers:{display:'250',excerpt:'250 followers'}}]});
  assert.equal(r.research_profile.social[0].latest_post,null);assert.equal(r.research_profile.social[1].followers,null);assert.match(r.research_profile.social[1].status,/stale/i);assert.equal(r.research_profile.social[1].checked_at,at);assert.equal(r.research_profile_reviews[0].packet.social[1].followers.display,'30');assert.equal(r.research_profile_reviews.length,3);
