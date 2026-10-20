@@ -5,7 +5,7 @@ description: "Research a company from linked or supplied resources and create PD
 
 # Company Design Concepts
 
-Create business-specific, visual PDF concept reviews using the company's actual imagery and information. These defaults come from the owner's October 20, 2026 interview; honor later explicit changes without repeating that interview.
+Create distinctive, high-fidelity PDF design reviews using the company's actual imagery and information. The owner rejects bland, rigid layouts and repeated fonts disguised as different concepts. These defaults come from the owner's October 20, 2026 interview and design feedback; honor later explicit changes without repeating that interview.
 
 ## Choose the requested work
 
@@ -36,10 +36,14 @@ If a resource is blocked or requires unavailable access, try appropriate public 
 
 ## Design, compare, and deliver
 
-Use the relevant mode reference to create the actual visual studies. Explore a range from polished and familiar to bold and distinctive, suited to the audience and business. Keep every option credible and worth choosing; avoid a fixed set of five styles reused for every company. Inspect relevant outside design references when they help, applying principles rather than copying another business's identity or composition.
+Before creating new directions, read [visual research and art direction](references/art-direction.md). Visually inspect relevant references from Awwwards, Godly/Recent and 21st.dev, follow useful examples into their actual pages or previews, and record how the observations inform the designs. This is required research, not optional inspiration. Use accessible alternatives and disclose gaps when a source is unavailable. For selected-direction refinements, build on the accepted design and retained references instead of reopening its identity.
+
+Use the mode reference to create the actual studies. Give each direction a different composition, typography system, image treatment and content rhythm, grounded in the business. Explore familiar through adventurous with the same high visual standard throughout. "Grounded" means factual and usable, not generic or visually timid. Preserve the logo and recognizable brand cues without inheriting the existing site's layout, fonts or overall style unless explicitly fixed by the user. Do not reuse the studio's fonts or a previous company's page recipe by default.
+
+Compare opening studies side by side before completing the supporting sections. Rework near-duplicates and bland options; changing a font weight, accent color, photo mask or decorative line does not establish a new direction. Carry each visual idea into the next sections and, for campaigns, across its post, ad and landing page. Choose authoring tools that can express the design; the PDF is the review container, not the visual style of the website.
 
 Read [PDF review and handoff](references/pdf-review.md) before composing the review. Use the available PDF skill and its render-and-inspect workflow. If using ImageGen or Creative Production, load the relevant available skill and follow its tool requirements. Reuse available capabilities; a catalog link does not imply installed tools, account access, or spending authorization.
 
 Keep client research, image files, source notes, and generated reviews in the authorized client/task workspace outside the studio Git repository. The repository skill contains reusable instructions only. Retain enough source and selection context to refine an approved direction without silently redesigning it.
 
-Deliver the PDF with a short recommendation, meaningful tradeoffs, and the next selection to make. Report what was actually produced and visually checked. Do not claim responsive behavior, implemented motion, production-ready ads, or publication rights from static studies.
+Deliver the PDF after separate requirements, visual-design and export checks described in the references. Include a short recommendation, meaningful tradeoffs, and the next selection to make. Report what was actually produced and inspected; counts and unclipped text alone do not establish design quality. Do not claim responsive behavior, implemented motion, production-ready ads, or publication rights from static studies.

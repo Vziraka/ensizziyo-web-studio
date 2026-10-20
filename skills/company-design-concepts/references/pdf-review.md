@@ -10,6 +10,8 @@ Use a clear cover or opening identifier with the company, review type, and conce
 
 Keep the review's explanatory notes distinct from the proposed website or advertisement. Do not put internal source notices, implementation instructions, or review controls inside a company's customer-facing composition unless the design calls for them.
 
+Give the website design room to show its own typography and visual character. A consistent PDF frame is useful; a repeated page template inside every mockup is not. Include enlarged openings or supporting-section pages when a whole-page view hides craft. Show enough of the actual layouts at comparable scale to judge their differences.
+
 - **Prospect:** concise visual pitch with large designs, brief business relevance, a recommendation, and a clear next discussion. Keep technical or detailed review material in short supporting notes.
 - **Paying client:** the same visual standard with fuller reasoning, content and image choices, proposed interaction, tradeoffs, and consequential unresolved decisions.
 
@@ -28,6 +30,8 @@ Store real company material and reviews in an authorized client folder or task o
 Render every final PDF page and inspect the renders. Check complete image placement, legible type, clipping, alignment, logo/photo fidelity, and useful reading scale. Fix issues in the authoring source and re-export before delivering.
 
 In a separate requirements pass, verify the requested concept counts and depth, company identity, original image use, accurate copy, chosen presentation audience, and sample material coverage. Check repeated offer details and buttons agree across a campaign's three materials. Confirm that mobile layouts were not silently added to an initial desktop-only website review.
+
+Run the [visual-design review](art-direction.md#rework-before-delivery) separately: compare composition silhouettes, actual typography, business-specific visual depth and continuity into the supporting sections. Record visible reasons for reworking weak options. Clipping checks, page counts and source-image verification do not substitute for this pass, and earlier PDFs are not automatically good examples merely because they passed export checks.
 
 Keep these visual checks separate from claims about working behavior. Static PDF verification does not establish browser accessibility, responsive runtime behavior, motion performance, ad-platform approval, or public publication readiness.
 

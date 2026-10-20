@@ -10,7 +10,7 @@ A campaign idea may propose a new message or emphasis. A new discount, event dat
 
 ## Three coherent ideas
 
-Compare **three campaign ideas** for the same agreed promotion/goal. Each should have a different audience insight, creative hook, story, or persuasion approach, grounded in the actual business. Three color variations of one ad do not constitute three ideas.
+Compare **three campaign ideas** for the same agreed promotion/goal. Each should have a different audience insight, creative hook, story, or persuasion approach, grounded in the actual business. Apply the shared [visual research and art-direction process](art-direction.md) to give each idea its own typography, composition and image direction. Three color variations of one ad do not constitute three ideas.
 
 For each idea, create the following **sample designs**:
 
@@ -18,7 +18,7 @@ For each idea, create the following **sample designs**:
 2. **Ad:** a visual ad sample with a clear message and customer action. It can share campaign imagery with the post while showing how the paid treatment works.
 3. **Landing-page concept:** the opening and enough supporting content to demonstrate message continuity, relevant evidence, and the next customer action. It is a static concept, not a built campaign destination.
 
-Keep imagery, offer wording, tone, and visual identity coherent across all three materials within each idea. Use the actual company logo and image files in the final studies. Separate the three ideas clearly so the review compares complete promotional approaches instead of nine unrelated visuals.
+Keep imagery, offer wording, tone, and visual identity coherent across all three materials within each idea. Adapt composition to the format rather than stretching the same rectangle. The matching landing page must continue the campaign's visual premise instead of reverting to a generic service-page template. Use the actual company logo and image files in the final studies. Separate the three ideas clearly so the review compares complete promotional approaches instead of nine unrelated visuals.
 
 Choose sensible sample formats for the intended channels. Treat sizes and placements as concept choices; do not claim current platform compliance or finished export readiness without the separate checks those claims require.
 

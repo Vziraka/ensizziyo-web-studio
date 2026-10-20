@@ -1,4 +1,4 @@
 interface:
   display_name: "Company Design Concepts"
   short_description: "Company website and campaign concept PDFs"
-  default_prompt: "Use $company-design-concepts to research this company and create a PDF of five distinct desktop website directions using its original images."
+  default_prompt: "Use $company-design-concepts to research this company, visually inspect relevant Awwwards, Godly/Recent and 21st.dev references, and create five distinctive desktop website directions in a PDF. Explore different typography and compositions while using the company's original logo and images."
