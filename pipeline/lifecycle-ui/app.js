@@ -13,7 +13,16 @@ async function api(path, input) {
 }
 async function refresh() {
   const response = await fetch('/api/state'); if (!response.ok) throw Error('Private session unavailable. Reload the console.');
-  state = await response.json(); render();
+  state = await response.json();
+  const panel=content.querySelector('.call-desk > .panel');
+  const position=panel&&{panel:panel.scrollTop,list:panel.querySelector('.record-list')?.scrollTop??0,page:window.scrollY};
+  render();
+  if(position){
+    const next=content.querySelector('.call-desk > .panel');
+    next?.scrollTo({top:position.panel,behavior:'instant'});
+    next?.querySelector('.record-list')?.scrollTo({top:position.list,behavior:'instant'});
+    window.scrollTo({top:position.page,behavior:'instant'});
+  }
 }
 function pill(text) { return el('span', text, 'badge'); }
 function panel(title) { const node = el('section', undefined, 'panel'); if (title) node.append(el('h2', title)); return node; }
