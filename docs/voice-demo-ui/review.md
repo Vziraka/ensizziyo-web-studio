@@ -1,5 +1,9 @@
 # Change review
 
+## Public release review
+
+The owner approved the final preview and directly authorized publication on October 20. Rebased the reviewed branch on 9ad53d4, resolving only the overlapping WORKSPACE.md introduction and retaining the existing owner-email/task-sync checkpoint verbatim. The website, scripts and CI source remain byte-identical to the approved de0dc39 revision; the release update records authorization and the verification/rollback recipe. Both requirements and engineering conclusions below still apply. Required checks run on the updated head before merge, and the [PR117 release record](https://github.com/Vziraka/ensizziyo-web-studio/pull/117) owns deployment and public readback evidence.
+
 ## Follow-up requirements pass
 
 Reviewed the follow-up against 74f6181: the owner asked for the orb to flow continuously and supplied the clipped entry-dialog screenshot. The main visual now renders moving particles with a flowing wave, retaining the selected monochrome spherical character and original layout. The static artwork remains available for reduced motion or unavailable Canvas. Native voice/text controls and attribution are visible in the corrected dialog. No provider, agent, prompt, voice, recording or production change is included.

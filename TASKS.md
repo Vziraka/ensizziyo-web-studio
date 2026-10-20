@@ -8,7 +8,8 @@
 - [x] Complete focused tests, browser/visual checks and requirements/engineering reviews.
 - [x] Open [PR117](https://github.com/Vziraka/ensizziyo-web-studio/pull/117) for review.
 - [x] Follow-up: continuously flowing dots and unclipped native voice/text controls. Ten tests cover motion, bounds, pause/resume and existing behavior; actual-widget desktop/narrow-mobile checks and the local call/enquiry/reset rehearsal passed. Evan remains unchanged. [Evidence](docs/voice-demo-ui/README.md).
-- [ ] Owner UI review, then a separately authorized public release and fresh spoken check on the allowed domain.
+- [x] Owner reviewed the final preview and authorized publication through [PR117](https://github.com/Vziraka/ensizziyo-web-studio/pull/117) on October 20. Its release record owns the published revision and production readback.
+- [ ] Fresh spoken check on the allowed production domain; local and native-control checks do not establish acoustic verification.
 
 [Design, scope and repeatable checks](docs/voice-demo-ui/README.md). Existing pipeline work below is separate and unchanged.
 
