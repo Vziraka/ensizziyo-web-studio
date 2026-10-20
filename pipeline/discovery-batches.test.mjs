@@ -14,6 +14,7 @@ async function setup(t){const root=await mkdtemp(join(tmpdir(),'evz-business-typ
   const research=join(root,'research');await mkdir(research);const config={...structuredClone(productionConfig),priority:'idle',discovery:{enabled:true,approval_ref:'fixture:approved-category-plan'},research:{source_directory:research}};
   const policy=JSON.parse(await readFile(new URL('./controller.example.json',import.meta.url)));Object.assign(policy.providers.codex,{enabled:true,included_usage_only_confirmed:true,daily_calls:100});
   await saveJson(join(research,'controller-config.json'),policy);await saveJson(join(research,'controller-state.json'),{schema_version:1,calls:[{id:'retained',job_id:'old-job',worker:'codex',day:'2026-10-18',status:'Held'}],jobs:{'old-job':{status:'Held'}},provider_blocks:{}});
+  await saveJson(join(research,'research-control.json'),{schema_version:1,enabled:true,priority:'research',quota_resumes:{}});
   const app=await StudioLifecycle.initialize({directory:join(root,'operations'),config,now});return {app,research};}
 const request={id:'first-home-services',total:25,selections:[{category:'home-services',subtypes:['HVAC']}]};
 const usage=async()=>({authenticated_subscription:true,checked_at:at,buckets:[{remaining_percent:80,resets_at:+now()/1000+3600}]});
@@ -36,6 +37,44 @@ test('the campaign stops at 100 new businesses and retains a finite shortfall in
 });
 async function seed(app){await startDiscoveryBatch(app,request);await app.change(s=>{const b=s.discovery_batches[request.id];b.searches.forEach(x=>x.status='Complete');b.extraction='Complete';b.candidates=[structuredClone(candidate)];});}
 const review=async({promptText})=>({schema_version:1,packet_sha256:promptText.match(/packet_sha256=([a-f0-9]{64})/)[1],accepted:true,reason:'First-party identity, exact HVAC offering, Fairfax service and advertised business phone are supported. Owner and needs remain unknown.',owner:null});
+
+async function providerPolicy(research,change){const path=join(research,'controller-config.json'),p=JSON.parse(await readFile(path));change(p);await saveJson(path,p);}
+test('discovery uses verified Claude allowance when Codex reaches its reserve',async t=>{
+ const {app,research}=await setup(t);await seed(app);await providerPolicy(research,p=>Object.assign(p.providers.claude,{enabled:true,included_usage_only_confirmed:true}));let worker;
+ await discoveryTick(app,{collect:async()=>sources(),usage:async()=>({authenticated_subscription:true,checked_at:at,buckets:[{remaining_percent:29,resets_at:+now()/1000+3600}]}),invoke:async o=>{worker=o.worker;assert.equal(o.model,'sonnet');return review(o);}});
+ assert.equal(worker,'claude');const s=await app.snapshot();assert.equal(Object.keys(s.prospects).length,1);const ledger=JSON.parse(await readFile(join(research,'controller-state.json')));assert.equal(ledger.calls.length,2);assert.equal(ledger.calls[0].id,'retained');assert.equal(ledger.calls[1].worker,'claude');
+});
+test('the candidate reviewer prefers another eligible subscription after Cursor extraction',async t=>{
+ const {app,research}=await setup(t);await providerPolicy(research,p=>{p.providers.codex.enabled=false;for(const w of ['claude','cursor'])Object.assign(p.providers[w],{enabled:true,included_usage_only_confirmed:true});p.fallback_order=['cursor','claude'];p.review_order=['cursor','claude'];});await startDiscoveryBatch(app,request);
+ const connect={call:async()=>({content:[{type:'text',text:'SYNTHETIC Comfort HVAC (https://example.com/) HVAC Fairfax contact owner'}]})};await discoveryTick(app,{connect});
+ await discoveryTick(app,{invoke:async o=>{assert.equal(o.worker,'cursor');return {schema_version:1,candidates:[candidate]};}});
+ await discoveryTick(app,{collect:async()=>sources(),invoke:async o=>{assert.equal(o.worker,'claude');return review(o);}});
+ const ledger=JSON.parse(await readFile(join(research,'controller-state.json')));assert.deepEqual(ledger.calls.slice(-2).map(c=>[c.worker,c.discovery_stage]),[['cursor','extract'],['claude','review']]);assert.equal(Object.keys((await app.snapshot()).prospects).length,1);
+});
+test('discovery respects each provider cap before selecting Cursor',async t=>{
+ const {app,research}=await setup(t);await seed(app);await providerPolicy(research,p=>{p.providers.codex.enabled=false;Object.assign(p.providers.claude,{enabled:true,included_usage_only_confirmed:true,daily_calls:1});Object.assign(p.providers.cursor,{enabled:true,included_usage_only_confirmed:true});});
+ const path=join(research,'controller-state.json'),ledger=JSON.parse(await readFile(path));ledger.calls.push({id:'claude-used',worker:'claude',day:at.slice(0,10),job_id:'retained-other',status:'Returned'});await saveJson(path,ledger);let worker;
+ await discoveryTick(app,{collect:async()=>sources(),invoke:async o=>{worker=o.worker;assert.equal(o.model,'composer-2.5');const schema=JSON.parse(o.promptText.split('\nOUTPUT SCHEMA:\n').at(-1));for(const field of ['schema_version','packet_sha256','accepted','reason','owner'])assert.ok(schema.required.includes(field));return review(o);}});assert.equal(worker,'cursor');
+});
+test('the 100-call daily ceiling counts retained calls across all subscriptions',async t=>{
+ const {app,research}=await setup(t);await seed(app);const path=join(research,'controller-state.json'),ledger=JSON.parse(await readFile(path));
+ ledger.calls.push(...Array.from({length:100},(_,i)=>({id:`prior-${i}`,worker:['codex','claude','cursor'][i%3],day:at.slice(0,10),job_id:'retained-other',status:'Returned'})));await saveJson(path,ledger);
+ await discoveryTick(app,{collect:async()=>sources(),usage,invoke:()=>{throw Error('No dispatch beyond the shared ceiling');}});assert.equal((await app.snapshot()).discovery_batches[request.id].status,'Deferred');assert.equal(JSON.parse(await readFile(path)).calls.length,101);
+});
+test('a terminal provider quota stays charged and defers to another verified provider',async t=>{
+ const {app,research}=await setup(t);await seed(app);await providerPolicy(research,p=>{p.providers.codex.enabled=false;for(const w of ['claude','cursor'])Object.assign(p.providers[w],{enabled:true,included_usage_only_confirmed:true});});
+ await discoveryTick(app,{collect:async()=>sources(),invoke:async o=>{assert.equal(o.worker,'claude');throw Object.assign(Error('Included quota reached'),{code:'WORKER_QUOTA'});}});
+ let ledger=JSON.parse(await readFile(join(research,'controller-state.json')));assert.equal(ledger.calls.at(-1).status,'WORKER_QUOTA');assert.ok(ledger.provider_blocks.claude);assert.equal((await app.snapshot()).discovery_batches[request.id].status,'Deferred');
+ await controlDiscoveryBatch(app,{id:request.id,action:'resume'});await discoveryTick(app,{collect:async()=>sources(),invoke:async o=>{assert.equal(o.worker,'cursor');return review(o);}});
+ ledger=JSON.parse(await readFile(join(research,'controller-state.json')));assert.equal(ledger.calls.length,3);assert.equal(ledger.calls.at(-1).worker,'cursor');assert.ok(ledger.provider_blocks.claude);assert.equal(Object.keys((await app.snapshot()).prospects).length,1);
+});
+test('shared research pause and unverified subscriptions never dispatch discovery work',async t=>{
+ const {app,research}=await setup(t);await seed(app);await providerPolicy(research,p=>{p.providers.codex.enabled=false;});
+ await discoveryTick(app,{collect:async()=>sources(),invoke:()=>{throw Error('Unverified allowance must not dispatch');}});assert.equal(Object.keys((await app.snapshot()).prospects).length,0);
+ await providerPolicy(research,p=>{Object.assign(p.providers.cursor,{enabled:true,included_usage_only_confirmed:true});});await controlDiscoveryBatch(app,{id:request.id,action:'resume'});
+ await saveJson(join(research,'research-control.json'),{schema_version:1,enabled:false,priority:'research',quota_resumes:{}});
+ await discoveryTick(app,{collect:async()=>sources(),invoke:()=>{throw Error('Shared pause must not dispatch');}});assert.equal((await app.snapshot()).discovery_batches[request.id].status,'Deferred');assert.equal(JSON.parse(await readFile(join(research,'controller-state.json'))).calls.length,1);
+});
 
 test('upgraded discovery imports sourced professional contacts and honest partial social metrics on the same verification card',async t=>{
  const {app}=await setup(t);app.config.discovery.profile_version=1;await saveJson(join(app.directory,'lifecycle-config.json'),app.config);await seed(app);

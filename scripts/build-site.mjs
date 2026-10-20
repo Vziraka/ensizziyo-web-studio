@@ -50,15 +50,15 @@ for (const demo of demos) {
 }
 
 await writeFile(join(output, 'robots.txt'), 'User-agent: *\nDisallow: /\n');
-// Exact HTML routes avoid merging contradictory microphone directives from overlapping header rules.
-const policies=[];
+// Keep headers in one generated file; an overlapping TOML policy hid the microphone rules in production.
+const policies=['/*\n  X-Robots-Tag: noindex, nofollow\n  X-Content-Type-Options: nosniff\n  X-Frame-Options: SAMEORIGIN\n  Referrer-Policy: strict-origin-when-cross-origin','/\n  Permissions-Policy: camera=(), geolocation=(), microphone=()'];
 async function microphonePolicies(directory,path=''){
   for(const entry of await readdir(directory,{withFileTypes:true})){
     const relative=`${path}/${entry.name}`;
     if(entry.isDirectory())await microphonePolicies(join(directory,entry.name),relative);
     else if(entry.name.endsWith('.html')){
       const allowed=relative==='/studio/demos/voice/index.html',routes=entry.name==='index.html'?[relative,relative.slice(0,-10),relative.slice(0,-11)]:[relative,relative.slice(0,-5)];
-      for(const route of new Set(routes.filter(Boolean)))policies.push(`${route}\n  Permissions-Policy: microphone=${allowed?'(self)':'()'}`);
+      for(const route of new Set(routes.filter(Boolean)))policies.push(`${route}\n  Permissions-Policy: camera=(), geolocation=(), microphone=${allowed?'(self)':'()'}`);
     }
   }
 }
