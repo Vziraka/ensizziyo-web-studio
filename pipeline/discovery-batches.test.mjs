@@ -39,6 +39,24 @@ async function seed(app){await startDiscoveryBatch(app,request);await app.change
 const review=async({promptText})=>({schema_version:1,packet_sha256:promptText.match(/packet_sha256=([a-f0-9]{64})/)[1],accepted:true,reason:'First-party identity, exact HVAC offering, Fairfax service and advertised business phone are supported. Owner and needs remain unknown.',owner:null});
 
 async function providerPolicy(research,change){const path=join(research,'controller-config.json'),p=JSON.parse(await readFile(path));change(p);await saveJson(path,p);}
+
+test('automatic continuation clears the old reserve warning after research resumes',async t=>{
+ const {app}=await setup(t);await seed(app);
+ await discoveryTick(app,{collect:async()=>sources(),usage:async()=>({authenticated_subscription:true,checked_at:at,buckets:[{remaining_percent:30,resets_at:+now()/1000+3600}]}),invoke:()=>{throw Error('Reserve must defer');}});
+ assert.equal((await app.snapshot()).discovery_batches[request.id].status,'Deferred');
+ app.now=()=>new Date(+now()+300001);
+ await discoveryTick(app,{usage:async()=>({authenticated_subscription:true,checked_at:app.now().toISOString(),buckets:[{remaining_percent:80,resets_at:+now()/1000+3600}]}),invoke:review});
+ const b=(await app.snapshot()).discovery_batches[request.id];assert.equal(b.status,'Researching');assert.equal(b.reason,null);assert.equal(b.candidates[0].status,'Imported');
+});
+
+test('an invalid returned review stays held without stopping or replaying the other candidates',async t=>{
+ const {app,research}=await setup(t);await seed(app);await app.change(s=>s.discovery_batches[request.id].candidates.push({...candidate,name:'SYNTHETIC Second HVAC',website:'https://second.example.com/'}));
+ await discoveryTick(app,{collect:async()=>sources(),usage,invoke:async o=>({...await review(o),reason:'x'.repeat(2001)})});
+ let s=await app.snapshot(),b=s.discovery_batches[request.id];assert.equal(b.status,'Researching');assert.equal(b.candidates[0].status,'Held');assert.match(b.candidates[0].reason,/review/);assert.equal(b.candidates[1].status,'Pending');
+ const retained=JSON.parse(await readFile(join(app.directory,'discovery',request.id,'candidate-0-review-returned.json')));assert.equal(retained.reason.length,2001);
+ const second=sources();second.sources[0].url='https://second.example.com/';second.sources[0].text=second.sources[0].text.replace('Comfort','Second').replace('555-0100','555-0101');second.sources[0].content_sha256=sourceContentHash(second.sources[0]);
+ await discoveryTick(app,{collect:async()=>second,usage,invoke:review});s=await app.snapshot();assert.equal(s.discovery_batches[request.id].candidates[0].status,'Held');assert.equal(s.discovery_batches[request.id].candidates[1].status,'Imported');assert.equal(JSON.parse(await readFile(join(research,'controller-state.json'))).calls.length,3);
+});
 test('discovery uses verified Claude allowance when Codex reaches its reserve',async t=>{
  const {app,research}=await setup(t);await seed(app);await providerPolicy(research,p=>Object.assign(p.providers.claude,{enabled:true,included_usage_only_confirmed:true}));let worker;
  await discoveryTick(app,{collect:async()=>sources(),usage:async()=>({authenticated_subscription:true,checked_at:at,buckets:[{remaining_percent:29,resets_at:+now()/1000+3600}]}),invoke:async o=>{worker=o.worker;assert.equal(o.model,'sonnet');return review(o);}});

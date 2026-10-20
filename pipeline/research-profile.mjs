@@ -30,6 +30,7 @@ export function buildResearchProfile(primary,socialSources,review,now=new Date()
   let business_email=null,owner_phone=null;
   if(review.business_email){const e=review.business_email,source=cite(e,primary);
     check(emailPattern.test(e.email)&&e.excerpt.includes(e.email)&&['General business','Owner/operator business'].includes(e.kind),'Email must be published verbatim as a professional business route');
+    check(!/\[Input:/i.test(e.excerpt)&&primary.find(s=>s.url===e.url).text.replace(/\[Input:[^\]]*\]/gi,'').includes(e.email),'Contact-form examples and placeholders are not published business email routes');
     if(e.kind==='Owner/operator business')check(review.owner&&e.person_name===review.owner.name&&e.excerpt.toLowerCase().includes(e.person_name.toLowerCase()),'Owner email needs an explicit published person-to-email link');
     business_email={email:e.email,kind:e.kind,person_name:e.kind==='Owner/operator business'?e.person_name:null,source};
   }
