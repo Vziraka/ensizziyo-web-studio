@@ -1,5 +1,14 @@
 # Launch tasks
 
+## Company website and campaign concept skill - October 20, 2026
+
+- [x] Interview the owner and record the agreed website, campaign, imagery and presentation scope in [the brief](BRIEF.md).
+- [x] Author and validate the portable [company-design-concepts skill](skills/company-design-concepts/SKILL.md), with discoverable UI metadata and mode-specific references.
+- [x] Install the tested first-party version for personal Codex use and record its scope and verification in TOOLKIT.md.
+- [x] Complete separate requirements and instruction-quality reviews; prepare the isolated documentation/skill-source change for PR review.
+
+Acceptance: website mode specifies five distinct desktop openings plus 2-3 key sections, mobile after selection, exact company imagery and verified wording; optional campaign mode specifies three client-company ideas with actual sample social/ad/landing-page designs in a PDF only. Prospect and paying-client presentation differ. Validate skill structure, references, installation equality and the reviewed diff. A live-company visual trial remains separate until the owner provides the company resource; structural validation alone does not establish generated design quality.
+
 ## Voice demo UI — October 20, 2026
 
 - [x] Complete the design interview and select the supplied centered layout and dotted waveform.

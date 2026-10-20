@@ -1,0 +1,4 @@
+interface:
+  display_name: "Company Design Concepts"
+  short_description: "Company website and campaign concept PDFs"
+  default_prompt: "Use $company-design-concepts to research this company and create a PDF of five distinct desktop website directions using its original images."
