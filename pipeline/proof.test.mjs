@@ -9,6 +9,14 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { runJob } from './engine.mjs';
 import { subscriptionEnvironment, workerFailure } from './workers.mjs';
+
+test('the observed terminal HTTP 429 enables retained provider handoff, while research text does not',()=>{
+ const message='exceeded retry limit, last status: 429 Too Many Requests';
+ assert.equal(workerFailure(JSON.stringify({type:'turn.failed',error:{message}})).code,'WORKER_QUOTA');
+ assert.equal(workerFailure(JSON.stringify({type:'result',result:message})),undefined);
+ assert.equal(workerFailure(JSON.stringify({type:'system',subtype:'api_retry',message})),undefined);
+ assert.equal(workerFailure(JSON.stringify({type:'turn.failed',error:{message:'exceeded retry limit, last status: 500 Internal Server Error'}})).code,'WORKER_FAILED');
+});
 import { GoogleQueue } from './google.mjs';
 import { collectPublicSources } from './sources.mjs';
 

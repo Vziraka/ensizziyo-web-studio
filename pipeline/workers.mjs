@@ -15,7 +15,7 @@ export function workerFailure(raw) {
   if (!failure) return;
   const code = failure.error?.code ?? failure.code;
   const message = failure.error?.message ?? failure.message ?? failure.result ?? '';
-  const quota = ['usage_limit_reached', 'usage_limit_exceeded', 'rate_limit_exceeded', 'quota_exceeded'].includes(code) || (typeof message === 'string' && /you(?:'|’)?ve hit your (?:usage )?limit|(?:usage|subscription|weekly|monthly) (?:quota|limit) (?:has been |is )?(?:reached|exceeded|exhausted)|insufficient (?:usage )?credits/i.test(message));
+  const quota = ['usage_limit_reached', 'usage_limit_exceeded', 'rate_limit_exceeded', 'quota_exceeded'].includes(code) || (typeof message === 'string' && /you(?:'|’)?ve hit your (?:usage )?limit|(?:usage|subscription|weekly|monthly) (?:quota|limit) (?:has been |is )?(?:reached|exceeded|exhausted)|insufficient (?:usage )?credits|^exceeded retry limit, last status: 429 Too Many Requests$/i.test(message));
   const capacity = message === 'Selected model is at capacity. Please try a different model.';
   return Object.assign(Error(quota ? 'Subscription worker reported a quota or usage limit' : capacity ? 'Selected subscription model is at capacity' : 'Worker reported a terminal error; inspect private logs'), { code: quota ? 'WORKER_QUOTA' : capacity ? 'WORKER_CAPACITY' : 'WORKER_FAILED' });
 }
