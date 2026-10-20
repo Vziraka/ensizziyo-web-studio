@@ -23,7 +23,12 @@ export function workerFailure(raw) {
 export function parseWorkerOutput(raw) {
   const failure = workerFailure(raw);
   if (failure) throw failure;
-  const parse = value => { if (typeof value !== 'string') return value; return JSON.parse(value.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '').trim()); };
+  const parse = value => {
+    if (typeof value !== 'string') return value;
+    const text=value.trim(),fenced=text.match(/^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```(?=\s|$)/);
+    if(fenced&&!text.slice(fenced[0].length).includes('```'))return JSON.parse(fenced[1]);
+    return JSON.parse(text.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '').trim());
+  };
   try {
     const value = JSON.parse(raw);
     if (value.is_error) throw Error('Worker reported an error');
