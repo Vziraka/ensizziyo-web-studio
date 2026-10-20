@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { StudioLifecycle, hash, initialConfig, businessDaysBetween } from './lifecycle.mjs';
 import { acquireLock } from './engine.mjs';
+import fs from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
 
 export const at = '2026-10-19T15:00:00Z';
 export const prospect = (id = 'fictional-bakery') => ({ id: `import-${id}`, prospect_id: id, type: 'prospect_imported', at,
@@ -55,6 +57,17 @@ test('a brief external state lock delays one change without losing or repeating 
   await new Promise(resolve=>setTimeout(resolve,60));await release();
   const [result]=await pending;assert.equal(result.status,'fulfilled',result.reason?.stack);assert.equal(writes,1);
   assert.equal((await app.snapshot()).after_external_lock,true);
+});
+
+test('a lock released between exclusive-open rejection and owner read stays retryable without claiming ownership',async t=>{
+  const {directory}=await setup(t),release=await acquireLock(directory),path=join(directory,'.runner.lock'),before=await readFile(path,'utf8'),original=fs.promises.readFile;
+  let injected=0;
+  try{
+    fs.promises.readFile=async(file,...args)=>{if(file===path&&!injected++){throw Object.assign(Error('Lock disappeared before owner read'),{code:'ENOENT',path});}return original(file,...args);};
+    syncBuiltinESMExports();
+    await assert.rejects(acquireLock(directory),{code:'RUNNER_BUSY'});
+    assert.equal(injected,1);assert.equal(await original(path,'utf8'),before);
+  }finally{fs.promises.readFile=original;syncBuiltinESMExports();await release();}
 });
 
 test('backup waits for a brief writer and keeps an unknown lock intact', async t => {
