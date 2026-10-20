@@ -53,7 +53,7 @@ test('a brief external state lock delays one change without losing or repeating 
   let writes=0;
   const pending=Promise.allSettled([app.change(state=>{writes++;state.after_external_lock=true;})]);
   await new Promise(resolve=>setTimeout(resolve,60));await release();
-  assert.equal((await pending)[0].status,'fulfilled');assert.equal(writes,1);
+  const [result]=await pending;assert.equal(result.status,'fulfilled',result.reason?.stack);assert.equal(writes,1);
   assert.equal((await app.snapshot()).after_external_lock,true);
 });
 

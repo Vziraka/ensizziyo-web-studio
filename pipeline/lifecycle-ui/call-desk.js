@@ -9,7 +9,7 @@ const btn=(text,fn,cls='quiet')=>{const n=el('button',text,cls);n.type='button';
 const when=value=>new Date(value).toLocaleString('en-US',{timeZone:'America/New_York',weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' ET';
 function field(parent,label,value='',type='text') {const wrap=el('label',label),n=el(type==='textarea'?'textarea':'input');n.setAttribute('aria-label',label);if(type!=='textarea')n.type=type;n.value=value;wrap.append(n);parent.append(wrap);return n;}
 function select(parent,label,options,value){const wrap=el('label',label),n=el('select');n.setAttribute('aria-label',label);for(const [v,t] of options){const o=el('option',t);o.value=v;n.append(o);}n.value=value;wrap.append(n);parent.append(wrap);return n;}
-function disclosure(title,child){const d=el('details');d.open=expanded.has(title);d.ontoggle=()=>{if(d.open)expanded.add(title);else expanded.delete(title);};d.append(el('summary',title),child);return d;}
+function disclosure(title,child){const d=el('details');d.open=expanded.has(title);d.ontoggle=()=>{if(d.open)expanded.add(title);else expanded.delete(title);};d.append(el('summary',title));if(child)d.append(child);return d;}
 export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty,allBusinesses=false}) {
   const records=state.supply.queue.map(a=>state.prospects[a.prospect_id]);
   const {commitments,matching:visible}=deskQueues(state,{category,subtypes,lane,history:showHistory||allBusinesses});
@@ -21,7 +21,7 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty,
   const active=state.calling_session&&!state.calling_session.ended_at;
   top.append(btn(active?'End calling session':'Start calling session',()=>run(async()=>{const s=await api('/api/calling-session',{action:active?'end':'start'});clearDirty();await refresh();tell(active?`Session saved: ${s.summary.attempts} attempts · ${s.summary.conversations} conversations · ${s.summary.interested} interested · ${s.summary.bookings} bookings. Research continues according to your priority.`:'Calling session started.');})));
   root.append(top);
-  const background=el('details',undefined,'desk-background');background.append(el('summary','Research progress and system details'));root.append(background);
+  const background=disclosure('Research progress and system details');background.className='desk-background';root.append(background);
   if(state.owner_contact_summary){const a=state.owner_contact_summary;background.append(el('p',`Owner contacts · Published direct business numbers: ${a.owner_direct} · Sourced identities: ${a.identified} · General business lines: ${a.general_business} · Unverified: ${a.unverified}. Website research readiness is separate from direct access to the owner.`,'notice'));}
   if(state.contact_research){const q=state.contact_research;background.append(el('p',`Contact research · ${q.reviewed}/${q.total} reviewed · ${q.fresh_checked} fresh lookups · ${q.held} held · ${q.status}`,'notice'));}
   for(const campaign of state.discovery_campaigns??[])background.append(el('p',`${campaign.imported} / ${campaign.target} new DMV home-service businesses · ${campaign.status}. ${campaign.candidates} candidates selected across ${campaign.batches}/${campaign.max_batches} finite batches. ${campaign.held} held · ${campaign.duplicates} duplicates.${campaign.reason?' '+campaign.reason:''}`,'notice'));

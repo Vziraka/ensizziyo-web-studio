@@ -30,7 +30,7 @@ async function start(){
   await loadWidget();
   if(mode!=='try'||viewVersion!==version)return;
   widget=document.createElement('elevenlabs-convai');
-  widget.setAttribute('agent-id','agent_6801m5b3wd1pfnntwtqfdm0np72y');widget.setAttribute('variant','full');widget.setAttribute('text-contents',JSON.stringify({main_label:'Speak with Ava',start_call:'Start voice demo',start_chat:'Try text instead',end_call:'End demo',end_chat:'End demo'}));widget.setAttribute('dismissible','false');
+  widget.setAttribute('agent-id','agent_6801m5b3wd1pfnntwtqfdm0np72y');widget.setAttribute('variant','full');widget.setAttribute('text-contents',JSON.stringify({main_label:'Speak with Evan',start_call:'Start voice demo',start_chat:'Try text instead',end_call:'End demo',end_chat:'End demo'}));widget.setAttribute('dismissible','false');
   widget.addEventListener('elevenlabs-convai:call',event=>{
    setLead({},'Waiting for details');byId('call-status').textContent='Live fictional demo';
    event.detail.config.clientTools={capture_enquiry:captureEnquiry};
@@ -49,7 +49,7 @@ async function selectMode(nextMode){
  byId('demo-experience').setAttribute('aria-labelledby',mode+'-tab');
  byId('standby').hidden=false;byId('script').hidden=true;byId('live-demo').hidden=true;byId('reset-example').hidden=true;
  byId('standby-title').textContent=mode==='listen'?'From “hello” to a clear enquiry.':'Take the customer’s side.';
- byId('standby-copy').textContent=mode==='listen'?'A customer needs help with their AC. Listen to a short, fictional example of the enquiry and handoff.':'Speak with Ava about a made-up service request. The live demo uses ElevenLabs. Choose voice or type instead.';
+ byId('standby-copy').textContent=mode==='listen'?'A customer needs help with their AC. Listen to a short, fictional example of the enquiry and handoff.':'Speak with Evan about a made-up service request. The live demo uses ElevenLabs. Choose voice or type instead.';
  byId('start-label').textContent=mode==='listen'?'Play sample call':'Load interactive demo';
  byId('panel-footnote').textContent=mode==='listen'?'Recorded example · Transcript included':'90-second limit · Use fictional details';
  byId('standby-footnote').textContent=mode==='listen'?'Sound starts when you press play':'Microphone only after you start a voice call';

@@ -72,7 +72,7 @@ assert.match(voice, /id="sample-audio" controls preload="none"/);
 assert.match(voice, /calendar\.app\.google\/VntxbUGK6wqxF8AU8/);
 assert.doesNotMatch(voice,/Design preview|not connected|Planned 45-second/);
 for(const [,reference]of voice.matchAll(/(?:src|href)="([^"]+)"/g))await expectAsset(join(root,'studio/demos/voice/index.html'),reference);
-assert.ok((await stat(join(root,'studio/assets/voice-demo-example.mp3'))).size>10000,'The recorded voice example must exist');
+assert.ok((await stat(join(root,'studio/assets/voice-demo-evan.mp3'))).size>10000,'The recorded voice example must exist');
 const policies=await readFile(join(root,'_headers'),'utf8');
 assert.doesNotMatch(await readFile(new URL('../netlify.toml',import.meta.url),'utf8'),/\[\[headers\]\]/,'Keep response headers together so the build-generated microphone rules reach Netlify');
 for(const header of ['X-Robots-Tag: noindex, nofollow','X-Content-Type-Options: nosniff','X-Frame-Options: SAMEORIGIN','Referrer-Policy: strict-origin-when-cross-origin'])assert.ok(policies.includes(header));
