@@ -14,10 +14,25 @@ test('Facebook numeric page IDs survive link normalization and tracking paramete
 });
 
 test('a retained X post can belong to a business-linked Twitter profile and uses the profile capture date',()=>{
- const page=source(primary.url,'Oakline Home Services, Fairfax. Public updates [https://twitter.com/oakline]'),post_url='https://x.com/oakline/status/12345',excerpt=`October 10, 2026 [${post_url}]`,social=source('https://twitter.com/oakline',`Oakline Home Services. 25 Followers. ${excerpt}`,'social');
+ const page=source(primary.url,'Oakline Home Services, Fairfax. Public updates [https://twitter.com/Oakline]'),post_url='https://x.com/oakline/status/12345',excerpt=`October 10, 2026 [${post_url}]`,social=source('https://x.com/oakline',`Oakline Home Services. 25 Followers. ${excerpt}`,'social');
  social.checked_at='2026-10-20';social.fetched_at='2026-10-20T12:00:00Z';
  const result=buildResearchProfile([page],[social],{social:[{url:social.url,posts:[{date:'2026-10-10',date_text:'October 10, 2026',post_url,excerpt}]}]},new Date('2026-10-20T15:00:00Z'));
  assert.equal(result.social[0].latest_post.url,post_url);assert.equal(result.social[0].checked_at,'2026-10-20T12:00:00Z');
+ assert.throws(()=>buildResearchProfile([page],[{...social,url:'https://x.com/other'}],{},new Date('2026-10-20T15:00:00Z')),/linked by the business/);
+});
+
+test('fresh partial updates retain each post citation and hold stale metrics separately',async()=>{
+ const page=source(primary.url,'Oakline Home Services in Fairfax. Profiles [https://www.instagram.com/oakline] [https://www.facebook.com/oakline]'),packet={profile_version:1,sources:[page],profile_evidence:{sources:[]},profile_review:{}},r={id:'existing',company_id:'company',contact:{email:null,phone:'202-555-0142'},verification:{packet,packet_sha256:hash(packet)},research_profile:buildResearchProfile([page],[],{},now)},state={revision:0,prospects:{existing:r}};
+ const post_url='https://www.instagram.com/p/old-post/',excerpt=`October 10, 2026 [${post_url}]`;
+ let clock=now;const app={now:()=>clock,change:async fn=>fn(state)},instagram=source('https://www.instagram.com/oakline',`Oakline Home Services public business profile in Fairfax. 240 followers. ${excerpt}`,'social'),facebook=source('https://www.facebook.com/oakline','Oakline Home Services public business page in Fairfax. 30 followers.','social');
+ const p={schema_version:1,id:'first-review',prospect_id:r.id,company_id:r.company_id,bound_contact_sha256:hash(r.contact),verification_sha256:r.verification.packet_sha256,previous_profile_sha256:hash(r.research_profile),reviewed_by:'Public source reviewer',reviewed_at:at,sources:[instagram,facebook],social:[{url:instagram.url,followers:{display:'240',excerpt:'240 followers'},posts:[{date:'2026-10-10',date_text:'October 10, 2026',post_url,excerpt}]},{url:facebook.url,followers:{display:'30',excerpt:'30 followers'}}]};
+ await profiles.applyResearchProfile(app,p);clock=new Date('2026-10-20T15:00:00Z');
+ const fresh=source(instagram.url,'Oakline Home Services public business profile in Fairfax. 250 followers.','social');fresh.checked_at='2026-10-20';fresh.fetched_at=clock.toISOString();
+ await profiles.applyResearchProfile(app,{...p,id:'new-follower-only-review',reviewed_at:clock.toISOString(),previous_profile_sha256:hash(r.research_profile),sources:[fresh],social:[{url:fresh.url,followers:{display:'250',excerpt:'250 followers'}}]});
+ assert.equal(r.research_profile.social[0].followers.display,'250');assert.equal(r.research_profile.social[0].followers.source.source_sha256,fresh.content_sha256);assert.equal(r.research_profile.social[0].latest_post.date,'2026-10-10');assert.equal(r.research_profile.social[0].latest_post.source.source_sha256,instagram.content_sha256);assert.equal(r.research_profile.social[0].posts_30_days,1);
+ clock=new Date('2026-11-05T15:00:00Z');fresh.checked_at='2026-11-05';fresh.fetched_at=clock.toISOString();
+ await profiles.applyResearchProfile(app,{...p,id:'later-partial-review',reviewed_at:clock.toISOString(),previous_profile_sha256:hash(r.research_profile),sources:[fresh],social:[{url:fresh.url,followers:{display:'250',excerpt:'250 followers'}}]});
+ assert.equal(r.research_profile.social[0].latest_post,null);assert.equal(r.research_profile.social[1].followers,null);assert.match(r.research_profile.social[1].status,/stale/i);assert.equal(r.research_profile.social[1].checked_at,at);assert.equal(r.research_profile_reviews[0].packet.social[1].followers.display,'30');assert.equal(r.research_profile_reviews.length,3);
 });
 
 test('an email shown only as a contact-form example is not a published business route',()=>{

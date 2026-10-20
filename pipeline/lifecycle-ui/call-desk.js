@@ -151,7 +151,7 @@ function socialPanel(record){
  const panel=el('div');panel.append(el('h3','Social media'));const profile=record.research_profile;
  if(!profile){panel.append(el('p','Social profiles have not been checked in the upgraded research pipeline.','muted'));return panel;}
  if(!profile.social.length)panel.append(el('p','No verified social profile links were found in the bounded business website capture. This does not establish that the business has no social accounts.','muted'));
- for(const p of profile.social){const section=el('section',undefined,'social-profile'),link=el('a',p.platform+' ↗');link.href=p.url;link.target='_blank';link.rel='noreferrer';section.append(link,el('p',`${p.followers?p.followers.display+' followers / subscribers':'Followers unavailable'}`),el('p',p.latest_post?`Latest observed post: ${p.latest_post.date}`:'Most recent post: unavailable'),el('p',p.frequency),el('small',`${p.status} · checked ${when(p.checked_at)}`));panel.append(section);}
+ for(const p of profile.social){const section=el('section',undefined,'social-profile'),link=el('a',p.platform+' ↗');link.href=p.url;link.target='_blank';link.rel='noreferrer';section.append(link,el('p',`${p.followers?p.followers.display+' followers / subscribers · observed '+when(p.followers.source.checked_at):'Followers unavailable'}`),el('p',p.latest_post?`Latest observed post: ${p.latest_post.date}`:'Most recent post: unavailable'),el('p',p.frequency),el('small',`${p.status} · checked ${when(p.checked_at)}`));panel.append(section);}
  panel.append(el('p',profile.coverage,'muted'));return panel;
 }
 function researchPanel(state,api,refresh,tell,clearDirty){
