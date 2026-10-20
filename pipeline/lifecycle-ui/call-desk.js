@@ -1,6 +1,6 @@
 import {composeFollowUp} from '/follow-up-template.mjs';
 import {businessTypes,businessType,deskQueues,offers,carePlan,suggestedOffer} from '/business-types.mjs';
-let selected, lane='all', lastSaved, showHistory=false,category='all',subtypes=[];
+let selected, lane='all', lastSaved, showHistory=false,category='all',subtypes=[],searchTerm='';
 let detailTab='overview';
 const drafts=new Map();
 const expanded=new Set();
@@ -12,7 +12,7 @@ function select(parent,label,options,value){const wrap=el('label',label),n=el('s
 function disclosure(title,child){const d=el('details');d.open=expanded.has(title);d.ontoggle=()=>{if(d.open)expanded.add(title);else expanded.delete(title);};d.append(el('summary',title));if(child)d.append(child);return d;}
 export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty,allBusinesses=false}) {
   const records=state.supply.queue.map(a=>state.prospects[a.prospect_id]);
-  const {commitments,matching:visible}=deskQueues(state,{category,subtypes,lane,history:showHistory||allBusinesses});
+  const {commitments,matching:visible}=deskQueues(state,{category,subtypes,lane,history:showHistory,allBusinesses});
   if(!(selected===lastSaved&&state.prospects[selected])&&![...commitments,...visible].some(r=>r.id===selected))selected=visible[0]?.id??commitments[0]?.id;
   const run=async fn=>{try{await fn();}catch(e){tell(e.message,true);}};
   const event=async(r,type,data)=>{await api('/api/event',{revision:state.revision,event:{id:crypto.randomUUID(),prospect_id:r.id,type,at:new Date().toISOString(),data}});clearDirty();await refresh();};
@@ -42,20 +42,20 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty,
   const group=select(focus,'Business category',[['all','All business categories'],...businessTypes.map(t=>[t.id,`${t.label} (${Object.values(state.prospects).filter(r=>businessType(r).category===t.id).length} saved)`])],category);
   group.onchange=()=>{category=group.value;subtypes=[];selected=undefined;clearDirty();refresh();};
   if(category!=='all'){const options=el('fieldset'),legend=el('legend','Optional subtypes');options.append(legend);for(const subtype of businessTypes.find(t=>t.id===category).subtypes){const label=el('label',subtype,'checkbox'),input=el('input');input.type='checkbox';input.checked=subtypes.includes(subtype);input.onchange=()=>{subtypes=input.checked?[...subtypes,subtype]:subtypes.filter(x=>x!==subtype);selected=undefined;clearDirty();refresh();};label.prepend(input);options.append(label);}focus.append(options);}
-  focus.append(el('p',`${visible.length} matching ${showHistory?'saved histories':'calls'} · selecting a category only filters saved leads.`, 'muted'));
+  focus.append(el('p',`${visible.length} matching ${showHistory?'saved histories':allBusinesses?'businesses':'calls'} · selecting a category only filters saved leads.`, 'muted'));
   const research=researchPanel(state,api,refresh,tell,clearDirty);focus.append(btn('Find more businesses',()=>{expanded.add('Research selection');research.open=true;research.scrollIntoView({block:'nearest'});}));background.append(research);
   const packages=el('div');for(const offer of offers)packages.append(el('h3',`${offer.name} · ${offer.price?`$${offer.price.toLocaleString()}`:`$${offer.price_min.toLocaleString()}–$${offer.price_max.toLocaleString()}`}`),el('p',offer.scope));packages.append(el('p',`Optional care · $${carePlan.price}/month. ${carePlan.scope}`),el('p','Standard scope: one business location and client-supplied content. Hosting, software, messaging, copywriting, photography, ads, complex dashboards and additional locations are separately scoped. Launch support covers delivered defects for 30 days. Confirm tools, costs, access and acceptance checks before quoting.','muted'));background.append(disclosure('Starting packages and optional care',packages));
   const grid=el('div',undefined,'grid call-desk'),left=el('section',undefined,'panel');
-  left.append(el('h2',`Call inbox (${visible.length})`));const filters=el('div');filters.append(focus);
+  left.append(el('h2',`${allBusinesses?'Businesses':'Call inbox'} (${visible.length})`));const filters=el('div');filters.append(focus);
   const filter=select(filters,'Call queue',[['all','Both queues'],['research','Ready to pitch'],['verification','Quick verification'],['enriched','Enriched contacts']],lane);
   filter.onchange=()=>{lane=filter.value;selected=undefined;clearDirty();refresh();};
-  filters.append(btn(showHistory?'Show due calls':'Show saved calls & follow-ups',()=>{showHistory=!showHistory;selected=showHistory?Object.values(state.prospects).find(r=>Object.keys(r.calls).length)?.id:records[0]?.id;clearDirty();refresh();}));
+  filters.append(btn(showHistory?(allBusinesses?'Show all businesses':'Show due calls'):'Show saved calls & follow-ups',()=>{showHistory=!showHistory;selected=showHistory?Object.values(state.prospects).find(r=>Object.keys(r.calls).length)?.id:records[0]?.id;clearDirty();refresh();}));
   left.append(disclosure('Filter businesses',filters));if(commitments.length)left.append(due);
   const list=el('div',undefined,'record-list');
   const listed=visible;
-  for(const r of listed){const b=btn('',()=>{selected=r.id;clearDirty();refresh();},`record${selected===r.id?' selected':''}`);b.setAttribute('aria-pressed',String(selected===r.id));b.append(el('strong',r.name),el('small',r.area??businessType(r).subtype),el('span',r.stage==='Callback'?`Callback · ${when(r.callback_at)}`:r.call_lane==='verification'?'Quick verification':r.stage,'badge'));list.append(b);}
-  left.append(list);if(!listed.length)left.append(el('p','No eligible calls in this queue right now. Saved work remains available in call history.','empty'));
-  const search=field(left,'Search businesses','','search');search.addEventListener('input',()=>{for(const row of list.children)row.hidden=!row.textContent.toLowerCase().includes(search.value.toLowerCase());});left.insertBefore(search.parentElement,list);
+  for(const r of listed){const b=btn('',()=>{selected=r.id;clearDirty();refresh();},`record${selected===r.id?' selected':''}`);b.setAttribute('aria-pressed',String(selected===r.id));b.append(el('strong',r.name),el('small',r.area??businessType(r).subtype),el('span',r.stage==='Callback'?`Callback · ${when(r.callback_at)}`:r.call_lane==='verification'?'Quick verification':r.stage,'badge'));b.hidden=!b.textContent.toLowerCase().includes(searchTerm.toLowerCase());list.append(b);}
+  left.append(list);if(!listed.length)left.append(el('p',allBusinesses?'No saved businesses match these filters.':'No eligible calls in this queue right now. Saved work remains available in call history.','empty'));
+  const search=field(left,'Search businesses',searchTerm,'search');search.addEventListener('input',()=>{searchTerm=search.value;for(const row of list.children)row.hidden=!row.textContent.toLowerCase().includes(searchTerm.toLowerCase());});left.insertBefore(search.parentElement,list);
   grid.append(left);
   const r=state.prospects[selected];
   if(r){const card=el('section',undefined,'panel desk-card'),notesPanel=el('section',undefined,'panel desk-notes');notesPanel.setAttribute('aria-label','Call notes and follow-up');
@@ -141,7 +141,7 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty,
     if(r.research_profile?.owner_phone){const p=r.research_profile.owner_phone;contact.append(el('p',`Published owner business number · ${p.person_name}: ${p.number}`,'muted'));}
     card.append(el('h2',r.name,'detail-title'),el('p',`${r.area??type.subtype} · ${r.call_lane==='verification'?'Quick verification':'Reviewed research'}`,'muted'),contact,tabbar,...panels.map(p=>p[2]));activate(detailTab);
     for(const follow of Object.values(r.follow_ups??{}).reverse()){const box=el('section',undefined,'saved-follow-up'),preview=el('a','Open full email preview ↗');preview.href=`/follow-up/${r.id}/${follow.call_id}`;preview.target='_blank';preview.rel='noreferrer';box.append(el('h3','Saved follow-up'),el('p',`${follow.status}${follow.reason?' · '+follow.reason:''}`,'notice'),el('strong',follow.content.subject),el('p',follow.content.body,'email-copy'),preview);notesPanel.append(box);}
-    if(!callable)notesPanel.prepend(el('p','This call is saved. Review its follow-up and next step below.','muted'));
+    if(!callable)notesPanel.prepend(el('p',r.restriction?'Contact is stopped. You can review this business and its history.':Object.keys(r.calls).length?'This call is saved. Review its follow-up and next step below.':'Review this business’s research and contact details. It is not in the callable queue.','muted'));
     grid.append(card,notesPanel);
   }
   root.append(grid,background);

@@ -20,6 +20,13 @@ test('callbacks and promised follow-ups bypass category, subtype and lane filter
   assert.equal(deskQueues(state,{category:'health-wellness',lane:'research'}).commitments.length,2);
   prospects.promise.restriction='Do not contact';assert.equal(deskQueues(state).commitments.length,1);
 });
+
+test('the business directory includes untouched and restricted records without expanding callable supply',()=>{
+ const record=id=>({id,category:'HVAC contractor',call_lane:'verification',stage:'Ready to verify',calls:{}}),prospects={fresh:record('fresh'),untouched:record('untouched'),called:{...record('called'),calls:{previous:{outcome:'no_answer'}}},stopped:{...record('stopped'),restriction:'Do not contact'}},state={prospects,supply:{queue:[{prospect_id:'fresh'}]}};
+ assert.deepEqual(deskQueues(state,{allBusinesses:true}).matching.map(r=>r.id),['fresh','untouched','called','stopped']);
+ assert.deepEqual(deskQueues(state).matching.map(r=>r.id),['fresh']);assert.deepEqual(deskQueues(state,{allBusinesses:true,history:true}).matching.map(r=>r.id),['called']);
+ assert.equal(deskQueues(state,{allBusinesses:true,category:'health-wellness'}).matching.length,0);assert.deepEqual(state.supply.queue,[{prospect_id:'fresh'}]);
+});
 test('approved starting offers and care are suggestions with the agreed prices and finite scope',()=>{
   assert.deepEqual(offers.slice(0,3).map(o=>o.price),[1500,1995,2495]);
   assert.deepEqual([offers[3].price_min,offers[3].price_max],[1500,2500]);
