@@ -5,7 +5,7 @@ description: "Research a company from linked or supplied resources and create PD
 
 # Company Design Concepts
 
-Create distinctive, high-fidelity PDF design reviews using the company's actual imagery and information. The owner rejects bland, rigid layouts and repeated fonts disguised as different concepts. These defaults come from the owner's October 20, 2026 interview and design feedback; honor later explicit changes without repeating that interview.
+Create distinctive, high-fidelity PDF design reviews through image-generation-led exploration, then faithful composition with the company's actual logo, photographs and information. The owner's standard is creative quality across the whole design, visible even without animation. Research, explore, critique and refine independently before presenting strong options. These defaults come from the owner's October 20, 2026 interview; honor later explicit changes without repeating that interview.
 
 ## Choose the requested work
 
@@ -28,21 +28,23 @@ If a resource is blocked or requires unavailable access, try appropriate public 
 
 ## Preserve the business and its assets
 
-- Keep the company's actual logo and recognizable brand cues. Explore layout, typography, hierarchy, composition, and color treatments within that identity. A broader rebrand needs a request.
+- Keep the company's actual logo unchanged in final mockups. Explore colors, fonts, layout and composition freely unless the client or user explicitly fixes them; retaining the logo and photos does not lock the old palette or typography. Keep the company recognizable through its identity, content and real imagery.
 - Use the company's original image files directly in final mockups where relevant and available. Preserve the source files and the depicted products, people, packaging, and work; cropping and proportional scaling are suitable layout operations.
-- An image attached to an AI generation is a reference, not proof that the final depiction is unchanged. Choose an authoring route that can place originals directly, such as PDF or static HTML/CSS composition. Image generation can help ideation, but redrawn approximations do not satisfy the original-image requirement.
-- Design around weak or small images with suitable crops, scale, spacing, and other real assets. If a supporting image is still needed, use an appropriate licensed stock placeholder for general atmosphere and identify it in the review notes. Keep the company's products, people, premises, and completed work accurately attributed. Flag important missing assets. Generated supporting imagery is a separately requested exception.
+- Generated concept studies explore design; they are not final company-asset compositions. An attached original is a reference, not proof its generated depiction is unchanged. Place original files directly in the final authored layout; merely overlaying the real logo on a generated page with redrawn company photographs is insufficient.
+- Supporting artwork is authorized by default: generate purposeful textures, illustrations, backgrounds or graphic motifs. Keep it distinct from photographic evidence of the company's people, products, premises or completed work. Design around weak photos with appropriate crops, scale and other real assets; use clearly identified licensed stock placeholders for missing atmosphere when useful. Do not invent company photography to improve a composition.
 - Write clearer headlines, descriptions, and buttons using verified business information. Preserve explicit approved wording. Do not invent prices, discounts, capabilities, certifications, customer quotations, metrics, dates, or endorsements to complete a composition; omit them, label a proposal, or ask when consequential.
 
 ## Design, compare, and deliver
 
 Before creating new directions, read [visual research and art direction](references/art-direction.md). Visually inspect relevant references from Awwwards, Godly/Recent and 21st.dev, follow useful examples into their actual pages or previews, and record how the observations inform the designs. This is required research, not optional inspiration. Use accessible alternatives and disclose gaps when a source is unavailable. For selected-direction refinements, build on the accepted design and retained references instead of reopening its identity.
 
-Use the mode reference to create the actual studies. Give each direction a different composition, typography system, image treatment and content rhythm, grounded in the business. Explore familiar through adventurous with the same high visual standard throughout. "Grounded" means factual and usable, not generic or visually timid. Preserve the logo and recognizable brand cues without inheriting the existing site's layout, fonts or overall style unless explicitly fixed by the user. Do not reuse the studio's fonts or a previous company's page recipe by default.
+For new directions, use image generation to explore independent visual concepts before final layout authoring, following the art-direction reference. Load the available imagegen skill and use its supported tool; load Creative Production guidance if using that workspace. Give each direction a defining idea that shapes the whole page, with purposeful typography, imagery and rhythm. Explore familiar and adventurous approaches seriously, then recommend what fits. Do not inherit the studio's fonts or a previous company's page recipe.
 
-Compare opening studies side by side before completing the supporting sections. Rework near-duplicates and bland options; changing a font weight, accent color, photo mask or decorative line does not establish a new direction. Carry each visual idea into the next sections and, for campaigns, across its post, ad and landing page. Choose authoring tools that can express the design; the PDF is the review container, not the visual style of the website.
+Compare generated studies, rework weak options, and develop the strongest into the requested complete designs with original company assets. Check the authored results beside their generated design targets so the composition, type character, depth and supporting-section quality survive reconstruction. These are internal working steps, not additional owner approval gates. The PDF packages the designs; its drawing utilities must not dictate their visual style.
 
-Read [PDF review and handoff](references/pdf-review.md) before composing the review. Use the available PDF skill and its render-and-inspect workflow. If using ImageGen or Creative Production, load the relevant available skill and follow its tool requirements. Reuse available capabilities; a catalog link does not imply installed tools, account access, or spending authorization.
+Keep the main options achievable within the known website budget and scope. Budget constrains features, bespoke runtime effects, integrations and production effort; it is not a reason to make typography, composition or static artwork basic. Do not import a previous client's price as a universal budget or add proposals/packages to a mockup-only request.
+
+Read [PDF review and handoff](references/pdf-review.md) before composing the review. Use the available PDF skill and its render-and-inspect workflow. Reuse available capabilities; a catalog link does not imply installed tools, account access, or spending authorization.
 
 Keep client research, image files, source notes, and generated reviews in the authorized client/task workspace outside the studio Git repository. The repository skill contains reusable instructions only. Retain enough source and selection context to refine an approved direction without silently redesigning it.
 

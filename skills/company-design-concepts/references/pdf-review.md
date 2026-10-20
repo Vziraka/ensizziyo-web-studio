@@ -19,9 +19,9 @@ Include a concise comparison and recommendation. Keep proposed motion explicitly
 
 ## Keep originals and provenance
 
-Place actual company image files into authored layouts with proportional scaling/cropping, and preserve those originals. Choose a composition method that supports exact assets and readable text. If using image generation to explore ideas, its reference handling alone does not guarantee unchanged logos, products, or photography; final asset placement must meet the original-image requirement.
+Package the final authored designs with actual company image files directly placed, proportionally scaled/cropped, and originals preserved. A raw generated webpage is an exploration asset, not a final exact-asset mockup. Keep generated design targets for the reconstruction comparison; include them in the client PDF only when useful and clearly distinguished from the final designs.
 
-Record source URLs or supplied filenames, capture dates where useful, and which images are company originals versus supporting stock. Track any assumptions, proposed offers, image gaps, and reuse-rights questions in concise review notes or the authorized private project record. A public source does not by itself establish permission for a later public campaign. Do not turn source bookkeeping into repeated warning banners across the mockups.
+Record source URLs or supplied filenames, capture dates where useful, and which images are company originals, supporting stock or generated artwork. Retain generation prompts and target-to-final mappings for refinement. Track assumptions, proposed offers, image gaps and reuse-rights questions in concise review notes or the authorized private project record. A public source does not by itself establish permission for a later public campaign. Do not turn source bookkeeping into repeated warning banners across the mockups.
 
 Store real company material and reviews in an authorized client folder or task output directory **outside the studio Git repository**, including when a PDF skill has a generic repository output default. Use safe company slugs and descriptive filenames such as `company-website-concepts.pdf` or `company-campaign-concepts.pdf`. A private companion source record can preserve inputs and selections; no prospect list or client assets belong in the reusable skill.
 
