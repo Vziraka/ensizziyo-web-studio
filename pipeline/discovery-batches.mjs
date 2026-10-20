@@ -175,7 +175,12 @@ export async function discoveryTick(app,{signal,connect,collect=collectPublicSou
     const search=b.searches.find(s=>s.status==='Pending');
     if(search){
       const index=b.searches.indexOf(search);await update(x=>{x.status='Searching';x.searches[index].status='Reserved';});
-      check(connect,'Connected public search is unavailable');const raw=await connect.call('mcp__codex_apps__search_service_web_run',{system2_search_query:[{q:search.query}],response_length:'long'});
+      check(connect,'Connected public search is unavailable');let raw;
+      try{raw=await connect.call('mcp__codex_apps__search_service_web_run',{system2_search_query:[{q:search.query}],response_length:search.response_length==='short'?'short':'long'});}
+      catch(e){taskSignal.throwIfAborted();if(e.message!=='Malformed connector protocol response'||search.response_length==='short')throw e;
+        const ref=`search-${index}-read-failure.json`;await save(ref,{query:search.query,at:app.now().toISOString(),reason:e.message,read_only:true,response_length:'long'});
+        await update(x=>{Object.assign(x.searches[index],{status:'Pending',response_length:'short',read_failure_ref:ref});x.reason=null;});return {status:'Searching'};
+      }
       check(!raw.isError&&Buffer.byteLength(JSON.stringify(raw))<=500000,'Public search failed or exceeded its response bound');await save(`search-${index}.json`,{query:search.query,checked_at:app.now().toISOString(),raw});
       await update(x=>{x.searches[index].status='Complete';x.searches[index].sha256=hash(raw);});return {status:'Searching'};
     }
