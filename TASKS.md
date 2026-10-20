@@ -1,5 +1,18 @@
 # Launch tasks
 
+## Voice demo UI — October 20, 2026
+
+- [x] Complete the design interview and select the supplied centered layout and dotted waveform.
+- [x] Implement the selected desktop/mobile UI with larger readable type, subtle reduced-motion-aware animation and studio SVG arrows.
+- [x] Keep the existing agent/configuration, recording, privacy and native consent flow; verify latest exchange, recording, capture-after-call, no-capture, retry and booking paths locally.
+- [x] Complete focused tests, browser/visual checks and requirements/engineering reviews.
+- [x] Open [PR117](https://github.com/Vziraka/ensizziyo-web-studio/pull/117) for review.
+- [x] Follow-up: continuously flowing dots and unclipped native voice/text controls. Ten tests cover motion, bounds, pause/resume and existing behavior; actual-widget desktop/narrow-mobile checks and the local call/enquiry/reset rehearsal passed. Evan remains unchanged. [Evidence](docs/voice-demo-ui/README.md).
+- [x] Owner reviewed the final preview and authorized publication through [PR117](https://github.com/Vziraka/ensizziyo-web-studio/pull/117) on October 20. Its release record owns the published revision and production readback.
+- [ ] Fresh spoken check on the allowed production domain; local and native-control checks do not establish acoustic verification.
+
+[Design, scope and repeatable checks](docs/voice-demo-ui/README.md). Existing pipeline work below is separate and unchanged.
+
 ## AI operations and 100 additional home-service businesses — October 19, 2026
 
 October 20 company-list scroll correction completed: selecting a company reproduced a reset from 1,440 pixels down to zero. The shared desk refresh now restores the company panel, inner list and page positions after rebuilding the view; new company details still start at the top. A 40-company fictional browser check preserves exactly 1,440 pixels in Calling desk and Businesses. A new fixture revision arrived through the existing background timer with the same position/selection, and unsaved notes stayed with their company. Syntax, all 382 account-free tests, both reviews and CI passed. PR115 is installed through the existing versioned task. Live narrow-window selection retained the 1,580-pixel inner-list position and 524-pixel page position, with all 272 records/history/configuration/bindings preserved. Search, filters, contact eligibility and provider/sending settings are unchanged. WORKSPACE.md owns source/recovery evidence.

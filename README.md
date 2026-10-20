@@ -22,7 +22,7 @@ From the repository root, with Node 24 and Python already available:
 ```powershell
 node scripts/build-site.mjs
 node scripts/verify-site.mjs
-node --test scripts/inquiry.test.mjs
+node --test scripts/inquiry.test.mjs scripts/voice-demo.test.mjs
 python -m http.server 4207 --bind 127.0.0.1 --directory dist
 ```
 
