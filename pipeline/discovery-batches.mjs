@@ -9,6 +9,7 @@ import {collectPublicSources,sourceContentHash,validateSnapshots} from './source
 import {AppConnectors} from './app-connectors.mjs';
 import {invokeCLI} from './workers.mjs';
 import {readCodexUsage} from './usage.mjs';
+import {validateControllerConfig} from './controller.mjs';
 import {importVerification,contactKeys,requireCallRelease,callReleaseFingerprint} from './production.mjs';
 import {verificationData,validateVerificationRecord} from './verification-calls.mjs';
 import {applyOwnerContact} from './owner-contacts.mjs';
@@ -81,24 +82,38 @@ export async function controlDiscoveryBatch(app,{id,action}){
     b.status=action==='pause'?'Paused':action==='stop'?'Stopped':'Queued';if(action==='resume')delete b.retry_after;b.reason=action==='resume'?null:`Owner ${action}d this finite batch`;state.revision++;return discoverySummary(b);
   });
 }
-// Share the existing controller's lock, daily ledger and reserve. No new provider or budget is activated.
+// Share the controller's verified providers, ledger and caps; switching subscriptions never refunds a call.
 async function modelCall(app,b,prompt,schema,{invoke=invokeCLI,usage=readCodexUsage,signal}){
   const config=await readJson(join(app.directory,'lifecycle-config.json')),root=config.research?.source_directory;
   check(root,'Bind the existing subscription research controller');
-  const policy=await readJson(join(root,'controller-config.json')),p=policy.providers.codex;
-  check(p.enabled&&p.included_usage_only_confirmed&&p.reserve_percent>=30,'Use only the existing included Codex allowance');
+  const policy=validateControllerConfig(await readJson(join(root,'controller-config.json')));
   const lock=join(root,'.controller');await mkdir(lock,{recursive:true});const release=await acquireLock(lock);
   try{
     const path=join(root,'controller-state.json'),ledger=await readJson(path),day=app.now().toISOString().slice(0,10);
     check(ledger.schema_version===1&&Array.isArray(ledger.calls)&&ledger.jobs&&ledger.provider_blocks,'Research ledger is unavailable; preserve existing attempts');
-    if(ledger.provider_blocks.codex||ledger.calls.filter(c=>c.worker==='codex'&&c.day===day).length>=p.daily_calls)throw Object.assign(Error('Existing subscription daily/quota limit reached'),{code:'DISCOVERY_DEFERRED'});
-    const allowance=await usage({signal});
-    if(!allowance?.authenticated_subscription||!Number.isFinite(Date.parse(allowance.checked_at))||Math.abs(+app.now()-Date.parse(allowance.checked_at))>60000||!allowance.buckets?.length||allowance.buckets.some(x=>!Number.isFinite(x.remaining_percent)||x.remaining_percent<=p.reserve_percent||x.resets_at*1000<=+app.now()))throw Object.assign(Error('Subscription allowance is unavailable or at the 30% reserve'),{code:'DISCOVERY_DEFERRED'});
-    const id=randomUUID(),job_id=`db-${b.id}`,model=p.review_model;
+    const deferred=reason=>Object.assign(Error(reason),{code:'DISCOVERY_DEFERRED'}),control=await readJson(join(root,'research-control.json'));
+    check(control.schema_version===1&&typeof control.enabled==='boolean'&&['research','website','client'].includes(control.priority)&&control.quota_resumes&&typeof control.quota_resumes==='object','Shared research controls are unavailable');
+    if(!control.enabled||control.priority!=='research')throw deferred('Research yielded to the shared pause or priority control');
+    if(ledger.calls.filter(c=>c.day===day).length>=100)throw deferred('The shared 100-call daily ceiling has been reached');
+    const job_id=`db-${b.id}`,stage=b.extraction==='Complete'?'review':'extract',author=ledger.calls.findLast(c=>c.job_id===job_id&&c.discovery_stage==='extract'&&c.status==='Returned')?.worker;
+    const order=stage==='extract'?policy.fallback_order:policy.review_order.toSorted((a,b)=>Number(a===author)-Number(b===author));
+    let worker,p;
+    for(const candidate of order){
+      const plan=policy.providers[candidate],blockedAt=ledger.provider_blocks[candidate],resumedAt=Date.parse(control.quota_resumes[candidate]);
+      if(!plan.enabled||!plan.included_usage_only_confirmed||ledger.calls.filter(c=>c.worker===candidate&&c.day===day).length>=plan.daily_calls||blockedAt&&!(resumedAt>Date.parse(blockedAt)&&resumedAt<=+app.now()))continue;
+      if(candidate==='codex'){
+        let allowance;try{allowance=await usage({signal});}catch{signal?.throwIfAborted();continue;}
+        if(!allowance?.authenticated_subscription||!Number.isFinite(Date.parse(allowance.checked_at))||Math.abs(+app.now()-Date.parse(allowance.checked_at))>60000||!allowance.buckets?.length||allowance.buckets.some(x=>!Number.isFinite(x.remaining_percent)||x.remaining_percent>100||x.remaining_percent<=plan.reserve_percent||!Number.isInteger(x.resets_at)||x.resets_at*1000<=+app.now()))continue;
+      }
+      worker=candidate;p=plan;break;
+    }
+    if(!worker)throw deferred('Enabled subscriptions are unavailable, quota-blocked, at their daily cap or at the Codex research reserve');
+    const id=randomUUID(),model=p.review_model;
     check(ledger.calls.filter(c=>c.job_id===job_id).length<27,'This finite batch has reached its retained model-call ceiling');
-    const call={id,job_id,day,reserved_at:app.now().toISOString(),worker:'codex',model,effort:p.review_effort,phase:'review',status:'Reserved'};ledger.calls.push(call);await saveJson(path,ledger);
-    try{const value=await invoke({worker:'codex',phase:'review',model,effort:p.review_effort,directory:folder(app,b),attempt_id:id,outputSchema:schema,promptText:prompt,signal,onEvent:async e=>{call.child_pid=e.event==='worker_started'?e.pid:null;await saveJson(path,ledger);}});call.status='Returned';await saveJson(path,ledger);return value;}
-    catch(e){call.status=e.code??e.name;if(e.code==='WORKER_QUOTA')ledger.provider_blocks.codex=app.now().toISOString();await saveJson(path,ledger);throw e;}
+    signal?.throwIfAborted();const effort=worker==='codex'?p.review_effort:undefined;
+    const call={id,job_id,day,reserved_at:app.now().toISOString(),worker,model,effort:effort??null,phase:'review',discovery_stage:stage,status:'Reserved'};ledger.calls.push(call);await saveJson(path,ledger);
+    try{const value=await invoke({worker,phase:'review',model,effort,directory:folder(app,b),attempt_id:id,outputSchema:schema,promptText:worker==='cursor'?`${prompt}\nOUTPUT SCHEMA:\n${JSON.stringify(schema)}`:prompt,signal,onEvent:async e=>{call.child_pid=e.event==='worker_started'?e.pid:null;await saveJson(path,ledger);}});call.status='Returned';await saveJson(path,ledger);return value;}
+    catch(e){call.status=e.code??e.name;if(e.code==='WORKER_QUOTA')ledger.provider_blocks[worker]=app.now().toISOString();await saveJson(path,ledger);if(e.code==='WORKER_QUOTA')throw deferred(`${worker} reported its subscription quota; the retained attempt stays charged while another verified provider can resume`);throw e;}
   }finally{await release();}
 }
 const dmv=/\b(?:Fairfax|Arlington|Alexandria|Vienna|Chantilly|Centreville|Herndon|Reston|Annandale|McLean|Falls Church|Leesburg|Ashburn|Sterling|Loudoun|Woodbridge|Manassas|Springfield|Burke|Lorton|Oakton|Great Falls|Northern Virginia|Montgomery County|Prince George.?s County|Bethesda|Rockville|Silver Spring|Gaithersburg|Potomac|Hyattsville|Bowie|Washington,?\s*(?:D\.?C\.?|DC))\b/i;

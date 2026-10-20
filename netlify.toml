@@ -10,12 +10,3 @@ NODE_VERSION = "24"
 from = "/"
 to = "/studio/"
 status = 302
-
-[[headers]]
-for = "/*"
-[headers.values]
-X-Robots-Tag = "noindex, nofollow"
-X-Content-Type-Options = "nosniff"
-X-Frame-Options = "SAMEORIGIN"
-Referrer-Policy = "strict-origin-when-cross-origin"
-Permissions-Policy = "camera=(), geolocation=()"
