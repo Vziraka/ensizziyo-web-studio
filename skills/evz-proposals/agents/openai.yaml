@@ -1,0 +1,4 @@
+interface:
+  display_name: "EVZ Proposals"
+  short_description: "Scope, price and prepare approved EVZ proposal PDFs"
+  default_prompt: "Use $evz-proposals to review this project's scope and price with me, then create the EVZ proposal PDF after my approval."

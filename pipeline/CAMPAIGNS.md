@@ -12,6 +12,8 @@ Research prioritizes the current owner/operator and published professional conta
 
 ## Internal starting offers
 
+October 20 proposal update: new written proposals follow the [EVZ proposal pricing guide](../skills/evz-proposals/references/pricing.md) and require owner approval of the specific final scope and price before authoring. The table below retains the dashboard's existing offer scopes; this skill addition does not change runtime package data or existing commitments. In particular, the new $99/30-minute website care entry and this dashboard's $199/60-minute care offer have different scope. Do not substitute one silently.
+
 These are owner-approved starting offers, not automatic quotes or evidence of delivered capabilities. Confirm needs, tools, access, data handling, costs and acceptance checks during discovery before agreeing the fixed scope.
 
 | Offer | Price | Included scope |
