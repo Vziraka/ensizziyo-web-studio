@@ -1,5 +1,21 @@
 # Change review
 
+## Follow-up requirements pass
+
+Reviewed the follow-up against 74f6181: the owner asked for the orb to flow continuously and supplied the clipped entry-dialog screenshot. The main visual now renders moving particles with a flowing wave, retaining the selected monochrome spherical character and original layout. The static artwork remains available for reduced motion or unavailable Canvas. Native voice/text controls and attribution are visible in the corrected dialog. No provider, agent, prompt, voice, recording or production change is included.
+
+Actual pinned-widget checks reproduced both buttons as clipped before the fix and fully visible afterward at 1280 × 720, 390 × 844 and 320 × 800. The dialog has no horizontal overflow. Keyboard Tab reaches the two native controls and Escape restores the opening action. The local fictional call still shows the latest exchange, reveals the enquiry only after ending and resets correctly.
+
+## Follow-up engineering pass
+
+Reviewed the same follow-up diff separately for drawing bounds, frame scheduling, hidden-page/content pause, reduced-motion changes, resize and page restoration. Browser Canvas and existing browser APIs suffice; no package or external animation service is introduced. The obsolete image animation and background-class listener were removed. Ten tests pass, including deterministic particle movement/bounds and animation lifecycle checks. All 32 module syntax checks, fixture syntax, site build and route/asset/header checks pass.
+
+The dialog fix uses the pinned widget's existing overlay-padding variable and supported placement attribute; no shadow-root style injection or consent bypass is involved. The actual native layout is checked separately from the provider fixture, which cannot reproduce that CSS regression. Successive browser captures differ only within the moving orb; 26,139 pixels in that region changed by more than ten channel levels. Actual-page and fictional-call consoles are clear. Original agent instructions, MP3, deployment configuration and microphone-header generation have no diff against the follow-up base.
+
+Both passes have no blocking findings. A physical-device/OS preference change and fresh spoken conversation remain unperformed; the lifecycle tests simulate preference/visibility changes and the call rehearsal uses fictional callbacks. Public release remains separate.
+
+## Initial implementation review
+
 Reviewed against base 9d1ee0da3238071e20d6e37b6980119f46fc7847 on feature/voice-demo-ui. This document accompanies the reviewed source; CI identifies the committed head.
 
 ## Requirements pass

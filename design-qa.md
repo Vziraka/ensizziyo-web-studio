@@ -4,7 +4,19 @@ The earlier operations/email QA is preserved in the [base-revision report](https
 
 final result: passed
 
-## Comparison target and evidence
+## Current follow-up: particle flow and dialog clipping
+
+The owner requested actual continuous flow after learning that the original orb only pulsed, and supplied a screenshot of clipped native controls. The main orb now uses animated dots while retaining the centered monochrome spherical form and quiet visual hierarchy. The original artwork remains the static/reduced-motion fallback and widget avatar. This requested motion change supersedes the initial raster-only asset constraint below.
+
+- Captured successive ready frames: docs/voice-demo-ui/qa/flow-frame-a.jpg and flow-frame-b.jpg. Both are 1486 × 1066 full-page captures from a 1486 × 1059 CSS viewport at density 1. Their difference bounds are (600,448)–(888,736), entirely inside the orb; 26,139 pixels there differ by more than ten channel levels. The surrounding layout stays still.
+- The actual pinned widget initially clipped both Start voice demo and Try text instead. Its 140-pixel host minus 32-pixel padding on both edges left 76 pixels for a 104-pixel card. A 180-pixel host, 12-pixel overlay padding and bottom-center placement now contain both controls. No shadow-root CSS injection.
+- Corrected native dialog evidence: dialog-fixed-desktop.jpg, dialog-fixed-390.jpg and dialog-fixed-320.jpg in the same qa directory; before evidence: dialog-clipped-before.jpg. DOM geometry confirms both buttons fully visible and no horizontal dialog overflow at 1280 × 720, 390 × 844 and 320 × 800.
+- Mobile opening evidence: flow-mobile.jpg. Tab from Close reaches Start voice demo, then Try text instead. Escape returns focus to Talk to Evan. No native conversation was started.
+- Ten tests pass, including particle movement/bounds and reduced-motion, hidden-page/content, resize and page restoration. Rendering is capped at 30 frames/second and density 2. The local call/enquiry/reset check and actual-page console checks pass. Physical-device and real OS-preference checks remain unperformed.
+
+No blocking visual or interaction findings remain in this follow-up. The moving particle pattern changes over time, so the original static screenshot comparison remains an initial-layout baseline rather than an exact frame match.
+
+## Initial layout comparison and evidence
 
 - Source visual truth: docs/voice-demo-ui/approved-design.png, owner supplied and selected October 20, 2026.
 - Final implementation: http://127.0.0.1:4218/studio/demos/voice/

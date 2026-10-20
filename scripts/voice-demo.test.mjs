@@ -1,6 +1,78 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {enquiryFields, observeSession} from '../site/studio/demos/voice/session.mjs';
+import {drawVoiceWave, mountVoiceWave} from '../site/studio/demos/voice/wave.mjs';
+
+test('the dotted waveform flows between frames and stays inside its canvas at both call intensities', () => {
+  const frame = (size, time, energy) => {
+    const points = [];
+    const context = {clearRect() {}, beginPath() {}, fill() {}, arc(x, y, radius) { points.push({x, y, radius}); }};
+    drawVoiceWave(context, size, time, energy);
+    for (const {x, y, radius} of points) {
+      assert.ok(Number.isFinite(x + y + radius));
+      assert.ok(x - radius >= 0 && x + radius <= size);
+      assert.ok(y - radius >= 0 && y + radius <= size);
+    }
+    return points;
+  };
+  for (const size of [200, 255, 360]) {
+    const still = frame(size, 0, 0), flowing = frame(size, 1, 0), speaking = frame(size, 1, 1);
+    assert.ok(still.length > 3000);
+    assert.equal(flowing.length, still.length);
+    assert.notDeepEqual(still, flowing);
+    assert.notDeepEqual(flowing, speaking);
+    assert.ok(Math.abs(still[100].y - flowing[100].y) < size * .1);
+  }
+});
+
+test('the waveform stops for reduced motion, hidden pages and hidden content, then resumes', () => {
+  const names = ['window', 'document', 'ResizeObserver', 'requestAnimationFrame', 'cancelAnimationFrame'];
+  const saved = names.map(name => Object.getOwnPropertyDescriptor(globalThis, name));
+  const events = {}, frames = new Map();
+  let resize, id = 0, draws = 0;
+  const media = {matches: false, addEventListener(name, callback) { events.motion = callback; }};
+  const context = {setTransform() {}, clearRect() { draws++; }, beginPath() {}, arc() {}, fill() {}};
+  const canvas = {hidden: true, getContext: () => context}, image = {hidden: false};
+  const visual = {clientWidth: 360, querySelector: selector => selector === 'canvas' ? canvas : image};
+  try {
+    Object.assign(globalThis, {
+      window: {devicePixelRatio: 3, matchMedia: () => media, addEventListener(name, callback) { events[name] = callback; }},
+      document: {hidden: false, addEventListener(name, callback) { events[name] = callback; }},
+      ResizeObserver: class { constructor(callback) { resize = callback; } observe() {} },
+      requestAnimationFrame(callback) { frames.set(++id, callback); return id; },
+      cancelAnimationFrame(key) { frames.delete(key); },
+    });
+    mountVoiceWave(visual, {dataset: {}});
+    assert.equal(canvas.hidden, false);
+    assert.equal(image.hidden, true);
+    assert.equal(canvas.width, 720);
+    assert.equal(frames.size, 1);
+    const [key, tick] = [...frames][0]; frames.delete(key); tick(100);
+    assert.equal(draws, 2);
+    assert.equal(frames.size, 1);
+    media.matches = true; events.motion();
+    assert.equal(canvas.hidden, true);
+    assert.equal(image.hidden, false);
+    assert.equal(frames.size, 0);
+    media.matches = false; events.motion();
+    assert.equal(frames.size, 1);
+    document.hidden = true; events.visibilitychange();
+    assert.equal(frames.size, 0);
+    document.hidden = false; events.visibilitychange();
+    assert.equal(frames.size, 1);
+    visual.clientWidth = 0; resize();
+    assert.equal(frames.size, 0);
+    visual.clientWidth = 200; resize();
+    assert.equal(canvas.width, 400);
+    assert.equal(frames.size, 1);
+    events.pagehide();
+    assert.equal(frames.size, 0);
+    events.pageshow();
+    assert.equal(frames.size, 1);
+  } finally {
+    names.forEach((name, index) => saved[index] ? Object.defineProperty(globalThis, name, saved[index]) : delete globalThis[name]);
+  }
+});
 
 test('keeps only bounded text fields from a fictional enquiry', () => {
   assert.deepEqual(enquiryFields({

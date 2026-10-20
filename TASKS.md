@@ -7,6 +7,7 @@
 - [x] Keep the existing agent/configuration, recording, privacy and native consent flow; verify latest exchange, recording, capture-after-call, no-capture, retry and booking paths locally.
 - [x] Complete focused tests, browser/visual checks and requirements/engineering reviews.
 - [x] Open [PR117](https://github.com/Vziraka/ensizziyo-web-studio/pull/117) for review.
+- [x] Follow-up: continuously flowing dots and unclipped native voice/text controls. Ten tests cover motion, bounds, pause/resume and existing behavior; actual-widget desktop/narrow-mobile checks and the local call/enquiry/reset rehearsal passed. Evan remains unchanged. [Evidence](docs/voice-demo-ui/README.md).
 - [ ] Owner UI review, then a separately authorized public release and fresh spoken check on the allowed domain.
 
 [Design, scope and repeatable checks](docs/voice-demo-ui/README.md). Existing pipeline work below is separate and unchanged.

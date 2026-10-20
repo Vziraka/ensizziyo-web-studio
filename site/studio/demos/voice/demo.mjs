@@ -1,7 +1,9 @@
 import {enquiryFields, observeSession} from './session.mjs';
+import {mountVoiceWave} from './wave.mjs';
 
 const byId = id => document.getElementById(id);
 const main = byId('main'), dialog = byId('voice-dialog'), audio = byId('sample-audio');
+mountVoiceWave(document.querySelector('.voice-visual'), main);
 const sample = {name: 'Jordan Lee', contact: '202-555-0147 · Fictional number', service: 'AC not cooling', location: 'Fairfax, Virginia', time: 'Tomorrow afternoon'};
 let session = null, widget = null, loading = null, viewVersion = 0, pendingEnquiry = null, messages = [], textOnly = false;
 
@@ -81,7 +83,7 @@ async function startLive() {
     if (version !== viewVersion || !dialog.open) return;
     widget = document.createElement('elevenlabs-convai');
     widget.setAttribute('agent-id', 'agent_6801m5b3wd1pfnntwtqfdm0np72y');
-    widget.setAttribute('variant', 'full'); widget.setAttribute('dismissible', 'false');
+    widget.setAttribute('variant', 'full'); widget.setAttribute('placement', 'bottom'); widget.setAttribute('dismissible', 'false');
     widget.setAttribute('avatar-image-url', new URL('assets/voice-wave.png', import.meta.url).href);
     widget.setAttribute('text-contents', JSON.stringify({main_label: 'Speak with Evan', start_call: 'Start voice demo', start_chat: 'Try text instead', end_call: 'End demo', end_chat: 'End demo'}));
     widget.addEventListener('elevenlabs-convai:call', event => {
@@ -149,5 +151,4 @@ byId('text-chat').addEventListener('submit', event => {
     input.focus();
   }
 });
-document.addEventListener('visibilitychange', () => { document.body.classList.toggle('is-background', document.hidden); });
 window.addEventListener('pagehide', () => { viewVersion++; audio.pause(); session?.endSession().catch(() => {}); });
