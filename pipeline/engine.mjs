@@ -29,7 +29,7 @@ export async function saveJson(path, value) {
   try {
     for (let attempt = 0; ; attempt++) {
       try { await rename(temporary, path); break; }
-      catch (error) { if (!['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt === 5) throw error; await delay(8 * 2 ** attempt); }
+      catch (error) { if (!['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt === 9) throw error; await delay(Math.min(20 * 2 ** attempt,250)); }
     }
   } catch (error) { await unlink(temporary).catch(() => {}); throw error; }
 }
