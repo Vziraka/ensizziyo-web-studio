@@ -32,7 +32,7 @@ export function matchesBusiness(record,category='all',subtypes=[]) {
   const type=businessType(record);
   return (category==='all'||type.category===category)&&(!subtypes.length||subtypes.includes(type.subtype));
 }
-export function deskQueues(state,{category='all',subtypes=[],lane='all',history=false}={}) {
+export function deskQueues(state,{category='all',subtypes=[],lane='all',history=false,allBusinesses=false}={}) {
   const records=Object.values(state.prospects),byId=new Map();
   for(const action of state.supply.queue)if(!byId.has(action.prospect_id))byId.set(action.prospect_id,state.prospects[action.prospect_id]);
   const day=value=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
@@ -42,7 +42,7 @@ export function deskQueues(state,{category='all',subtypes=[],lane='all',history=
   const commitments=[...new Map([...due,...promised].map(r=>[r.id,r])).values()];
   const ids=new Set(commitments.map(r=>r.id));
   const laneMatches=r=>lane==='all'||(lane==='enriched'?r.provider_contact_view?.current:(r.call_lane==='verification'?'verification':'research')===lane);
-  const candidates=history?records.filter(r=>Object.keys(r.calls??{}).length):[...byId.values()].filter(r=>!ids.has(r.id));
+  const candidates=history?records.filter(r=>Object.keys(r.calls??{}).length):allBusinesses?records:[...byId.values()].filter(r=>!ids.has(r.id));
   return {commitments,matching:candidates.filter(r=>matchesBusiness(r,category,subtypes)&&laneMatches(r)).sort((a,b)=>Number(Boolean(b.verification?.packet.established_evidence))-Number(Boolean(a.verification?.packet.established_evidence)))};
 }
 export const offers = [

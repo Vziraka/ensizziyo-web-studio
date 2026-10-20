@@ -299,6 +299,6 @@ document.querySelector('#pause').addEventListener('click', async () => { try { a
 document.querySelector('#backup').addEventListener('click', async () => { try { const result = await api('/api/backup', {}); tell(`Private backup saved and checksummed (${result.prospects} records).`); } catch (error) { tell(error.message, true); } });
 refresh().catch(error => tell(error.message, true));
 setInterval(() => {
-  if (dirty || document.querySelector('.desk-next') || document.visibilityState !== 'visible' || Date.now() < refreshAfter || document.activeElement?.closest('form')) return;
+  if (dirty || document.querySelector('.desk-next') || document.visibilityState !== 'visible' || Date.now() < refreshAfter || document.activeElement?.closest('form') || document.activeElement?.matches('input,textarea,select')) return;
   refresh().catch(error => { refreshAfter = Date.now() + 60000; if (message.textContent !== error.message) tell(error.message, true); });
 }, 15000);
