@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {StudioLifecycle,initialConfig} from './lifecycle.mjs';
+import {StudioLifecycle,initialConfig,hash} from './lifecycle.mjs';
 import {fixtureProspect} from './lifecycle-fixtures.mjs';
 import {composeFollowUp,renderFollowUpHtml,followUpSetupIssues} from './follow-up-template.mjs';
 import {approvedFollowUp,nativeMessage} from './production.mjs';
@@ -45,4 +45,15 @@ test('the branded template escapes business text, preserves team identity and ho
  const record={name:'Oakline <script>alert(1)</script>',contact:{name:'Jordan Lee',email:'jordan@oakline.example'}};
  const message=composeFollowUp(record,{outcome:'no_answer',focus:'ai'},{sender:{postal_address:''}}),html=renderFollowUpHtml(message);
  assert.match(html,/hello@evzdigital\.studio/);assert.match(html,/EVZ Digital team/);assert.match(html,/voice-demo-preview\.png/);assert.match(html,/evz-wordmark\.png/);assert.doesNotMatch(html,/<script>|javascript:/);assert.match(message.body,/I tried calling/);assert.equal(followUpSetupIssues({}).length,4);
+});
+
+test('a researched owner cannot make the preview greeting differ from the saved follow-up',async t=>{
+ const app=await setup(t);await app.change(s=>{const r=s.prospects.sample;delete r.contact.name;r.owner_contact={bound_contact_sha256:hash(r.contact),reviewed_at:at,person:{name:'Riley Test',role:'Owner',source:{checked_at:at}}};});
+ const view=await app.dashboard();assert.equal(view.prospects.sample.owner_contact_view.person.name,'Riley Test');const event=call('voicemail'),preview=composeFollowUp(view.prospects.sample,event.data,app.config);
+ await app.apply(event);const entry=(await app.snapshot()).prospects.sample.follow_ups['call-one'];assert.deepEqual(entry.content,preview);assert.equal(preview.paragraphs[0],'Hi,');
+});
+
+test('the greeting uses a source-linked owner email only for that recipient and preserves confirmed names',()=>{
+ const record={name:'SYNTHETIC Comfort HVAC',contact:{email:'riley@example.invalid'},research_profile:{business_email:{email:'riley@example.invalid',kind:'Owner/operator business',person_name:'Riley Test'}}};
+ assert.equal(composeFollowUp(record).paragraphs[0],'Hi Riley,');record.contact.email='office@example.invalid';assert.equal(composeFollowUp(record).paragraphs[0],'Hi,');record.contact.name='Sam Confirmed';assert.equal(composeFollowUp(record).paragraphs[0],'Hi Sam,');record.verification={conversation:{decision_maker:'Taylor Confirmed'}};assert.equal(composeFollowUp(record).paragraphs[0],'Hi Taylor,');
 });

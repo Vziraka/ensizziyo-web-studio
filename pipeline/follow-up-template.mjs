@@ -21,7 +21,8 @@ export function followUpFocus(call={}){
 export function composeFollowUp(record,call={},config={}){
   const options=config.follow_up??{},base=https(options.public_origin)||'https://evzdigital.studio/';
   const focus=followUpFocus(call),topic=topics[focus],connected=call.outcome==='connected',callback=call.outcome==='callback';
-  const name=clean(record.name).slice(0,180),person=clean(record.verification?.conversation?.decision_maker??record.contact?.name??record.owner_contact_view?.person?.name);
+  const ownerEmail=record.research_profile?.business_email,recipientName=ownerEmail?.kind==='Owner/operator business'&&ownerEmail.email===record.contact?.email?ownerEmail.person_name:null;
+  const name=clean(record.name).slice(0,180),person=clean(record.verification?.conversation?.decision_maker??record.contact?.name??recipientName);
   const salutation=person&&person.split(/\s+/).length<=5?`Hi ${person.split(/\s+/)[0]},`:'Hi,';
   const introduction=connected?'Thanks for speaking with me earlier. I wanted to follow up with an example of our work.':callback?'Thanks for your time earlier. I’ve noted the request for a callback and included an example of our work below.':`I tried calling ${name} today and wanted to share a practical example of our work.`;
   const trade=clean(record.business_type?.subtype),area=clean(record.area);
