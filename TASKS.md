@@ -1,5 +1,14 @@
 # Launch tasks
 
+## EVZ proposal skill - October 20, 2026
+
+- [x] Complete pricing/scope interview and approve the fictional seven-page EVZ PDF master.
+- [x] Author [EVZ Proposals](skills/evz-proposals/SKILL.md) with an explicit project-specific scope/price approval requirement before client-facing authoring.
+- [x] Capture starting packages, optional care/software costs, service-specific scope and approved commercial rules.
+- [x] Bundle the unchanged visual master, original EVZ assets, Manrope license and portable reproduction source.
+- [x] Verify source/installed skill, relative links, reproduction and unchanged page appearance; install personally and record checks in TOOLKIT.md.
+- [ ] Publish source changes for review. No live client proposal or external message is part of this task.
+
 ## Voice demo UI — October 20, 2026
 
 - [x] Complete the design interview and select the supplied centered layout and dotted waveform.
