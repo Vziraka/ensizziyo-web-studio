@@ -7,7 +7,7 @@ import {StudioLifecycle,hash} from './lifecycle.mjs';
 import {productionConfig,importVerification,callReleaseFingerprint,pauseStudio,approveCallRelease} from './production.mjs';
 import {saveJson} from './engine.mjs';
 import {sourceContentHash} from './sources.mjs';
-import {startDiscoveryBatch,controlDiscoveryBatch,discoveryTick,discoverySummary,candidatePacket,discoverySources,stageDiscoveryCalls,discoveryOwnerPacket} from './discovery-batches.mjs';
+import {startDiscoveryBatch,controlDiscoveryBatch,discoveryTick,discoverySummary,candidatePacket,discoverySources,stageDiscoveryCalls,discoveryOwnerPacket,runDiscoveryService} from './discovery-batches.mjs';
 import {startDiscoveryCampaign,advanceDiscoveryCampaign,discoveryCampaignSummary} from './discovery-batches.mjs';
 const at='2026-10-19T15:00:00.000Z',now=()=>new Date(at);
 async function setup(t){const root=await mkdtemp(join(tmpdir(),'evz-business-types-'));t.after(()=>{assert.ok(resolve(root).startsWith(resolve(tmpdir())));return rm(root,{recursive:true,force:true});});
@@ -37,6 +37,24 @@ test('the campaign stops at 100 new businesses and retains a finite shortfall in
 });
 async function seed(app){await startDiscoveryBatch(app,request);await app.change(s=>{const b=s.discovery_batches[request.id];b.searches.forEach(x=>x.status='Complete');b.extraction='Complete';b.candidates=[structuredClone(candidate)];});}
 const review=async({promptText})=>({schema_version:1,packet_sha256:promptText.match(/packet_sha256=([a-f0-9]{64})/)[1],accepted:true,reason:'First-party identity, exact HVAC offering, Fairfax service and advertised business phone are supported. Owner and needs remain unknown.',owner:null});
+
+test('a malformed public-search response reconnects and retries only that read with a shorter response',async t=>{
+ const {app,research}=await setup(t);await startDiscoveryBatch(app,request);const stop=new AbortController(),lengths=[],queries=[];let connects=0,closed=0,ticks=0;
+ const raw={content:[{type:'text',text:'SYNTHETIC Comfort HVAC https://example.com/ Fairfax HVAC business contact'}]};
+ await runDiscoveryService(app,{signal:stop.signal,connectFactory:()=>({connect:async()=>{connects++;},close:async()=>{closed++;},call:async(name,args)=>{assert.equal(name,'mcp__codex_apps__search_service_web_run');lengths.push(args.response_length);queries.push(args.system2_search_query);if(connects===1)throw Error('Malformed connector protocol response');return raw;}}),wait:async()=>{if(++ticks===2)stop.abort();}});
+ assert.equal(connects,2);assert.equal(closed,2);assert.deepEqual(lengths,['long','short']);assert.deepEqual(queries[0],queries[1]);const b=(await app.snapshot()).discovery_batches[request.id];assert.equal(b.searches[0].status,'Complete');assert.equal(b.searches[0].response_length,'short');assert.equal(b.searches[0].sha256,hash(raw));
+ const failure=JSON.parse(await readFile(join(app.directory,'discovery',request.id,'search-0-read-failure.json')));assert.equal(failure.reason,'Malformed connector protocol response');assert.equal(failure.read_only,true);assert.equal(JSON.parse(await readFile(join(research,'controller-state.json'))).calls.length,1);
+});
+
+test('a malformed short search response stays held without another retry or AI call',async t=>{
+ const {app,research}=await setup(t);await startDiscoveryBatch(app,request);const connect={call:async()=>{throw Error('Malformed connector protocol response');}};
+ await discoveryTick(app,{connect});assert.equal((await app.snapshot()).discovery_batches[request.id].searches[0].status,'Pending');const path=join(app.directory,'discovery',request.id,'search-0-read-failure.json'),saved=await readFile(path,'utf8');
+ await discoveryTick(app,{connect});const b=(await app.snapshot()).discovery_batches[request.id];assert.equal(b.status,'Held');assert.equal(b.searches[0].status,'Reserved');assert.equal(b.searches[0].response_length,'short');assert.equal(await readFile(path,'utf8'),saved);assert.equal(JSON.parse(await readFile(join(research,'controller-state.json'))).calls.length,1);
+});
+
+test('approval, quota and unknown search failures never enable the short-read retry',async t=>{
+ for(const message of ['Provider requires owner approval','429 Too Many Requests','Unknown connector error']){const {app}=await setup(t);await startDiscoveryBatch(app,request);await discoveryTick(app,{connect:{call:async()=>{throw Error(message);}}});const b=(await app.snapshot()).discovery_batches[request.id];assert.equal(b.status,'Held');assert.equal(b.reason,message);assert.equal(b.searches[0].response_length,undefined);}
+});
 
 async function providerPolicy(research,change){const path=join(research,'controller-config.json'),p=JSON.parse(await readFile(path));change(p);await saveJson(path,p);}
 
