@@ -25,7 +25,7 @@ const money = value => Number.isSafeInteger(value) && value > 0 && value <= 100_
 const services = ['website', 'systems', 'ai', 'marketing'];
 const coldOutcomes = ['no_answer', 'busy', 'voicemail'];
 const connectedOutcomes = ['discovery', 'requested_info', 'callback', 'not_interested', 'do_not_contact', 'wrong_contact', 'uncertain'];
-const assetEvents = ['asset_registered', 'asset_version_registered', 'asset_version_selected'];
+const assetEvents = ['asset_registered', 'asset_version_registered', 'asset_version_selected', 'asset_version_disputed'];
 const assetKey = value => key(value) && value !== '__proto__';
 function validateAssetReference(value) {
   check(text(value, 600) && value === value.trim(), 'Add a private file reference, not copied file content');
@@ -226,7 +226,7 @@ export class StudioLifecycle {
           check(assetKey(data.version_id) && text(data.version_label, 80), 'Give the first asset version a stable ID and label');
           validateAssetReference(data.reference);
           index[data.asset_id] = { id: data.asset_id, name: data.name.trim(), kind: data.kind.trim(), scope: data.scope,
-            ...(data.scope === 'project' ? { project_id: data.project_id } : {}), baseline_version: null, choices: {},
+            ...(data.scope === 'project' ? { project_id: data.project_id } : {}), baseline_version: null, choices: {}, dispute: null,
             versions: { [data.version_id]: { id: data.version_id, label: data.version_label.trim(), reference: data.reference,
               registered_by: actor, registered_at: event.at } } };
         } else {
@@ -238,14 +238,45 @@ export class StudioLifecycle {
             check(!Object.values(asset.versions).some(v => v.reference === data.reference), 'Each version needs its own immutable file reference');
             asset.versions[data.version_id] = { id: data.version_id, label: data.version_label.trim(), reference: data.reference,
               registered_by: actor, registered_at: event.at };
+          } else if (event.type === 'asset_version_disputed') {
+            check(!asset.dispute, 'A disagreement is already open; select a version to resolve it');
+            check(asset.baseline_version && Object.hasOwn(asset.versions, data.version_id), 'Choose a registered version to dispute against an approved baseline');
+            check(data.version_id !== asset.baseline_version, 'Choose a version different from the approved baseline');
+            asset.dispute = { id: eid, baseline_version: asset.baseline_version, opened_by: actor, opened_at: event.at,
+              choices: { [actor]: { version_id: data.version_id, event_id: eid, at: event.at } } };
+            asset.choices = {};
           } else {
             check(Object.hasOwn(asset.versions, data.version_id), 'Select a registered asset version');
-            asset.choices[actor] = { version_id: data.version_id, event_id: eid, at: event.at };
-            const ownerChoice = asset.choices.owner?.version_id, friendChoice = asset.choices.friend?.version_id;
-            if (ownerChoice && ownerChoice === friendChoice) {
-              asset.baseline_version = ownerChoice;
-              asset.baseline_confirmed_at = event.at;
-              asset.baseline_agreement_events = [asset.choices.owner.event_id, asset.choices.friend.event_id];
+            const choice = { version_id: data.version_id, event_id: eid, at: event.at };
+            asset.choices ??= {};
+            if (asset.dispute) {
+              asset.dispute.choices[actor] = choice;
+              const ownerChoice = asset.dispute.choices.owner, friendChoice = asset.dispute.choices.friend;
+              if (ownerChoice && friendChoice && ownerChoice.version_id === friendChoice.version_id) {
+                asset.baseline_version = ownerChoice.version_id;
+                asset.baseline_approved_at = event.at;
+                asset.baseline_confirmed_at = event.at;
+                asset.baseline_agreement_events = [ownerChoice.event_id, friendChoice.event_id];
+                delete asset.baseline_approved_by;
+                delete asset.baseline_approval_event;
+                asset.choices = structuredClone(asset.dispute.choices);
+                asset.dispute = null;
+              }
+            } else if (asset.baseline_version !== data.version_id) {
+              asset.baseline_version = data.version_id;
+              asset.baseline_approved_at = event.at;
+              asset.baseline_approved_by = actor;
+              asset.baseline_approval_event = eid;
+              delete asset.baseline_confirmed_at;
+              delete asset.baseline_agreement_events;
+              asset.choices = { [actor]: choice };
+            } else {
+              asset.choices[actor] = choice;
+              const ownerChoice = asset.choices.owner, friendChoice = asset.choices.friend;
+              if (ownerChoice && friendChoice && ownerChoice.version_id === asset.baseline_version && friendChoice.version_id === asset.baseline_version) {
+                asset.baseline_confirmed_at = event.at;
+                asset.baseline_agreement_events = [ownerChoice.event_id, friendChoice.event_id];
+              }
             }
           }
         }

@@ -73,7 +73,7 @@ async function saveAssetEvent(type, data) {
 function renderAssets() {
   const node = panel('Private studio and project assets');
   node.append(el('p', 'Add a Google Drive file ID or a relative path inside private storage. This index saves references only; it does not copy, fetch or verify files. Never paste credentials or file contents.', 'notice'));
-  node.append(el('p', 'A version becomes the approved baseline only after both operators select that same version. Conflicting selections leave the last shared baseline in place.', 'muted'));
+  node.append(el('p', 'Either operator can approve a version as the baseline. If you disagree with a direction, flag an alternative; the last approved baseline stays active until both operators make matching choices to resolve it.', 'muted'));
   const form = el('form'); form.append(el('h3', 'Add an asset reference'));
   const scope = inputField(form, 'Asset scope', 'scope', 'studio', 'text', [{ value: 'studio', label: 'Studio-wide' }, { value: 'project', label: 'Project' }]);
   const projects = Object.values(state.prospects).sort((a, b) => a.name.localeCompare(b.name));
@@ -102,15 +102,30 @@ function renderAssets() {
     card.append(pill(asset.kind), pill(projectName));
     const baseline = asset.versions[asset.baseline_version];
     card.append(el('p', baseline ? `Approved baseline: ${baseline.label}` : 'Approved baseline: not set yet', baseline ? '' : 'muted'));
-    const ownerChoice = asset.choices.owner?.version_id, friendChoice = asset.choices.friend?.version_id;
-    if (ownerChoice && friendChoice && ownerChoice !== friendChoice) card.append(el('p', `Selections differ · owner: ${asset.versions[ownerChoice]?.label ?? 'unknown'} · friend: ${asset.versions[friendChoice]?.label ?? 'unknown'}. The baseline stays ${baseline?.label ?? 'unset'} until both select the same version.`, 'notice'));
-    else if (!ownerChoice || !friendChoice) card.append(el('p', 'Both operators must select the same version before it becomes the baseline.', 'muted'));
+    if (asset.dispute) {
+      const choiceLabel = operator => {
+        const choice = asset.dispute.choices[operator];
+        return choice ? asset.versions[choice.version_id]?.label ?? 'unknown version' : 'needs a current choice';
+      };
+      card.append(el('p', `Disagreement open · baseline stays ${baseline?.label ?? 'unset'} · owner: ${choiceLabel('owner')} · friend: ${choiceLabel('friend')}. Both current choices must match to resolve it.`, 'notice'));
+    } else {
+      const approval = asset.baseline_agreement_events?.length ? ' Both operators confirmed this version.' : asset.baseline_approved_by ? ` Last approved by ${asset.baseline_approved_by}.` : '';
+      card.append(el('p', `An individual approval takes effect immediately.${approval} Older selections do not count as objections.`, 'muted'));
+    }
     for (const version of Object.values(asset.versions).sort((a, b) => a.registered_at.localeCompare(b.registered_at))) {
       const row = el('section', undefined, 'check-item asset-version');
       row.append(el('strong', version.label), el('p', version.reference, 'muted'));
       row.append(el('small', `Added by ${version.registered_by} · ${new Date(version.registered_at).toLocaleDateString()}`));
-      const mine = asset.choices[state.current_operator]?.version_id === version.id;
-      row.append(button(mine ? 'Your selection' : 'Select as my approved version', async () => { try { await saveAssetEvent('asset_version_selected', { asset_id: asset.id, version_id: version.id }); } catch (error) { tell(error.message, true); } }));
+      const currentChoices = asset.dispute ? asset.dispute.choices : asset.choices;
+      const mine = currentChoices[state.current_operator]?.version_id === version.id;
+      if (asset.dispute) {
+        row.append(button(mine ? 'Your current resolution choice' : 'Choose to resolve disagreement', async () => { try { await saveAssetEvent('asset_version_selected', { asset_id: asset.id, version_id: version.id }); } catch (error) { tell(error.message, true); } }));
+      } else if (asset.baseline_version === version.id) {
+        row.append(el('small', 'Current approved baseline'));
+      } else {
+        row.append(button('Approve as baseline', async () => { try { await saveAssetEvent('asset_version_selected', { asset_id: asset.id, version_id: version.id }); } catch (error) { tell(error.message, true); } }));
+        if (baseline) row.append(button('Flag disagreement', async () => { try { await saveAssetEvent('asset_version_disputed', { asset_id: asset.id, version_id: version.id }); } catch (error) { tell(error.message, true); } }));
+      }
       card.append(row);
     }
     const addVersion = el('form'); addVersion.append(el('h4', 'Register a new version'));

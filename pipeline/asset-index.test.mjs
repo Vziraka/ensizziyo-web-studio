@@ -20,7 +20,7 @@ function assetEvent(app, id, type, data, actor = 'owner') {
   return app.apply({ id, prospect_id: 'studio-assets', type, at, data }, { actor });
 }
 
-test('private asset index spans studio and project scope and switches baseline only on operator consensus', async t => {
+test('either operator can approve an uncontested baseline and prior choices do not become objections', async t => {
   const app = await setup(t);
   await assetEvent(app, 'studio-brand', 'asset_registered', {
     asset_id: 'studio-brand', scope: 'studio', name: 'EVZ logo', kind: 'brand',
@@ -38,23 +38,80 @@ test('private asset index spans studio and project scope and switches baseline o
 
   await assetEvent(app, 'owner-v1', 'asset_version_selected', { asset_id: 'project-brand', version_id: 'brand-v1' }, 'owner');
   state = await app.snapshot();
-  assert.equal(state.asset_index['project-brand'].baseline_version, null);
+  assert.equal(state.asset_index['project-brand'].baseline_version, 'brand-v1');
+  assert.equal(state.asset_index['project-brand'].baseline_approved_by, 'owner');
   await assetEvent(app, 'friend-v1', 'asset_version_selected', { asset_id: 'project-brand', version_id: 'brand-v1' }, 'friend');
   state = await app.snapshot();
   assert.equal(state.asset_index['project-brand'].baseline_version, 'brand-v1');
+  assert.deepEqual(state.asset_index['project-brand'].baseline_agreement_events, ['owner-v1', 'friend-v1']);
 
   await assetEvent(app, 'brand-v2-added', 'asset_version_registered', {
     asset_id: 'project-brand', version_id: 'brand-v2', version_label: 'v2', reference: 'drive:synthetic-brand-file-0002'
   });
   await assetEvent(app, 'owner-v2', 'asset_version_selected', { asset_id: 'project-brand', version_id: 'brand-v2' }, 'owner');
   state = await app.snapshot();
-  assert.equal(state.asset_index['project-brand'].baseline_version, 'brand-v1');
-  assert.notEqual(state.asset_index['project-brand'].choices.owner.version_id, state.asset_index['project-brand'].choices.friend.version_id);
+  assert.equal(state.asset_index['project-brand'].baseline_version, 'brand-v2');
+  assert.deepEqual(Object.keys(state.asset_index['project-brand'].choices), ['owner']);
+  assert.equal(state.asset_index['project-brand'].dispute, null);
+  assert.ok(state.events['friend-v1'], 'the old approval remains in append-only evidence');
   await assetEvent(app, 'friend-v2', 'asset_version_selected', { asset_id: 'project-brand', version_id: 'brand-v2' }, 'friend');
   state = await app.snapshot();
   assert.equal(state.asset_index['project-brand'].baseline_version, 'brand-v2');
   assert.deepEqual(state.asset_index['project-brand'].baseline_agreement_events, ['owner-v2', 'friend-v2']);
+
+  await assetEvent(app, 'brand-v3-added', 'asset_version_registered', {
+    asset_id: 'project-brand', version_id: 'brand-v3', version_label: 'v3', reference: 'drive:synthetic-brand-file-0003'
+  });
+  await assetEvent(app, 'friend-v3', 'asset_version_selected', { asset_id: 'project-brand', version_id: 'brand-v3' }, 'friend');
+  state = await app.snapshot();
+  assert.equal(state.asset_index['project-brand'].baseline_version, 'brand-v3');
+  assert.equal(state.asset_index['project-brand'].baseline_approved_by, 'friend');
+  assert.deepEqual(Object.keys(state.asset_index['project-brand'].choices), ['friend']);
   assert.equal(state.prospects.juniper.stage, 'Ready to contact');
+});
+
+test('an explicit disagreement preserves the last baseline until both operators choose the same version', async t => {
+  const app = await setup(t);
+  await assetEvent(app, 'brand', 'asset_registered', {
+    asset_id: 'brand', scope: 'studio', name: 'EVZ logo', kind: 'brand',
+    version_id: 'brand-v1', version_label: 'v1', reference: 'private-path:studio/brand/v1.svg'
+  });
+  await assetEvent(app, 'brand-v2-added', 'asset_version_registered', {
+    asset_id: 'brand', version_id: 'brand-v2', version_label: 'v2', reference: 'private-path:studio/brand/v2.svg'
+  });
+  await assetEvent(app, 'brand-v3-added', 'asset_version_registered', {
+    asset_id: 'brand', version_id: 'brand-v3', version_label: 'v3', reference: 'private-path:studio/brand/v3.svg'
+  });
+
+  await assetEvent(app, 'owner-v1', 'asset_version_selected', { asset_id: 'brand', version_id: 'brand-v1' }, 'owner');
+  await assetEvent(app, 'owner-v2', 'asset_version_selected', { asset_id: 'brand', version_id: 'brand-v2' }, 'owner');
+  let state = await app.snapshot();
+  assert.equal(state.asset_index.brand.baseline_version, 'brand-v2');
+
+  await assetEvent(app, 'friend-disputes-v3', 'asset_version_disputed', { asset_id: 'brand', version_id: 'brand-v3' }, 'friend');
+  state = await app.snapshot();
+  assert.equal(state.asset_index.brand.baseline_version, 'brand-v2');
+  assert.deepEqual(state.asset_index.brand.dispute.choices, {
+    friend: { version_id: 'brand-v3', event_id: 'friend-disputes-v3', at }
+  });
+
+  await assetEvent(app, 'owner-reaffirms-v2', 'asset_version_selected', { asset_id: 'brand', version_id: 'brand-v2' }, 'owner');
+  state = await app.snapshot();
+  assert.equal(state.asset_index.brand.baseline_version, 'brand-v2');
+  assert.ok(state.asset_index.brand.dispute, 'different current choices keep the prior baseline');
+
+  await assetEvent(app, 'owner-agrees-v3', 'asset_version_selected', { asset_id: 'brand', version_id: 'brand-v3' }, 'owner');
+  state = await app.snapshot();
+  assert.equal(state.asset_index.brand.baseline_version, 'brand-v3');
+  assert.equal(state.asset_index.brand.dispute, null);
+  assert.deepEqual(state.asset_index.brand.baseline_agreement_events, ['owner-agrees-v3', 'friend-disputes-v3']);
+  assert.ok(state.events['friend-disputes-v3'] && state.events['owner-reaffirms-v2'] && state.events['owner-agrees-v3']);
+
+  await assert.rejects(app.apply({ id: 'stale-asset-approval', prospect_id: 'studio-assets', type: 'asset_version_selected', at,
+    data: { asset_id: 'brand', version_id: 'brand-v1' } }, { actor: 'friend', expectedRevision: state.revision - 1 }), /Record changed; refresh before approving/);
+  state = await app.snapshot();
+  assert.equal(state.asset_index.brand.baseline_version, 'brand-v3');
+  assert.equal(Object.hasOwn(state.events, 'stale-asset-approval'), false);
 });
 
 test('asset references reject credentials, copied content, path traversal and unknown projects', async t => {
