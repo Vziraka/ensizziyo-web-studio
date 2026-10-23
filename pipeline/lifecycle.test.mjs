@@ -176,6 +176,22 @@ test('no-answer releases one queued email; decline cancels it permanently and la
   await assert.rejects(s.event('discovery_confirmed', { goal: 'old positive note' }), /Restriction/);
   await assert.rejects(s.app.apply({ ...event, data: { ...event.data, outcome: 'connected' } }), /conflicts/);
 });
+test('verified replies create an attention item and save attributed drafts against the exact reply', async t => {
+  const s = await setup(t); await s.app.apply(prospect());
+  await s.app.apply({ id: 'reply-source-event', prospect_id: 'fictional-bakery', type: 'reply_received', at, data: { source_id: 'verified-reply-1', kind: 'reply', thread_id: 'fictional-thread' } }, { actor: 'provider' });
+  const alert = (await s.app.dashboard()).reply_alerts.find(item => item.prospect_id === 'fictional-bakery');
+  assert.ok(alert, 'a verified reply should appear in Needs attention');
+  assert.match(alert.reason, /future cold follow-ups are paused/);
+  await assert.rejects(s.event('reply_draft_saved', { source_id: 'stale-reply', body: 'A draft for the wrong reply.' }, 'stale-reply-draft', undefined, 'friend'), /exact current reply/);
+  await s.event('reply_draft_saved', { source_id: 'verified-reply-1', body: 'Thanks for the details. I would be glad to discuss the next step.' }, 'reply-draft', undefined, 'friend');
+  let state = await s.app.snapshot();
+  assert.deepEqual(state.prospects['fictional-bakery'].reply_drafts.at(-1), { source_id: 'verified-reply-1', body: 'Thanks for the details. I would be glad to discuss the next step.', at, actor: 'friend' });
+  assert.equal(state.events['reply-draft'].actor, 'friend');
+  await s.event('reply_reviewed', { source_id: 'verified-reply-1', outcome: 'hold', note: 'Wait for a human follow-up.' }, 'reply-decision', undefined, 'friend');
+  state = await s.app.snapshot();
+  assert.equal(state.prospects['fictional-bakery'].stage, 'Hold');
+  assert.equal((await s.app.dashboard()).reply_alerts.length, 0);
+});
 test('skipping a task never becomes a call or email; campaign dates use local business days', async t => {
   const s = await setup(t); await s.app.apply(prospect());
   await s.event('call_logged', { call_id: 'skip-1', outcome: 'skipped', simulated: true, performed_at: at });
