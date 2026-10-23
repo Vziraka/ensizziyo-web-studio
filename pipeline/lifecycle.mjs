@@ -50,6 +50,16 @@ export function addBusinessDays(value, count) {
   while (days < count) { due.setUTCDate(due.getUTCDate() + 1); if (![0, 6].includes(new Date(`${businessDate(due)}T12:00:00Z`).getUTCDay())) days++; }
   return due;
 }
+export function nextBusinessMorning(value) {
+  check(date(value), 'Use a dated callback request');
+  const day = new Date(`${businessDate(value)}T12:00:00Z`);
+  do { day.setUTCDate(day.getUTCDate() + 1); } while ([0, 6].includes(day.getUTCDay()));
+  const datePart = day.toISOString().slice(0, 10), guess = new Date(`${datePart}T09:00:00Z`);
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(guess).map(part => [part.type, part.value]));
+  const observedLocal = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute));
+  const offset = observedLocal - guess.getTime();
+  return new Date(Date.parse(`${datePart}T09:00:00Z`) - offset);
+}
 export function businessDaysBetween(start, end) {
   let day = new Date(`${businessDate(start)}T12:00:00Z`), count = 0;
   const finish = businessDate(end);
@@ -63,6 +73,13 @@ function request(state, record, type, payload, eventId) {
   const id = `${eventId}-${type}`;
   state.actions[id] ??= { id, prospect_id: record.id, type, payload, status: 'Queued', created_at: state.updated_at,
     ...(record.follow_up_owner ? { assigned_to: record.follow_up_owner } : {}) };
+}
+function scheduleCallback(state, record, callbackAt, performedAt, eventId) {
+  const exact = callbackAt ?? null;
+  if (exact !== null) check(date(exact) && Date.parse(exact) > Date.parse(performedAt), 'Confirm an exact callback after the call; overdue promises stay due');
+  const due = exact ? new Date(exact) : nextBusinessMorning(performedAt);
+  record.stage = 'Callback'; record.callback_at = exact; record.callback_due_at = due.toISOString();
+  request(state, record, 'callback_task', { due_at: due.toISOString(), kind: 'callback', exact_time: Boolean(exact) }, eventId);
 }
 function pauseCold(state, record, eventId, reason) {
   record.cold_paused = true;
@@ -128,7 +145,7 @@ export function validateTranscriptProposal(proposal, transcript) {
   for (const claim of proposal.claims) check(text(claim.claim, 1200) && text(claim.quote, 1500) && transcript.text.includes(claim.quote), 'Every claim needs an exact transcript quote');
   check(Array.isArray(proposal.unknowns) && proposal.unknowns.every(x => text(x, 1000)), 'Unknowns must be explicit');
   check(proposal.callback_at === null || date(proposal.callback_at), 'Invalid proposed callback time');
-  check(proposal.outcome !== 'callback' || date(proposal.callback_at), 'Callback requires an exact time for owner review');
+  check(proposal.outcome !== 'callback' || proposal.callback_at === null || date(proposal.callback_at), 'Callback time must be an exact date or explicitly unknown');
   return proposal;
 }
 
@@ -223,7 +240,7 @@ export class StudioLifecycle {
             check(data.focus===undefined||['ai','systems','website','marketing','undecided'].includes(data.focus),'Choose a supported call focus');
             if (data.desk) {
               check(data.desk === true && (data.intent === undefined || data.outcome === 'connected' && ['discovery','requested_info'].includes(data.intent)), 'Choose the interested next step');
-              r.call_undo = {call_id:data.call_id,event_id:eid,record:Object.fromEntries(['stage','cold_paused','callback_at','next_check','suppression','note','follow_ups'].map(k=>[k,structuredClone(r[k]??null)])),actions:structuredClone(Object.fromEntries(Object.entries(state.actions).filter(([,a])=>a.prospect_id===r.id)))};
+              r.call_undo = {call_id:data.call_id,event_id:eid,record:Object.fromEntries(['stage','cold_paused','callback_at','callback_due_at','next_check','suppression','note','follow_ups'].map(k=>[k,structuredClone(r[k]??null)])),actions:structuredClone(Object.fromEntries(Object.entries(state.actions).filter(([,a])=>a.prospect_id===r.id)))};
             }
             check(data.simulated === r.controlled, 'Simulated and actual calls cannot be mixed');
             check(date(data.performed_at) && Date.parse(data.performed_at) <= Date.parse(event.at) && (!r.attempts.length || Date.parse(data.performed_at) >= Date.parse(r.attempts.at(-1).at)), 'Call time must be performed, ordered and dated');
@@ -250,8 +267,7 @@ export class StudioLifecycle {
               }
             }
             else if (data.outcome === 'callback') {
-              check(date(data.callback_at) && Date.parse(data.callback_at) > Date.parse(data.performed_at), 'Callback needs an exact time after the performed call');
-              r.stage = 'Callback'; r.callback_at = data.callback_at; pauseCold(state, r, eid, 'Requested callback'); request(state, r, 'callback_task', { due_at: data.callback_at, kind: 'callback' }, eid);
+              pauseCold(state, r, eid, 'Requested callback'); scheduleCallback(state, r, data.callback_at, data.performed_at, eid);
             } else if (coldOutcomes.includes(data.outcome)) {
               if (data.desk || verificationLane(r) || !r.contact.email || !this.config.outreach_enabled && !r.controlled) {
                 r.stage = verificationLane(r) ? 'Verifying' : 'Contacting';
@@ -336,7 +352,7 @@ export class StudioLifecycle {
             check(connectedOutcomes.includes(data.outcome), 'Unsupported reviewed outcome');
             r.approved_calls[data.call_id] = { outcome: data.outcome, at: event.at, actor, proposal_sha256: proposal.sha256, note: data.note ?? '' };
             if (['not_interested', 'do_not_contact'].includes(data.outcome)) { r.restriction = data.outcome; r.stage = 'Stopped'; pauseCold(state, r, eid, data.outcome); }
-            else if (data.outcome === 'callback') { check(date(data.callback_at) && Date.parse(data.callback_at) > Date.parse(r.calls[data.call_id].performed_at), 'Confirm an exact callback after the call; overdue promises stay due'); r.stage = 'Callback'; r.callback_at = data.callback_at; request(state, r, 'callback_task', { due_at: data.callback_at, kind: 'callback' }, eid); }
+            else if (data.outcome === 'callback') scheduleCallback(state, r, data.callback_at ?? proposal.callback_at, r.calls[data.call_id].performed_at, eid);
             else if (['discovery', 'requested_info'].includes(data.outcome) && verificationLane(r)) { r.stage = 'Verification review'; r.next_check = 'Confirm business identity, current activity, decision-maker and goal from the actual conversation. Email remains blocked.'; }
             else if (data.outcome === 'discovery') r.stage = 'Discovery';
             else if (data.outcome === 'requested_info') { r.stage = 'Information requested'; request(state, r, 'information_task', { summary: proposal.summary }, eid); }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { StudioLifecycle, hash, initialConfig, businessDaysBetween, dailyNewProspectCount } from './lifecycle.mjs';
+import { StudioLifecycle, hash, initialConfig, businessDaysBetween, dailyNewProspectCount, nextBusinessMorning } from './lifecycle.mjs';
 import { acquireLock } from './engine.mjs';
 import fs from 'node:fs';
 import {syncBuiltinESMExports} from 'node:module';
@@ -27,6 +27,12 @@ async function setup(t) {
   return { app, directory, event: (type, data = {}, id = type, p = 'fictional-bakery', actor = 'owner') =>
     app.apply({ id, prospect_id: p, type, at, data }, { actor }) };
 }
+
+test('unspecified callback reminders use 9am Eastern on the next business day across daylight-saving changes',()=>{
+  assert.equal(nextBusinessMorning('2026-10-19T15:00:00.000Z').toISOString(),'2026-10-20T13:00:00.000Z');
+  assert.equal(nextBusinessMorning('2026-10-30T15:00:00.000Z').toISOString(),'2026-11-02T14:00:00.000Z');
+  assert.equal(nextBusinessMorning('2026-03-06T15:00:00.000Z').toISOString(),'2026-03-09T13:00:00.000Z');
+});
 
 test('same-host state writers serialize without losing updates', async t => {
   const { app } = await setup(t);
@@ -215,4 +221,25 @@ test('a late-logged promised callback stays due and a stop cancels that local ca
   assert.equal((await s.app.dashboard()).daily.due[0].kind, 'callback');
   await s.event('contact_stopped', { reason: 'do_not_contact' });
   assert.ok(Object.values((await s.app.snapshot()).actions).filter(a => a.type === 'callback_task').every(a => a.status === 'Cancelled'));
+});
+test('a transcript callback with no exact time stays a reminder and never invents a client commitment',async t=>{
+  const s=await setup(t);await s.app.apply(prospect());
+  await s.event('call_logged',{call_id:'connected-callback',outcome:'connected',simulated:true,performed_at:at});
+  const transcript='Owner: Please call back next week. I do not have an exact time.';
+  await s.event('transcript_added',{call_id:'connected-callback',text:transcript,permission_confirmed:true},'callback-transcript');
+  const proposal={schema_version:1,transcript_sha256:hash(transcript),outcome:'callback',callback_at:null,summary:'The owner requested a callback without giving an exact time.',claims:[{claim:'Requested a callback',quote:'Please call back next week.'}],unknowns:['Exact callback time is unknown']};
+  await s.event('transcript_assessed',{call_id:'connected-callback',proposal,review:{verdict:'Accepted',proposal_sha256:hash(proposal),independent:true}},'callback-assessment','fictional-bakery','controlled-fixture');
+  await s.event('call_reviewed',{call_id:'connected-callback',proposal_sha256:hash(proposal),outcome:'callback'},'callback-owner-review');
+  const state=await s.app.snapshot(),r=state.prospects['fictional-bakery'];
+  assert.equal(r.callback_at,null);assert.equal(r.callback_due_at,'2026-10-20T13:00:00.000Z');
+  assert.equal(Object.values(state.actions).some(a=>a.type==='email'),false);
+});
+test('an unspecified callback stays call-only and receives an internal 9am next-business-day task',async t=>{
+  const s=await setup(t);await s.app.apply(prospect());
+  await s.event('call_logged',{call_id:'unspecified-callback',outcome:'callback',simulated:true,performed_at:at});
+  const state=await s.app.snapshot(),r=state.prospects['fictional-bakery'],task=Object.values(state.actions).find(a=>a.type==='callback_task');
+  assert.equal(r.stage,'Callback');assert.equal(r.callback_at,null);assert.equal(r.callback_due_at,'2026-10-20T13:00:00.000Z');
+  assert.deepEqual(task.payload,{due_at:'2026-10-20T13:00:00.000Z',kind:'callback',exact_time:false});
+  assert.equal(Object.values(state.actions).some(a=>a.type==='email'),false);
+  assert.equal(nextBusinessMorning('2026-10-30T15:00:00.000Z').toISOString(),'2026-11-02T14:00:00.000Z');
 });

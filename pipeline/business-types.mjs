@@ -37,7 +37,7 @@ export function deskQueues(state,{category='all',subtypes=[],lane='all',history=
   for(const action of state.supply.queue)if(!byId.has(action.prospect_id))byId.set(action.prospect_id,state.prospects[action.prospect_id]);
   const day=value=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
   const today=day(state.supply.checked_at??new Date());
-  const due=records.filter(r=>!r.restriction&&r.stage==='Callback'&&(!r.callback_at||day(r.callback_at)<=today));
+  const due=records.filter(r=>{const callbackDue=r.callback_at??r.callback_due_at;return !r.restriction&&r.stage==='Callback'&&(!callbackDue||day(callbackDue)<=today);});
   const promised=records.filter(r=>!r.restriction&&(r.stage==='Discovery'&&!r.meeting||r.stage==='Information requested'&&!['Sent','Verified','Simulated'].includes(r.information_draft?.status)));
   const commitments=[...new Map([...due,...promised].map(r=>[r.id,r])).values()];
   const ids=new Set(commitments.map(r=>r.id));

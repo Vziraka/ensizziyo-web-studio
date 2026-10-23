@@ -37,10 +37,14 @@ test('interested owner notes progress without recording; email and booking remai
   assert.equal(Object.values(s.actions).filter(a=>a.type==='email').length,0);
   assert.equal(sessionSummary(s,'2026-10-19T14:00:00Z').interested,1);
 });
-test('callback needs a future time and stops cannot be undone into outreach', async t => {
+test('unspecified callback creates an internal reminder and stops cannot be undone into outreach', async t => {
   const {app,call,apply}=await setup(t);
-  await assert.rejects(call('bad','callback'),/exact time/);
-  assert.equal((await app.snapshot()).prospects.bakery.attempts.length,0);
+  await assert.rejects(call('bad','callback',{callback_at:at}),/after the call/);
+  await call('callback','callback');
+  const state=await app.snapshot();
+  assert.equal(state.prospects.bakery.callback_at,null);
+  assert.equal(state.prospects.bakery.callback_due_at,'2026-10-20T13:00:00.000Z');
+  assert.equal(Object.values(state.actions).some(action=>action.type==='email'),false);
   await call('stop','do_not_contact');
   await assert.rejects(apply('undo-stop','call_undone',{call_id:'stop'}),/Restriction/);
   assert.equal(callSupply(await app.snapshot(),new Date(at)).ready,0);

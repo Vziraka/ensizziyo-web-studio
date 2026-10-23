@@ -262,7 +262,8 @@ function detail(r) {
   if (r.quote) node.append(el('p', `${r.controlled ? 'Test quote' : 'Fixed quote'}: $${(r.quote.price_cents / 100).toFixed(2)} · verified payment evidence: $${(r.payments.reduce((n, p) => n + p.amount_cents, 0) / 100).toFixed(2)}`, 'notice'));
   if (r.quote) node.append(link('Open the written project proposal ↗', `/proposal/${r.id}`));
   if (r.stage === 'Callback') {
-    node.append(el('p', r.callback_at ? `Requested callback: ${new Date(r.callback_at).toLocaleString()}. Cold email remains paused.` : 'Callback requested. Check the saved agreed time before calling.', 'notice'));
+    const due=r.callback_at??r.callback_due_at,when=due?new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',dateStyle:'medium',timeStyle:'short'}).format(new Date(due))+' ET':null;
+    node.append(el('p', r.callback_at ? `Requested callback at ${when}. Cold email remains paused.` : when ? `Callback requested without an exact time. Internal reminder set for ${when}; no time was promised. Cold email remains paused.` : 'Callback requested. Check the saved reminder before calling.', 'notice'));
   }
   if (['Ready to contact', 'Contacting', 'Ready to verify', 'Verifying', 'Callback'].includes(r.stage)) node.append(callPrep(r));
   nextForm(r, node);
