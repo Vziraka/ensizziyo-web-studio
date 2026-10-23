@@ -347,6 +347,11 @@ function detail(r) {
 }
 function render() {
   document.body.classList.toggle('desk-view',['today','businesses'].includes(view));
+  const attentionCount = state.exceptions.length + (state.reply_alerts?.length ?? 0), attentionNav = document.querySelector('#attention-nav');
+  const attentionBadge = document.querySelector('#attention-count');
+  attentionBadge.textContent = attentionCount ? String(attentionCount) : '';
+  attentionBadge.hidden = attentionCount === 0;
+  attentionNav.setAttribute('aria-label', attentionCount ? `Needs attention, ${attentionCount} open items` : 'Needs attention');
   document.querySelector('#mode-banner').textContent = state.controls.mode === 'controlled' ? 'Controlled operations proof · Fictional businesses, simulated calls and payments. Approved test emails go only to owner-controlled inboxes.' : state.controls.calls_paused ? 'Production workspace · Saved research, verification calls and client work. Contact remains paused until final owner release.' : state.controls.outreach_paused ? 'Calling enabled · You place and log calls. Booking requires verified business Calendar setup and your approval of the guest and time. Commercial email remains paused.' : 'Production workspace · Live calls and email operate within the approved campaign rules. Review due work and exceptions before contacting.';
   const discovery=state.discovery_batches?.find(b=>!['Complete','Stopped','Held'].includes(b.status));
   document.querySelector('#research-status').textContent = discovery ? `Discovery ${discovery.status.toLowerCase()} · ${discovery.reviewed}/25 checked` : `${state.controls.research_paused ? 'Research paused' : 'Research enabled'}${state.research_runtime ? ` · ${state.research_runtime.status}${state.research_runtime.counts ? ` · ${state.research_runtime.counts.Complete} reviewed` : ''}` : ''}`;

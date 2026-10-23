@@ -34,7 +34,7 @@ input,select,textarea{font-weight:400}.desk-card h3,.desk-notes h3{font-weight:7
 
 .desk-notes .email-copy p{font-size:16px}.desk-contact .notice{margin-top:14px}
 
-nav button{justify-content:flex-start;gap:12px}nav button>img{width:19px;height:19px;flex-shrink:0;opacity:.8}nav button.active>img{opacity:1}
+nav button{justify-content:flex-start;gap:12px}nav button>img{width:19px;height:19px;flex-shrink:0;opacity:.8}nav button.active>img{opacity:1}nav .nav-count{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:#d1a74d;color:#192d2b;font-size:12px;font-weight:700;opacity:1}
 
 @media(min-width:1301px){.shell{grid-template-columns:210px minmax(0,1fr)}aside{padding-left:12px;padding-right:12px}}
 @media(max-width:650px){.desk-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;overflow:visible}.desk-tabs button{font-size:14px;padding:12px 3px;white-space:normal;min-width:0;text-align:center}}

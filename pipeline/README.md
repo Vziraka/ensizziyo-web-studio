@@ -8,7 +8,7 @@ The [private asset index](ASSET-INDEX.md) records studio-wide and stage-independ
 
 Follow-up, native and client information email paths use the logged operator's configured name with `hello@evzdigital.studio`; client information drafts record their preparer and approver. Before enabling any commercial email route, set both `sender.operator_names.owner` and `sender.operator_names.friend` in the private lifecycle configuration; the release check stays closed until then. Do not commit personal names. See [local operation notes](PRODUCTION.md#october-23-shared-desk-foundation-and-hosting-limit).
 
-Verified replies pause future cold follow-ups and appear in **Needs attention** and **Call & reply reviews**. Either operator can save a draft attributed to them and bound to the exact verified reply. The desk does not copy the original reply into the draft or send it; read the original in the connected mailbox before writing. This is a local alert, not an off-device notification or the requested 9am team digest.
+Verified replies pause future cold follow-ups and appear in **Needs attention** and **Call & reply reviews**; a visible navigation count marks open attention items. Either operator can save a draft attributed to them and bound to the exact verified reply. The desk does not copy the original reply into the draft or send it; read the original in the connected mailbox before writing. This is a local alert, not an off-device notification or the requested 9am team digest.
 
 From `pipeline` in PowerShell, create three independent random 32-byte keys and initialize the controlled fixture state:
 
