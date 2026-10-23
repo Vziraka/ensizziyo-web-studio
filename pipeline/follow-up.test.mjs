@@ -9,7 +9,7 @@ import {composeFollowUp,renderFollowUpHtml,followUpSetupIssues} from './follow-u
 import {approvedFollowUp,nativeMessage} from './production.mjs';
 const at='2026-10-19T15:00:00Z';
 test('blank postal address is omitted from the preview while commercial setup stays held',()=>{
-  const config={sender:{email:'hello@evzdigital.studio',postal_address:''},follow_up:{sender_verified:true,demo_verified:true,booking_url:'https://calendar.app.google/example'}};
+  const config={sender:{email:'hello@evzdigital.studio',postal_address:'',operator_names:{owner:'Owner Test',friend:'Friend Test'}},follow_up:{sender_verified:true,demo_verified:true,booking_url:'https://calendar.app.google/example'}};
   const message=composeFollowUp({name:'STUDIO TEST Oakline',contact:{email:'owner@example.invalid'}},{outcome:'no_answer',focus:'ai'},config);
   assert.equal(message.postal_address,'');
   assert.doesNotMatch(message.text,/Business mailing address pending/);
@@ -18,7 +18,7 @@ test('blank postal address is omitted from the preview while commercial setup st
   assert.ok(html.includes('Reply “stop”'));
   assert.deepEqual(followUpSetupIssues(config),['Choose the business mailing address for the footer']);
 });
-async function setup(t){const directory=await mkdtemp(join(tmpdir(),'evz-followup-'));t.after(()=>rm(directory,{recursive:true,force:true}));const config=structuredClone(initialConfig);config.follow_up.enabled=true;const app=await StudioLifecycle.initialize({directory,config,now:()=>new Date(at)});await app.apply(fixtureProspect('sample',at));return app;}
+async function setup(t,{operatorNames}={}){const directory=await mkdtemp(join(tmpdir(),'evz-followup-'));t.after(()=>rm(directory,{recursive:true,force:true}));const config=structuredClone(initialConfig);if(operatorNames)config.sender.operator_names=operatorNames;config.follow_up.enabled=true;const app=await StudioLifecycle.initialize({directory,config,now:()=>new Date(at)});await app.apply(fixtureProspect('sample',at));return app;}
 const call=(outcome='no_answer',extra={})=>({id:'call-one',prospect_id:'sample',type:'call_logged',at,data:{call_id:'call-one',performed_at:at,outcome,simulated:true,desk:true,note:'Explore AI enquiry handling. Private internal note: do not quote this.',...extra}});
 
 test('saving an unanswered attempt prepares exactly one follow-up across replay, note correction and restart',async t=>{
@@ -71,7 +71,7 @@ test('native handoff includes the full branded HTML, actual footer and relevant 
 test('the branded template escapes business text, preserves team identity and holds incomplete setup',()=>{
  const record={name:'Oakline <script>alert(1)</script>',contact:{name:'Jordan Lee',email:'jordan@oakline.example'}};
  const message=composeFollowUp(record,{outcome:'no_answer',focus:'ai'},{sender:{postal_address:''}}),html=renderFollowUpHtml(message);
- assert.match(html,/hello@evzdigital\.studio/);assert.match(html,/EVZ Digital team/);assert.match(html,/voice-demo-preview\.png/);assert.match(html,/evz-wordmark\.png/);assert.doesNotMatch(html,/<script>|javascript:/);assert.match(message.body,/I tried calling/);assert.equal(followUpSetupIssues({}).length,4);
+ assert.match(html,/hello@evzdigital\.studio/);assert.match(html,/EVZ Digital team/);assert.match(html,/voice-demo-preview\.png/);assert.match(html,/evz-wordmark\.png/);assert.doesNotMatch(html,/<script>|javascript:/);assert.match(message.body,/I tried calling/);assert.equal(followUpSetupIssues({}).length,5);
 });
 
 test('each call focus links to its matching example and only AI uses the voice-demo image',()=>{
@@ -91,4 +91,21 @@ test('a researched owner cannot make the preview greeting differ from the saved 
 test('the greeting uses a source-linked owner email only for that recipient and preserves confirmed names',()=>{
  const record={name:'SYNTHETIC Comfort HVAC',contact:{email:'riley@example.invalid'},research_profile:{business_email:{email:'riley@example.invalid',kind:'Owner/operator business',person_name:'Riley Test'}}};
  assert.equal(composeFollowUp(record).paragraphs[0],'Hi Riley,');record.contact.email='office@example.invalid';assert.equal(composeFollowUp(record).paragraphs[0],'Hi,');record.contact.name='Sam Confirmed';assert.equal(composeFollowUp(record).paragraphs[0],'Hi Sam,');record.verification={conversation:{decision_maker:'Taylor Confirmed'}};assert.equal(composeFollowUp(record).paragraphs[0],'Hi Taylor,');
+});
+
+test('follow-up signature uses the responsible operator name and keeps both names as a release gate',()=>{
+ const config={sender:{operator_names:{owner:'Owner Test',friend:'Friend & Test'}}};
+ const message=composeFollowUp({name:'SYNTHETIC Comfort HVAC',contact:{email:'office@example.invalid'}},{actor:'friend',focus:'website'},config);
+ assert.equal(message.sender_name,'Friend & Test');assert.match(message.text,/Best,\nFriend & Test\nAI solutions/);
+ assert.match(renderFollowUpHtml(message),/Friend &amp; Test/);
+ assert.equal(composeFollowUp({}, {actor:'constructor'}, {sender:{operator_names:{constructor:'Unexpected Name'}}}).sender_name,'EVZ Digital team');
+ assert.ok(followUpSetupIssues({sender:{operator_names:{owner:'Owner Test'}}}).some(issue=>/both operator display names/.test(issue)));
+ assert.ok(followUpSetupIssues({sender:{operator_names:{owner:'Owner Test',friend:'Friend Test\nBad'}}}).some(issue=>/both operator display names/.test(issue)));
+});
+
+test('the saved call actor owns the follow-up sender name',async t=>{
+ const app=await setup(t,{operatorNames:{owner:'Owner Test',friend:'Friend Test'}});
+ await app.apply(call('voicemail'),{actor:'friend'});
+ const entry=(await app.snapshot()).prospects.sample.follow_ups['call-one'];
+ assert.equal(entry.content.sender_name,'Friend Test');assert.match(entry.content.text,/Best,\nFriend Test\nAI solutions/);
 });

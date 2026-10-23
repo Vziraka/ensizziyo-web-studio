@@ -1,4 +1,4 @@
-import {followUpOutcomes,followUpSetupIssues,renderFollowUpHtml,composeFollowUp} from './follow-up-template.mjs';
+import {followUpOutcomes,followUpSetupIssues,renderFollowUpHtml,composeFollowUp,operatorDisplayName,operatorNamesConfigured,evzIdentity} from './follow-up-template.mjs';
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { check, hash, initialConfig, businessDate, businessDaysBetween, addBusinessDays } from './lifecycle.mjs';
@@ -20,7 +20,7 @@ export const productionConfig = {
   calls_enabled: false, call_release: { approved: false }, call_readiness: {},
   runtime: { enabled: false }, operations: { enabled: false, interval_minutes: 5, allowlist: [], bookings: {}, emails: {} },
   apollo: { user_id: '', bindings: {} },
-  sender: { email: '', mailbox_id: '', postal_address: '', website: 'https://evzdigital.studio/studio/', daily_email_limit: 20 },
+  sender: { email: '', mailbox_id: '', postal_address: '', website: 'https://evzdigital.studio/studio/', daily_email_limit: 20, operator_names: { owner: '', friend: '' } },
   campaign: { category: 'food-and-beverage', area: 'Fairfax / DMV', max_calls: 2, max_emails: 2, business_days: 10 },
   native_email: { enabled: false, rounds: [] }, research: { auto_import: false, supervised: false, source_directory: '' }, release: { approved: false }, readiness_evidence: {}
 };
@@ -36,7 +36,8 @@ export function requireProductionRelease(c) {
   check(c.release?.approved === true && c.release.fingerprint === releaseFingerprint(c) && c.release.approval_ref?.length > 5, 'Final owner approval must match the current production connections and rules');
   check(productionGates(c).every(g => g.passed), 'Launch evidence is incomplete; preserve the production hold');
   check(businessTypes.some(t=>t.id===c.campaign?.category) && c.campaign.max_calls === 2 && c.campaign.max_emails === 2 && c.campaign.business_days === 10, 'Campaign bounds changed');
-  check(email(c.sender?.email) && (c.sender.account_email??c.sender.email) === c.calendar.owner_email && id(c.sender.mailbox_id) && c.sender.postal_address?.trim().length > 10, 'Verified business sender, calendar and postal address required');
+  check(c.sender?.email===evzIdentity.email && email(c.sender.email) && (c.sender.account_email??c.sender.email) === c.calendar.owner_email && id(c.sender.mailbox_id) && c.sender.postal_address?.trim().length > 10, 'Verify hello@evzdigital.studio, its Workspace account, calendar and postal address');
+  check(operatorNamesConfigured(c), 'Set both operator display names before commercial email release');
   if(c.follow_up?.enabled)check(followUpSetupIssues(c).length===0,'Follow-up sender, postal address, demo and booking must be verified');
   if(c.follow_up?.enabled)check(c.native_email?.html_verified===true&&c.native_email.template_version==='evz-personal-large-demo-v1','Verify the branded HTML merge and exact owner-only delivery before commercial release');
   check(!/@(?:gmail|googlemail)\.com$/i.test(c.sender.email), 'Production uses the verified business-domain mailbox');
@@ -252,7 +253,8 @@ export function nativeMessage(record, round, c,callId) {
   const idea = record.call_prep?.hypothesis ?? record.idea;
   const question = record.call_prep?.questions?.[0] ?? 'Would an improvement like this fit what you want to do next?';
   check(typeof idea === 'string' && idea.trim() && typeof question === 'string' && question.trim(), 'A reviewed enhancement and owner question are required');
-  const body = `Hi,\n\nI tried calling ${record.name} and wanted to share one idea: ${idea}\n\n${question}\n\nI build focused websites and business tools through EVZ Digital.\n${c.sender.website}\n${c.sender.postal_address}\n\nThis is a business introduction and advertisement. Reply "stop" to opt out of all further marketing from EVZ Digital.`;
+  const senderName=operatorDisplayName(record.calls?.[callId]?.actor,c);
+  const body = `Hi,\n\nI tried calling ${record.name} and wanted to share one idea: ${idea}\n\n${question}\n\nI build focused websites and business tools through EVZ Digital.\n${c.sender.website}\n\nBest,\n${senderName}\n${evzIdentity.email}\n${c.sender.postal_address}\n\nThis is a business introduction and advertisement. Reply "stop" to opt out of all further marketing from EVZ Digital.`;
   check(body.length <= 4000 && !/{{|}}|[<>]/.test(subject + body), 'Tailored email exceeds the native field bounds or contains markup/template instructions');
   return { subject, body };
 }

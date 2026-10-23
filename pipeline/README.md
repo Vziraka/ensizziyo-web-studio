@@ -6,6 +6,8 @@ This is a same-computer rehearsal of separate owner/friend sessions on fictional
 
 The [private asset index](ASSET-INDEX.md) records studio-wide and stage-independent project file references; it does not fetch files or establish shared remote retrieval.
 
+Follow-up, native and client information email paths use the logged operator's configured name with `hello@evzdigital.studio`; client information drafts record their preparer and approver. Before enabling any commercial email route, set both `sender.operator_names.owner` and `sender.operator_names.friend` in the private lifecycle configuration; the release check stays closed until then. Do not commit personal names. See [local operation notes](PRODUCTION.md#october-23-shared-desk-foundation-and-hosting-limit).
+
 From `pipeline` in PowerShell, create three independent random 32-byte keys and initialize the controlled fixture state:
 
 ```powershell

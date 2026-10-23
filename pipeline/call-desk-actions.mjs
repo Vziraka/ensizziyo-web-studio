@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { check, hash, businessDate } from './lifecycle.mjs';
 import { readJson } from './engine.mjs';
 import { requireProductionRelease } from './production.mjs';
+import { operatorDisplayName, evzIdentity } from './follow-up-template.mjs';
 import { AppConnectors } from './app-connectors.mjs';
 import { meetingSlots, sessionSummary } from './call-desk.mjs';
 
@@ -16,8 +17,9 @@ export async function callingSession(app,input) {
     state.revision++; return state.calling_session;
   });
 }
-export async function saveInformationDraft(app,input) {
+export async function saveInformationDraft(app,input,actor='owner') {
   return app.change(state=>{
+    check(['owner','friend','controlled-fixture'].includes(actor),'Information drafts need an authenticated operator');
     check(input.revision===state.revision,'Record changed; refresh before saving');
     const r=state.prospects[input.prospect_id];
     check(r&&!r.restriction&&['Discovery','Information requested'].includes(r.stage),'Confirm the interested conversation first');
@@ -25,7 +27,7 @@ export async function saveInformationDraft(app,input) {
     check(typeof input.subject==='string'&&input.subject.trim()&&input.subject.length<=200&&!/[\r\n]/.test(input.subject),'Use a single subject line');
     check(typeof input.body==='string'&&input.body.trim()&&input.body.length<=6000,'Keep the message within 6000 characters');
     check(input.recipient_confirmed===true,'Confirm the recipient requested this information');
-    const draft={to:input.to,subject:input.subject,body:input.body,recipient_confirmed:true};
+    const draft={to:input.to,subject:input.subject,body:input.body,recipient_confirmed:true,prepared_by:actor};
     const fingerprint=hash(draft); const prior=r.information_draft;
     check(!prior||!['Sending','Uncertain'].includes(prior.status),'Reconcile the pending message before changing it');
     check(prior?.status!=='Sent','This information message was already sent');
@@ -33,8 +35,9 @@ export async function saveInformationDraft(app,input) {
     return r.information_draft;
   });
 }
-export async function sendInformation(app,input,{connect=options=>new AppConnectors(options)}={}) {
+export async function sendInformation(app,input,{connect=options=>new AppConnectors(options),actor='owner'}={}) {
   check(key(input.prospect_id)&&typeof input.fingerprint==='string','Choose the exact saved draft');
+  check(['owner','friend','controlled-fixture'].includes(actor),'Information sends need an authenticated operator');
   let client;
   try {
     const c=await readJson(join(app.directory,'lifecycle-config.json'));
@@ -51,20 +54,20 @@ export async function sendInformation(app,input,{connect=options=>new AppConnect
         const native=Object.values(state.operations?.requests??{}).filter(q=>['send','intent'].includes(q.operation)&&q.prepared_at&&businessDate(q.prepared_at)===today).length;
         check(reserved+native<c.sender.daily_email_limit,'Daily sender allowance is reserved; continue on the next business day');
       }
-      d.status=c.mode==='controlled'?'Simulated':'Sending';d.approved_at=app.now().toISOString();state.revision++;
+      d.status=c.mode==='controlled'?'Simulated':'Sending';d.approved_at=app.now().toISOString();d.approved_by=actor;d.sender_name=operatorDisplayName(actor,c);d.sent_body=`${d.body.trimEnd()}\n\nBest,\n${d.sender_name}\n${evzIdentity.email}`;d.sent_body_sha256=hash(d.sent_body);state.revision++;
     });
     let d=(await app.snapshot()).prospects[input.prospect_id].information_draft;
     if(d.status!=='Sending')return d;
     client=connect({accountLinks:{gmail:c.sender?.link_id,google_calendar:c.calendar?.link_id}});await client.connect();
     const profile=unpack(await client.call('mcp__codex_apps__gmail_get_profile',{}));
-    check(profile.email===c.sender.email,'Business sender differs from the connected Gmail account');
+    check(profile.email===(c.sender.account_email??c.sender.email),'Connected Gmail account differs from the configured Workspace owner');
     // The durable reservation precedes all network effects. A lost receipt never authorizes a resend.
     await app.change(async state=>{
       const current=await readJson(join(app.directory,'lifecycle-config.json'));requireProductionRelease(current);
       const r=state.prospects[input.prospect_id];d=r.information_draft;
-      check(!r.restriction&&['Discovery','Information requested'].includes(r.stage)&&d.status==='Sending'&&d.fingerprint===input.fingerprint&&current.sender.email===profile.email&&current.sender.link_id===c.sender.link_id,'Approval changed before dispatch');
+      check(!r.restriction&&['Discovery','Information requested'].includes(r.stage)&&d.status==='Sending'&&d.fingerprint===input.fingerprint&&(current.sender.account_email??current.sender.email)===profile.email&&current.sender.email===c.sender.email&&current.sender.link_id===c.sender.link_id,'Approval changed before dispatch');
       try {
-        const receipt=unpack(await client.call('mcp__codex_apps__gmail_send_email',{to:d.to,from_address:profile.email,subject:d.subject,payload:{mime_type:'text/plain',body:{content:d.body}}}));
+        const receipt=unpack(await client.call('mcp__codex_apps__gmail_send_email',{to:d.to,from_address:c.sender.email,subject:d.subject,payload:{mime_type:'text/plain',body:{content:d.sent_body}}}));
         check(key(receipt.id)&&key(receipt.thread_id),'Send returned no authoritative message identity');
         d.status='Sent';d.message_id=receipt.id;d.thread_id=receipt.thread_id;d.sent_at=app.now().toISOString();
       } catch(error){d.status='Uncertain';d.error='Delivery could not be confirmed. Inspect the sender Sent folder; do not resend.';}

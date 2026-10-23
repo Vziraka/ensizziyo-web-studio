@@ -81,8 +81,8 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
       if (url.pathname === '/api/booking') return json(202, await queueMeeting(app, input));
       if (url.pathname === '/api/slots') return json(200, await availableMeetingSlots(app));
       if (url.pathname === '/api/calling-session') return json(200, await callingSession(app,input));
-      if (url.pathname === '/api/information-draft') return json(200, await saveInformationDraft(app,input));
-      if (url.pathname === '/api/information-send') return json(200, await sendInformation(app,input));
+      if (url.pathname === '/api/information-draft') return json(200, await saveInformationDraft(app,input,operator));
+      if (url.pathname === '/api/information-send') return json(200, await sendInformation(app,input,{actor:operator}));
       if (url.pathname === '/api/pause') {
         return json(200, await pauseStudio(app));
       }

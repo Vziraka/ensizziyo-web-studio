@@ -39,12 +39,17 @@ test('native email introduces the retained enhancement and owner question withou
   assert.ok(message.body.includes('Reply "stop"'));
   assert.throws(() => nativeMessage({ ...record, call_prep: { hypothesis: {}, questions: ['A question?'] } }, 1, c), /reviewed enhancement/);
 });
+test('the legacy native email caller signs with the saved call actor',()=>{
+  const record={name:'SYNTHETIC Bakery',idea:'A fictional enhancement',call_prep:{hypothesis:'A relevant improvement.',questions:['Would this help?']},calls:{'call-one':{actor:'friend'}}};
+  const c={sender:{website:'https://example.com',postal_address:'SYNTHETIC ADDRESS',operator_names:{owner:'Owner Test',friend:'Friend Test'}}};
+  const message=nativeMessage(record,1,c,'call-one');assert.match(message.body,/Best,\nFriend Test\nhello@evzdigital\.studio/);
+});
 
 async function setup(t, released = true, outcome = 'no_answer', followUp = false) {
   const directory = await mkdtemp(join(tmpdir(), 'evz-production-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const config = structuredClone(productionConfig); let now = new Date(at);
   config.calendar = { ...config.calendar, owner_email: owner, calendar_id: 'primary' }; config.apollo.user_id = 'owned-user';
-  config.sender = { email: owner, mailbox_id: 'business-mailbox', postal_address: 'TEST POSTAL ADDRESS — synthetic fixture', website: 'https://example.com', daily_email_limit: 20 };
+  config.sender = { email: 'hello@evzdigital.studio', account_email: owner, mailbox_id: 'business-mailbox', postal_address: 'TEST POSTAL ADDRESS — synthetic fixture', website: 'https://example.com', daily_email_limit: 20, operator_names: { owner: 'Owner Test', friend: 'Friend Test' } };
   config.operations.enabled = true; config.operations.allowlist = ['synthetic-cafe'];
   config.native_email = { enabled: true, rounds: [1, 2].map(round => ({ round, list_id: `list-${round}`, list_name: `EVZ TEST round ${round}`, sequence_id: `sequence-${round}`, sequence_name: `EVZ TEST one-email ${round}`, subject_field_id: `subject-${round}`, body_field_id: `body-${round}`, verified: true })) };
   if(followUp){Object.assign(config.sender,{email:'hello@evzdigital.studio',account_email:owner});config.follow_up={enabled:true,sender_verified:true,demo_verified:true,booking_url:'https://calendar.app.google/synthetic'};Object.assign(config.native_email,{html_verified:true,template_version:'evz-personal-large-demo-v1'});}
@@ -101,7 +106,7 @@ async function drive(app, p, session = 'test-session') {
 
 test('a connected follow-up hands the full branded HTML to one native executor and survives restart without another intent',async t=>{
  const s=await setup(t,true,'connected',true),p=provider(s.config);await drive(s.app,p);
- let state=await s.app.snapshot(),r=state.prospects['synthetic-cafe'];assert.equal(r.follow_ups['call-one'].status,'Sent');assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.match(p.person.typed_custom_fields['body-1'],/voice-demo-preview\.png/);assert.match(p.person.typed_custom_fields['body-1'],/EVZ Digital team/);assert.doesNotMatch(p.person.typed_custom_fields['body-1'],/PRIVATE BUDGET NOTE/);
+ let state=await s.app.snapshot(),r=state.prospects['synthetic-cafe'];assert.equal(r.follow_ups['call-one'].status,'Sent');assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.match(p.person.typed_custom_fields['body-1'],/voice-demo-preview\.png/);assert.match(p.person.typed_custom_fields['body-1'],/Owner Test/);assert.doesNotMatch(p.person.typed_custom_fields['body-1'],/PRIVATE BUDGET NOTE/);
  s.advance();const reopened=await StudioLifecycle.open({directory:s.directory,now:s.app.now});await drive(reopened,p,'followup-restart');assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);
 });
 test('a reply observed in the provider read phase cancels a prepared next follow-up before native release',async t=>{
@@ -125,6 +130,9 @@ test('production release binds final approval to exact connections, evidence and
   await saveJson(join(s.directory, 'lifecycle-config.json'), s.config);
   await approveProductionRelease(s.app, releaseFingerprint(s.config), 'human-owner-approval');
   const c = structuredClone(s.app.config); c.sender.mailbox_id = 'different-mailbox'; assert.throws(() => requireProductionRelease(c), /must match/);
+  const wrongSender=structuredClone(s.app.config);wrongSender.sender.email='other@example.net';wrongSender.release.fingerprint=releaseFingerprint(wrongSender);assert.throws(()=>requireProductionRelease(wrongSender),/Verify hello@evzdigital\.studio/);
+  const missingName = structuredClone(s.app.config); missingName.sender.operator_names = { owner: 'Owner Test' }; missingName.release.fingerprint = releaseFingerprint(missingName);
+  assert.throws(() => requireProductionRelease(missingName), /both operator display names/);
 });
 test('staging forbids self-qualified imports, mixed fixtures, duplicate contacts and premature actual calls', async t => {
   const s = await setup(t, false);
