@@ -27,6 +27,11 @@ test('individual operator keys create distinct expiring signed sessions', () => 
   assert.equal(auth.actorFromCookie(`evz_operator_session=${friend}`), 'friend');
   assert.equal(auth.actorFromCookie(`evz_operator_session=${friend}x`), null);
   assert.equal(auth.actorFromCookie(`evz_operator_session=${owner.slice(0, -1)}x`), null);
+  const [payload, supplied] = owner.split('.'), alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const last = alphabet.indexOf(supplied.at(-1)), alias = alphabet[(last & ~3) | ((last + 1) & 3)], aliasSignature = supplied.slice(0, -1) + alias;
+  assert.notEqual(alias, supplied.at(-1));
+  assert.deepEqual(Buffer.from(aliasSignature, 'base64url'), Buffer.from(supplied, 'base64url'));
+  assert.equal(auth.actorFromCookie(`evz_operator_session=${payload}.${aliasSignature}`), null);
   assert.match(auth.cookie(friend), /HttpOnly; SameSite=Strict/);
   assert.match(auth.cookie(friend, { secure: true }), /; Secure$/);
   assert.match(auth.cookie('', { clear: true }), /Max-Age=0/);

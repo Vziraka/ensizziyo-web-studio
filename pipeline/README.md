@@ -4,6 +4,8 @@
 
 This is a same-computer rehearsal of separate owner/friend sessions on fictional records. It does not establish remote authentication, shared cloud storage, computer-off execution, or production readiness. Keep all state in a new temporary directory outside the Git checkout; never put operator keys in `.env`, source files, or a committed example.
 
+The [private asset index](ASSET-INDEX.md) records studio-wide and stage-independent project file references; it does not fetch files or establish shared remote retrieval.
+
 From `pipeline` in PowerShell, create three independent random 32-byte keys and initialize the controlled fixture state:
 
 ```powershell

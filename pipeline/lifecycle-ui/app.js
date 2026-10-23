@@ -4,6 +4,7 @@ let state, csrf, operatorAuthRequired = false, view = 'today', selected = 'junip
 const content = document.querySelector('#content'), message = document.querySelector('#message');
 const titles = { today: ['Your calling desk', 'Your next conversation.', 'Prepared leads, clear next steps and your notes in one place.'], reviews: ['Evidence → owner decision', 'Review the conversation.', 'A connected call pauses cold follow-ups until you confirm its next action.'], clients: ['From scope to support', 'Deliver what you agreed.', 'Track materials, payment evidence, delivery checks and open requests.'], exceptions: ['Bounded recovery', 'Handle the exceptions.', 'Held work stays visible while unrelated records continue.'], launch: ['Before the first real contact', 'Approve a working system.', 'These gates stay closed until their evidence and your final approval are recorded.'] };
 Object.assign(titles,{businesses:['Your business directory','Businesses, with context.','Research, professional contacts, social profiles and saved conversations.'],emails:['After the call','Follow-ups at a glance.','Each performed call owns one message. Held work shows what is missing.'],meetings:['Your conversations','Meetings and next steps.','Booked conversations and invitations awaiting calendar verification.']});
+Object.assign(titles,{assets:['Shared asset index','Keep approved versions easy to find.','Studio files and project references stay organized across every sales stage.']});
 function el(tag, text, className) { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; }
 function button(text, fn, className = 'quiet') { const node = el('button', text, className); node.type = 'button'; node.addEventListener('click', fn); return node; }
 function tell(text, error = false) { message.textContent = text; message.className = error ? 'error' : ''; }
@@ -63,6 +64,68 @@ function stats() {
   for (const [label, value, note] of [['Businesses today', `${state.daily.unique_businesses} / 50`, 'Actual contacts · follow-ups included'], ['Call reviews', Object.values(state.prospects).filter(r => ['Connected review', 'Verification review'].includes(r.stage)).length, 'Held until your decision'], ['Open support', Object.values(state.prospects).flatMap(r => r.tickets).filter(t => t.status === 'Open').length, state.controls.mode === 'controlled' ? 'Fictional projects in this review' : 'Saved client requests'], ['Exceptions', state.exceptions.length, 'Consolidated in the private workspace']]) {
     const card = el('div', undefined, 'stat'); card.append(el('p', label, 'eyebrow'), el('strong', String(value)), el('small', note)); row.append(card);
   } return row;
+}
+function assetRefValue(kind, value) { return kind === 'drive' ? `drive:${value.trim()}` : `private-path:${value.trim()}`; }
+async function saveAssetEvent(type, data) {
+  await api('/api/event', { revision: state.revision, event: { id: crypto.randomUUID(), prospect_id: 'studio-assets', type, at: new Date().toISOString(), data } });
+  dirty = false; tell('Saved in the private shared index.'); await refresh();
+}
+function renderAssets() {
+  const node = panel('Private studio and project assets');
+  node.append(el('p', 'Add a Google Drive file ID or a relative path inside private storage. This index saves references only; it does not copy, fetch or verify files. Never paste credentials or file contents.', 'notice'));
+  node.append(el('p', 'A version becomes the approved baseline only after both operators select that same version. Conflicting selections leave the last shared baseline in place.', 'muted'));
+  const form = el('form'); form.append(el('h3', 'Add an asset reference'));
+  const scope = inputField(form, 'Asset scope', 'scope', 'studio', 'text', [{ value: 'studio', label: 'Studio-wide' }, { value: 'project', label: 'Project' }]);
+  const projects = Object.values(state.prospects).sort((a, b) => a.name.localeCompare(b.name));
+  const project = inputField(form, 'Project', 'project_id', '', 'text', [{ value: '', label: 'Choose a project' }, ...projects.map(r => ({ value: r.id, label: `${r.name} · ${r.stage}` }))]);
+  project.parentElement.hidden = scope.value !== 'project';
+  scope.addEventListener('change', () => { project.parentElement.hidden = scope.value !== 'project'; });
+  const name = inputField(form, 'Asset name', 'name');
+  const kind = inputField(form, 'Category', 'kind', 'brand', 'text', ['brand', 'template', 'source', 'brief', 'mockup', 'proposal', 'approval', 'delivery', 'other']);
+  const versionLabel = inputField(form, 'Version label', 'version_label', 'v1');
+  const referenceKind = inputField(form, 'Reference type', 'reference_kind', 'drive', 'text', [{ value: 'drive', label: 'Google Drive file ID' }, { value: 'path', label: 'Relative private path' }]);
+  const referenceValue = inputField(form, 'File ID or relative path', 'reference');
+  form.append(el('p', 'Use a separate, immutable file reference for each version. A file ID or path is not a credential.', 'muted'));
+  const submit = el('button', 'Add to index', 'primary'); submit.type = 'submit'; form.append(submit);
+  form.addEventListener('submit', async event => {
+    event.preventDefault(); submit.disabled = true;
+    try {
+      await saveAssetEvent('asset_registered', { asset_id: crypto.randomUUID(), scope: scope.value, ...(scope.value === 'project' ? { project_id: project.value } : {}), name: name.value, kind: kind.value, version_id: crypto.randomUUID(), version_label: versionLabel.value, reference: assetRefValue(referenceKind.value, referenceValue.value) });
+    } catch (error) { tell(error.message, true); } finally { submit.disabled = false; }
+  });
+  node.append(form);
+  const index = Object.values(state.asset_index ?? {});
+  if (!index.length) node.append(el('p', 'No asset references yet. Add a studio file or link an asset to any existing project record.', 'empty'));
+  for (const asset of index.sort((a, b) => a.name.localeCompare(b.name))) {
+    const card = panel(asset.name);
+    const projectName = asset.project_id ? state.prospects[asset.project_id]?.name ?? 'Project record unavailable' : 'Studio-wide';
+    card.append(pill(asset.kind), pill(projectName));
+    const baseline = asset.versions[asset.baseline_version];
+    card.append(el('p', baseline ? `Approved baseline: ${baseline.label}` : 'Approved baseline: not set yet', baseline ? '' : 'muted'));
+    const ownerChoice = asset.choices.owner?.version_id, friendChoice = asset.choices.friend?.version_id;
+    if (ownerChoice && friendChoice && ownerChoice !== friendChoice) card.append(el('p', `Selections differ · owner: ${asset.versions[ownerChoice]?.label ?? 'unknown'} · friend: ${asset.versions[friendChoice]?.label ?? 'unknown'}. The baseline stays ${baseline?.label ?? 'unset'} until both select the same version.`, 'notice'));
+    else if (!ownerChoice || !friendChoice) card.append(el('p', 'Both operators must select the same version before it becomes the baseline.', 'muted'));
+    for (const version of Object.values(asset.versions).sort((a, b) => a.registered_at.localeCompare(b.registered_at))) {
+      const row = el('section', undefined, 'check-item asset-version');
+      row.append(el('strong', version.label), el('p', version.reference, 'muted'));
+      row.append(el('small', `Added by ${version.registered_by} · ${new Date(version.registered_at).toLocaleDateString()}`));
+      const mine = asset.choices[state.current_operator]?.version_id === version.id;
+      row.append(button(mine ? 'Your selection' : 'Select as my approved version', async () => { try { await saveAssetEvent('asset_version_selected', { asset_id: asset.id, version_id: version.id }); } catch (error) { tell(error.message, true); } }));
+      card.append(row);
+    }
+    const addVersion = el('form'); addVersion.append(el('h4', 'Register a new version'));
+    const label = inputField(addVersion, 'Version label', 'version_label');
+    const refKind = inputField(addVersion, 'Reference type', 'reference_kind', 'drive', 'text', [{ value: 'drive', label: 'Google Drive file ID' }, { value: 'path', label: 'Relative private path' }]);
+    const ref = inputField(addVersion, 'File ID or relative path', 'reference');
+    const add = el('button', 'Add version'); add.type = 'submit'; addVersion.append(add);
+    addVersion.addEventListener('submit', async event => {
+      event.preventDefault(); add.disabled = true;
+      try { await saveAssetEvent('asset_version_registered', { asset_id: asset.id, version_id: crypto.randomUUID(), version_label: label.value, reference: assetRefValue(refKind.value, ref.value) }); }
+      catch (error) { tell(error.message, true); } finally { add.disabled = false; }
+    });
+    card.append(addVersion); node.append(card);
+  }
+  content.append(node);
 }
 function inputField(form, label, name, value = '', type = 'text', options) {
   const wrap = el('label', label); let input;
@@ -283,6 +346,7 @@ function render() {
   content.replaceChildren(); const title = titles[view]; document.querySelector('#view-kicker').textContent = title[0]; document.querySelector('#view-title').textContent = title[1]; document.querySelector('#view-description').textContent = title[2];
   document.querySelector('#updated').textContent = `Saved revision ${state.revision} · ${new Date(state.updated_at).toLocaleTimeString()}`;
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  if (view === 'assets') { renderAssets(); return; }
   if (view === 'exceptions') {
     const node = panel('Exception inbox');
     if (state.runtime) node.append(el('p', `Local service: ${state.runtime.status}. Connection: ${state.runtime.transport}. Last check: ${new Date(state.runtime.checked_at).toLocaleString()}. ${state.runtime.last_error ?? ''}`, 'notice'));

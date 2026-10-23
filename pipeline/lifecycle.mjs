@@ -25,6 +25,16 @@ const money = value => Number.isSafeInteger(value) && value > 0 && value <= 100_
 const services = ['website', 'systems', 'ai', 'marketing'];
 const coldOutcomes = ['no_answer', 'busy', 'voicemail'];
 const connectedOutcomes = ['discovery', 'requested_info', 'callback', 'not_interested', 'do_not_contact', 'wrong_contact', 'uncertain'];
+const assetEvents = ['asset_registered', 'asset_version_registered', 'asset_version_selected'];
+const assetKey = value => key(value) && value !== '__proto__';
+function validateAssetReference(value) {
+  check(text(value, 600) && value === value.trim(), 'Add a private file reference, not copied file content');
+  if (value.startsWith('drive:')) check(/^drive:[a-zA-Z0-9_-]{10,256}$/.test(value), 'Use a Google Drive file ID only; omit share tokens and query parameters');
+  else if (value.startsWith('private-path:')) {
+    const path = value.slice('private-path:'.length).replaceAll('\\', '/');
+    check(path && !path.startsWith('/') && !/^[a-zA-Z]:/.test(path) && !/[?#]/.test(path) && path.split('/').every(part => part && part !== '.' && part !== '..'), 'Use a relative path inside private storage');
+  } else check(false, 'Use drive:<file-id> or private-path:<relative-path>; never store credentials or file contents');
+}
 export const initialConfig = {
   schema_version: 1, mode: 'controlled', run_id: 'studio-lifecycle-controlled',
   research_enabled: false, outreach_enabled: false, connector_writes_enabled: false,
@@ -168,7 +178,7 @@ export class StudioLifecycle {
     directory = await privateStateDirectory(directory); await mkdir(directory, { recursive: true, mode: 0o700 });
     await writeFile(join(directory, 'lifecycle-config.json'), JSON.stringify(config, null, 2), { flag: 'wx', mode: 0o600 });
     await writeFile(join(directory, 'lifecycle-state.json'), JSON.stringify({ schema_version: 1, run_id: config.run_id, mode: config.mode,
-      revision: 0, updated_at: new Date().toISOString(), prospects: {}, events: {}, actions: {}, ai_attempts: {}, exceptions: [] }, null, 2), { flag: 'wx', mode: 0o600 });
+      revision: 0, updated_at: new Date().toISOString(), prospects: {}, events: {}, actions: {}, asset_index: {}, ai_attempts: {}, exceptions: [] }, null, 2), { flag: 'wx', mode: 0o600 });
     return StudioLifecycle.open({ directory, now });
   }
   async change(fn) {
@@ -204,7 +214,42 @@ export class StudioLifecycle {
       const data = event.data ?? {}, eid = event.id;
       let r = state.prospects[event.prospect_id];
       state.updated_at = this.now().toISOString();
-      if (['prospect_imported', 'verification_imported'].includes(event.type)) {
+      if (assetEvents.includes(event.type)) {
+        check(event.prospect_id === 'studio-assets' && ['owner', 'friend'].includes(actor), 'Studio assets require one of the two signed operators');
+        const index = state.asset_index ??= {};
+        if (event.type === 'asset_registered') {
+          check(assetKey(data.asset_id) && !Object.hasOwn(index, data.asset_id) && text(data.name, 200) && text(data.kind, 80), 'Use a unique asset ID, name and category');
+          check(data.scope === 'studio' || data.scope === 'project', 'Choose studio-wide or project asset scope');
+          if (data.scope === 'project') check(key(data.project_id) && Object.hasOwn(state.prospects, data.project_id), 'Choose an existing project record; asset scope is independent of its sales stage');
+          else check(data.project_id === undefined || data.project_id === null, 'Studio-wide assets cannot name a client project');
+          check(assetKey(data.version_id) && text(data.version_label, 80), 'Give the first asset version a stable ID and label');
+          validateAssetReference(data.reference);
+          index[data.asset_id] = { id: data.asset_id, name: data.name.trim(), kind: data.kind.trim(), scope: data.scope,
+            ...(data.scope === 'project' ? { project_id: data.project_id } : {}), baseline_version: null, choices: {},
+            versions: { [data.version_id]: { id: data.version_id, label: data.version_label.trim(), reference: data.reference,
+              registered_by: actor, registered_at: event.at } } };
+        } else {
+          const asset = Object.hasOwn(index, data.asset_id) ? index[data.asset_id] : null;
+          check(asset, 'Register the asset before adding or approving a version');
+          if (event.type === 'asset_version_registered') {
+            check(assetKey(data.version_id) && !Object.hasOwn(asset.versions, data.version_id) && text(data.version_label, 80) && !Object.values(asset.versions).some(v => v.label === data.version_label.trim()), 'Use a unique version ID and label');
+            validateAssetReference(data.reference);
+            check(!Object.values(asset.versions).some(v => v.reference === data.reference), 'Each version needs its own immutable file reference');
+            asset.versions[data.version_id] = { id: data.version_id, label: data.version_label.trim(), reference: data.reference,
+              registered_by: actor, registered_at: event.at };
+          } else {
+            check(Object.hasOwn(asset.versions, data.version_id), 'Select a registered asset version');
+            asset.choices[actor] = { version_id: data.version_id, event_id: eid, at: event.at };
+            const ownerChoice = asset.choices.owner?.version_id, friendChoice = asset.choices.friend?.version_id;
+            if (ownerChoice && ownerChoice === friendChoice) {
+              asset.baseline_version = ownerChoice;
+              asset.baseline_confirmed_at = event.at;
+              asset.baseline_agreement_events = [asset.choices.owner.event_id, asset.choices.friend.event_id];
+            }
+          }
+        }
+        r = { id: event.prospect_id };
+      } else if (['prospect_imported', 'verification_imported'].includes(event.type)) {
         check(dailyNewProspectCount(state, this.now()) < 25, 'The shared limit of 25 new businesses has been reached for today. Import resumes after midnight America/New_York time');
         const verification = event.type === 'verification_imported';
         if (this.config.mode === 'production') check(actor === (verification ? 'verification-import' : 'research-import'), verification ? 'Production verification calls must enter through the retained verification import' : 'Production prospects must enter through the retained independent research review'); else owner(actor);

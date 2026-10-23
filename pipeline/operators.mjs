@@ -22,6 +22,7 @@ export function createOperatorAuth(env = process.env, { now = () => Date.now() }
     if (!payload || !supplied || extra !== undefined) return null;
     let actual;
     try { actual = Buffer.from(supplied, 'base64url'); } catch { return null; }
+    if (actual.toString('base64url') !== supplied) return null;
     const expected = signature(sessionSecret, payload);
     if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null;
     try {

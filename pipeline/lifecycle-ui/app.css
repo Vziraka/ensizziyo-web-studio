@@ -25,6 +25,7 @@
 @media(min-width:1151px){.call-desk{grid-template-columns:minmax(230px,.8fr) minmax(330px,1.25fr) minmax(300px,1fr)}.call-desk>.desk-notes{grid-column:auto;border-top:0;max-height:calc(100dvh - 235px)}}@media(max-width:850px){.call-desk>.panel{max-height:none}.desk-notes .outcome-buttons{bottom:0}.desk-view header>.eyebrow{display:none}.desk-view .page-title>#backup{font-size:12px}.desk-notes textarea{min-height:210px}}
 
 .desk-contact{background:#f5f5f6;border-radius:8px;padding:18px 20px;margin:20px 0 22px;overflow-wrap:anywhere}.desk-contact p{font-size:16px;line-height:1.6;margin-bottom:8px}.desk-contact .contact-label{font-size:14px;font-weight:700;margin-bottom:9px}.desk-contact a{display:block;text-decoration:none;font-size:16px;line-height:1.6;margin-top:8px}.desk-contact small{display:block;font-size:13px;line-height:1.6;color:var(--muted)}.desk-contact .contact-phone{font-size:18px;font-weight:600}.desk-card>.detail-title{margin-bottom:6px}.saved-follow-up>a{display:block;margin-top:14px;font-weight:600}.email-row>a{display:block;margin-top:12px}
+.asset-version{display:grid;grid-template-columns:minmax(0,1fr);min-width:0;overflow-wrap:anywhere}.asset-version>*{min-width:0}.asset-version p,.asset-version small{overflow-wrap:anywhere;word-break:break-word}.asset-version button{max-width:100%;white-space:normal;justify-self:start}
 
 @media(max-width:1050px){.header-actions #operator-label:not([hidden]){display:inline-flex}}
 
