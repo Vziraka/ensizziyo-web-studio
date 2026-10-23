@@ -27,6 +27,12 @@ test('the business directory includes untouched and restricted records without e
  assert.deepEqual(deskQueues(state).matching.map(r=>r.id),['fresh']);assert.deepEqual(deskQueues(state,{allBusinesses:true,history:true}).matching.map(r=>r.id),['called']);
  assert.equal(deskQueues(state,{allBusinesses:true,category:'health-wellness'}).matching.length,0);assert.deepEqual(state.supply.queue,[{prospect_id:'fresh'}]);
 });
+test('the shared directory filters assigned work by operator and keeps unassigned work visible to the team',()=>{
+ const record=(id,follow_up_owner)=>({id,follow_up_owner,category:'HVAC contractor',stage:'Ready to verify',calls:{}}),prospects={owner:record('owner','owner'),friend:record('friend','friend'),unassigned:record('unassigned',undefined)},state={prospects,supply:{queue:Object.keys(prospects).map(prospect_id=>({prospect_id}))}};
+ assert.deepEqual(deskQueues(state,{allBusinesses:true,assignment:'my',operator:'friend'}).matching.map(r=>r.id),['friend']);
+ assert.deepEqual(deskQueues(state,{allBusinesses:true,assignment:'unassigned',operator:'friend'}).matching.map(r=>r.id),['unassigned']);
+ assert.deepEqual(deskQueues(state,{allBusinesses:true,assignment:'team',operator:'friend'}).matching.map(r=>r.id),['owner','friend','unassigned']);
+});
 test('approved starting offers and care are suggestions with the agreed prices and finite scope',()=>{
   assert.deepEqual(offers.slice(0,3).map(o=>o.price),[1500,1995,2495]);
   assert.deepEqual([offers[3].price_min,offers[3].price_max],[1500,2500]);

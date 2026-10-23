@@ -11,6 +11,9 @@ test('call preparation selects reviewed facts, preserves unknowns and never infe
   assert.equal(prep.current_route, null);
   assert.deepEqual(prep.unknowns, ['Budget is unknown', 'Ask about current tools.']);
   assert.equal(prep.questions[0], f.report.opportunities[0].owner_question);
+  assert.match(prep.opening, /Friday pickup/);
+  assert.match(prep.opening, /Would a pickup page fit your current tools\?/);
+  assert.doesNotMatch(prep.opening, /AI, business systems, a website or marketing/);
   f.report.observations = [];
-  assert.deepEqual(researchCallPrep(f, { opportunity_index: 0, observations: [] }, '').observations, []);
+  assert.throws(() => researchCallPrep(f, { opportunity_index: 0, observations: [] }, ''), /exact retained excerpt/);
 });

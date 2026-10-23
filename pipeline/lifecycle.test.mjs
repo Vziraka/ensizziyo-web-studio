@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { StudioLifecycle, hash, initialConfig, businessDaysBetween } from './lifecycle.mjs';
+import { StudioLifecycle, hash, initialConfig, businessDaysBetween, dailyNewProspectCount } from './lifecycle.mjs';
 import { acquireLock } from './engine.mjs';
 import fs from 'node:fs';
 import {syncBuiltinESMExports} from 'node:module';
@@ -95,6 +95,28 @@ async function connected(s) {
   await s.event('transcript_assessed', { call_id: 'call-1', proposal, review: { verdict: 'Accepted', proposal_sha256: hash(proposal), independent: true } }, 'assessed', undefined, 'controlled-fixture');
   return proposal;
 }
+test('shared prospect imports stop at 25 per Eastern day across both operators and all import callers',async t=>{
+  const {app}=await setup(t);
+  for(let i=0;i<25;i++){const event=prospect(`home-service-${i}`);await app.apply(event,{actor:i%2?'friend':'owner'});}
+  assert.equal(dailyNewProspectCount(await app.snapshot(),app.now()),25);
+  const blocked=prospect('home-service-26');await assert.rejects(app.apply(blocked,{actor:'friend'}),/shared limit of 25 new businesses/);
+  app.now=()=>new Date('2026-10-20T04:01:00.000Z');const next=prospect('home-service-next-day');next.at=app.now().toISOString();
+  await app.apply(next,{actor:'friend'});assert.equal(dailyNewProspectCount(await app.snapshot(),app.now()),1);
+});
+test('the first caller owns the business until an explicit operator handoff',async t=>{
+  const s=await setup(t);await s.app.apply(prospect());
+  await s.event('call_claimed',{},'claim','fictional-bakery','friend');
+  let state=await s.app.snapshot(),task=Object.values(state.actions).find(a=>a.prospect_id==='fictional-bakery'&&a.type==='call_task');
+  assert.equal(state.prospects['fictional-bakery'].follow_up_owner,'friend');assert.equal(task.assigned_to,'friend');
+  await assert.rejects(s.event('call_logged',{call_id:'owner-call-first',outcome:'no_answer',simulated:true,performed_at:at},'owner-call-first','fictional-bakery','owner'),/assigned to the other operator/);
+  await s.event('call_logged',{call_id:'friend-call',outcome:'no_answer',simulated:true,performed_at:at},'friend-call','fictional-bakery','friend');
+  state=await s.app.snapshot();assert.equal(state.prospects['fictional-bakery'].calls['friend-call'].actor,'friend');
+  const email=Object.values(state.actions).find(a=>a.prospect_id==='fictional-bakery'&&a.type==='email');assert.equal(email.assigned_to,'friend');
+  await s.event('follow_up_handed_off',{to:'owner'},'handoff','fictional-bakery','friend');
+  state=await s.app.snapshot();assert.equal(state.prospects['fictional-bakery'].follow_up_owner,'owner');assert.deepEqual(state.prospects['fictional-bakery'].follow_up_handoffs.at(-1),{from:'friend',to:'owner',at,event_id:'handoff'});assert.equal(state.actions[email.id].assigned_to,'owner');
+  await s.event('call_logged',{call_id:'owner-call-second',outcome:'no_answer',simulated:true,performed_at:at},'owner-call-second','fictional-bakery','owner');
+  assert.equal((await s.app.snapshot()).prospects['fictional-bakery'].calls['owner-call-second'].actor,'owner');
+});
 test('fictional customer reaches accepted delivery, paid handover and resolved support; no real activity is counted', async t => {
   const s = await setup(t), proposal = await connected(s);
   await s.event('call_reviewed', { call_id: 'call-1', proposal_sha256: hash(proposal), outcome: 'discovery' });

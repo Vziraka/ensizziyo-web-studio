@@ -32,7 +32,7 @@ export function matchesBusiness(record,category='all',subtypes=[]) {
   const type=businessType(record);
   return (category==='all'||type.category===category)&&(!subtypes.length||subtypes.includes(type.subtype));
 }
-export function deskQueues(state,{category='all',subtypes=[],lane='all',history=false,allBusinesses=false}={}) {
+export function deskQueues(state,{category='all',subtypes=[],lane='all',history=false,allBusinesses=false,assignment='team',operator='owner'}={}) {
   const records=Object.values(state.prospects),byId=new Map();
   for(const action of state.supply.queue)if(!byId.has(action.prospect_id))byId.set(action.prospect_id,state.prospects[action.prospect_id]);
   const day=value=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
@@ -42,8 +42,9 @@ export function deskQueues(state,{category='all',subtypes=[],lane='all',history=
   const commitments=[...new Map([...due,...promised].map(r=>[r.id,r])).values()];
   const ids=new Set(commitments.map(r=>r.id));
   const laneMatches=r=>lane==='all'||(lane==='enriched'?r.provider_contact_view?.current:(r.call_lane==='verification'?'verification':'research')===lane);
+  const assignmentMatches=r=>assignment==='team'||(assignment==='my'?r.follow_up_owner===operator:!r.follow_up_owner);
   const candidates=history?records.filter(r=>Object.keys(r.calls??{}).length):allBusinesses?records:[...byId.values()].filter(r=>!ids.has(r.id));
-  return {commitments,matching:candidates.filter(r=>matchesBusiness(r,category,subtypes)&&laneMatches(r)).sort((a,b)=>Number(Boolean(b.verification?.packet.established_evidence))-Number(Boolean(a.verification?.packet.established_evidence)))};
+  return {commitments:commitments.filter(assignmentMatches),matching:candidates.filter(r=>matchesBusiness(r,category,subtypes)&&laneMatches(r)&&assignmentMatches(r)).sort((a,b)=>Number(Boolean(b.verification?.packet.established_evidence))-Number(Boolean(a.verification?.packet.established_evidence)))};
 }
 export const offers = [
   {id:'website',name:'Website Foundation',price:1500,scope:'Up to five core pages, mobile layout, contact form, basic on-page SEO and two revision rounds.'},

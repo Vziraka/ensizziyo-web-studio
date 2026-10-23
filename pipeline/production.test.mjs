@@ -23,6 +23,7 @@ test('the spoken opening preserves the evidence beside it without reciting resea
   const prep = researchCallPrep(f, { opportunity_index: 0, observations: [{ index: 0, supported: true }] }, at);
   assert.equal(prep.observations[0].fact, fact);
   assert.ok(prep.opening.includes('SYNTHETIC Bakery'));
+  assert.ok(prep.opening.includes('Cookies'));
   assert.ok(!prep.opening.includes(fact));
   assert.equal(prep.questions[0], 'Would a gift request help?');
 });
@@ -104,7 +105,7 @@ test('a connected follow-up hands the full branded HTML to one native executor a
  s.advance();const reopened=await StudioLifecycle.open({directory:s.directory,now:s.app.now});await drive(reopened,p,'followup-restart');assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);
 });
 test('a reply observed in the provider read phase cancels a prepared next follow-up before native release',async t=>{
- const s=await setup(t,true,'no_answer',true),p=provider(s.config);await drive(s.app,p);s.advance();const next=s.app.now().toISOString();await s.app.apply({id:'second-call',prospect_id:'synthetic-cafe',type:'call_logged',at:next,data:{call_id:'second-call',outcome:'voicemail',performed_at:next,simulated:false,desk:true}});assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['second-call'].status,'Prepared');p.addReply();s.advance();await drive(s.app,p,'reply-before-second-release');assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['second-call'].status,'Cancelled');
+ const s=await setup(t,true,'no_answer',true),p=provider(s.config);await drive(s.app,p);s.advance();const next=s.app.now().toISOString();await s.app.apply({id:'second-call',prospect_id:'synthetic-cafe',type:'call_logged',at:next,data:{call_id:'second-call',outcome:'voicemail',performed_at:next,simulated:false,desk:true,focus:'ai',note:'Discuss AI enquiry handling.'}});assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['second-call'].status,'Prepared');p.addReply();s.advance();await drive(s.app,p,'reply-before-second-release');assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['second-call'].status,'Cancelled');
 });
 test('a stop after an uncertain native intent keeps delivery uncertain and reconciles a late sent receipt without resending',async t=>{
  const s=await setup(t,true,'voicemail',true),p=provider(s.config),ops=operationsFor(s.app,'before-lost-handoff');
@@ -112,8 +113,8 @@ test('a stop after an uncertain native intent keeps delivery uncertain and recon
  await s.app.apply({id:'stop-after-handoff',prospect_id:'synthetic-cafe',type:'contact_stopped',at,data:{reason:'do_not_contact'}});assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['call-one'].status,'Uncertain');
  s.advance(91000);await drive(s.app,p,'after-handoff-stop');s.advance();await drive(s.app,p,'after-stop-readback');s.advance();await drive(s.app,p,'after-task-stop-readback');const state=await s.app.snapshot();assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.equal(state.prospects['synthetic-cafe'].stage,'Stopped');assert.equal(state.prospects['synthetic-cafe'].follow_ups['call-one'].status,'Sent',JSON.stringify(state.operations.holds));assert.equal(state.prospects['synthetic-cafe'].attempts.filter(x=>x.channel==='email').length,1);
 });
-test('an owner-requested callback after earlier call history can release its first email within the retained bounds',async t=>{
- const s=await setup(t,true,'callback',true),p=provider(s.config);await s.app.change(state=>{state.prospects['synthetic-cafe'].attempts.unshift(...['old-call-1','old-call-2'].map(id=>({id,channel:'call',at,outcome:'no_answer'})));});await drive(s.app,p);assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['call-one'].status,'Sent');
+test('an owner-requested callback remains a task and never releases a sales email',async t=>{
+ const s=await setup(t,true,'callback',true),p=provider(s.config);await s.app.change(state=>{state.prospects['synthetic-cafe'].attempts.unshift(...['old-call-1','old-call-2'].map(id=>({id,channel:'call',at,outcome:'no_answer'})));});await drive(s.app,p);const state=await s.app.snapshot();assert.equal(p.calls.filter(x=>x.operation==='intent').length,0);assert.equal(Object.keys(state.prospects['synthetic-cafe'].follow_ups??{}).length,0);assert.ok(Object.values(state.actions).some(a=>a.type==='callback_task'&&['Queued','Verified'].includes(a.status)));
 });
 test('production release binds final approval to exact connections, evidence and campaign rules', async t => {
   const s = await setup(t, false);

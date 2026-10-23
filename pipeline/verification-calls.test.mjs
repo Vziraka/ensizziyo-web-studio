@@ -71,7 +71,7 @@ test('calls-only approval is exact and never grants email, booking or an unappro
   assert.equal(state.prospects[s.id].stage, 'Verifying');
   assert.equal(Object.values(state.actions).filter(a => a.type === 'email').length, 0);
   const follow = Object.values(state.actions).filter(a => a.type === 'call_task' && a.status === 'Queued');
-  assert.equal(follow.length, 1); assert.equal(follow[0].payload.due_at, '2026-10-26T14:00:00.000Z');
+  assert.equal(follow.length, 1); assert.equal(follow[0].payload.due_at, '2026-10-20T14:00:00.000Z');
   const reopened = await StudioLifecycle.open({ directory: s.directory, now: () => new Date(at) });
   await reopened.apply(event(s.id, 'no_answer'));
   assert.equal(Object.values((await reopened.snapshot()).actions).filter(a => a.type === 'call_task' && a.status === 'Queued').length, 1);

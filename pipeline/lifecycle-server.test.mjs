@@ -1,0 +1,46 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { StudioLifecycle, hash } from './lifecycle.mjs';
+import { serveLifecycle } from './lifecycle-server.mjs';
+import { createOperatorAuth } from './operators.mjs';
+
+const at='2026-10-19T15:00:00.000Z';
+const ownerKey='o'.repeat(43),friendKey='f'.repeat(43),secret='s'.repeat(43);
+const cookieFrom=response=>response.headers.get('set-cookie')?.split(';',1)[0];
+
+test('the existing operations desk requires individual operator sessions and attributes shared decisions',async t=>{
+ const directory=await mkdtemp(join(tmpdir(),'evz-operator-http-'));
+ t.after(()=>rm(directory,{recursive:true,force:true}));
+ const app=await StudioLifecycle.initialize({directory,now:()=>new Date(at)});
+ await app.apply({id:'seed-business',prospect_id:'fictional-business',type:'prospect_imported',at,data:{company_id:'fictional-company',name:'STUDIO TEST Juniper Bakery',category:'Food / bakery',controlled:true,idea:'Explore an easier preorder flow.',qualification:{verdict:'Research-qualified',independent_review:'Accepted',checked_at:at,report_sha256:hash('fixture report'),review_sha256:hash('fixture review'),evidence_ref:'fixture:synthetic evidence'},contact:{email:'owner@example.invalid',verified:true,checked_at:at,source:'fixture:fictional public contact'}}});
+ const server=await serveLifecycle(app,{port:0,quiet:true,operatorAuth:createOperatorAuth({EVZ_OPERATIONS_OWNER_KEY:ownerKey,EVZ_OPERATIONS_FRIEND_KEY:friendKey,EVZ_OPERATIONS_SESSION_SECRET:secret})});
+ t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const base=`http://127.0.0.1:${server.address().port}`;
+ const page=await fetch(base),studioCookie=cookieFrom(page);assert.equal(page.status,200);
+ const cookies=new Map(),bootstrap=await fetch(`${base}/api/bootstrap`,{headers:{cookie:studioCookie}}),csrf=(await bootstrap.json()).csrf;
+ assert.equal((await fetch(`${base}/api/state`,{headers:{cookie:studioCookie}})).status,401);
+ for(const [actor,key] of [['owner',ownerKey],['friend',friendKey]]){
+  const login=await fetch(`${base}/api/login`,{method:'POST',headers:{cookie:studioCookie,'content-type':'application/json','x-studio-token':csrf},body:JSON.stringify({key})});
+  assert.equal(login.status,200);const authCookie=cookieFrom(login);assert.match(login.headers.get('set-cookie'),/HttpOnly/);assert.match(login.headers.get('set-cookie'),/SameSite=Strict/);cookies.set(actor,`${studioCookie}; ${authCookie}`);
+  const state=await fetch(`${base}/api/state`,{headers:{cookie:cookies.get(actor)}});assert.equal((await state.json()).current_operator,actor);
+ }
+ const friendState=await (await fetch(`${base}/api/state`,{headers:{cookie:cookies.get('friend')}})).json();
+ const event={id:'friend-note',prospect_id:'fictional-business',type:'note_added',at,data:{note:'Shared fictional workspace note.'}};
+ const saved=await fetch(`${base}/api/event`,{method:'POST',headers:{cookie:cookies.get('friend'),'content-type':'application/json','x-studio-token':csrf},body:JSON.stringify({revision:friendState.revision,event})});
+ assert.equal(saved.status,200);const current=await app.snapshot();assert.equal(current.events['friend-note'].actor,'friend');
+ const ownerState=await (await fetch(`${base}/api/state`,{headers:{cookie:cookies.get('owner')}})).json();
+ const ownerEvent={id:'owner-note',prospect_id:'fictional-business',type:'note_added',at,data:{note:'Owner decision in the same shared state.'}};
+ const ownerSaved=await fetch(`${base}/api/event`,{method:'POST',headers:{cookie:cookies.get('owner'),'content-type':'application/json','x-studio-token':csrf},body:JSON.stringify({revision:ownerState.revision,event:ownerEvent})});assert.equal(ownerSaved.status,200);
+ const staleEvent={id:'stale-friend-note',prospect_id:'fictional-business',type:'note_added',at,data:{note:'Stale write must be rejected.'}};
+ const stale=await fetch(`${base}/api/event`,{method:'POST',headers:{cookie:cookies.get('friend'),'content-type':'application/json','x-studio-token':csrf},body:JSON.stringify({revision:ownerState.revision,event:staleEvent})});assert.equal(stale.status,400);assert.match((await stale.json()).error,/changed/);
+ await app.change(state=>{state.prospects['fictional-business'].stage='Proposal';});
+ const approvalState=await (await fetch(`${base}/api/state`,{headers:{cookie:cookies.get('friend')}})).json();
+ const approvalEvent={id:'friend-approved-scope',prospect_id:'fictional-business',type:'proposal_approved',at,data:{price_cents:120000,initial_payment_cents:60000,currency:'USD',revision_rounds:1,scope:'One fictional enquiry flow',deliverables:'Three responsive pages and an inquiry',exclusions:'No payment processing',timeline:'Two weeks after materials',acceptance:'Owner can submit and receive a test request',ownership:'Client owns paid deliverables',support_terms:'Seven days of scoped defect fixes',change_terms:'Written change scope and price',cancellation_terms:'Settle completed work as agreed',reference:'fixture:fictional proposal'}};
+ const friendApproval=await fetch(`${base}/api/event`,{method:'POST',headers:{cookie:cookies.get('friend'),'content-type':'application/json','x-studio-token':csrf},body:JSON.stringify({revision:approvalState.revision,event:approvalEvent})});assert.equal(friendApproval.status,200);
+ const approvedState=await app.snapshot();assert.equal(approvedState.prospects['fictional-business'].quote.approved_by,'friend');assert.equal(approvedState.events['friend-approved-scope'].actor,'friend');
+ const logout=await fetch(`${base}/api/logout`,{method:'POST',headers:{cookie:cookies.get('friend'),'content-type':'application/json','x-studio-token':csrf},body:'{}'});assert.equal(logout.status,200);
+ assert.equal((await fetch(`${base}/api/state`,{headers:{cookie:`${studioCookie}; ${cookieFrom(logout)}`}})).status,401);
+});

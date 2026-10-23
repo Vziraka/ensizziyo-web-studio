@@ -74,7 +74,7 @@ test('a saved no-answer drives one exact approved Apollo email, verifies its thr
   assert.equal((await s.app.dashboard()).daily.actual_emails, 0);
   assert.equal(p.calls.filter(c => c.operation === 'send').length, 1);
   assert.equal(p.calls.filter(c => c.operation === 'task_create').length, 1);
-  assert.equal(p.calls.find(c => c.operation === 'task_create').input.due_at, '2026-10-26T13:00:00.000Z');
+  assert.equal(p.calls.find(c => c.operation === 'task_create').input.due_at, '2026-10-20T13:00:00.000Z');
   s.advance(301_000); await drive(new ControlledOperations(s.app, 'session-two'), p.respond);
   assert.equal(p.calls.filter(c => c.operation === 'send').length, 1);
 });

@@ -1,7 +1,7 @@
 import {followUpOutcomes,followUpSetupIssues,renderFollowUpHtml,composeFollowUp} from './follow-up-template.mjs';
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { check, hash, initialConfig, businessDate, businessDaysBetween } from './lifecycle.mjs';
+import { check, hash, initialConfig, businessDate, businessDaysBetween, addBusinessDays } from './lifecycle.mjs';
 import { readJson, saveJson, privateStateDirectory } from './engine.mjs';
 import { reviewFiles, readPrivateJson, validateDecision } from './prospects.mjs';
 import { validateEvidenceReview } from './evidence-review.mjs';
@@ -374,11 +374,12 @@ export class ProductionOperations extends ControlledOperations {
     for (const a of Object.values(state.actions).filter(a => a.prospect_id === r.id && a.type === 'email' && a.status !== 'Cancelled')) {
       const e = o.email[a.id] ??= { prospect_id: r.id, status: 'Awaiting native release' }, intentKey = `${a.id}-intent`;
       if (e.thread) continue;
+      if(a.payload.due_at&&Date.parse(a.payload.due_at)>+now){e.status='Scheduled for follow-up';e.due_at=a.payload.due_at;continue;}
       if (!o.requests[intentKey]) {
         if (!writeReady || r.restriction||r.reply||r.cold_paused&&!approvedFollowUp(r,a,c)) continue;
         const calls = r.attempts.filter(x => x.channel === 'call'), sent = r.attempts.filter(x => x.channel === 'email');
         const followUp=approvedFollowUp(r,a,c);
-        check((followUp || r.calls[a.payload.call_id]?.outcome === 'no_answer' && calls.length <= 2) && sent.length < 2 && calls.length>0 && businessDaysBetween(calls[0].at, now) < 10, 'An eligible saved call within the two-email, ten-business-day campaign is required');
+        check((followUp || ['no_answer','voicemail'].includes(r.calls[a.payload.call_id]?.outcome) && calls.length <= 2) && sent.length < 2 && calls.length>0 && businessDaysBetween(calls[0].at, now) < 10, 'An eligible saved call within the two-email, ten-business-day campaign is required');
         const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', hourCycle: 'h23' }).formatToParts(now).map(p => [p.type, p.value]));
         check(r.controlled || !['Sat', 'Sun'].includes(parts.weekday) && Number(parts.hour) >= 9 && Number(parts.hour) < 17, 'Email release waits for weekday business hours');
         check(+now - Date.parse(r.qualification.checked_at) <= 30 * 86400000, 'Research is stale; hold email');

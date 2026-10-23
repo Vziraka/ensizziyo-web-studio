@@ -1,5 +1,19 @@
 # Launch tasks
 
+## Shared operations desk redesign — October 23, 2026
+
+The 49-decision interview and four-phase acceptance criteria live in the owner's private redesign brief. Implementation is active in `codex/operations-desk-redesign`; the primary checkout and installed runtime are preserved.
+
+- [x] Add an opt-in two-operator login to the existing lifecycle desk. A controlled HTTP proof verifies separate owner/friend sessions, shared fictional records, action attribution, stale revision rejection, and logout. This does not establish production authentication or access from separate computers; the server remains loopback-only until a reviewed shared host exists.
+- [x] Make shared 25-per-Eastern-day discovery/import ceilings, explicit assignment/claim/handoff, and outcome-aware business-day timing flow through existing callers. A call without a reviewed service focus stays task-only; only a focused, relevant email can be prepared after a call, with the second unanswered email delayed three business days from the second call actually logged. No real contact or outbound delivery was used.
+- [x] Run `npm run check` and all 394 account-free tests; the HTTP proof covers separate owner/friend sessions, shared fictional records, attributed actions, equal scope-and-price approval, stale-write rejection and logout. The browser check covers the fictional desk, focus-gated follow-up and 390px mobile layout.
+- [ ] Prove a supported computer-off background route using only current subscriptions/free allowances, or leave this acceptance explicitly unfulfilled. The installed Windows worker still needs its host and owner session awake; current Netlify Personal does not prove an always-on worker.
+- [ ] Index private project assets and approvals and test retrieval/version precedence across the existing workflows.
+- [ ] Complete focused evidence-backed research, both-operator call/follow-up/reply cases, alerts and human-reviewed proposal/mockup handoffs.
+- [ ] Resolve the existing commercial release gates before any activation. Keep commercial email and production activation off during implementation.
+
+The private interview brief owns the exact local recovery path and detailed hosting findings. Do not copy client/prospect records, credentials, or private source evidence into Git.
+
 ## Voice demo UI — October 20, 2026
 
 - [x] Complete the design interview and select the supplied centered layout and dotted waveform.

@@ -30,6 +30,20 @@ test('saving an unanswered attempt prepares exactly one follow-up across replay,
  const reopened=await StudioLifecycle.open({directory:app.directory,now:()=>new Date(at)}),saved=await reopened.snapshot();
  assert.deepEqual(saved.prospects.sample.follow_ups['call-one'],entry);assert.equal(Object.values(saved.actions).filter(a=>a.type==='email').length,1);
 });
+test('an unanswered call without a reviewed service focus stays task-only until a relevant message can be prepared',async t=>{
+ const app=await setup(t);await app.apply(call('voicemail',{note:''}));const state=await app.snapshot(),entry=state.prospects.sample.follow_ups['call-one'];
+ assert.equal(entry.status,'Held');assert.match(entry.reason,/specific, reviewed service focus/);assert.equal(entry.content.focus,'undecided');
+ assert.equal(Object.values(state.actions).some(action=>action.type==='email'),false);assert.doesNotMatch(renderFollowUpHtml(entry.content),/voice-demo-preview|independent demonstrations|Open example/);
+});
+test('call two is due the next business day and the final unanswered email waits three days after it is logged',async t=>{
+ const app=await setup(t),friday='2026-10-23T15:00:00.000Z';app.now=()=>new Date(friday);
+ const first=call('voicemail');first.at=friday;first.data.performed_at=friday;await app.apply(first);
+ let state=await app.snapshot(),firstTask=Object.values(state.actions).find(a=>a.prospect_id==='sample'&&a.type==='call_task'&&a.status==='Queued');
+ assert.equal(firstTask.payload.due_at,'2026-10-26T15:00:00.000Z');assert.equal(state.prospects.sample.follow_ups['call-one'].send_after,friday);
+ const second=call('no_answer');second.id='call-two-event';second.at=friday;second.data.call_id='call-two';second.data.performed_at=friday;await app.apply(second);
+ state=await app.snapshot();const final=state.prospects.sample.follow_ups['call-two'];assert.equal(final.send_after,'2026-10-28T15:00:00.000Z');assert.equal(state.actions[final.action_id].payload.due_at,final.send_after);
+ await assert.rejects(app.apply({id:'early-final-email',prospect_id:'sample',type:'email_delivered',at:friday,data:{action_id:final.action_id,message_id:'too-soon',simulated:true}},{actor:'provider'}),/cannot be delivered before its due time/);
+});
 test('a connected owner-reported conversation prepares personal copy and replies cancel it',async t=>{
  const app=await setup(t);await app.apply(call('connected',{intent:'requested_info',focus:'systems'}));let state=await app.snapshot(),record=state.prospects.sample,entry=record.follow_ups['call-one'];
  assert.match(entry.content.body,/Thanks for speaking/);assert.equal(entry.content.focus,'systems');assert.equal(approvedFollowUp(record,state.actions[entry.action_id],app.config),true);
@@ -38,6 +52,9 @@ test('a connected owner-reported conversation prepares personal copy and replies
 });
 test('declines, stop requests and skipped calls never prepare automatic email',async t=>{
  for(const outcome of ['declined','do_not_contact','wrong_contact','skipped']){const app=await setup(t);await app.apply(call(outcome));const state=await app.snapshot();assert.equal(Object.keys(state.prospects.sample.follow_ups??{}).length,0);assert.equal(Object.values(state.actions).some(a=>a.type==='email'),false);}
+});
+test('busy and agreed callbacks create call tasks only',async t=>{
+ for(const outcome of ['busy','callback']){const app=await setup(t),event=call(outcome,{callback_at:outcome==='callback'?'2026-10-19T16:00:00.000Z':undefined});delete event.data.desk;await app.apply(event);const state=await app.snapshot();assert.equal(Object.keys(state.prospects.sample.follow_ups??{}).length,0);assert.equal(Object.values(state.actions).some(a=>a.type==='email'),false);assert.equal(Object.values(state.actions).some(a=>['call_task','callback_task'].includes(a.type)),true);}
 });
 test('missing email leaves an explicit held follow-up and never guesses a recipient',async t=>{
  const app=await setup(t);await app.change(s=>{s.prospects.sample.contact.email=null;s.prospects.sample.contact.verified=false;});await app.apply(call());const state=await app.snapshot(),entry=state.prospects.sample.follow_ups['call-one'];assert.equal(entry.status,'Held');assert.match(entry.reason,/verified business email/);assert.equal(entry.content.to,null);assert.equal(Object.values(state.actions).some(a=>a.type==='email'),false);
@@ -49,12 +66,20 @@ test('a completed native handoff cannot be undone into an orphaned live email',a
  const app=await setup(t);await app.apply(call());const entry=(await app.snapshot()).prospects.sample.follow_ups['call-one'];await app.change(s=>{s.operations??={};s.operations.requests??={};s.operations.requests[`${entry.action_id}-intent`]={status:'Done'};});await assert.rejects(app.apply({id:'undo-released',prospect_id:'sample',type:'call_undone',at,data:{call_id:'call-one'}}),/native email handoff/);assert.equal((await app.snapshot()).prospects.sample.calls['call-one'].outcome,'no_answer');
 });
 test('native handoff includes the full branded HTML, actual footer and relevant topic demo',async t=>{
- const app=await setup(t);await app.apply(call('busy',{focus:'website'}));const r=(await app.snapshot()).prospects.sample,c={follow_up:{enabled:true,booking_url:'https://calendar.app.google/example'},sender:{postal_address:'CONTROLLED TEST ADDRESS'}};const m=nativeMessage(r,1,c,'call-one');assert.match(m.body,/<img.*voice-demo-preview/);assert.match(m.body,/homekind-motion/);assert.match(m.body,/CONTROLLED TEST ADDRESS/);assert.match(m.body,/EVZ Digital team/);assert.match(m.body,/calendar.app.google/);assert.doesNotMatch(m.body,/Private internal note|{{/);
+ const app=await setup(t);await app.apply(call('no_answer',{focus:'website'}));const r=(await app.snapshot()).prospects.sample,c={follow_up:{enabled:true,booking_url:'https://calendar.app.google/example'},sender:{postal_address:'CONTROLLED TEST ADDRESS'}};const m=nativeMessage(r,1,c,'call-one');assert.doesNotMatch(m.body,/voice-demo-preview|voice-agent example|AI receptionist demo/);assert.match(m.body,/homekind-motion/);assert.match(m.body,/Home-service website demonstration/);assert.match(m.body,/CONTROLLED TEST ADDRESS/);assert.match(m.body,/EVZ Digital team/);assert.match(m.body,/calendar.app.google/);assert.doesNotMatch(m.body,/Private internal note|{{/);
 });
 test('the branded template escapes business text, preserves team identity and holds incomplete setup',()=>{
  const record={name:'Oakline <script>alert(1)</script>',contact:{name:'Jordan Lee',email:'jordan@oakline.example'}};
  const message=composeFollowUp(record,{outcome:'no_answer',focus:'ai'},{sender:{postal_address:''}}),html=renderFollowUpHtml(message);
  assert.match(html,/hello@evzdigital\.studio/);assert.match(html,/EVZ Digital team/);assert.match(html,/voice-demo-preview\.png/);assert.match(html,/evz-wordmark\.png/);assert.doesNotMatch(html,/<script>|javascript:/);assert.match(message.body,/I tried calling/);assert.equal(followUpSetupIssues({}).length,4);
+});
+
+test('each call focus links to its matching example and only AI uses the voice-demo image',()=>{
+ const record={name:'SYNTHETIC Comfort HVAC',business_type:{category:'home-services',subtype:'HVAC'},contact:{email:'owner@example.invalid'}};
+ const website=composeFollowUp(record,{focus:'website'}),systems=composeFollowUp(record,{focus:'systems'}),ai=composeFollowUp(record,{focus:'ai'});
+ assert.match(website.demo_url,/homekind-motion/);assert.equal(website.preview_image,null);assert.doesNotMatch(website.text,/AI receptionist|voice-demo/);
+ assert.match(systems.demo_url,/relay-motion/);assert.equal(systems.preview_image,null);assert.match(ai.demo_url,/studio\/demos\/voice/);assert.match(ai.preview_image,/voice-demo-preview/);
+ assert.match(renderFollowUpHtml(website),/View a short project example/);assert.doesNotMatch(renderFollowUpHtml(website),/Hear a sample call/);
 });
 
 test('a researched owner cannot make the preview greeting differ from the saved follow-up',async t=>{

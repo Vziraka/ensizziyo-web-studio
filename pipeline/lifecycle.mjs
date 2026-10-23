@@ -40,6 +40,16 @@ export const initialConfig = {
 export function businessDate(value) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value));
 }
+export function dailyNewProspectCount(state, now = new Date()) {
+  const day = businessDate(now);
+  return Object.values(state.events ?? {}).filter(event => ['prospect_imported', 'verification_imported'].includes(event.type) && businessDate(event.at) === day).length;
+}
+export function addBusinessDays(value, count) {
+  check(Number.isInteger(count) && count >= 0 && count <= 30, 'Use a bounded business-day offset');
+  const due = new Date(value); let days = 0;
+  while (days < count) { due.setUTCDate(due.getUTCDate() + 1); if (![0, 6].includes(new Date(`${businessDate(due)}T12:00:00Z`).getUTCDay())) days++; }
+  return due;
+}
 export function businessDaysBetween(start, end) {
   let day = new Date(`${businessDate(start)}T12:00:00Z`), count = 0;
   const finish = businessDate(end);
@@ -51,7 +61,8 @@ export function businessDaysBetween(start, end) {
 }
 function request(state, record, type, payload, eventId) {
   const id = `${eventId}-${type}`;
-  state.actions[id] ??= { id, prospect_id: record.id, type, payload, status: 'Queued', created_at: state.updated_at };
+  state.actions[id] ??= { id, prospect_id: record.id, type, payload, status: 'Queued', created_at: state.updated_at,
+    ...(record.follow_up_owner ? { assigned_to: record.follow_up_owner } : {}) };
 }
 function pauseCold(state, record, eventId, reason) {
   record.cold_paused = true;
@@ -87,7 +98,7 @@ function safeReference(value) {
   check(!/^(?:javascript|data|file):/i.test(value), 'Unsafe document reference');
   return value;
 }
-function owner(actor) { check(actor === 'owner' || actor === 'controlled-fixture', 'This decision requires owner review'); }
+function owner(actor) { check(['owner', 'friend', 'controlled-fixture'].includes(actor), 'This decision requires owner review'); }
 
 function prepareCallFollowUp(state,record,call,config,at,reviewed=false){
   if(!config.follow_up?.enabled||!call.desk||!followUpOutcomes.includes(call.outcome))return;
@@ -96,6 +107,7 @@ function prepareCallFollowUp(state,record,call,config,at,reviewed=false){
   const prior=record.follow_ups[call.call_id];
   if(prior&&(!reviewed||prior.status!=='Held'||prior.action_id))return;
   const content=prior?{...prior.content,to:record.contact.email??null}:composeFollowUp(record,call,config),issues=[];
+  if(content.focus==='undecided')issues.push('A specific, reviewed service focus is needed before preparing a relevant follow-up');
   if(record.restriction||record.reply)issues.push('Contact stopped or a reply needs owner review');
   if(!content.to||!record.contact.verified)issues.push('A verified business email is needed; follow up with a confirmed address');
   if(['Verification review','Connected review'].includes(record.stage)||call.outcome==='connected'&&!['Discovery','Information requested','Callback'].includes(record.stage))issues.push('Confirm the saved conversation and next step first');
@@ -104,9 +116,10 @@ function prepareCallFollowUp(state,record,call,config,at,reviewed=false){
   if(emails+pending>=2)issues.push('The two-email campaign limit is already used or reserved');
   if(record.attempts[0]&&businessDaysBetween(record.attempts[0].at,at)>=10)issues.push('The ten-business-day campaign has ended');
   const setup=record.controlled?[]:followUpSetupIssues(config);
-  const entry={call_id:call.call_id,call_sha256:hash(call),content,status:issues.length?'Held':'Prepared',reason:[...issues,...setup,...(!record.controlled&&!config.outreach_enabled?['Commercial email sending is held']:[])].join('. '),created_at:prior?.created_at??at};
+  const unansweredCalls=record.attempts.filter(a=>a.channel==='call').length,sendAfter=unansweredCalls>=2&&['no_answer','voicemail'].includes(call.outcome)?addBusinessDays(at,3).toISOString():at;
+  const entry={call_id:call.call_id,call_sha256:hash(call),content,status:issues.length?'Held':'Prepared',reason:[...issues,...setup,...(!record.controlled&&!config.outreach_enabled?['Commercial email sending is held']:[])].join('. '),created_at:prior?.created_at??at,send_after:sendAfter};
   record.follow_ups[call.call_id]=entry;
-  if(!issues.length){request(state,record,'email',{call_id:call.call_id,follow_up:true,content_sha256:hash(content),email:content.to},call.event_id);entry.action_id=`${call.event_id}-email`;}
+  if(!issues.length){request(state,record,'email',{call_id:call.call_id,follow_up:true,content_sha256:hash(content),email:content.to,due_at:sendAfter},call.event_id);entry.action_id=`${call.event_id}-email`;}
 }
 
 export function validateTranscriptProposal(proposal, transcript) {
@@ -175,6 +188,7 @@ export class StudioLifecycle {
       let r = state.prospects[event.prospect_id];
       state.updated_at = this.now().toISOString();
       if (['prospect_imported', 'verification_imported'].includes(event.type)) {
+        check(dailyNewProspectCount(state, this.now()) < 25, 'The shared limit of 25 new businesses has been reached for today. Import resumes after midnight America/New_York time');
         const verification = event.type === 'verification_imported';
         if (this.config.mode === 'production') check(actor === (verification ? 'verification-import' : 'research-import'), verification ? 'Production verification calls must enter through the retained verification import' : 'Production prospects must enter through the retained independent research review'); else owner(actor);
         check(!r && !Object.values(state.prospects).some(x => x.company_id === data.company_id), 'Prospect/company already exists');
@@ -204,6 +218,7 @@ export class StudioLifecycle {
         switch (event.type) {
           case 'call_logged': {
             owner(actor); check(key(data.call_id) && !r.calls[data.call_id] && [...coldOutcomes, 'connected', 'callback', 'declined', 'do_not_contact', 'wrong_contact', 'skipped'].includes(data.outcome), 'Explicit unique call outcome required');
+            check(!r.follow_up_owner || r.follow_up_owner === actor, 'This business is assigned to the other operator; request a handoff before logging a call');
             check(data.note === undefined || typeof data.note === 'string' && data.note.length <= 3000, 'Keep the call note within 3000 characters');
             check(data.focus===undefined||['ai','systems','website','marketing','undecided'].includes(data.focus),'Choose a supported call focus');
             if (data.desk) {
@@ -213,13 +228,14 @@ export class StudioLifecycle {
             check(data.simulated === r.controlled, 'Simulated and actual calls cannot be mixed');
             check(date(data.performed_at) && Date.parse(data.performed_at) <= Date.parse(event.at) && (!r.attempts.length || Date.parse(data.performed_at) >= Date.parse(r.attempts.at(-1).at)), 'Call time must be performed, ordered and dated');
             if (data.outcome !== 'skipped') {
+              r.follow_up_owner ??= actor === 'controlled-fixture' ? 'owner' : actor;
               if (verificationLane(r)) validateVerificationRecord(r, data.performed_at);
               check(callStages.includes(r.stage), 'Call is outside the contact stage');
               check(r.stage === 'Callback' || r.attempts.filter(x => x.channel === 'call').length < 2, 'Two-call campaign cap reached');
               if (r.stage !== 'Callback') contactable(r, data.performed_at);
               r.attempts.push({ id: data.call_id, channel: 'call', at: data.performed_at, simulated: data.simulated, connected: ![...coldOutcomes, 'wrong_contact'].includes(data.outcome) });
             }
-            r.calls[data.call_id] = { ...data, event_id: eid };
+            r.calls[data.call_id] = { ...data, actor, event_id: eid };
             for (const a of Object.values(state.actions)) if (a.prospect_id === r.id && ['call_task', 'callback_task'].includes(a.type)) {
               if (a.status === 'Queued') a.status = 'Cancelled';
               else if (a.provider_task) a.cancel_requested = true;
@@ -242,17 +258,32 @@ export class StudioLifecycle {
                 if (r.cold_paused || r.attempts.filter(x => x.channel === 'call').length >= 2) {
                   r.stage = 'Hold'; r.next_check = r.cold_paused ? 'Requested callback was unanswered; owner reviews the next conversational step. Email stays blocked.' : 'Two call attempts used; hold for owner review. No email is released by this call-only lane.';
                 } else {
-                  const due = new Date(data.performed_at); let days = 0;
-                  while (days < 5) { due.setUTCDate(due.getUTCDate() + 1); if (![0, 6].includes(new Date(`${businessDate(due)}T12:00:00Z`).getUTCDay())) days++; }
-                  request(state, r, 'call_task', { due_at: due.toISOString(), kind: 'follow-up' }, eid);
+                  request(state,r,'call_task',{due_at:addBusinessDays(data.performed_at,1).toISOString(),kind:'follow-up'},eid);
                 }
               } else {
               r.stage = 'Contacting';
-              if (!r.contact?.verified || r.cold_paused) { r.stage = 'Hold'; r.next_check = r.cold_paused ? 'Requested callback was unanswered; owner chooses the conversational next step' : 'Verify the public email before handoff'; }
-              else if (r.attempts.filter(x => x.channel === 'email').length < 2 && !Object.values(state.actions).some(a => a.prospect_id === r.id && a.type === 'email' && ['Queued', 'Pending', 'Uncertain', 'Awaiting readback'].includes(a.status))) request(state, r, 'email', { call_id: data.call_id, idea: r.idea, email: r.contact.email }, eid);
+              if(data.outcome==='busy'){
+                if(r.attempts.filter(x=>x.channel==='call').length>=2){r.stage='Hold';r.next_check='Two call attempts used; hold for owner review.';}
+                else request(state,r,'call_task',{due_at:addBusinessDays(data.performed_at,1).toISOString(),kind:'follow-up'},eid);
+              }else if (!r.contact?.verified || r.cold_paused) { r.stage = 'Hold'; r.next_check = r.cold_paused ? 'Requested callback was unanswered; owner chooses the conversational next step' : 'Verify the public email before handoff'; }
+              else if (['no_answer','voicemail'].includes(data.outcome) && r.attempts.filter(x => x.channel === 'email').length < 2 && !Object.values(state.actions).some(a => a.prospect_id === r.id && a.type === 'email' && ['Queued', 'Pending', 'Uncertain', 'Awaiting readback'].includes(a.status))) request(state, r, 'email', { call_id: data.call_id, idea: r.idea, email: r.contact.email }, eid);
               }
             } else { r.stage = 'Hold'; r.next_check = data.outcome === 'wrong_contact' ? 'Verify the public phone/contact ownership' : 'Record an actual outcome; skipped tasks do not release email'; pauseCold(state, r, eid, r.next_check); }
             prepareCallFollowUp(state,r,r.calls[data.call_id],this.config,event.at);
+            break;
+          }
+          case 'call_claimed': {
+            owner(actor); check(['owner', 'friend'].includes(actor) && callStages.includes(r.stage) && !r.restriction && !r.cold_paused, 'Only an eligible business can be claimed');
+            check(!r.follow_up_owner || r.follow_up_owner === actor, 'This business is assigned to the other operator; request a handoff');
+            r.follow_up_owner = actor;
+            for (const action of Object.values(state.actions)) if (action.prospect_id === r.id && ['call_task', 'callback_task'].includes(action.type) && ['Queued', 'Verified'].includes(action.status)) action.assigned_to = actor;
+            break;
+          }
+          case 'follow_up_handed_off': {
+            owner(actor); check(['owner', 'friend'].includes(actor) && r.follow_up_owner === actor && ['owner', 'friend'].includes(data.to) && data.to !== actor, 'Only the assigned operator can hand this business to the other operator');
+            r.follow_up_owner = data.to; r.follow_up_handoffs ??= [];
+            r.follow_up_handoffs.push({ from: actor, to: data.to, at: event.at, event_id: eid });
+            for (const action of Object.values(state.actions)) if (action.prospect_id === r.id && ['call_task', 'callback_task', 'email'].includes(action.type) && ['Queued', 'Pending', 'Uncertain', 'Awaiting readback', 'Verified'].includes(action.status)) action.assigned_to = data.to;
             break;
           }
           case 'call_undone': {
@@ -339,15 +370,14 @@ export class StudioLifecycle {
           case 'email_delivered': {
             check(actor === 'provider' && data.simulated === r.controlled && key(data.message_id), 'Verified provider email identity required');
             const action = state.actions[data.action_id];
-            check(action?.prospect_id === r.id && action.type === 'email' && (r.calls[action.payload.call_id]?.outcome === 'no_answer'||this.config.follow_up?.enabled&&action.payload.follow_up&&followUpOutcomes.includes(r.calls[action.payload.call_id]?.outcome)), 'Delivery must match the explicit call/email handoff');
+            check(action?.prospect_id === r.id && action.type === 'email' && (['no_answer','voicemail'].includes(r.calls[action.payload.call_id]?.outcome)||this.config.follow_up?.enabled&&action.payload.follow_up&&followUpOutcomes.includes(r.calls[action.payload.call_id]?.outcome)), 'Delivery must match the explicit call/email handoff');
+            check(!action.payload.due_at || date(action.payload.due_at) && Date.parse(action.payload.due_at) <= Date.parse(event.at), 'Scheduled follow-up cannot be delivered before its due time');
             check(r.attempts.filter(a => a.channel === 'email').length < 2, 'Two-email campaign cap reached');
             r.attempts.push({ id: data.message_id, channel: 'email', at: event.at, simulated: data.simulated });
             if(action.payload.follow_up&&r.follow_ups?.[action.payload.call_id])r.follow_ups[action.payload.call_id].status='Sent';
             action.status = 'Verified'; action.delivery = { message_id: data.message_id, at: event.at };
-            if (!r.cold_paused && !r.restriction && r.attempts.filter(a => a.channel === 'call').length < 2) {
-              const due = new Date(r.attempts.find(a => a.channel === 'call').at); let days = 0;
-              while (days < 5) { due.setUTCDate(due.getUTCDate() + 1); if (![0, 6].includes(new Date(`${businessDate(due)}T12:00:00Z`).getUTCDay())) days++; }
-              request(state, r, 'call_task', { due_at: due.toISOString(), kind: 'follow-up' }, eid);
+            if (!r.cold_paused && !r.restriction && r.attempts.filter(a => a.channel === 'call').length < 2 && !Object.values(state.actions).some(a=>a.prospect_id===r.id&&['call_task','callback_task'].includes(a.type)&&['Queued','Verified'].includes(a.status)&&!a.cancel_requested)) {
+              request(state, r, 'call_task', { due_at: addBusinessDays(r.attempts.find(a => a.channel === 'call').at,1).toISOString(), kind: 'follow-up' }, eid);
             }
             break;
           }
@@ -442,7 +472,7 @@ export class StudioLifecycle {
     });
   }
   async dashboard() {
-    const {discoverySummary,discoveryCampaignSummary}=await import('./discovery-batches.mjs');
+    const {discoverySummary,discoveryCampaignSummary,discoveryDailySummary}=await import('./discovery-batches.mjs');
     this.config = await readJson(join(this.directory, 'lifecycle-config.json'));
     const state = await this.snapshot(), today = businessDate(this.now());
     let supplementalReviews = null, supplementalHold;
@@ -461,7 +491,7 @@ export class StudioLifecycle {
     const contacted = real.filter(r => r.attempts.some(a => !a.simulated && businessDate(a.at) === today));
     const first = contacted.filter(r => businessDate(r.attempts.find(a => !a.simulated).at) === today).length;
     const supply = callSupply(state, this.now()), queue = supply.queue;
-    return { ...state,follow_up_settings:{follow_up:{booking_url:this.config.follow_up?.booking_url},sender:{postal_address:this.config.sender?.postal_address}}, discovery_batches:Object.values(state.discovery_batches??{}).map(discoverySummary), discovery_campaigns:Object.values(state.discovery_campaigns??{}).map(c=>discoveryCampaignSummary(c,state)), discovery_enabled:this.config.discovery?.enabled===true, owner_contact_summary:ownerContactSummary(state,this.now()), provider_contact_summary:providerContactSummary(state,this.now()), supply, pending_bookings:Object.entries(this.config.operations?.bookings??{}).filter(([id])=>!state.operations?.bookings?.[id]?.verified).map(([id,b])=>({id,prospect_id:b.prospect_id,start:b.start,mode:b.mode,status:state.operations?.holds?.[id]??'Queued for calendar verification'})), supplemental_reviews: supplementalReviews, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, owner_contact_view:ownerContactView(r,this.now()), provider_contact_view:providerContactView(r,this.now()), quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode,follow_up_enabled:this.config.follow_up?.enabled===true, research_paused: researchPaused, research_priority: researchPriority, outreach_paused: !this.config.outreach_enabled, calls_paused: !this.config.outreach_enabled && !this.config.calls_enabled, priority: this.config.priority,
+    return { ...state,follow_up_settings:{follow_up:{booking_url:this.config.follow_up?.booking_url},sender:{postal_address:this.config.sender?.postal_address}}, discovery_daily:discoveryDailySummary(state,this.now()), discovery_batches:Object.values(state.discovery_batches??{}).map(discoverySummary), discovery_campaigns:Object.values(state.discovery_campaigns??{}).map(c=>discoveryCampaignSummary(c,state)), discovery_enabled:this.config.discovery?.enabled===true, owner_contact_summary:ownerContactSummary(state,this.now()), provider_contact_summary:providerContactSummary(state,this.now()), supply, pending_bookings:Object.entries(this.config.operations?.bookings??{}).filter(([id])=>!state.operations?.bookings?.[id]?.verified).map(([id,b])=>({id,prospect_id:b.prospect_id,start:b.start,mode:b.mode,status:state.operations?.holds?.[id]??'Queued for calendar verification'})), supplemental_reviews: supplementalReviews, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, owner_contact_view:ownerContactView(r,this.now()), provider_contact_view:providerContactView(r,this.now()), quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode,follow_up_enabled:this.config.follow_up?.enabled===true, research_paused: researchPaused, research_priority: researchPriority, outreach_paused: !this.config.outreach_enabled, calls_paused: !this.config.outreach_enabled && !this.config.calls_enabled, priority: this.config.priority,
       runtime_enabled: this.config.runtime?.enabled === true, final_review: this.config.mode === 'production' ? { fingerprint: (await import('./production.mjs')).releaseFingerprint(this.config), gates: (await import('./production.mjs')).productionGates(this.config), approved: this.config.release?.approved === true, verified: this.config.verified_summary ?? [],
         calls: { fingerprint: (await import('./production.mjs')).callReleaseFingerprint(this.config), approved: this.config.call_release?.approved === true, evidence: this.config.call_readiness ?? {}, transcript_daily_calls: this.config.transcript_ai.daily_calls } } : null,
       ai_enabled: this.config.transcript_ai.enabled, connector_writes_enabled: this.config.connector_writes_enabled, readiness: this.config.readiness },

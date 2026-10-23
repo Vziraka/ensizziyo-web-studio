@@ -1,5 +1,32 @@
 # Controlled research proof
 
+## Local two-operator console rehearsal — October 23
+
+This is a same-computer rehearsal of separate owner/friend sessions on fictional records. It does not establish remote authentication, shared cloud storage, computer-off execution, or production readiness. Keep all state in a new temporary directory outside the Git checkout; never put operator keys in `.env`, source files, or a committed example.
+
+From `pipeline` in PowerShell, create three independent random 32-byte keys and initialize the controlled fixture state:
+
+```powershell
+function New-EvzProofKey {
+  $proofBytes = New-Object byte[] 32
+  $proofRng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+  try { $proofRng.GetBytes($proofBytes) } finally { $proofRng.Dispose() }
+  [Convert]::ToBase64String($proofBytes).TrimEnd('=').Replace('+','-').Replace('/','_')
+}
+$env:STUDIO_LIFECYCLE_STATE_DIR = Join-Path $env:TEMP ('evz-ops-proof-' + [guid]::NewGuid().ToString('N'))
+$env:STUDIO_LIFECYCLE_PORT = '0'
+$env:EVZ_OPERATIONS_OWNER_KEY = New-EvzProofKey
+$env:EVZ_OPERATIONS_FRIEND_KEY = New-EvzProofKey
+$env:EVZ_OPERATIONS_SESSION_SECRET = New-EvzProofKey
+node lifecycle-cli.mjs init
+node lifecycle-cli.mjs seed
+node lifecycle-cli.mjs serve
+```
+
+The readiness line prints the loopback URL and selected port. Open it in two separate browser profiles on this computer. Sign in once with each key, check that both sessions see the same fictional businesses, and explicitly hand off one record. Verify the assigned-work filters and event attribution; use a separate unassigned fixture to exercise claiming. Do not place calls or send test email. A stale-write rejection is covered by `lifecycle-server.test.mjs`.
+
+Stop only the console started above with Ctrl+C. Remove the three `EVZ_OPERATIONS_*` environment variables in that PowerShell session. Delete only the unique `evz-ops-proof-*` directory you created after confirming its resolved path is below `$env:TEMP`; retain it when preserving local QA evidence. The normal account-free checks remain `npm run check` and `node --test --test-concurrency=1`.
+
 October 19 AI operations increment: [AI operations](AI-OPERATIONS.md) owns the approved three-pane desk, saved-call follow-ups/full HTML previews, contact/social provenance, voice demo, booking, sender gates and finite 100-additional-business campaign. Its verification recipe and rollback requirements supersede older no-answer-only wording for workspaces with `follow_up.enabled`. Commercial delivery remains held for the unresolved physical footer and native HTML proof; the business sender is verified, and research and calls retain their independent release.
 
 October 19 multi-category increment: [Campaign operation](CAMPAIGNS.md) owns the category desk, globally visible commitments, on-demand 25-total discovery and approved internal packages/care. The new service reuses existing public search/page reading, source validation, subscription allowance/ledger and the verification-card import. No new subscription, model API, automatic stocking or prospect messaging. Current deployment and batch evidence belongs in WORKSPACE.md.
