@@ -11,6 +11,7 @@ import {projectContext,projectWorkContext,resolveProject} from './project-work.m
 import {readFile} from 'node:fs/promises';import {join} from 'node:path';import {fileURLToPath} from 'node:url';import {createHmac,randomBytes,timingSafeEqual} from 'node:crypto';
 import {StudioLifecycle,initialConfig,check} from './lifecycle.mjs';import {ConditionalLifecycleStore} from './lifecycle-store.mjs';import {createOperatorAuth} from './operators.mjs';import {fixtureProspect} from './lifecycle-fixtures.mjs';import {lifecycleAssets} from './lifecycle-assets.mjs';import {renderFollowUpPreview} from './follow-up-template.mjs';import {callingSession,saveInformationDraft} from './call-desk-actions.mjs';
 import {audioRequest,saveCallAudio,readCallAudio,reconcileCallAudio,blobAudioStore} from './call-audio.mjs';
+import {exactMailPackage,approveExactMail,dispatchExactMail,reconcileExactMail} from './exact-mail.mjs';
 
 const base='/desk',csrfCookie='evz_desk_csrf',maxBody=120_000;
 const headers={'Cache-Control':'no-store','Netlify-CDN-Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; font-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"};
@@ -47,7 +48,7 @@ export function projectDashboard(view){
  delete view.ai_attempts;delete view.transcript_assessment;delete view.gateway_proof;delete view.gateway_proof_reviews;delete view.call_transcription_rehearsal;delete view.full_call_transcription;return projectSourceBodies(view);
 }
 
-export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=()=>new Date(),assetDirectory=fileURLToPath(new URL('./lifecycle-ui/',import.meta.url)),readAsset=null,gatewayOptions={},backgroundOnly=false}={}){
+export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=()=>new Date(),assetDirectory=fileURLToPath(new URL('./lifecycle-ui/',import.meta.url)),readAsset=null,gatewayOptions={},googleMailOptions={},backgroundOnly=false}={}){
  return async request=>{
   let settings;try{settings=configured(env,now);}catch{return json(503,{error:'Private desk is not configured'});}
   const url=new URL(request.url),path=url.pathname.slice(base.length)||'/';
@@ -123,6 +124,14 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    if(post&&path==='/api/team-notifications/prepare')return json(200,await prepareTeamNotifications(app));
    if(post&&path==='/api/calling-session')return json(200,await callingSession(app,await inputBody(request)));
    if(post&&path==='/api/information-draft')return json(200,await saveInformationDraft(app,await inputBody(request),actor));
+   if(post&&path.startsWith('/api/exact-mail/')){
+    check(env.EVZ_OPERATIONS_GOOGLE_EXACT_MAIL==='fictional-exact-mail-v1','Hosted exact email is disabled');
+    const input=await inputBody(request),options={...googleMailOptions,actor,env};
+    if(path==='/api/exact-mail/package')return json(200,await exactMailPackage(app,input,actor));
+    if(path==='/api/exact-mail/approve')return json(200,await approveExactMail(app,input,actor));
+    if(path==='/api/exact-mail/dispatch')return json(200,await dispatchExactMail(app,input,options));
+    if(path==='/api/exact-mail/reconcile')return json(200,await reconcileExactMail(app,input,options));
+   }
    if(post&&path==='/api/pause'){const proof=await pauseGatewayProof(app,actor),recording=await pauseCallTranscription(app,actor),full=await pauseFullCall(app,actor),assessment=await pauseAssessment(app,actor);return json(200,{paused:true,...proof,...recording,...full,...assessment,in_flight_may_complete:proof.in_flight_may_complete||recording.in_flight_may_complete||full.in_flight_may_complete||assessment.in_flight_may_complete||false,reason:'Operational execution stays disabled; further finite Gateway jobs are paused'});}
    return json(409,{error:'This action needs a connected execution or file service; it is disabled in the fictional shared preview'});
   }catch(error){if(['ENOENT','EACCES','ENOTDIR'].includes(error.code))return json(503,{error:'Private desk UI is unavailable; no execution was started'});if(error.code==='STATE_CONFLICT')return json(409,{error:error.message});if(error.code==='STATE_UNCERTAIN'||error.code==='STATE_UNAVAILABLE')return json(503,{error:error.message});return json(400,{error:error.message?.startsWith('Shared')?'Private shared state is unavailable; retain your event ID and retry after readback':error.message?.includes('token')?'Private request rejected':error.message?.slice(0,240)??'Private request failed'});}

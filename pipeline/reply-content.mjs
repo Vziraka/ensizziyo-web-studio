@@ -40,7 +40,8 @@ export function replyContent(message,threadId){
     if(!identity.message_header_id||!identity.from||!identity.to||header(message,'Reply-To')&&address(header(message,'Reply-To'))!==identity.from||header(message,'Cc')||header(message,'Bcc'))throw Error('Reply routing needs original-message review');
     if(Buffer.byteLength(JSON.stringify(message.payload??{}))>96_000)throw Error('MIME source exceeds bounds');
     const body=extract(message.payload);if(!body.text)throw Error('Reply text is empty');
-    const content={...identity,...body,mime_sha256:hash(message.payload),body_sha256:hash(body.text),status:'Complete'};
+    const references=header(message,'References');
+    const content={...identity,...(references?{references}:{}),...body,mime_sha256:hash(message.payload),body_sha256:hash(body.text),status:'Complete'};
     return {...content,source_sha256:hash(content)};
   }catch(error){return {...identity,status:'Held',hold:error.message};}
 }

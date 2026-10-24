@@ -44,6 +44,7 @@ export async function sendInformation(app,input,{connect=options=>new AppConnect
     if(c.mode==='production') requireProductionRelease(c);
     await app.change(state=>{
       const r=state.prospects[input.prospect_id],d=r?.information_draft;
+      check(!Object.values(state.actions).some(a=>a.prospect_id===input.prospect_id&&a.payload?.exact_mail&&['Queued','Pending','Uncertain'].includes(a.status)),'An exact email approval or intent already owns this conversation; reconcile it first');
       check(r&&!r.restriction&&['Discovery','Information requested'].includes(r.stage)&&d?.fingerprint===input.fingerprint,'Message or conversation changed; review it again');
       if(['Sent','Simulated'].includes(d.status))return;
       check(d.status==='Draft'&&input.approved===true,'This send is already reserved or needs exact approval; never resend an uncertain message');

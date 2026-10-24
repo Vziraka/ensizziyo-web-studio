@@ -1,5 +1,7 @@
 # Controlled research proof
 
+[Disabled exact Gmail delivery](GOOGLE-EXACT-MAIL.md) connects current held replies and authored PDF companion packages to a separate signed send approval and the existing lifecycle intent ledger. Run `node --test pipeline/exact-mail.test.mjs` from the repository root for account-free actual-caller/provider-wire checks. No OAuth grant, provider request, production capability or scheduler is enabled.
+
 [Inert shared records](HOSTED-DESK.md#inert-shared-record-source) add a separate, deployment-bound production-record source while execution remains disabled. `node --test pipeline/inert-shared-workspace.test.mjs` from the repository root verifies new synthetic 11 MB records, existing backup/original dependencies, signed owner/friend reads and note edits, CAS failure/reconciliation, disabled routes and local export/restore. No remote import or configuration change is performed by that command.
 
 [Fresh project continuation](PROJECT-AUTHORING.md#fresh-project-entry) supplies a callable name-to-originals-to-reviewed-output workflow through the existing CLI and repository-owned skill. The AI client loads the real design/proposal skill and authors/reviews; code verifies identity, current context, originals, rendering, held attachment and same-project readback. Local interactive execution only; fresh-AI validation and unattended/PC-off authoring remain separate.

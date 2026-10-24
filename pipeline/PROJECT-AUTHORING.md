@@ -1,5 +1,7 @@
 # Local project authoring and held companion email
 
+The existing held companion package now has a [disabled exact-message caller](GOOGLE-EXACT-MAIL.md) with a separate signed send approval, exact archived-PDF retrieval and same-intent sender readback. Authoring/export/scope-price approvals still do not authorize sending. No Google grant or real delivery is enabled.
+
 The local CLI executes actual composition for `website-concepts`, `website-refinement` and `client-proposal` Ready items. It consumes saved context, verifies retrieved original references, renders a new PDF and every page as PNG, then indexes the reviewed result as an **unapproved** immutable version with a held companion email. It never sends, approves a baseline or establishes client acceptance.
 
 A human or authorized agent reads/applies the installed `company-design-concepts` / `evz-proposals` skills and authors the source; the deterministic renderer composes/exports it. The [bounded preference checks](#scoped-preferences-in-actual-authoring) apply supported typography/background rules. Broader interpretation, research and design judgment remain assisted; no image generation or autonomous model is invoked. The October 24 fictional proof actually authored five desktop directions, an exact selected-direction refinement and a proposal from an explicitly approved fictional quote. ImageGen was expressly excluded; retained October 20 reference captures were inspected. This exception does not waive the design skill's normal research/exploration/original-asset requirements for client work.

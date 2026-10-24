@@ -386,12 +386,13 @@ export class ProductionOperations extends ControlledOperations {
   }
   *nativeEmails(state, c, r, binding, request, retain, writeReady) {
     const o = state.operations, now = this.app.now();
-    check(c.follow_up?.enabled || !verificationLane(r) || !Object.values(state.actions).some(a => a.prospect_id === r.id && a.type === 'email' && a.status !== 'Cancelled'), 'Verification calls cannot release cold email; qualify the conversation and review its next action');
-    for (const a of Object.values(state.actions).filter(a => a.prospect_id === r.id && a.type === 'email' && a.status !== 'Cancelled')) {
+    check(c.follow_up?.enabled || !verificationLane(r) || !Object.values(state.actions).some(a => a.prospect_id === r.id && a.type === 'email' && !a.payload?.exact_mail && a.status !== 'Cancelled'), 'Verification calls cannot release cold email; qualify the conversation and review its next action');
+    for (const a of Object.values(state.actions).filter(a => a.prospect_id === r.id && a.type === 'email' && !a.payload?.exact_mail && a.status !== 'Cancelled')) {
       const e = o.email[a.id] ??= { prospect_id: r.id, status: 'Awaiting native release' }, intentKey = `${a.id}-intent`;
       if (e.thread) continue;
       if(a.payload.due_at&&Date.parse(a.payload.due_at)>+now){e.status='Scheduled for follow-up';e.due_at=a.payload.due_at;continue;}
       if (!o.requests[intentKey]) {
+        check(!Object.values(state.actions).some(other=>other.prospect_id===r.id&&other.payload?.exact_mail&&['Queued','Pending','Uncertain'].includes(other.status)),'An exact email already owns this conversation; reconcile before a native intent');
         if (!writeReady || r.restriction||r.reply||r.cold_paused&&!approvedFollowUp(r,a,c)) continue;
         check(reviewedHostedFollowUp(r,a),'Review and approve the exact hosted transcript email before a new native intent');
         const calls = r.attempts.filter(x => x.channel === 'call'), sent = r.attempts.filter(x => x.channel === 'email');
