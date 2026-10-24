@@ -13,7 +13,8 @@ export function callSupply(state, now = new Date()) {
   const queue=dailyCallQueue(candidates,now);
   queue.sort((a,b)=>(a.kind==='callback'?0:1)-(b.kind==='callback'?0:1) || (verificationLane(state.prospects[a.prospect_id])?1:0)-(verificationLane(state.prospects[b.prospect_id])?1:0) || Date.parse(a.due_at)-Date.parse(b.due_at));
   const pitchReady = queue.filter(a => !verificationLane(state.prospects[a.prospect_id])).length;
-  return {checked_at:now.toISOString(),ready:queue.length,target:100,low:queue.length<50,full:queue.length>=100,pitch_ready:pitchReady,verification:queue.length-pitchReady,pitch_target:100,pitch_full:pitchReady>=100,queue};
+  const newReady=queue.filter(a=>a.kind==='new'),pitchNew=newReady.filter(a=>!verificationLane(state.prospects[a.prospect_id])).length;
+  return {checked_at:now.toISOString(),ready:queue.length,new_ready:newReady.length,callback_ready:queue.filter(a=>a.kind==='callback').length,follow_up_ready:queue.filter(a=>['follow-up','follow_up'].includes(a.kind)).length,new_daily_target:25,target:50,low:newReady.length<25,full:newReady.length>=50,pitch_ready:pitchReady,verification:queue.length-pitchReady,pitch_new_ready:pitchNew,pitch_target:50,pitch_full:pitchNew>=50,queue};
 }
 export function sessionSummary(state, since) {
   const calls=Object.values(state.prospects).flatMap(r=>Object.values(r.calls).filter(c=>!c.undone&&Date.parse(c.performed_at)>=Date.parse(since)));

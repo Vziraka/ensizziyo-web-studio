@@ -89,7 +89,7 @@ function summary(r) {
 }
 function stats() {
   const row = el('div', undefined, 'stats');
-  for (const [label, value, note] of [['Businesses today', `${state.daily.unique_businesses} / 50`, 'Actual contacts · follow-ups included'], ['Call & reply reviews', Object.values(state.prospects).filter(r => ['Connected review', 'Verification review', 'Reply review'].includes(r.stage)).length, 'Held until your decision'], ['Open support', Object.values(state.prospects).flatMap(r => r.tickets).filter(t => t.status === 'Open').length, state.controls.mode === 'controlled' ? 'Fictional projects in this review' : 'Saved client requests'], ['Exceptions', state.exceptions.length + (state.reply_alerts?.length ?? 0), 'Consolidated in the private workspace']]) {
+  for (const [label, value, note] of [['New businesses prepared', `${state.daily.new_researched} / ${state.daily.research_target}`, 'Shared research target · callbacks separate'], ['Call & reply reviews', Object.values(state.prospects).filter(r => ['Connected review', 'Verification review', 'Reply review'].includes(r.stage)).length, 'Held until your decision'], ['Open support', Object.values(state.prospects).flatMap(r => r.tickets).filter(t => t.status === 'Open').length, state.controls.mode === 'controlled' ? 'Fictional projects in this review' : 'Saved client requests'], ['Exceptions', state.exceptions.length + (state.reply_alerts?.length ?? 0), 'Consolidated in the private workspace']]) {
     const card = el('div', undefined, 'stat'); card.append(el('p', label, 'eyebrow'), el('strong', String(value)), el('small', note)); row.append(card);
   } return row;
 }

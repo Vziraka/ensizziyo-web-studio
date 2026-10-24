@@ -4,7 +4,7 @@
 
 Owner approved ten existing verification leads, up to four approved source URLs each, under the existing six-call/job, repair/recovery, daily budget and 30% reserve. The private `research.upgrade_batch` binds distinct job IDs to exact existing card/company IDs, public phone and original verification hash, with the owner's approval reference. The controller configuration retains its prior IDs and ledger; supervision narrows dispatch to this batch. It returns to the repeated-failure guard after each job, so two new identical technical failures stop the next dispatch. No attempts or provider reservations are reset. Existing exhausted jobs and four earlier Waiting jobs retain their state.
 
-Total callable supply and independently pitch-ready supply now have separate counts. Verification cards cannot fill the 100-card detailed-research target. Only named batch jobs execute; a lower pitch-ready count never discovers or authorizes more jobs. Completion/holds need review before another batch.
+Total callable supply and independently pitch-ready supply now have separate counts. Verification cards and callbacks cannot fill the 50-new-card pitch buffer (two days of the shared 25-new research target). Only named batch jobs execute; a lower pitch-ready count never discovers or authorizes more jobs. Completion/holds need review before another batch.
 
 New version-3 worker output schemas bind reviewed source/context IDs to their complete saved anchors, while preserving exact runtime validation and independent review. Jobs 143/144's four original invalid outputs reproducibly failed the exact-anchor validator; they remain Held. The two older wording holds and job 135's additional activity/location/contact gaps are reconciliation work, not fresh retry budgets.
 

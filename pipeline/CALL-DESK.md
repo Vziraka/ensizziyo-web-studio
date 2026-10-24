@@ -1,5 +1,7 @@
 # Call desk release
 
+October 24 daily counters: the shared target is 25 new researched/imported businesses per Eastern day. Callbacks and other follow-ups remain separate and the due queue is uncapped by that target. The counter shows new preparation and actual distinct contacts separately; new-call supply excludes callbacks/repeats and targets a 50-card two-day buffer. Legacy private configuration with `daily_target:50` remains readable but no longer imposes a contact minimum; new configs use `daily_new_research_target:25`. Call purpose is derived from the pre-call stage rather than accepted from input. Historical calls without purpose are not retroactively guessed as callbacks.
+
 October 19 approved desk update: [AI operations](AI-OPERATIONS.md) owns the three-pane contact/notes layout, detail tabs, full saved-email preview and opt-in automatic follow-up. The owner still performs each call and chooses its actual outcome; notes never authorize a send while being typed. Booking and commercial-email setup have separate gates.
 
 October 19 approved category update: Today now supports six business groups and optional subtypes, with due callbacks and promised next steps visible across filters. Find more businesses separately starts 25 candidates total. [Campaign operation](CAMPAIGNS.md) owns category/offer scope and finite discovery. Existing evidence, contact labels, budgets, calls/bookings and email restrictions remain distinct.

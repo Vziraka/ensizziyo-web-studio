@@ -39,7 +39,7 @@ function validateAssetReference(value) {
 export const initialConfig = {
   schema_version: 1, mode: 'controlled', run_id: 'studio-lifecycle-controlled',
   research_enabled: false, outreach_enabled: false, connector_writes_enabled: false,
-  priority: 'website', timezone: 'America/New_York', daily_target: 50,
+  priority: 'website', timezone: 'America/New_York', daily_new_research_target: 25,
   sender: { operator_names: { owner: '', friend: '' } },
   follow_up: { enabled: false, sender_verified: false, demo_verified: false, booking_url: '' },
   transcript_ai: { enabled: false, daily_calls: 4, reserve_percent: 30,
@@ -181,7 +181,7 @@ export class StudioLifecycle {
     const app = new StudioLifecycle(directory, now);
     const config = await readJson(join(directory, 'lifecycle-config.json'));
     check(config.schema_version === 1 && ['controlled', 'production'].includes(config.mode) && key(config.run_id), 'Invalid lifecycle configuration');
-    check(config.timezone === 'America/New_York' && config.daily_target === 50, 'Use the agreed campaign timezone and minimum');
+    check(config.timezone === 'America/New_York' && (config.daily_new_research_target??25)===25 && (config.daily_target===undefined||config.daily_target===50), 'Use the shared 25-new-business research target and Eastern timezone');
     check(config.research_enabled === false, 'Research execution uses the separately bound controller control');
     if (config.mode === 'controlled') check(config.outreach_enabled === false, 'Production activation requires the separate final readiness review');
     else if (config.outreach_enabled || config.connector_writes_enabled || config.calls_enabled) { const { requireCallRelease } = await import('./production.mjs'); requireCallRelease(config); }
@@ -360,6 +360,7 @@ export class StudioLifecycle {
             clip.status='Stored';clip.verified_at=event.at;break;
           }
           case 'call_logged': {
+            const purpose=r.stage==='Callback'?'callback':r.attempts.some(a=>a.channel==='call')?'follow-up':'new';
             owner(actor); check(key(data.call_id) && !r.calls[data.call_id] && [...coldOutcomes, 'connected', 'callback', 'declined', 'do_not_contact', 'wrong_contact', 'skipped'].includes(data.outcome), 'Explicit unique call outcome required');
             check(!r.follow_up_owner || r.follow_up_owner === actor, 'This business is assigned to the other operator; request a handoff before logging a call');
             check(data.note === undefined || typeof data.note === 'string' && data.note.length <= 3000, 'Keep the call note within 3000 characters');
@@ -378,7 +379,7 @@ export class StudioLifecycle {
               if (r.stage !== 'Callback') contactable(r, data.performed_at);
               r.attempts.push({ id: data.call_id, channel: 'call', at: data.performed_at, simulated: data.simulated, connected: ![...coldOutcomes, 'wrong_contact'].includes(data.outcome) });
             }
-            r.calls[data.call_id] = { ...data, actor, event_id: eid };
+            r.calls[data.call_id] = { ...data, purpose, actor, event_id: eid };
             for (const a of Object.values(state.actions)) if (a.prospect_id === r.id && ['call_task', 'callback_task'].includes(a.type)) {
               if (a.status === 'Queued') a.status = 'Cancelled';
               else if (a.provider_task) a.cancel_requested = true;
@@ -683,7 +684,8 @@ export class StudioLifecycle {
       daily: { date: today, unique_businesses: contacted.length, new_businesses: first, repeat_businesses: contacted.length - first,
         actual_call_attempts: real.flatMap(r => r.attempts).filter(a => a.channel === 'call' && businessDate(a.at) === today && !a.simulated).length,
         actual_emails: real.flatMap(r => r.attempts).filter(a => a.channel === 'email' && businessDate(a.at) === today && !a.simulated).length,
-        minimum: 50, shortfall: Math.max(0, 50 - contacted.length), due: queue,
+        research_target:25,new_researched:dailyNewProspectCount(state,this.now()),research_shortfall:Math.max(0,25-dailyNewProspectCount(state,this.now())),
+        callback_attempts:real.flatMap(r=>Object.values(r.calls)).filter(c=>!c.simulated&&c.purpose==='callback'&&businessDate(c.performed_at)===today).length, due: queue,
         prepared: { research: queue.filter(a => !verificationLane(state.prospects[a.prospect_id])).length, verification: queue.filter(a => verificationLane(state.prospects[a.prospect_id])).length } },
       exceptions: [...state.exceptions, ...Object.values(state.prospects).filter(r=>r.information_draft?.status==='Uncertain'||r.information_draft?.status==='Sending'&&+this.now()-Date.parse(r.information_draft.approved_at)>120000).map(r=>({id:`information-${r.id}`,reason:`${r.name}: information email needs sender-side reconciliation; do not resend.`})), ...(researchHold ? [{ id: 'research-control', reason: researchHold }] : []), ...(supplementalHold ? [{ id: 'supplemental-review', reason: supplementalHold }] : []), ...(state.runtime?.last_error ? [{ id: 'runtime', reason: state.runtime.last_error }] : []), ...Object.entries(state.operations?.holds ?? {}).map(([id, reason]) => ({ id: `operations-${id}`, reason })), ...Object.values(state.actions).filter(a => ['Uncertain', 'Held'].includes(a.status)).map(a => ({ id: a.id, reason: a.hold })),
         ...Object.values(state.prospects).filter(r => r.stage === 'Hold').map(r => ({ id: r.id, reason: r.next_check }))] };
