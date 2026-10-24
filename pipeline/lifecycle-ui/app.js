@@ -2,6 +2,7 @@ import { renderCallDesk } from './call-desk.js';
 import { centsFromDollars } from './money.js';
 import {deskPath} from './paths.js';
 import {createEventRequest} from './event-request.js';
+import {audioBusy,stopAudioCapture} from './call-audio.js';
 let state, csrf, operatorAuthRequired = false, view = 'today', selected = 'juniper', lane = 'all', assetProject = '', dirty = false, refreshAfter = 0;
 let eventRequest;
 const content = document.querySelector('#content'), message = document.querySelector('#message');
@@ -17,6 +18,14 @@ async function api(path, input) {
   const response = await fetch(deskPath(path), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Studio-Token': csrf }, body: JSON.stringify(input) });
   if (response.status === 401 && operatorAuthRequired) { showOperatorLogin(); throw Error('Sign in with your operator key to continue'); }
   const data = await response.json(); if (!response.ok) throw Error(data.error); return data;
+}
+async function uploadCallAudio(input,blob) {
+  if(eventRequest?.pending)throw Error('Resolve the pending approval before saving audio.');
+  const response=await fetch(deskPath('/api/call-audio'),{method:'POST',headers:{'Content-Type':blob.type,'X-Studio-Token':csrf,'X-Studio-Audio':JSON.stringify(input)},body:blob});
+  if(response.status===401&&operatorAuthRequired){showOperatorLogin();throw Error('Sign in as the recording operator before retrying this exact clip.');}
+  const result=await response.json();if(!response.ok)throw Error(result.error);
+  const digest=await crypto.subtle.digest('SHA-256',await blob.arrayBuffer()),sha256=[...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,'0')).join('');
+  if(result.status!=='Stored'||result.id!==input.id||result.call_id!==input.call_id||result.kind!==input.kind||result.recorded_by!==input.recorded_by||result.bytes!==blob.size||result.sha256!==sha256)throw Error('The private audio receipt does not match this exact clip.');return result;
 }
 function showPendingEvent() {
   document.querySelector('#pending-event')?.remove();
@@ -453,7 +462,7 @@ function render() {
     content.append(node);return;
   }
   if(view==='meetings'){const node=panel('Meetings');const page=state.follow_up_settings?.follow_up?.booking_url;if(page)node.append(link('Open EVZ booking page ↗',page));const meetings=Object.values(state.prospects).filter(r=>r.meeting);for(const r of meetings)node.append(el('h3',r.name),el('p',`${new Date(r.meeting.start).toLocaleString()} · ${r.meeting.current_status??'Verified'}`));for(const b of state.pending_bookings??[])node.append(el('h3',state.prospects[b.prospect_id]?.name??'Pending invitation'),el('p',`${new Date(b.start).toLocaleString()} · ${b.status}`));if(!meetings.length&&!state.pending_bookings?.length)node.append(el('p','No meetings booked yet. You can also book an agreed discovery time from the calling desk.','empty'));content.append(node);return;}
-  if (['today','businesses'].includes(view)) { renderCallDesk(content,state,{api,refresh,tell,evidence:callPrep,clearDirty:()=>{dirty=false;},allBusinesses:view==='businesses'}); return; }
+  if (['today','businesses'].includes(view)) { renderCallDesk(content,state,{api,refresh,tell,evidence:callPrep,clearDirty:()=>{dirty=false;},uploadAudio:uploadCallAudio,allBusinesses:view==='businesses'}); return; }
   if (view === 'today') content.append(stats(), el('p', `Prepared due call cards: ${state.daily.prepared.research} research-reviewed · ${state.daily.prepared.verification} verification only. These are prepared records, not calls made or accepted detailed assessments.`, 'notice'));
   const grid = el('div', undefined, 'grid'), records = Object.values(state.prospects).filter(r => view === 'reviews' ? ['Connected review', 'Verification review', 'Reply review'].includes(r.stage) : view === 'clients' ? r.handover || r.quote || ['Preview', 'Delivery', 'Client review', 'Onboarding'].includes(r.stage) : lane === 'all' || (r.call_lane === 'verification' ? lane === 'verification' : lane === 'research'));
   if (view === 'today') { const order = new Map(state.daily.due.map((a, i) => [a.prospect_id, i])); records.sort((a, b) => (order.get(a.id) ?? 10000) - (order.get(b.id) ?? 10000)); }
@@ -474,7 +483,7 @@ document.addEventListener('input', e => { if (e.target.closest('form')) dirty = 
 document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => { dirty = false; view = b.dataset.view; tell(''); render(); }));
 document.querySelector('#pause').addEventListener('click', async () => { try { await api('/api/pause', {}); tell('AI and connector writes paused. Research and outreach remain paused.'); await refresh(); } catch (error) { tell(error.message, true); } });
 document.querySelector('#backup').addEventListener('click', async () => { try { const result = await api('/api/backup', {}); tell(`Private backup saved and checksummed (${result.prospects} records).`); } catch (error) { tell(error.message, true); } });
-document.querySelector('#sign-out').addEventListener('click', async () => { try { await api('/api/logout', {}); showOperatorLogin(); } catch (error) { tell(error.message, true); } });
+document.querySelector('#sign-out').addEventListener('click', async () => { try { stopAudioCapture(); await api('/api/logout', {}); showOperatorLogin(); } catch (error) { tell(error.message, true); } });
 async function start() {
   const response = await fetch(deskPath('/api/bootstrap')); if (!response.ok) throw Error('Private session unavailable. Reload the console.');
   const boot = await response.json(); csrf = boot.csrf; operatorAuthRequired = boot.operator_auth_required;
@@ -482,6 +491,6 @@ async function start() {
 }
 start().catch(error => tell(error.message, true));
 setInterval(() => {
-  if (dirty || document.querySelector('.desk-next') || document.visibilityState !== 'visible' || Date.now() < refreshAfter || document.activeElement?.closest('form') || document.activeElement?.matches('input,textarea,select')) return;
+  if (audioBusy() || dirty || document.querySelector('.desk-next') || document.visibilityState !== 'visible' || Date.now() < refreshAfter || document.activeElement?.closest('form') || document.activeElement?.matches('input,textarea,select')) return;
   refresh().catch(error => { refreshAfter = Date.now() + 60000; if (message.textContent !== error.message) tell(error.message, true); });
 }, 15000);

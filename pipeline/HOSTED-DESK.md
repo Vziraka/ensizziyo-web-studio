@@ -2,7 +2,7 @@
 
 This is an execution-disabled fictional proof of the existing desk on Netlify Functions and one strongly consistent conditional-write blob. The existing local runtime is unchanged. Production context always returns 503 for this endpoint; no production records, credentials, Drive files, connectors or workers are copied into it.
 
-The function exposes `/desk/`, its UI assets, authenticated `/desk/api/state`, operator login/logout, lifecycle events and draft/history previews. The same event validation, operator attribution and approval rules are reused. Calling sessions and saved information drafts use their existing state-only callers. Unsupported recording, provider analysis, sending, booking, discovery and file actions return an explicit disabled response; they never report simulated external success.
+The function exposes `/desk/`, its UI assets, authenticated `/desk/api/state`, operator login/logout, lifecycle events and draft/history previews. The same event validation, operator attribution and approval rules are reused. Calling sessions and saved information drafts use their existing state-only callers. The separate [recording contract](CALL-RECORDING.md) adds authenticated new-only binary audio storage and private playback; its actual deployed-storage proof remains pending. Unsupported provider analysis, sending, booking, discovery and general file actions return an explicit disabled response; they never report simulated external success.
 
 ## Configuration and access
 
@@ -15,6 +15,8 @@ With absent, partial or invalid configuration, `/desk/` and all its API routes f
 - `EVZ_OPERATIONS_OWNER_KEY`, `EVZ_OPERATIONS_FRIEND_KEY` and `EVZ_OPERATIONS_SESSION_SECRET`: three different independently generated 32-byte base64url values. Test fixtures contain public fake values and must never be used as deployed secrets.
 
 Netlify supplies its scoped Blobs connection to the serverless function. This proof does not require copying a personal Netlify token or local CLI login. Provisioning the above preview secrets is a separate concrete setup action; it has not been completed by source implementation. The existing preview's Netlify team gate remains in place. Application operator sessions do not bypass that gate or establish the friend's access from another computer without a separate supported hosting decision.
+
+Observed Personal-plan UI limitation: selecting individual variable scopes requires an upgrade. Its secret import selects Builds, Functions and Runtime together, excluding post-processing. Functions-only scope is therefore not available on this plan. Keep deployment context restricted to Deploy Previews and obtain the owner's explicit approval of that concrete wider execution scope before entering/importing keys. No upgrade, production scope, branch/agent preview scope, local scope or permission change is authorized by the source proof.
 
 Operator cookies are signed, HttpOnly, Secure, SameSite=Strict and expire after 8 hours. A signed same-origin CSRF cookie/header protects writes and login. Origin and fetch-site checks reject foreign origins. Responses and static shell contain no stored project payload; authenticated state is `no-store`. Keys are never returned in JSON. Rotate the session secret to invalidate both active sessions. Preview assets stay separate from the public site's `/studio/` paths.
 

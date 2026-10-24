@@ -1,5 +1,7 @@
 # Controlled research proof
 
+The calling card's [desktop recording workflow](CALL-RECORDING.md) saves private call and spoken-note audio separately, with immutable IDs, exact retries, source-linked manual transcripts and audio-inclusive local backup/restore. Actual microphone and speakerphone quality still require an operator rehearsal; no paid transcription route is connected.
+
 The execution-disabled fictional [shared-host preview](HOSTED-DESK.md) reuses these lifecycle rules through Netlify Functions and strong conditional Blobs writes. It is separate from the loopback rehearsal below; absent configuration fails closed. Its configuration, exact-event retry, test commands, deployment proof limits and rollback live in that contract.
 
 ## Local two-operator console rehearsal — October 23

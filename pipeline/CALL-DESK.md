@@ -16,7 +16,7 @@ Save a completed call with one of the outcome buttons. A callback can preserve a
 
 ### Saved connected calls and draft revisions — October 23
 
-Open **History** on a business card for separate Recording, Transcript, Call notes and Follow-up email sections. Either operator can dictate their own post-call summary into private notes, correct it and save it. This is speech-to-text, without an audio artifact. Recording both sides of the actual call is requested but not implemented: the calling source, supported capture route, transcription entitlement and cost still need verification. A browser microphone does not establish capture of the customer.
+Open **History** on a business card for separate Recording, Transcript, Call notes and Follow-up email sections. Either operator can dictate their own post-call summary into private notes, correct it and save it. The new [desktop recording contract](CALL-RECORDING.md) adds explicit Record call from the calling card, private immutable audio/playback and separate spoken-note audio. The owner uses an iPhone on speakerphone near the computer microphone; actual audibility of both parties still requires an operator test. Existing text dictation remains separate. No paid transcription service or automatic iPhone/Apple Notes access is connected.
 
 A permitted operator-supplied transcript can now be added after a quick interested/information outcome as well as during Connected review. It retains source, actor and hash separately from notes. The existing bounded subscription author/reviewer can assess it, subject to its enablement, allowance and reserve; analysis cannot change an already reviewed outcome. No new transcription provider or model route is included.
 

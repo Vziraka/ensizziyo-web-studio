@@ -332,8 +332,27 @@ export class StudioLifecycle {
         request(state, r, 'call_task', { due_at: event.at, kind: 'new' }, eid);
       } else {
         check(r, 'Unknown prospect');
-        if (r.restriction) check(['support_opened', 'support_closed', 'note_added', 'call_note_updated', 'reply_received', 'email_delivered', 'meeting_verified'].includes(event.type), 'Restriction cannot be cleared by a later event');
+        if (r.restriction) check(['support_opened', 'support_closed', 'note_added', 'call_note_updated', 'call_audio_reserved', 'call_audio_stored', 'reply_received', 'email_delivered', 'meeting_verified'].includes(event.type), 'Restriction cannot be cleared by a later event');
         switch (event.type) {
+          case 'call_audio_reserved': {
+            check(actor==='artifact-store'&&['owner','friend'].includes(data.recorded_by),'Audio metadata must come from authenticated private storage');
+            check(key(data.id)&&data.id.length<=80&&key(data.call_id)&&['call','operator_note'].includes(data.kind),'Choose an exact audio clip and purpose');
+            check(data.permission_confirmed===true&&date(data.started_at)&&date(data.ended_at)&&Date.parse(data.ended_at)>Date.parse(data.started_at)&&Date.parse(data.ended_at)-Date.parse(data.started_at)<=21*60_000,'Confirm permission and keep each recording within twenty minutes');
+            check(['audio/webm','audio/ogg','audio/mp4','audio/wav'].includes(data.mime)&&Number.isInteger(data.bytes)&&data.bytes>=16&&data.bytes<=4_000_000&&/^[a-f0-9]{64}$/.test(data.sha256),'Audio format, size and exact bytes must be verified');
+            check(!Object.values(state.prospects).some(p=>p.call_audio?.[data.id]),'The clip ID already belongs to an audio reservation');
+            if(data.kind==='operator_note')check(r.calls[data.call_id],'Own spoken notes belong to a saved call');
+            else if(!r.calls[data.call_id])check(!r.restriction&&callStages.includes(r.stage)&&r.follow_up_owner===data.recorded_by,'Claim the eligible call before recording it');
+            if(r.restriction&&data.kind==='call')check(r.calls[data.call_id]&&Date.parse(data.ended_at)<=Date.parse(r.calls[data.call_id].performed_at)+60_000,'Stopped contact cannot start a later call recording');
+            const clips=Object.values(state.prospects).flatMap(p=>Object.values(p.call_audio??{}));
+            check(clips.length<2000&&clips.reduce((total,c)=>total+c.bytes,0)+data.bytes<=200_000_000,'Private audio storage allowance is full; review retention before recording more');
+            check(clips.filter(c=>businessDate(c.ended_at)===businessDate(event.at)).length<50,'The shared daily audio-clip allowance is full');
+            r.call_audio??={};r.call_audio[data.id]={...data,status:'Reserved',reserved_at:event.at};break;
+          }
+          case 'call_audio_stored': {
+            check(actor==='artifact-store','Audio verification must come from private storage');const clip=r.call_audio?.[data.id];
+            check(clip?.status==='Reserved'&&hash({...data,status:'Reserved',reserved_at:event.at})===hash(clip),'Verify the exact reserved recording before marking it saved');
+            clip.status='Stored';clip.verified_at=event.at;break;
+          }
           case 'call_logged': {
             owner(actor); check(key(data.call_id) && !r.calls[data.call_id] && [...coldOutcomes, 'connected', 'callback', 'declined', 'do_not_contact', 'wrong_contact', 'skipped'].includes(data.outcome), 'Explicit unique call outcome required');
             check(!r.follow_up_owner || r.follow_up_owner === actor, 'This business is assigned to the other operator; request a handoff before logging a call');
@@ -435,7 +454,8 @@ export class StudioLifecycle {
             owner(actor); check(r.calls[data.call_id]?.outcome === 'connected' && (r.stage === 'Connected review' || r.approved_calls[data.call_id]), 'Transcript must match a connected call');
             check(!r.transcripts[data.call_id] && text(data.text, 60_000) && data.permission_confirmed === true, 'Supply one permitted transcript; recording consent is separate');
             check(!/-----BEGIN [A-Z ]*PRIVATE KEY|\b(?:sk-|ghp_|github_pat_)[A-Za-z0-9_-]{20,}|\b(?:password|api[_ -]?key|authorization)\s*[:=]\s*\S+/i.test(data.text), 'Redact credentials before saving or analyzing a transcript');
-            r.transcripts[data.call_id] = { text: data.text, sha256: hash(data.text), added_at: event.at, call_id: data.call_id, actor, source: 'Operator-supplied transcript; audio capture not verified' };
+            check(data.audio_ids===undefined||Array.isArray(data.audio_ids)&&data.audio_ids.length>0&&data.audio_ids.length<=20&&new Set(data.audio_ids).size===data.audio_ids.length&&data.audio_ids.every(id=>r.call_audio?.[id]?.status==='Stored'&&r.call_audio[id].call_id===data.call_id&&r.call_audio[id].kind==='call'),'Transcript audio must belong to this exact saved call');
+            r.transcripts[data.call_id] = { text: data.text, sha256: hash(data.text), added_at: event.at, call_id: data.call_id, actor,...(data.audio_ids?{audio_ids:[...data.audio_ids]}:{}), source: data.audio_ids?'Operator-supplied transcript linked to saved call audio; wording requires review':'Operator-supplied transcript; audio capture not verified' };
             request(state, r, 'transcript_review', { call_id: data.call_id }, eid); break;
           case 'transcript_assessed': {
             check(actor === 'worker' || actor === 'controlled-fixture', 'Assessment must come from the restricted worker boundary');
@@ -668,8 +688,10 @@ export class StudioLifecycle {
       check(!Object.values(state.ai_attempts).some(a => a.status === 'Running'), 'Stop workers before backup');
       const body = JSON.stringify(state), bundle = { schema_version: 1, created_at: this.now().toISOString(), sha256: hash(body), body };
       check(Buffer.byteLength(JSON.stringify(bundle)) <= 25_000_000, 'Backup exceeds the verified restore limit; archive closed records first');
+      const {audioArchiveFiles,localAudioStore}=await import('./call-audio.mjs'),audioFiles=await audioArchiveFiles(state,localAudioStore(this.directory));
+      if(audioFiles.length){await mkdir(`${output}.audio`,{mode:0o700});for(const file of audioFiles)await writeFile(join(`${output}.audio`,file.id),file.bytes,{flag:'wx',mode:0o600});}
       await writeFile(output, JSON.stringify(bundle), { flag: 'wx', mode: 0o600 });
-      return { sha256: bundle.sha256, prospects: Object.keys(state.prospects).length };
+      return { sha256: bundle.sha256, prospects: Object.keys(state.prospects).length,audio_clips:audioFiles.length };
     } finally { await release(); }
   }
   static async restore({ input, destination }) {
@@ -678,13 +700,15 @@ export class StudioLifecycle {
     check(bundle.schema_version === 1 && hash(bundle.body) === bundle.sha256, 'Backup checksum mismatch');
     const state = JSON.parse(bundle.body); check(state.schema_version === 1 && key(state.run_id) && ['controlled', 'production'].includes(state.mode), 'Invalid backup state');
     check(!Object.values(state.ai_attempts).some(a => a.status === 'Running'), 'Cannot restore running worker state');
+    const {audioArchiveFiles,localAudioStore}=await import('./call-audio.mjs'),audioFiles=await audioArchiveFiles(state,{get:async id=>{const folder=await lstat(`${input}.audio`),file=await lstat(join(`${input}.audio`,id));check(folder.isDirectory()&&!folder.isSymbolicLink()&&file.isFile()&&!file.isSymbolicLink()&&file.size<=4_000_000,'Restore requires bounded regular audio files');return readFile(join(`${input}.audio`,id));}});
     destination = await privateStateDirectory(destination); await mkdir(destination, { mode: 0o700 });
+    for(const file of audioFiles)await localAudioStore(destination).put(file.id,file.bytes);
     for (const a of Object.values(state.actions)) if (a.status === 'Pending') { a.status = 'Uncertain'; a.hold = 'Restored pending mutation; read back provider, never resend'; }
     for (const r of Object.values(state.operations?.requests ?? {})) if (r.status === 'Pending' && ['draft', 'send', 'stop', 'booking_create', 'task_create', 'task_skip', 'contact_create', 'personalize', 'intent'].includes(r.operation)) r.status = 'Uncertain';
     if (state.operations) delete state.operations.lease;
     delete state.runtime;
     await writeFile(join(destination, 'lifecycle-config.json'), JSON.stringify({ ...initialConfig, run_id: state.run_id, mode: state.mode }), { flag: 'wx', mode: 0o600 });
     await writeFile(join(destination, 'lifecycle-state.json'), JSON.stringify(state), { flag: 'wx', mode: 0o600 });
-    return { execution: 'disabled', prospects: Object.keys(state.prospects).length };
+    return { execution: 'disabled', prospects: Object.keys(state.prospects).length,audio_clips:audioFiles.length };
   }
 }

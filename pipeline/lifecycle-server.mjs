@@ -14,8 +14,9 @@ import { runtimeVersion } from './runtime-version.mjs';
 import {startDiscoveryBatch,controlDiscoveryBatch} from './discovery-batches.mjs';
 import {renderFollowUpPreview} from './follow-up-template.mjs';
 import { createOperatorAuth } from './operators.mjs';
+import {audioRequest,saveCallAudio,readCallAudio,reconcileCallAudio,localAudioStore} from './call-audio.mjs';
 
-export const lifecycleAssets = new Map([['/', ['index.html', 'text/html']], ['/event-request.js',['event-request.js','text/javascript']], ['/paths.js',['paths.js','text/javascript']], ['/app.js', ['app.js', 'text/javascript']], ['/money.js', ['money.js', 'text/javascript']], ['/app.css', ['app.css', 'text/css']],
+export const lifecycleAssets = new Map([['/call-audio.js',['call-audio.js','text/javascript']],['/', ['index.html', 'text/html']], ['/event-request.js',['event-request.js','text/javascript']], ['/paths.js',['paths.js','text/javascript']], ['/app.js', ['app.js', 'text/javascript']], ['/money.js', ['money.js', 'text/javascript']], ['/app.css', ['app.css', 'text/css']],
   ['/call-desk.js', ['call-desk.js', 'text/javascript']], ['/follow-up-template.mjs', ['../follow-up-template.mjs', 'text/javascript']], ['/business-types.mjs', ['../business-types.mjs', 'text/javascript']], ['/preview/', ['preview.html', 'text/html']], ['/preview.js', ['preview.js', 'text/javascript']], ['/assets/evz-wordmark.png',['assets/evz-wordmark.png','image/png']], ['/assets/voice-demo-preview.png',['assets/voice-demo-preview.png','image/png']], ['/assets/manrope-regular.ttf',['assets/manrope-regular.ttf','font/ttf']], ['/assets/manrope-bold.ttf',['assets/manrope-bold.ttf','font/ttf']]]);
 for(const icon of ['house','building-2','mail','calendar-days','file-text','users','circle-alert','settings'])lifecycleAssets.set(`/assets/nav-${icon}.svg`,[`assets/nav-${icon}.svg`,'image/svg+xml']);
 export function serveLifecycle(app, { port = 8807, quiet = false, analyze = assessTranscript, operatorAuth = createOperatorAuth() } = {}) {
@@ -25,7 +26,7 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
   const abort = new AbortController();
   const server = createServer(async (req, res) => {
     const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
-      'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" };
+      'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; font-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" };
     const json = (status, value, extra = {}) => { res.writeHead(status, { ...headers, ...extra, 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(value)); };
     const readInput = async () => {
       let bytes = 0, chunks = [];
@@ -58,6 +59,15 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
         return json(200, { signed_out: true }, { 'Set-Cookie': operatorAuth.cookie('', { secure: Boolean(req.socket.encrypted), clear: true }) });
       }
       if (req.method === 'GET' && url.pathname === '/api/state') return json(200, { ...await app.dashboard(), build:await version, csrf, workers: [...work.keys()], current_operator: operator, operator_auth_enabled: Boolean(operatorAuth) });
+      if(req.method==='GET'&&/^\/call-audio\/[a-zA-Z0-9_-]{1,100}\/[a-zA-Z0-9_-]{1,80}$/.test(url.pathname)){
+        const [, ,project,id]=url.pathname.split('/'),clip=await readCallAudio(app,localAudioStore(app.directory),project,id);
+        res.writeHead(200,{...headers,'Content-Type':clip.audio.mime,'Content-Length':clip.bytes.length,'Content-Disposition':`inline; filename="${clip.filename}"`});res.end(clip.bytes);return;
+      }
+      if(req.method==='POST'&&url.pathname==='/api/call-audio'){
+        check(req.headers['x-studio-token']===csrf,'Current same-origin approval token required');
+        const {input,bytes}=await audioRequest(new Request(origin+url.pathname,{method:'POST',headers:req.headers,body:req,duplex:'half'}));
+        return json(200,await saveCallAudio(app,localAudioStore(app.directory),input,bytes,operator));
+      }
       if(req.method==='GET'&&/^\/follow-up(?:-draft|-history)?\/[a-zA-Z0-9_-]{1,100}\/[a-zA-Z0-9_-]{1,100}$/.test(url.pathname)){
         const [, route,prospectId,entryId]=url.pathname.split('/'),record=(await app.snapshot()).prospects[prospectId];
         let saved;
@@ -73,8 +83,9 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
       }
       check(req.method === 'POST' && req.headers['x-studio-token'] === csrf && req.headers['content-type'] === 'application/json', 'Owner session and same-origin approval token required');
       const input = await readInput();
+      if(url.pathname==='/api/call-audio-check')return json(200,await reconcileCallAudio(app,localAudioStore(app.directory),input.prospect_id,input.id));
       if (url.pathname === '/api/event') {
-        check(!['prospect_imported', 'verification_imported', 'transcript_assessed', 'reply_received', 'email_delivered', 'meeting_verified'].includes(input.event?.type), 'Provider/research/worker events cannot be submitted as owner decisions');
+        check(!['prospect_imported', 'verification_imported', 'transcript_assessed', 'reply_received', 'email_delivered', 'meeting_verified','call_audio_reserved','call_audio_stored'].includes(input.event?.type), 'Provider/research/worker events cannot be submitted as owner decisions');
         const result = await app.apply(input.event, { actor: operator, expectedRevision: input.revision });
         if (input.event.type === 'transcript_added') {
           const config = await readJson(join(app.directory, 'lifecycle-config.json'));
