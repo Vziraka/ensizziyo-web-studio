@@ -27,7 +27,7 @@ export function contactEvidenceView(r,now=new Date()){
  const publicSource=typeof c.source==='string'&&/^https:\/\//i.test(c.source)?c.source:null;
  const phoneLabel=!c.phone?'No business number saved':wrong?'Wrong contact reported':confirmedPhone?'Business identity confirmed during conversation':c.phone_verified&&publicSource?'Published business number':c.verified&&publicSource?'Business number · source reviewed':'Number needs source review';
  const phone=channel(c.phone,phoneLabel,confirmedPhone?conversation.at:c.checked_at,confirmedPhone?`call:${conversation.call_id}`:publicSource,wrong?'Wrong contact outcome; verify the public phone/ownership':!confirmedPhone&&!c.phone_verified&&!c.verified?'Number needs source review':null);
- const profile=r.research_profile?.business_email,published=profile?.email===c.email;
+ const profile=r.research_profile?.business_email,published=Boolean(profile&&c.email&&profile.email===c.email);
  const emailLabel=!c.email?'No business email saved':r.reply?.kind==='bounce'?'Bounce reported · route held':confirmedEmail?'Email confirmed during conversation':published?`Published ${profile.kind==='Owner/operator business'?'owner':'general'} business email`:c.verified?'Business email · source reviewed':'Email needs source review';
  const email=channel(c.email,emailLabel,confirmedEmail?emailEvidence.confirmed_at:published?profile.source.checked_at:c.checked_at,confirmedEmail?emailEvidence.source:published?profile.source.url:publicSource,r.reply?.kind==='bounce'?'Provider bounce; review this route without automatic resumption':!confirmedEmail&&!published&&!c.verified?'Email needs source review':null);
  return {phone,email,limits:'Evidence labels describe saved observations, not guaranteed reachability or delivery. Existing call, email, stop and release rules still apply.'};
@@ -45,7 +45,7 @@ export function ownerContactView(r,now=new Date()) {
     next_action:direct?'Confirm the person still operates the business and can be reached at this published number.':stale?'Recheck the changed or stale contact evidence before using an owner-direct claim.':valid&&a.person?'Find an explicit public professional number for this person; the shop line alone does not establish direct access.':'Identify the current owner/operator from business-controlled or authoritative professional sources, then verify an explicitly linked business number.'};
 }
 export function ownerContactSummary(state,now=new Date()) {
-  const all=Object.values(state.prospects).map(r=>ownerContactView(r,now));
+  const all=Object.values(state.prospects).filter(r=>r.origin!=='workspace').map(r=>ownerContactView(r,now));
   return {total:all.length,owner_direct:all.filter(a=>a.direct_phone).length,general_business:all.filter(a=>a.classification==='General business line').length,unverified:all.filter(a=>a.classification==='Unverified number').length,identified:all.filter(a=>a.person).length};
 }
 function boundJob(r,job,{source_approvals=[],snapshots}={}) {

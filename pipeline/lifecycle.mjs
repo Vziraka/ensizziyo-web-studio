@@ -308,6 +308,14 @@ export class StudioLifecycle {
           }
         }
         r = { id: event.prospect_id };
+      } else if (event.type==='workspace_project_created') {
+        check(['owner','friend'].includes(actor),'An existing project needs a signed operator');
+        check(Object.keys(data).every(k=>['name','purpose','controlled'].includes(k))&&text(data.name,250)&&text(data.purpose,1600),'Supply only the company name, project purpose and workspace mode');
+        check(typeof data.controlled==='boolean'&&data.controlled===(this.config.mode==='controlled')&&(!data.controlled||/^STUDIO TEST\s/i.test(data.name.trim())),'Fictional workspaces need a STUDIO TEST name; real clients belong in a separate production workspace');
+        const normalized=value=>value.trim().replace(/\s+/g,' ').toLowerCase(),companyId='workspace-'+hash(normalized(data.name)).slice(0,24);
+        check(assetKey(event.prospect_id)&&event.prospect_id!=='studio-assets'&&!r&&!Object.values(state.prospects).some(x=>x.company_id===companyId||normalized(x.name)===normalized(data.name)),'This company/project already exists or uses a reserved ID; use its existing context');
+        r=state.prospects[event.prospect_id]={id:event.prospect_id,company_id:companyId,name:data.name.trim(),category:'Existing project',origin:'workspace',idea:data.purpose.trim(),controlled:data.controlled,stage:'Workspace only',cold_paused:true,contact:{verified:false},workspace:{purpose:data.purpose.trim(),created_by:actor,created_at:event.at},
+          attempts:[],calls:{},transcripts:{},proposals:{},approved_calls:{},payments:[],invoices:[],materials:[],tasks:[],revisions:[],tickets:[]};
       } else if (['prospect_imported', 'verification_imported'].includes(event.type)) {
         check(dailyNewProspectCount(state, this.now()) < 25, 'The shared limit of 25 new businesses has been reached for today. Import resumes after midnight America/New_York time');
         const verification = event.type === 'verification_imported';
@@ -335,6 +343,7 @@ export class StudioLifecycle {
         request(state, r, 'call_task', { due_at: event.at, kind: 'new' }, eid);
       } else {
         check(r, 'Unknown prospect');
+        if(r.origin==='workspace')check(event.type==='note_added','Workspace-only projects support private notes and asset context; no contact, sales qualification or approvals can be inferred');
         if (r.restriction) check(['support_opened', 'support_closed', 'note_added', 'call_note_updated', 'call_audio_reserved', 'call_audio_stored', 'reply_received', 'email_delivered', 'meeting_verified'].includes(event.type), 'Restriction cannot be cleared by a later event');
         switch (event.type) {
           case 'opening_selected':selectOpening(r,event,actor);break;

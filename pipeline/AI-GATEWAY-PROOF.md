@@ -4,7 +4,7 @@ This is a disabled-by-default capability and cost-boundary proof in the existing
 
 October 24 real hosted proof at `2ce89fe`: all four fixed jobs ran once, then Pause all persisted with all four reservations retained. CountTokens and generation worked, including the 7.204-second synthetic WAV, whose transcript exactly matched its known phrase. The supported opening commanded automation before learning the current process; the same-model reviewer accepted that poor opening. The dated-only job invented a visual claim and was correctly held by the deterministic output check. **Research quality failed this proof.** This model/prompt is not accepted for unattended research. Synthetic speech does not establish real microphone, speakerphone, noisy-call or long-recording accuracy.
 
-The account UI showed 0.08 included credits of Google inference and approximately 2.2K tokens; rounded balance stayed 930.7 and auto recharge remained disabled. These observations are separate from the conservative four-credit ledger and do not predict operational costs. No new inference is authorized by this result; the original policy, prompts, receipts and exhausted/paused budget stay unchanged.
+The account UI showed 0.08 included credits of Google inference and approximately 2.2K tokens; observed balance stayed above the hosting reserve and auto recharge remained disabled. These observations are separate from the conservative four-credit ledger and do not predict operational costs. No new inference is authorized by this result; the original policy, prompts, receipts and exhausted/paused budget stay unchanged.
 
 ## Current supported candidate
 

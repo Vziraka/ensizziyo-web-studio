@@ -6,7 +6,7 @@ import {deskPath} from './paths.js';
 import {createEventRequest} from './event-request.js';
 import {audioBusy,stopAudioCapture} from './call-audio.js';
 let state, csrf, operatorAuthRequired = false, view = 'today', selected = 'juniper', lane = 'all', assetProject = '', dirty = false, refreshAfter = 0;
-let eventRequest;
+let eventRequest,loadedWorkspaceContext;
 const content = document.querySelector('#content'), message = document.querySelector('#message');
 const titles = { today: ['Your calling desk', 'Your next conversation.', 'Prepared leads, clear next steps and your notes in one place.'], reviews: ['Evidence → operator decision', 'Review calls and replies.', 'Connected calls and verified replies wait for an operator decision.'], clients: ['From scope to support', 'Deliver what you agreed.', 'Track materials, payment evidence, delivery checks and open requests.'], exceptions: ['Bounded recovery', 'Handle the exceptions.', 'Held work stays visible while unrelated records continue.'], launch: ['Before the first real contact', 'Approve a working system.', 'These gates stay closed until their evidence and your final approval are recorded.'] };
 Object.assign(titles,{businesses:['Your business directory','Businesses, with context.','Research, professional contacts, social profiles and saved conversations.'],emails:['After the call','Follow-ups at a glance.','Each performed call owns one message. Held work shows what is missing.'],meetings:['Your conversations','Meetings and next steps.','Booked conversations and invitations awaiting calendar verification.']});
@@ -86,7 +86,7 @@ function panel(title) { const node = el('section', undefined, 'panel'); if (titl
 function link(label, href) { const node = el('a', label); if (/^https:\/\//i.test(href) || href === '/preview/' || /^\/retained-source\/[a-zA-Z0-9_-]{1,100}\/[a-f0-9]{64}\?url=[^#]+&at=[^#]+$/.test(href) || /^\/(?:proposal\/[a-zA-Z0-9_-]+|follow-up\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+)$/.test(href)) { node.href = deskPath(href); node.target = '_blank'; node.rel = 'noreferrer'; } else node.removeAttribute('href'); return node; }
 function summary(r) {
   const node = button('', () => { selected = r.id; render(); }, `record${selected === r.id ? ' selected' : ''}`);
-  node.append(el('strong', r.name), pill(r.call_lane === 'verification' ? 'Verification call only' : 'Research reviewed'), pill(r.stage), el('small', r.idea)); return node;
+  node.append(el('strong', r.name), pill(r.origin==='workspace'?'Project workspace · no outreach':r.call_lane === 'verification' ? 'Verification call only' : 'Research reviewed'), pill(r.stage), el('small', r.idea)); return node;
 }
 function stats() {
   const row = el('div', undefined, 'stats');
@@ -106,6 +106,12 @@ function renderAssets() {
   const form = el('form'); form.append(el('h3', 'Add an asset reference'));
   const scope = inputField(form, 'Asset scope', 'scope', 'studio', 'text', [{ value: 'studio', label: 'Studio-wide' }, { value: 'project', label: 'Project' }]);
   const projects = Object.values(state.prospects).sort((a, b) => a.name.localeCompare(b.name));
+  const create=el('details');create.append(el('summary','Add an existing company/project workspace'));const workspaceForm=el('form');
+  workspaceForm.append(el('p','Search the existing project list first. This creates private asset context only: no contact routes, call tasks, research qualification, approved scope or client acceptance.','muted'));
+  const workspaceName=inputField(workspaceForm,'Existing company name','workspace_name',state.controls.mode==='controlled'?'STUDIO TEST ':''),purpose=inputField(workspaceForm,'Project purpose','workspace_purpose');
+  const saveWorkspace=el('button','Create private project workspace','primary');saveWorkspace.type='submit';workspaceForm.append(saveWorkspace);create.append(workspaceForm);node.append(create);
+  workspaceForm.onsubmit=async event=>{event.preventDefault();saveWorkspace.disabled=true;try{const id=crypto.randomUUID();await api('/api/event',{revision:state.revision,event:{id:crypto.randomUUID(),prospect_id:id,type:'workspace_project_created',at:new Date().toISOString(),data:{name:workspaceName.value,purpose:purpose.value,controlled:state.controls.mode==='controlled'}}});assetProject=id;tell('Private project workspace saved. Add its source references below; no outreach or approval was created.');dirty=false;await refresh();}catch(error){tell(error.message,true);}finally{saveWorkspace.disabled=false;}};
+
   const context=el('section');context.append(el('h3','Continue a project'));
   const contextProject=inputField(context,'Project context','asset_project',assetProject,'text',[{value:'',label:'All studio and project assets'},...projects.map(r=>({value:r.id,label:r.name}))]);
   const assetCards=[],feedbackRows=[];
@@ -389,6 +395,10 @@ function nextForm(r, node) {
   if (['Hold', 'Stopped'].includes(r.stage)) node.append(el('p', r.restriction ? `Contact restriction: ${r.restriction}. Older positive notes cannot restart outreach.` : r.next_check, 'notice'));
 }
 function detail(r) {
+  if(r.origin==='workspace'){
+    const node=panel(r.name);node.append(pill('Project workspace · no outreach'),el('p',r.workspace.purpose),el('p',`Created by ${r.workspace.created_by}. Private references and notes do not establish a design selection, approved quote, client acceptance or contact permission.`,'notice'));
+    const packet=el('div');if(loadedWorkspaceContext?.id===r.id&&loadedWorkspaceContext.revision===state.revision)packet.append(el('pre',JSON.stringify(loadedWorkspaceContext.data,null,2)));node.append(button('Load private project context',async()=>{try{const response=await fetch(deskPath(`/api/project-context/${r.id}`)),data=await response.json();if(!response.ok)throw Error(data.error);loadedWorkspaceContext={id:r.id,revision:state.revision,data};packet.replaceChildren(el('pre',JSON.stringify(data,null,2)));}catch(error){tell(error.message,true);}}),packet,eventForm(r,'Private project note','note_added',[['Project note','note',r.note??'','textarea']],{},'Save project note'));return node;
+  }
   const node = panel(); node.append(pill(r.stage), el('h2', r.name, 'detail-title'), el('p', r.idea, 'idea'), el('p', `Evidence: ${r.qualification.evidence_ref}`, 'source'));
   if (!r.controlled) node.append(el('p', `Public business phone: ${r.contact.phone ?? 'awaiting verification'} · Email: ${r.contact.email ?? 'unverified — automatic email blocked'}`, 'source'));
   for (const [actionId, email] of Object.entries(state.operations?.email ?? {})) if (state.actions[actionId]?.prospect_id === r.id) node.append(el('p', `Email: ${email.status}${email.thread ? ' · sender thread verified' : ''}`, 'notice'));
@@ -479,7 +489,7 @@ function render() {
   if(view==='meetings'){const node=panel('Meetings');const page=state.follow_up_settings?.follow_up?.booking_url;if(page)node.append(link('Open EVZ booking page ↗',page));const meetings=Object.values(state.prospects).filter(r=>r.meeting);for(const r of meetings)node.append(el('h3',r.name),el('p',`${new Date(r.meeting.start).toLocaleString()} · ${r.meeting.current_status??'Verified'}`));for(const b of state.pending_bookings??[])node.append(el('h3',state.prospects[b.prospect_id]?.name??'Pending invitation'),el('p',`${new Date(b.start).toLocaleString()} · ${b.status}`));if(!meetings.length&&!state.pending_bookings?.length)node.append(el('p','No meetings booked yet. You can also book an agreed discovery time from the calling desk.','empty'));content.append(node);return;}
   if (['today','businesses'].includes(view)) { renderCallDesk(content,state,{api,refresh,tell,evidence:callPrep,clearDirty:()=>{dirty=false;},uploadAudio:uploadCallAudio,allBusinesses:view==='businesses'}); return; }
   if (view === 'today') content.append(stats(), el('p', `Prepared due call cards: ${state.daily.prepared.research} research-reviewed · ${state.daily.prepared.verification} verification only. These are prepared records, not calls made or accepted detailed assessments.`, 'notice'));
-  const grid = el('div', undefined, 'grid'), records = Object.values(state.prospects).filter(r => view === 'reviews' ? ['Connected review', 'Verification review', 'Reply review'].includes(r.stage) : view === 'clients' ? Object.keys(r.project_work??{}).length || r.handover || r.quote || ['Discovery','Information requested','Proposal','Preview', 'Delivery', 'Client review', 'Onboarding'].includes(r.stage) : lane === 'all' || (r.call_lane === 'verification' ? lane === 'verification' : lane === 'research'));
+  const grid = el('div', undefined, 'grid'), records = Object.values(state.prospects).filter(r => view === 'reviews' ? ['Connected review', 'Verification review', 'Reply review'].includes(r.stage) : view === 'clients' ? r.origin==='workspace' || Object.keys(r.project_work??{}).length || r.handover || r.quote || ['Discovery','Information requested','Proposal','Preview', 'Delivery', 'Client review', 'Onboarding'].includes(r.stage) : lane === 'all' || (r.call_lane === 'verification' ? lane === 'verification' : lane === 'research'));
   if (view === 'today') { const order = new Map(state.daily.due.map((a, i) => [a.prospect_id, i])); records.sort((a, b) => (order.get(a.id) ?? 10000) - (order.get(b.id) ?? 10000)); }
   const left = panel(view === 'reviews' ? 'Awaiting your review' : view === 'clients' ? 'Client work' : state.controls.mode === 'controlled' ? 'Controlled working records' : 'Daily call queue & prospects');
   left.append(el('p', view === 'today' ? 'Review the purpose and evidence before calling. Apollo tasks publish after final release; task completion is never call evidence.' : 'Select a record to review its current step.', 'muted'));

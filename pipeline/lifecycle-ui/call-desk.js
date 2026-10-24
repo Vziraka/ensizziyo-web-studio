@@ -3,7 +3,7 @@ import {businessTypes,businessType,deskQueues,offers,carePlan,suggestedOffer} fr
 import {deskPath} from './paths.js';
 import {audioBusy,renderAudioControls,renderAudioPlayback} from './call-audio.js';
 let selected, lane='all', workView='team', lastSaved, showHistory=false,category='all',subtypes=[],searchTerm='';
-let detailTab='overview';
+let detailTab='overview',loadedWorkspaceContext;
 const drafts=new Map();
 const expanded=new Set();
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
@@ -64,6 +64,10 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty,
   const search=field(left,'Search businesses',searchTerm,'search');search.addEventListener('input',()=>{searchTerm=search.value;for(const row of list.children)row.hidden=!row.textContent.toLowerCase().includes(searchTerm.toLowerCase());});left.insertBefore(search.parentElement,list);
   grid.append(left);
   const r=state.prospects[selected];
+  if(r?.origin==='workspace'){
+    const card=el('section',undefined,'panel');card.append(el('h2',r.name),el('p','Project workspace · no outreach','badge'),el('p',r.workspace.purpose),el('p','This existing project has private asset context only. Use Assets for original references and Clients & support for its private note. No research qualification, contact permission or sales approval is implied.','notice'));
+    const context=el('div');if(loadedWorkspaceContext?.id===r.id&&loadedWorkspaceContext.revision===state.revision)context.append(el('pre',JSON.stringify(loadedWorkspaceContext.packet,null,2)));card.append(btn('Load private project context',()=>run(async()=>{const response=await fetch(deskPath(`/api/project-context/${r.id}`)),packet=await response.json();if(!response.ok)throw Error(packet.error);loadedWorkspaceContext={id:r.id,revision:state.revision,packet};context.replaceChildren(el('pre',JSON.stringify(packet,null,2)));})),context);grid.append(card);root.append(grid,background);return;
+  }
   if(r){const card=el('section',undefined,'panel desk-card'),notesPanel=el('section',undefined,'panel desk-notes');notesPanel.setAttribute('aria-label','Call notes and follow-up');
     const callable=state.supply.queue.some(a=>a.prospect_id===r.id)&&(!r.follow_up_owner||r.follow_up_owner===state.current_operator);
     const type=businessType(r),contactResearch=el('div');

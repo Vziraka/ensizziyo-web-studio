@@ -7,6 +7,15 @@ const request=(path,{method='GET',headers={},body}={})=>new Request(origin+'/des
 test('hosted desk fails closed before touching storage when config is absent, incomplete or production',async()=>{
  for(const configured of [{},{...env,CONTEXT:'production'},{...env,EVZ_OPERATIONS_SESSION_SECRET:''},{...env,EVZ_OPERATIONS_BLOB_NAMESPACE:'production'}]){let touched=false;const handler=createHostedDesk({env:configured,storeFactory:()=>{touched=true;throw Error('Must not access');}});assert.equal((await handler(request('/api/state'))).status,503);assert.equal(touched,false);}
 });
+
+test('hosted friend creates an inert existing-client workspace with readback and owner-visible asset context',async()=>{
+ const raw=rawStore(),make=()=>createHostedDesk({env,storeFactory:()=>raw,now:()=>new Date(at)}),bootstrap=await make()(request('/api/bootstrap')),csrf=(await bootstrap.json()).csrf,baseCookie=cookie(bootstrap),login=await make()(request('/api/login',{method:'POST',headers:{cookie:baseCookie,'content-type':'application/json','x-studio-token':csrf,origin},body:{key:env.EVZ_OPERATIONS_FRIEND_KEY}})),headers={cookie:baseCookie+'; '+cookie(login),'content-type':'application/json','x-studio-token':csrf,origin};
+ const read=async()=>{const response=await make()(request('/api/state',{headers}));assert.equal(response.status,200);return response.json();};const before=await read(),event={id:'hosted-workspace-create',prospect_id:'hosted-client',type:'workspace_project_created',at,data:{name:'STUDIO TEST Prior client',purpose:'Recover original project assets.',controlled:true}},body={revision:before.revision,event};
+ assert.equal((await make()(request('/api/event',{method:'POST',headers:{...headers,'x-studio-token':'wrong'},body}))).status,403);
+ assert.equal((await make()(request('/api/event',{method:'POST',headers,body}))).status,200);assert.equal((await (await make()(request('/api/event',{method:'POST',headers,body}))).json()).duplicate,true);
+ const after=await read();assert.equal(after.prospects['hosted-client'].workspace.created_by,'friend');assert.equal(after.daily.new_researched,before.daily.new_researched);assert.deepEqual(after.actions,before.actions);assert.equal(after.supply.ready,before.supply.ready);
+ const context=await make()(request('/api/project-context/hosted-client',{headers}));assert.equal(context.status,200);assert.equal((await context.json()).source.company.origin,'workspace');
+});
 test('stateless owner/friend sessions share actual lifecycle records with CSRF, replay, conflict and lost-response protection',async()=>{
  const raw=rawStore(),make=()=>createHostedDesk({env,storeFactory:()=>raw,now:()=>new Date(at)}),sessions=new Map();
  assert.equal((await make()(request('/api/state'))).status,401);assert.equal(raw.writes,0);
