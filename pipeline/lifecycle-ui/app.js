@@ -1,3 +1,4 @@
+import {gatewayProofPanel} from './gateway-proof.js';
 import {preparationPanel} from './project-work.js';
 import { renderCallDesk } from './call-desk.js';
 import { centsFromDollars } from './money.js';
@@ -444,6 +445,7 @@ function render() {
     node.append(notices,el('p','Routine checks stay in private logs. The earlier test monitor stays paused; no external delivery is enabled by these prepared messages.','muted'));content.append(node);return;
   }
   if (view === 'launch') {
+    if(state.hosted_preview)content.append(gatewayProofPanel(state,{el,button,api,tell,refresh,clearDirty:()=>{dirty=false;}}));
     if (state.controls.mode === 'production') {
       const calls = panel('Calls-only final review'), review = state.controls.final_review.calls;
       calls.append(el('p', 'Release your manual calls and Apollo call tasks separately from email. Verification calls confirm activity and goals; they never trigger no-answer email. All real contact stays paused until your final approval.', 'notice'));
@@ -458,7 +460,7 @@ function render() {
       content.append(research);
     }
     const node = panel('Required before live automation'), list = el('div', undefined, 'checklist');
-    const checks = { owner_design_approved: ['Your final design approval', 'Review this console, operating rules and controlled proof.'], business_sender_verified: ['Business sender ready', 'Workspace access, mailbox receipt/send-as and domain authentication checked.'], native_automation_verified: ['Apollo automatic handoff', 'Approved templates, exact intent lists, native workflow triggers and stop rules tested.'], delivery_and_stop_verified: ['Controlled delivery and cancellation', 'One approved owner-only rehearsal of the final native sending route; no blind retries.'], website_inquiry_verified: ['Website and inquiry route', 'Published studio and reachable inquiry destination verified.'], prospect_supply_verified: ['Reviewed local-business prospect supply', 'Resume research only when authorized; do not lower screening quality to fill 50.'], capacity_verified: ['Subscription and operating capacity', 'Live Luna/high + Sol/high compatibility, allowance, source review and upkeep measured.'] };
+    const checks = { owner_design_approved: ['Your final design approval', 'Review this console, operating rules and controlled proof.'], business_sender_verified: ['Business sender ready', 'Workspace access, mailbox receipt/send-as and domain authentication checked.'], native_automation_verified: ['Apollo automatic handoff', 'Approved templates, exact intent lists, native workflow triggers and stop rules tested.'], delivery_and_stop_verified: ['Controlled delivery and cancellation', 'One approved owner-only rehearsal of the final native sending route; no blind retries.'], website_inquiry_verified: ['Website and inquiry route', 'Published studio and reachable inquiry destination verified.'], prospect_supply_verified: ['Reviewed local-business prospect supply', 'Resume research only when authorized; keep the shared 25-new-business target honest when strong evidence is missing.'], capacity_verified: ['Subscription and operating capacity', 'Live Luna/high + Sol/high compatibility, allowance, source review and upkeep measured.'] };
     for (const [key, [label, description]] of Object.entries(checks)) { const row = el('div', undefined, 'check-item'), copy = el('div'), gate = state.controls.final_review?.gates.find(g => g.key === key); copy.append(el('strong', label), el('p', description)); if (gate?.note) copy.append(el('p', gate.note)); const passed = state.controls.final_review ? gate?.passed : state.controls.readiness[key]; row.append(el('span', passed ? '✓' : '·'), copy); list.append(row); }
     if (state.controls.final_review?.verified?.length) { node.append(el('h3', 'Verified so far')); for (const line of state.controls.final_review.verified) node.append(el('p', line, 'muted')); }
     node.append(list, el('p', 'Readiness values are evidence-based gates, not checkboxes that activate sending. No production activation is available from this review screen.', 'muted')); content.append(node); return;
@@ -494,7 +496,7 @@ function render() {
 }
 document.addEventListener('input', e => { if (e.target.closest('form')) dirty = true; });
 document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => { dirty = false; view = b.dataset.view; tell(''); render(); }));
-document.querySelector('#pause').addEventListener('click', async () => { try { await api('/api/pause', {}); tell('AI and connector writes paused. Research and outreach remain paused.'); await refresh(); } catch (error) { tell(error.message, true); } });
+document.querySelector('#pause').addEventListener('click', async () => { try { const paused=await api('/api/pause', {}); tell('AI and connector writes paused. Research and outreach remain paused.'+(paused.in_flight_may_complete?' Already-started Gateway usage may still complete; inspect its saved receipt.':'')); await refresh(); } catch (error) { tell(error.message, true); } });
 document.querySelector('#backup').addEventListener('click', async () => { try { const result = await api('/api/backup', {}); tell(`Private backup saved and checksummed (${result.prospects} records).`); } catch (error) { tell(error.message, true); } });
 document.querySelector('#sign-out').addEventListener('click', async () => { try { stopAudioCapture(); await api('/api/logout', {}); showOperatorLogin(); } catch (error) { tell(error.message, true); } });
 async function start() {

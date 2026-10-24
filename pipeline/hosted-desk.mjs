@@ -1,3 +1,4 @@
+import {gatewayProofView,configureGatewayProof,runGatewayProof,pauseGatewayProof} from './gateway-proof.mjs';
 import {projectSourceBodies,retainedSource} from './retained-sources.mjs';
 import {prepareTeamNotifications,notificationView} from './team-notifications.mjs';
 import {projectContext,projectWorkContext} from './project-work.mjs';
@@ -35,7 +36,7 @@ function projectDashboard(view){
  delete view.ai_attempts;return projectSourceBodies(view);
 }
 
-export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=()=>new Date(),assetDirectory=fileURLToPath(new URL('./lifecycle-ui/',import.meta.url)),readAsset=null}={}){
+export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=()=>new Date(),assetDirectory=fileURLToPath(new URL('./lifecycle-ui/',import.meta.url)),readAsset=null,gatewayOptions={}}={}){
  return async request=>{
   let settings;try{settings=configured(env,now);}catch{return json(503,{error:'Private desk is not configured'});}
   const url=new URL(request.url),path=url.pathname.slice(base.length)||'/';
@@ -60,6 +61,7 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    let app,raw;try{raw=await storeFactory(env.EVZ_OPERATIONS_BLOB_NAMESPACE);app=await openApp(raw,now);}catch{return json(503,{error:'Private shared storage is unavailable; no execution was started'});}
    if(request.method==='GET'&&/^\/api\/project-context\/[a-zA-Z0-9_-]{1,100}(?:\/[a-zA-Z0-9_-]{1,100})?$/.test(path)){const [,,,project,workId]=path.split('/'),snapshot=await app.snapshot();return json(200,workId?projectWorkContext(snapshot,project,workId):projectContext(snapshot,project));}
    if(request.method==='GET'&&/^\/retained-source\/[a-zA-Z0-9_-]{1,100}\/[a-f0-9]{64}$/.test(path)){const [,,project,sha]=path.split('/');return json(200,retainedSource(await app.snapshot(),project,sha,url.searchParams.get('url'),url.searchParams.get('at')));}
+   if(request.method==='GET'&&path==='/api/gateway-proof')return json(200,await gatewayProofView(app,env));
    if(request.method==='GET'&&path==='/api/team-notifications')return json(200,notificationView(await app.snapshot()));
    if(request.method==='GET'&&path==='/api/state')return json(200,{...projectDashboard(await app.dashboard()),csrf,current_operator:actor,operator_auth_enabled:true,workers:[],hosted_preview:true});
    if(request.method==='GET'&&/^\/api\/events\/[a-zA-Z0-9_-]{1,100}$/.test(path)){const id=path.split('/').at(-1),state=await app.snapshot(),event=state.events[id];return json(200,{found:Boolean(event),id,...(event?{actor:event.actor,fingerprint:event.fingerprint,at:event.at}:{}),revision:state.revision});}
@@ -71,10 +73,12 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    if(post&&path==='/api/call-audio'){const {input,bytes}=await audioRequest(request);return json(200,await saveCallAudio(app,blobAudioStore(raw),input,bytes,actor));}
    if(post&&path==='/api/call-audio-check'){const input=await inputBody(request);return json(200,await reconcileCallAudio(app,blobAudioStore(raw),input.prospect_id,input.id));}
    if(post&&path==='/api/event'){const input=await inputBody(request);check(!['prospect_imported','verification_imported','transcript_assessed','reply_received','email_delivered','meeting_verified','call_audio_reserved','call_audio_stored'].includes(input.event?.type),'Provider/research events require their separate trusted route');return json(200,await app.apply(input.event,{actor,expectedRevision:input.revision}));}
+   if(post&&path==='/api/gateway-proof/configure')return json(200,await configureGatewayProof(app,await inputBody(request),actor,{...gatewayOptions,env}));
+   if(post&&path==='/api/gateway-proof/run')return json(200,await runGatewayProof(app,await inputBody(request),actor,{...gatewayOptions,env}));
    if(post&&path==='/api/team-notifications/prepare')return json(200,await prepareTeamNotifications(app));
    if(post&&path==='/api/calling-session')return json(200,await callingSession(app,await inputBody(request)));
    if(post&&path==='/api/information-draft')return json(200,await saveInformationDraft(app,await inputBody(request),actor));
-   if(post&&path==='/api/pause')return json(200,{paused:true,reason:'Execution is disabled throughout this fictional preview'});
+   if(post&&path==='/api/pause')return json(200,{paused:true,...await pauseGatewayProof(app,actor),reason:'Operational execution stays disabled; further finite Gateway jobs are paused'});
    return json(409,{error:'This action needs a connected execution or file service; it is disabled in the fictional shared preview'});
   }catch(error){if(['ENOENT','EACCES','ENOTDIR'].includes(error.code))return json(503,{error:'Private desk UI is unavailable; no execution was started'});if(error.code==='STATE_CONFLICT')return json(409,{error:error.message});if(error.code==='STATE_UNCERTAIN'||error.code==='STATE_UNAVAILABLE')return json(503,{error:error.message});return json(400,{error:error.message?.startsWith('Shared')?'Private shared state is unavailable; retain your event ID and retry after readback':error.message?.includes('token')?'Private request rejected':error.message?.slice(0,240)??'Private request failed'});}
  };
