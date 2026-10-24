@@ -1,6 +1,10 @@
 # Finite fictional Gateway proof
 
-This is a disabled-by-default capability and cost-boundary proof in the existing protected Netlify Deploy Preview. It is separate from operational research, real transcripts, outreach, asset authoring and production activation. Checking capability performs no inference. Source/tests do not establish deployed capability or useful model quality.
+This is a disabled-by-default capability and cost-boundary proof in the existing protected Netlify Deploy Preview. It is separate from operational research, real transcripts, outreach, asset authoring and production activation. Checking capability performs no inference.
+
+October 24 real hosted proof at `2ce89fe`: all four fixed jobs ran once, then Pause all persisted with all four reservations retained. CountTokens and generation worked, including the 7.204-second synthetic WAV, whose transcript exactly matched its known phrase. The supported opening commanded automation before learning the current process; the same-model reviewer accepted that poor opening. The dated-only job invented a visual claim and was correctly held by the deterministic output check. **Research quality failed this proof.** This model/prompt is not accepted for unattended research. Synthetic speech does not establish real microphone, speakerphone, noisy-call or long-recording accuracy.
+
+The account UI showed 0.08 included credits of Google inference and approximately 2.2K tokens; rounded balance stayed 930.7 and auto recharge remained disabled. These observations are separate from the conservative four-credit ledger and do not predict operational costs. No new inference is authorized by this result; the original policy, prompts, receipts and exhausted/paused budget stay unchanged.
 
 ## Current supported candidate
 
@@ -26,7 +30,9 @@ CountTokens must return 1–4096 input tokens before generation. Output is cappe
 
 The SDK has a 20-second per-request timeout and one total attempt. A shared 40-second abort signal bounds the count/generation pair; aborting locally does not prove provider cancellation or zero charge. A lost reservation acknowledgement starts no generation. Strong readback shows Reserved; that job is never dispatched again. Reserved or Uncertain work blocks another job. Either operator's Pause all persists a stop without resetting reservations. The worker rechecks pause/expiry before counting and again before generation; an already-started provider request may still finish and be charged. The UI drops stale capability/receipt views after any state revision and requires fresh readback. Provider errors are stored as stable categories without raw credential-bearing messages.
 
-Results retain input hashes, model/catalog identity, usage, conservative cost, status and bounded review output. Truncated, invalid or unbound results are held. Weak evidence must stay held; exact source/hash checks do not prove semantic relevance. The separate review binds the saved assessment; the audio fixture compares against its known offline phrase and retains uncertainty. No result imports a prospect, confirms a customer fact or sends anything.
+Results retain input hashes, model/catalog identity, usage, conservative cost, status and bounded review output. Truncated, invalid or unbound results are held. Weak evidence must stay held; exact source/hash checks do not prove semantic relevance. `Completed` and `structural_valid` describe transport/output-contract completion. `fixture_expectation_pass` describes only a fixed weak-evidence or known-audio expectation. Neither is operator quality acceptance. The separate model review binds the saved assessment but cannot approve quality for the owner.
+
+The dedicated read view projects legacy `quality_pass` into these narrower labels without rewriting original receipts. Each job exposes its original receipt hash. An owner can save one exact receipt-bound Accepted/Rejected quality verdict and specific reason through POST `/desk/api/gateway-proof/review`, including after pause/expiry; exact duplicate review is safe and overwrite is rejected. Reviews live separately from the immutable jobs, cannot reset reservations, replay inference or adopt content. The ordinary dashboard omits raw Gateway receipts; this dedicated authenticated view supplies their bounded results. No result imports a prospect, confirms a customer fact or sends anything. Future prompt improvements require a separately reviewed versioned proof, not replacement under this exhausted policy.
 
 ## Verification and rollback
 

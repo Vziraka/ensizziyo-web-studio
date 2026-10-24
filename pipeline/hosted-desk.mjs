@@ -1,4 +1,4 @@
-import {gatewayProofView,configureGatewayProof,runGatewayProof,pauseGatewayProof} from './gateway-proof.mjs';
+import {gatewayProofView,configureGatewayProof,runGatewayProof,pauseGatewayProof,reviewGatewayProof} from './gateway-proof.mjs';
 import {projectSourceBodies,retainedSource} from './retained-sources.mjs';
 import {prepareTeamNotifications,notificationView} from './team-notifications.mjs';
 import {projectContext,projectWorkContext} from './project-work.mjs';
@@ -33,7 +33,7 @@ async function openApp(raw,now){
 function projectDashboard(view){
  view.events=Object.fromEntries(Object.entries(view.events).map(([id,e])=>[id,{id,type:e.type,prospect_id:e.prospect_id,actor:e.actor,at:e.at}]));
  if(view.operations)view.operations={email:Object.fromEntries(Object.entries(view.operations.email??{}).map(([id,e])=>[id,{status:e.status,thread:Boolean(e.thread)}])),cycle:view.operations.cycle?{completed_cycles:view.operations.cycle.completed_cycles,completed_at:view.operations.cycle.completed_at}:null,maintenance:{backup_date:view.operations.maintenance?.backup_date}};
- delete view.ai_attempts;return projectSourceBodies(view);
+ delete view.ai_attempts;delete view.gateway_proof;delete view.gateway_proof_reviews;return projectSourceBodies(view);
 }
 
 export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=()=>new Date(),assetDirectory=fileURLToPath(new URL('./lifecycle-ui/',import.meta.url)),readAsset=null,gatewayOptions={}}={}){
@@ -75,6 +75,7 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    if(post&&path==='/api/event'){const input=await inputBody(request);check(!['prospect_imported','verification_imported','transcript_assessed','reply_received','email_delivered','meeting_verified','call_audio_reserved','call_audio_stored'].includes(input.event?.type),'Provider/research events require their separate trusted route');return json(200,await app.apply(input.event,{actor,expectedRevision:input.revision}));}
    if(post&&path==='/api/gateway-proof/configure')return json(200,await configureGatewayProof(app,await inputBody(request),actor,{...gatewayOptions,env}));
    if(post&&path==='/api/gateway-proof/run')return json(200,await runGatewayProof(app,await inputBody(request),actor,{...gatewayOptions,env}));
+   if(post&&path==='/api/gateway-proof/review')return json(200,await reviewGatewayProof(app,await inputBody(request),actor));
    if(post&&path==='/api/team-notifications/prepare')return json(200,await prepareTeamNotifications(app));
    if(post&&path==='/api/calling-session')return json(200,await callingSession(app,await inputBody(request)));
    if(post&&path==='/api/information-draft')return json(200,await saveInformationDraft(app,await inputBody(request),actor));
