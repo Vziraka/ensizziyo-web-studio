@@ -95,6 +95,22 @@ async function localInventory(directory,state){
  read.renderer=async path=>{check(/^project-authored\/author-[a-f0-9]{32}\/renderer\.(py|mjs)$/.test(path),'Unsafe renderer evidence path');return readRegularExternal(join(directory,...path.split('/')),jsonLimit,directory);};
  read.external=readRegularExternal;return inventory(state,read);
 }
+export async function hostedBackupInventory(app,audioStore){
+ check(app.authoringStore&&app.originalStore&&app.store&&!app.store.inertBinding&&app.config.mode==='controlled','Hosted project backup supports the fictional controlled workspace only');
+ const state=await app.snapshot();
+ // Incomplete transfers/attempts require reconciliation before claiming a complete hosted package.
+ for(const work of workHistory(state))for(const job of [...(work.authoring_history??[]),...(work.execution?[work.execution]:[])])check(job.status==='Review','Hosted backup held: reconcile unfinished authoring attempts before exporting complete dependencies');
+ const originals=new Map(Object.values(state.asset_index??{}).flatMap(a=>Object.values(a.versions??{}).filter(v=>v.verified_original).map(v=>[v.verified_original.sha256,v.verified_original])));
+ const read=async(path,max,optional)=>{
+  check(allowed(path),'Unsafe hosted backup path');let bytes;
+  const match=authorPath.exec(path);
+  if(match)bytes=await app.authoringStore.get(match[1],match[2]);
+  else if(path.startsWith('project-originals/')){const original=originals.get(path.slice(18,-4));check(original,'Missing registered original dependency');bytes=await app.originalStore.get(original);}
+  else bytes=await audioStore.get(path.slice('call-audio/'.length));
+  check(bytes||optional,'Missing required hosted backup dependency');check(!bytes||bytes.length<=max,'Oversized hosted backup dependency');return bytes??null;
+ };
+ const result=await inventory(state,read,{restoring:true});check(hash(await app.snapshot())===hash(state),'Workspace changed during backup; repeat the read from a fresh manifest');return {state,...result};
+}
 async function readRegularExternal(path,max=fileLimit,inside){
  check(isAbsolute(path),'Use an absolute resource path');const absolute=resolve(path);let current=dirname(absolute);for(;;){check(!(await lstat(current)).isSymbolicLink(),'Unsafe resource ancestor');if(dirname(current)===current)break;current=dirname(current);}
  if(inside)check(await realpath(dirname(absolute))===join(await realpath(inside),'project-authored',absolute.split(/[\\/]/).at(-2)),'Unsafe renderer evidence directory');
@@ -102,7 +118,13 @@ async function readRegularExternal(path,max=fileLimit,inside){
 }
 async function removeOwned(path,identity){const stat=await lstat(path);check(stat.isDirectory()&&!stat.isSymbolicLink()&&stat.dev===identity.dev&&stat.ino===identity.ino&&await realpath(path)===path,'Refusing cleanup of a changed directory');await rm(path,{recursive:true});}
 export async function writeLifecycleBackup(directory,state,output,created_at){
- const {files,audio_clips}=await localInventory(directory,state),body=JSON.stringify(state),manifest=[...files].map(([path,bytes])=>({path,bytes:bytes.length,sha256:digest(bytes)}));
+ const {files,audio_clips}=await localInventory(directory,state);return writeBackupFiles(state,files,audio_clips,output,created_at);
+}
+export async function writePortableLifecycleBackup(state,files,output,created_at){
+ const result=await validateBackupDependencies(state,files);return writeBackupFiles(state,result.files,result.audio_clips,output,created_at);
+}
+async function writeBackupFiles(state,files,audio_clips,output,created_at){
+ const body=JSON.stringify(state),manifest=[...files].map(([path,bytes])=>({path,bytes:bytes.length,sha256:digest(bytes)}));
  const bundle={schema_version:2,created_at,sha256:hash(body),body,files:manifest,files_sha256:hash(manifest)};const encoded=JSON.stringify(bundle);check(Buffer.byteLength(encoded)<=25_000_000,'Backup exceeds the verified restore limit; archive closed records first');
  output=await privateStateDirectory(output);const sidecar=output+'.files';await mkdir(sidecar,{mode:0o700});const identity=await lstat(sidecar),temporary=join(sidecar,`bundle-${randomUUID()}.pending`);let published=false;
  try{for(const entry of manifest){const path=join(sidecar,entry.sha256);try{await writeFile(path,files.get(entry.path),{flag:'wx',mode:0o600,flush:true});}catch(error){if(error.code!=='EEXIST')throw error;}}

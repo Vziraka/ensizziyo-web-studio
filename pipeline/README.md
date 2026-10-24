@@ -1,5 +1,7 @@
 # Controlled research proof
 
+[Disabled persistent hosted authoring](PROJECT-AUTHORING.md#disabled-hosted-authoring-storage-and-caller) connects the signed existing continuation caller to immutable bounded Node-authoring resources and complete reviewed G1 packages. Run `node --test hosted-authoring.test.mjs`; the flag remains unset. Missing/unfinished dependencies hold complete hosted backup. D2, production, actual remote/cost and computer-off acceptance stay closed/unverified.
+
 [Disabled Gmail incoming synchronization](GOOGLE-INCOMING-MAIL.md) connects signed owner/friend calls to existing registered conversations, durable history/cursor dedup, source-bound reply review, cold stops and held notifications. Run `node --test pipeline/google-incoming-mail.test.mjs pipeline/google-oauth.test.mjs` from repository root for local substituted HTTP/handler/OAuth checks. OAuth connection alone starts no reading; production/D2 and schedules remain closed.
 
 [Disabled owner Google grant](GOOGLE-OAUTH.md) adds owner-only authorization-code start/callback/local disconnect, encrypted separated credentials and serialized server-only tokens for the existing exact-mail caller. Run `node --test pipeline/google-oauth.test.mjs pipeline/exact-mail.test.mjs` from repository root for account-free signature/handler/provider-wire checks. All flags remain unset; no real client, consent, exchange, send, hosted callback or production activation occurred.

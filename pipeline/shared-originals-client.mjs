@@ -3,11 +3,12 @@ import {originalManifest,originalDigest,originalChunkSize} from './shared-projec
 import {projectAssetVersion,storeProjectPDF,readProjectAsset} from './project-assets.mjs';
 const key=value=>typeof value==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(value)&&value!=='__proto__';
 const pathFor=ids=>{check([ids.project_id,ids.asset_id,ids.version_id].every(key),'Choose exact registered project/asset/version IDs');return '/api/project-original/'+[ids.project_id,ids.asset_id,ids.version_id].join('/');};
-async function bounded(response,limit){
+export async function boundedSharedResponse(response,limit){
  check(response.body,'Shared original response is empty');const reader=response.body.getReader(),chunks=[];let total=0;
  try{for(;;){const {value,done}=await reader.read();if(done)break;total+=value.length;check(total<=limit,'Shared original response exceeds its bound');chunks.push(Buffer.from(value));}}finally{await reader.cancel();}return Buffer.concat(chunks);
 }
-export async function connectSharedOriginals({origin,key:operatorKey,fetcher=fetch}={}){
+const bounded=boundedSharedResponse;
+export async function sharedDeskSession({origin,key:operatorKey,fetcher=fetch}={}){
  const url=new URL(origin);check(url.protocol==='https:'&&url.origin===origin&&!url.username&&!url.password,'Choose the exact HTTPS shared desk origin');
  check(typeof operatorKey==='string'&&/^[A-Za-z0-9_-]{43,}$/.test(operatorKey),'Supply your separately provisioned operator key');
  let cookie='',csrf;
@@ -16,8 +17,12 @@ export async function connectSharedOriginals({origin,key:operatorKey,fetcher=fet
   const set=response.headers.get('set-cookie');if(set)cookie=[cookie,set.split(';')[0]].filter(Boolean).join('; ');
   if(!response.ok){let error;try{error=JSON.parse((await bounded(response,120_000)).toString()).error;}catch{}throw Error(error??'Authenticated shared original request failed');}return response;
  }
- const json=async(path,options)=>JSON.parse((await bounded(await request(path,options),120_000)).toString());
+ const json=async(path,options)=>JSON.parse((await bounded(await request(path,options),4_500_000)).toString());
  csrf=(await json('/api/bootstrap')).csrf;const session=await json('/api/login',{method:'POST',body:{key:operatorKey}});check(['owner','friend'].includes(session.operator),'Shared operator authentication failed');
+ return {operator:session.operator,request,json};
+}
+export async function connectSharedOriginals(options={}){
+ const session=await sharedDeskSession(options),{json,request}=session;
  return {
   operator:session.operator,
   async resolve(name){check(typeof name==='string'&&name.length<=250,'Supply the exact company name');return json('/api/project-resolve?name='+encodeURIComponent(name));},

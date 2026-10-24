@@ -1,5 +1,47 @@
 # Project authoring and held companion email
 
+## Disabled hosted authoring storage and caller
+
+The same continuation workflow has a persistent hosted source adapter behind the **unset** `EVZ_OPERATIONS_PROJECT_AUTHORING=fictional-node-v1` flag. It accepts only the existing execution-disabled fictional Deploy Preview namespace. D2 production-shaped records retain their read/private-note allowlist; authoring, transfers and hosted backup remain closed there. No seed, model/provider call, schedule, rasterizer or uploaded executable is added.
+
+The pinned Blobs SDK stores immutable content-addressed 1 MB chunks with strong reads and one immutable job/name manifest. Source and trusted `node-pdf-v1` runtime upload separately as canonical JSON, including all hash-registered font/image/template bytes. Existing limits apply: 4 MB source, 36 MB encoded runtime, the renderer's resource caps, and sixteen separate actual PNG pages up to 16 MB each. Reserve/chunk/complete verifies chunk and whole-file hashes before granting file authority. Transfers cannot name scripts, filesystem paths or arbitrary blob keys. Only the pinned repository Node renderer executes. Existing source/runtime/raster/output manifests and approved original history cannot be overwritten.
+
+Use the signed interactive Node caller from `pipeline`:
+
+```js
+import {connectSharedAuthoring} from './hosted-authoring-client.mjs';
+import {hash} from './lifecycle.mjs';
+const desk = await connectSharedAuthoring({
+  origin: process.env.STUDIO_SHARED_DESK_ORIGIN,
+  key: process.env.STUDIO_SHARED_OPERATOR_KEY
+});
+const job = await desk.begin('Exact existing company', 'website-concepts');
+// Read its named installed skill, context and exact original PDFs first.
+await desk.render(job.id, authoredSource, trustedPortableRuntime);
+const pdf = await desk.download(job.id, 'output.pdf');
+const receipt = JSON.parse(await desk.download(job.id, 'export.json'));
+// Separately rasterize this exact PDF and inspect every actual PNG page.
+const raster_review = await desk.rasters(job.id, {
+  pdf_sha256: receipt.pdf.sha256,
+  rasterizer: 'Exact separately used rasterizer and settings',
+  pages: actualInspectedPNGBuffers
+});
+await desk.complete(job.id, {
+  export_sha256: hash(receipt), pages: receipt.pages, raster_review,
+  requirements: true, visual_design: true, export: true, notes: 'Actual findings'
+});
+const held = await desk.inspect(job.id);
+await desk.backup('/absolute/private/portable.json');
+```
+
+Hashes/layout metadata and successful uploads cannot establish visual inspection. Reviewers must inspect the exact retained PNGs. Both signed operators can retrieve current/retained job files in bounded chunks. Use the existing original client for registered source PDFs; editable-source references identify exact downloadable `authored.json` files. Inspect includes the unapproved version and exact held attachment; baseline approval and sending remain separate.
+
+Fresh requests reopen adapters. Existing context, assignment, baseline, quote and CAS checks protect rendering/publication. Competing/stale output holds and partial files never index a version. After a lost response call `inspect(job.id)` first; `resume(job.id)` verifies the existing export without rendering again. Inspect and explicitly retain partial attempts using `revise(job.id, reason)` before claiming another. Exact completed review retries return the saved result; differing reviews cannot replace it. Commands/effects are never automatically retried.
+
+Hosted backup runs G1's full dependency inventory against originals, editable/context/input/runtime/resources/export/layout/actual-review PNGs and held attachments. A content-bound manifest supplies signed 1 MB reads; `backup` independently validates dependencies before writing the standard schema-2 JSON plus `.files/` sibling. Restore keeps execution disabled. Changed snapshots, missing/corrupt dependencies or **any unfinished/retained non-Review authoring attempt hold complete hosted backup**. Interrupted staged chunks are not claimed recoverable as a complete package; reconcile first. Local G1 partial-attempt recovery is unchanged. This bounded reader revalidates the whole inventory per chunk; actual latency/volume/bandwidth/cost and production retention remain unproved.
+
+Run `node --test hosted-authoring.test.mjs` for real pinned SDK/signed owner-friend fresh-instance, multi-MB resource, actual Node PDF, interruption/context/concurrency/corruption, portable restore and protected-refinement checks. Automated raster-boundary tests explicitly substitute PNGs; private loopback HTTP evidence separately uses actual inspected PDF page exports. Actual remote Netlify execution/storage/timeout/cost, independent devices, computer-off operation, production migration and client acceptance remain unverified. No remote state/configuration or activation changed.
+
 The existing held companion package now has a [disabled exact-message caller](GOOGLE-EXACT-MAIL.md) with a separate signed send approval, exact archived-PDF retrieval and same-intent sender readback. Authoring/export/scope-price approvals still do not authorize sending. No Google grant or real delivery is enabled.
 
 The existing caller executes actual composition for `website-concepts`, `website-refinement` and `client-proposal` Ready items. It consumes saved context, verifies original references and renders a new PDF. The local Python route also rasterizes it; the explicit [Node route](#portable-node-renderer) retains canonical layouts and requires separate actual raster review. Both index a separately reviewed result as an **unapproved** immutable version with a held companion email. Neither sends, approves a baseline or establishes client acceptance.

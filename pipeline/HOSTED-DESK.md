@@ -1,5 +1,7 @@
 # Protected shared-desk preview
 
+The [separately disabled persistent authoring caller](PROJECT-AUTHORING.md#disabled-hosted-authoring-storage-and-caller) stores fictional Node authoring dependencies in immutable 1 MB Blobs chunks and reuses signed begin/render/inspect/raster-review/complete. Complete reviewed jobs export through verified G1 packages; unfinished attempts or absent/corrupt dependencies hold. `EVZ_OPERATIONS_PROJECT_AUTHORING` remains unset. D2 permissions, remote hosting/cost and computer-off acceptance are unchanged.
+
 ## Inert shared-record source
 
 D2 adds a separate **disabled source capability**, `inert-shared-v1`, for production-mode records. The existing `fictional-preview` selection, namespace pattern, seed and 2 MB limit remain unchanged. A deployment cannot silently widen that selection or open production records through the fictional adapter. No real data import, environment change or activation is part of this increment.

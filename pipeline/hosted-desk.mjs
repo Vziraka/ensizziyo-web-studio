@@ -1,4 +1,4 @@
-import {blobProjectOriginalStore,reserveSharedOriginal,uploadSharedOriginalChunk,completeSharedOriginal,sharedOriginalManifest,readSharedOriginalChunk,originalChunkRequest} from './shared-project-originals.mjs';
+import {blobProjectOriginalStore,reserveSharedOriginal,uploadSharedOriginalChunk,completeSharedOriginal,sharedOriginalManifest,readSharedOriginalChunk,originalChunkRequest,originalDigest} from './shared-project-originals.mjs';
 import {validateInertBinding} from './inert-shared-workspace.mjs';
 import {gatewayProofView,configureGatewayProof,runGatewayProof,pauseGatewayProof,reviewGatewayProof} from './gateway-proof.mjs';
 import {callTranscriptionView,approveCallTranscription,runCallTranscription,pauseCallTranscription} from './call-transcription.mjs';
@@ -18,6 +18,8 @@ import {driveOAuthProfile,driveOAuthPath,driveOAuthCallbackHTML,driveOAuthCallba
 import {calendarOAuthProfile,calendarOAuthPath,calendarOAuthCallbackHTML,calendarOAuthCallbackJS} from './google-oauth.mjs';
 import {calendarAvailability,queueGoogleMeeting,dispatchGoogleMeeting,reconcileGoogleMeeting} from './google-calendar.mjs';
 import {syncIncomingMail,incomingMailView} from './google-incoming-mail.mjs';
+import {attachHostedAuthoring,hostedAuthoringTransfer,hostedAuthoringCommand,hostedAuthoringFile,hostedAuthoringBackup} from './hosted-authoring.mjs';
+import {hash} from './lifecycle.mjs';
 
 const base='/desk',csrfCookie='evz_desk_csrf',maxBody=120_000;
 const headers={'Cache-Control':'no-store','Netlify-CDN-Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; font-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"};
@@ -83,7 +85,7 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
     if(!csrfValid(csrf,env.EVZ_OPERATIONS_SESSION_SECRET,now())){const payload=Buffer.from(JSON.stringify([+now()+8*3600000,randomBytes(16).toString('hex')])).toString('base64url');csrf=payload+'.'+sign(env.EVZ_OPERATIONS_SESSION_SECRET,payload).toString('base64url');}
     return json(200,{csrf,operator_auth_required:true},{'Set-Cookie':`${csrfCookie}=${csrf}; HttpOnly; Secure; SameSite=Strict; Path=/desk/; Max-Age=28800`});
    }
-   const post=request.method==='POST';if(post&&(!csrfValid(csrf,env.EVZ_OPERATIONS_SESSION_SECRET,now())||request.headers.get('x-studio-token')!==csrf||path!=='/api/call-audio'&&!/^\/api\/project-original\/[^/]+\/[^/]+\/[^/]+\/chunk\/[0-9]+$/.test(path)&&request.headers.get('content-type')?.split(';')[0]!=='application/json'))return json(403,{error:'Current same-origin approval token required'});
+   const post=request.method==='POST';if(post&&(!csrfValid(csrf,env.EVZ_OPERATIONS_SESSION_SECRET,now())||request.headers.get('x-studio-token')!==csrf||path!=='/api/call-audio'&&!/^\/api\/project-original\/[^/]+\/[^/]+\/[^/]+\/chunk\/[0-9]+$/.test(path)&&!/^\/api\/project-author\/author-[a-f0-9]{32}\/file\/[^/]+\/chunk\/[0-9]+$/.test(path)&&request.headers.get('content-type')?.split(';')[0]!=='application/json'))return json(403,{error:'Current same-origin approval token required'});
    if(post&&path==='/api/login'){const input=await inputBody(request),actor=settings.auth.authenticate(input.key);return actor?json(200,{operator:actor},{'Set-Cookie':settings.auth.cookie(settings.auth.issue(actor),{secure:true})}):json(401,{error:'The operator key was not recognized'});}
    const actor=settings.auth.actorFromCookie(request.headers.get('cookie'));if(!actor)return json(401,{error:'Sign in with your individual operator key'});
    if(post&&path==='/api/logout')return json(200,{signed_out:true},{'Set-Cookie':settings.auth.cookie('',{secure:true,clear:true})});
@@ -103,7 +105,24 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
     if(!reads&&!(post&&path==='/api/event'))return json(409,{error:'Inert workspace supports saved reads and signed private notes only; execution, authoring, transfer writes and hosted backup are disabled'});
    }
    if(path.startsWith('/api/project-original/')&&!settings.inertBinding&&env.EVZ_OPERATIONS_SHARED_ORIGINALS!=='fictional-chunks-v1')return json(503,{error:'Shared original transfer is not configured'});
+   if(path.startsWith('/api/project-author/')&&env.EVZ_OPERATIONS_PROJECT_AUTHORING!=='fictional-node-v1')return json(503,{error:'Hosted authoring is disabled'});
    let app,raw;try{raw=await storeFactory(env.EVZ_OPERATIONS_BLOB_NAMESPACE);app=await openApp(raw,now,settings.inertBinding);}catch{return json(503,{error:'Private shared storage is unavailable; no execution was started'});}
+   if(path.startsWith('/api/project-author/')){
+    check(env.EVZ_OPERATIONS_PROJECT_AUTHORING==='fictional-node-v1'&&!settings.inertBinding,'Hosted authoring is disabled');attachHostedAuthoring(app,raw);
+    const file=/^\/api\/project-author\/(author-[a-f0-9]{32})\/file\/([^/]+)(?:\/(reserve|complete|chunk)(?:\/([0-9]{1,2}))?)?$/.exec(path);
+    const binary=result=>new Response(result.bytes,{headers:{...headers,'Content-Type':'application/octet-stream','Content-Length':String(result.bytes.length),'X-Content-SHA256':result.sha256,'Content-Disposition':'attachment; filename="authoring-chunk.bin"'}});
+    if(file){const [,id,name,operation,index]=file;
+     if(request.method==='GET')return operation==='chunk'&&index!==undefined?binary(await hostedAuthoringFile(app,id,name,Number(index))):!operation?json(200,await hostedAuthoringFile(app,id,name)):json(405,{error:'Use exact file/chunk retrieval'});
+     if(post)return json(200,await hostedAuthoringTransfer(app,id,name,operation,operation==='chunk'?{transfer_id:request.headers.get('x-studio-transfer')}:await inputBody(request),actor,index===undefined?undefined:Number(index),operation==='chunk'?await originalChunkRequest(request):undefined));
+    }
+    if(request.method==='GET'&&path==='/api/project-author/backup')return json(200,(await hostedAuthoringBackup(app,raw)).bundle);
+    if(request.method==='GET'&&path==='/api/project-author/backup/chunk'){
+     const {bundle,files}=await hostedAuthoringBackup(app,raw);check(url.searchParams.get('snapshot')===hash(bundle),'Backup changed; retain the prior package and restart its exact read');
+     const item=Number(url.searchParams.get('file')),index=Number(url.searchParams.get('chunk'));check(Number.isInteger(item)&&item>=0&&item<bundle.files.length&&Number.isInteger(index)&&index>=0,'Choose an exact backup chunk');const entry=bundle.files[item],bytes=files.get(entry.path);check(index*1_000_000<bytes.length,'Invalid backup chunk');const part=bytes.subarray(index*1_000_000,(index+1)*1_000_000);return binary({bytes:part,sha256:originalDigest(part)});
+    }
+    if(post&&/^\/api\/project-author\/(begin|render|inspect|resume|revise|rasters|complete)$/.test(path))return json(200,await hostedAuthoringCommand(app,path.split('/').at(-1),await inputBody(request),actor));
+    return json(405,{error:'Use the existing bounded project authoring caller'});
+   }
    const originalRoute=/^\/api\/project-original\/([a-zA-Z0-9_-]{1,100})\/([a-zA-Z0-9_-]{1,100})\/([a-zA-Z0-9_-]{1,100})(?:\/(reserve|complete|chunk|drive-read)(?:\/([0-9]{1,2}))?)?$/.exec(path);
    if(originalRoute){
     check(settings.inertBinding&&request.method==='GET'||env.EVZ_OPERATIONS_SHARED_ORIGINALS==='fictional-chunks-v1','Shared original transfer is not configured');
