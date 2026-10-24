@@ -233,8 +233,13 @@ function callPrep(r) {
       const proof = packet[key], source = packet.sources.find(s => s.url === proof.url), line = el('p');
       line.append(el('strong', `${title}: `), document.createTextNode(proof.excerpt), document.createTextNode(' · '), link('Source ↗', proof.url), document.createTextNode(` · checked ${source.fetched_at}`)); card.append(line);
     }
-    card.append(el('h4', 'Suggested opening'), el('blockquote', r.verification.opening, 'quote'));
-    card.append(el('h4', 'Then ask'), el('p', r.verification.owner_question ?? 'What would you most like to make easier for customers or for yourself?'), el('p', 'How do customers order or enquire today? Which tools already handle this, and what works well?'), el('p', `Possible enhancement to discuss: ${r.idea}`, 'muted'));
+    const opening=r.opening_view;
+    if(opening?.selected){const c=opening.selected;card.append(el('h4','Strongest source-backed opening'),el('blockquote',c.opening,'quote'),el('p',`Customer step / difficulty: ${c.customer_difficulty}`),el('blockquote',c.excerpt,'quote'),link('Retained source ↗',c.source_url),el('p',`Possible improvement to discuss: ${c.hypothesis}`),el('p',`${opening.selected_by}: ${opening.reason}`,'muted'));
+      card.append(eventForm(r,'Choose another supported opening','opening_selected',[
+        ['Supported alternative','candidate_id',c.id,'text',opening.candidates.map(option=>({value:option.id,label:`${option.service}: ${option.owner_question}`}))],['Reason for your selection','reason','','textarea']
+      ],{assessment_sha256:opening.assessment_sha256},'Save opening selection'));
+    }else card.append(el('h4','Verification question'),el('blockquote',r.verification.opening,'quote'),el('p','An offering/locality check is not a strong pitch. This older verification record has not received the current focused opening assessment.','muted'));
+    card.append(el('h4', 'Then ask'), el('p', r.opening_view?.selected?.owner_question ?? r.verification.owner_question ?? 'What would you most like to make easier for customers or for yourself?'), el('p', 'How do customers order or enquire today? Which tools already handle this, and what works well?'), el('p', `Possible enhancement to discuss: ${r.idea}`, 'muted'));
     const unknowns = el('ul'); for (const unknown of packet.unknowns) unknowns.append(el('li', unknown)); card.append(unknowns);
     if (Date.now() - Date.parse(r.contact.checked_at) > 14 * 86400000) card.append(el('p', 'The identity/phone check is stale. Reverify before calling.', 'notice'));
     return card;
