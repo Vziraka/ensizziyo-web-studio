@@ -1,5 +1,7 @@
 # Protected shared-desk preview
 
+The [disabled hosted fact assessment bridge](CALL-RECORDING.md#disabled-hosted-fact-assessment-bridge) reuses Gateway, ai_attempts and existing human reviews. Its separate preview flag is unset and allowance unapproved. Local substituted checks close the interface gap only; actual hosted execution, quality, billing and production remain open.
+
 This is an execution-disabled fictional proof of the existing desk on Netlify Functions and one strongly consistent conditional-write blob. The existing local runtime is unchanged. Production context always returns 503 for this endpoint; no production records, credentials, Drive files, connectors or workers are copied into it.
 
 The function exposes `/desk/`, its UI assets, authenticated `/desk/api/state`, operator login/logout, lifecycle events and draft/history previews. The same event validation, operator attribution and approval rules are reused. Calling sessions and saved information drafts use their existing state-only callers. The separate [recording contract](CALL-RECORDING.md) adds authenticated new-only binary audio storage and private playback; its actual deployed-storage proof remains pending. Unsupported provider analysis, sending, booking, discovery and general file actions return an explicit disabled response; they never report simulated external success.

@@ -1,7 +1,7 @@
 import {followUpOutcomes,followUpSetupIssues,renderFollowUpHtml,composeFollowUp,operatorDisplayName,operatorNamesConfigured,evzIdentity} from './follow-up-template.mjs';
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { check, hash, initialConfig, businessDate, businessDaysBetween, addBusinessDays } from './lifecycle.mjs';
+import { check, hash, initialConfig, businessDate, businessDaysBetween, addBusinessDays, currentHostedTranscript } from './lifecycle.mjs';
 import { readJson, saveJson, privateStateDirectory } from './engine.mjs';
 import { reviewFiles, readPrivateJson, validateDecision } from './prospects.mjs';
 import { validateEvidenceReview } from './evidence-review.mjs';
@@ -259,6 +259,15 @@ export function nativeMessage(record, round, c,callId) {
   return { subject, body };
 }
 
+export function reviewedHostedFollowUp(record,action){
+  const follow=record.follow_ups?.[action?.payload?.call_id];
+  if(record.proposals?.[action?.payload?.call_id]?.review?.provenance?.provider==='netlify-gateway'){
+    const draft=record.follow_up_drafts?.find(d=>d.id===follow?.draft_id);
+    if(!draft||draft.status!=='Approved'||draft.approval_event!==follow.approval_event||draft.action_id!==action.id||draft.sha256!==hash(follow.content))return false;
+    try{currentHostedTranscript(record,action.payload.call_id);}catch{return false;}
+  }
+  return true;
+}
 export function approvedFollowUp(record,action,config){
   const follow=record.follow_ups?.[action?.payload?.call_id];
   return Boolean(config.follow_up?.enabled&&action?.payload?.follow_up&&action.prospect_id===record.id&&action.status!=='Cancelled'&&!record.restriction&&!record.reply&&['Prepared','Sending','Awaiting delivery'].includes(follow?.status)&&follow.action_id===action.id&&hash(follow.content)===action.payload.content_sha256&&follow.content.to===record.contact.email&&record.contact.verified&&followUpOutcomes.includes(record.calls[action.payload.call_id]?.outcome));
@@ -379,6 +388,7 @@ export class ProductionOperations extends ControlledOperations {
       if(a.payload.due_at&&Date.parse(a.payload.due_at)>+now){e.status='Scheduled for follow-up';e.due_at=a.payload.due_at;continue;}
       if (!o.requests[intentKey]) {
         if (!writeReady || r.restriction||r.reply||r.cold_paused&&!approvedFollowUp(r,a,c)) continue;
+        check(reviewedHostedFollowUp(r,a),'Review and approve the exact hosted transcript email before a new native intent');
         const calls = r.attempts.filter(x => x.channel === 'call'), sent = r.attempts.filter(x => x.channel === 'email');
         const followUp=approvedFollowUp(r,a,c);
         check((followUp || ['no_answer','voicemail'].includes(r.calls[a.payload.call_id]?.outcome) && calls.length <= 2) && sent.length < 2 && calls.length>0 && businessDaysBetween(calls[0].at, now) < 10, 'An eligible saved call within the two-email, ten-business-day campaign is required');

@@ -1,6 +1,7 @@
 import {gatewayProofView,configureGatewayProof,runGatewayProof,pauseGatewayProof,reviewGatewayProof} from './gateway-proof.mjs';
 import {callTranscriptionView,approveCallTranscription,runCallTranscription,pauseCallTranscription} from './call-transcription.mjs';
 import {fullCallView,approveFullCall,runFullCall,pauseFullCall,fullCallWorkerPath} from './full-call-transcription.mjs';
+import {assessmentView,approveAssessment,runAssessment,pauseAssessment,assessmentWorkerPath} from './hosted-assessment.mjs';
 import {projectSourceBodies,retainedSource} from './retained-sources.mjs';
 import {prepareTeamNotifications,notificationView} from './team-notifications.mjs';
 import {projectContext,projectWorkContext} from './project-work.mjs';
@@ -35,14 +36,15 @@ async function openApp(raw,now){
 function projectDashboard(view){
  view.events=Object.fromEntries(Object.entries(view.events).map(([id,e])=>[id,{id,type:e.type,prospect_id:e.prospect_id,actor:e.actor,at:e.at}]));
  if(view.operations)view.operations={email:Object.fromEntries(Object.entries(view.operations.email??{}).map(([id,e])=>[id,{status:e.status,thread:Boolean(e.thread)}])),cycle:view.operations.cycle?{completed_cycles:view.operations.cycle.completed_cycles,completed_at:view.operations.cycle.completed_at}:null,maintenance:{backup_date:view.operations.maintenance?.backup_date}};
- delete view.ai_attempts;delete view.gateway_proof;delete view.gateway_proof_reviews;delete view.call_transcription_rehearsal;delete view.full_call_transcription;return projectSourceBodies(view);
+ delete view.ai_attempts;delete view.transcript_assessment;delete view.gateway_proof;delete view.gateway_proof_reviews;delete view.call_transcription_rehearsal;delete view.full_call_transcription;return projectSourceBodies(view);
 }
 
 export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=()=>new Date(),assetDirectory=fileURLToPath(new URL('./lifecycle-ui/',import.meta.url)),readAsset=null,gatewayOptions={},backgroundOnly=false}={}){
  return async request=>{
   let settings;try{settings=configured(env,now);}catch{return json(503,{error:'Private desk is not configured'});}
   const url=new URL(request.url),path=url.pathname.slice(base.length)||'/';
-  if(backgroundOnly&&(url.pathname!==fullCallWorkerPath||request.method!=='POST')||!backgroundOnly&&url.pathname===fullCallWorkerPath)return json(409,{error:'Use the protected background recording entry and read its durable receipt'});
+  const workerPath=backgroundOnly===true?fullCallWorkerPath:backgroundOnly;
+  if(workerPath&&(url.pathname!==workerPath||request.method!=='POST')||!workerPath&&[fullCallWorkerPath,assessmentWorkerPath].includes(url.pathname))return json(409,{error:'Use the protected background entry and read its durable receipt'});
   const publicNavigation=request.method==='GET'&&path==='/'&&request.headers.get('sec-fetch-mode')==='navigate'&&request.headers.get('sec-fetch-dest')==='document';
   if(url.origin!==settings.origin||url.pathname!==base&&!url.pathname.startsWith(base+'/')||request.headers.get('origin')&&request.headers.get('origin')!==settings.origin||!publicNavigation&&request.headers.get('sec-fetch-site')&&!['same-origin','none'].includes(request.headers.get('sec-fetch-site')))return json(403,{error:'Private desk origin is not permitted'});
   try{
@@ -67,6 +69,7 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    if(request.method==='GET'&&path==='/api/gateway-proof')return json(200,await gatewayProofView(app,env));
    if(request.method==='GET'&&path==='/api/call-transcription')return json(200,await callTranscriptionView(app,env));
    if(request.method==='GET'&&path==='/api/full-call-transcription')return json(200,await fullCallView(app,env));
+   if(request.method==='GET'&&path==='/api/transcript-assessment')return json(200,await assessmentView(app,env));
    if(request.method==='GET'&&path==='/api/team-notifications')return json(200,notificationView(await app.snapshot()));
    if(request.method==='GET'&&path==='/api/state')return json(200,{...projectDashboard(await app.dashboard()),csrf,current_operator:actor,operator_auth_enabled:true,workers:[],hosted_preview:true});
    if(request.method==='GET'&&/^\/api\/events\/[a-zA-Z0-9_-]{1,100}$/.test(path)){const id=path.split('/').at(-1),state=await app.snapshot(),event=state.events[id];return json(200,{found:Boolean(event),id,...(event?{actor:event.actor,fingerprint:event.fingerprint,at:event.at}:{}),revision:state.revision});}
@@ -84,11 +87,13 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    if(post&&path==='/api/call-transcription/approve')return json(200,await approveCallTranscription(app,await inputBody(request),actor,{...gatewayOptions,env}));
    if(post&&path==='/api/call-transcription/run')return json(200,await runCallTranscription(app,blobAudioStore(raw),await inputBody(request),actor,{...gatewayOptions,env}));
    if(post&&path==='/api/full-call-transcription/approve')return json(200,await approveFullCall(app,await inputBody(request),actor,{...gatewayOptions,env}));
+   if(post&&path==='/api/transcript-assessment/approve')return json(200,await approveAssessment(app,await inputBody(request),actor,{...gatewayOptions,env}));
+   if(workerPath&&post&&url.pathname===assessmentWorkerPath)return json(200,await runAssessment(app,await inputBody(request),actor,{...gatewayOptions,env}));
    if(backgroundOnly&&post&&url.pathname===fullCallWorkerPath)return json(200,await runFullCall(app,blobAudioStore(raw),await inputBody(request),actor,{...gatewayOptions,env}));
    if(post&&path==='/api/team-notifications/prepare')return json(200,await prepareTeamNotifications(app));
    if(post&&path==='/api/calling-session')return json(200,await callingSession(app,await inputBody(request)));
    if(post&&path==='/api/information-draft')return json(200,await saveInformationDraft(app,await inputBody(request),actor));
-   if(post&&path==='/api/pause'){const proof=await pauseGatewayProof(app,actor),recording=await pauseCallTranscription(app,actor),full=await pauseFullCall(app,actor);return json(200,{paused:true,...proof,...recording,...full,in_flight_may_complete:proof.in_flight_may_complete||recording.in_flight_may_complete||full.in_flight_may_complete||false,reason:'Operational execution stays disabled; further finite Gateway jobs are paused'});}
+   if(post&&path==='/api/pause'){const proof=await pauseGatewayProof(app,actor),recording=await pauseCallTranscription(app,actor),full=await pauseFullCall(app,actor),assessment=await pauseAssessment(app,actor);return json(200,{paused:true,...proof,...recording,...full,...assessment,in_flight_may_complete:proof.in_flight_may_complete||recording.in_flight_may_complete||full.in_flight_may_complete||assessment.in_flight_may_complete||false,reason:'Operational execution stays disabled; further finite Gateway jobs are paused'});}
    return json(409,{error:'This action needs a connected execution or file service; it is disabled in the fictional shared preview'});
   }catch(error){if(['ENOENT','EACCES','ENOTDIR'].includes(error.code))return json(503,{error:'Private desk UI is unavailable; no execution was started'});if(error.code==='STATE_CONFLICT')return json(409,{error:error.message});if(error.code==='STATE_UNCERTAIN'||error.code==='STATE_UNAVAILABLE')return json(503,{error:error.message});return json(400,{error:error.message?.startsWith('Shared')?'Private shared state is unavailable; retain your event ID and retry after readback':error.message?.includes('token')?'Private request rejected':error.message?.slice(0,240)??'Private request failed'});}
  };

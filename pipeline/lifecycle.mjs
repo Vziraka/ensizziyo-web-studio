@@ -130,6 +130,11 @@ function safeReference(value) {
   return value;
 }
 function owner(actor) { check(['owner', 'friend', 'controlled-fixture'].includes(actor), 'This decision requires owner review'); }
+export function currentHostedTranscript(record,callId){
+ const scope=record.proposals[callId]?.review?.provenance?.scope;if(!scope)return;
+ const t=record.transcripts[callId];
+ check(scope.call_sha256===hash(record.calls[callId])&&scope.transcript_record_sha256===hash(t)&&t?.sha256===hash(t.text)&&scope.audio.every(a=>a.metadata_sha256===hash(record.call_audio?.[a.id])),'Hosted assessment source changed; do not approve stale facts or email');
+}
 
 function prepareCallFollowUp(state,record,call,config,at,reviewed=false){
   if(!config.follow_up?.enabled||!call.desk||!followUpOutcomes.includes(call.outcome))return;
@@ -140,8 +145,9 @@ function prepareCallFollowUp(state,record,call,config,at,reviewed=false){
   const content=prior?{...prior.content,to:record.contact.email??null}:composeFollowUp(record,call,config);
   storeCallFollowUp(state,record,call,config,at,content,call.event_id,prior?.created_at);
 }
-function storeCallFollowUp(state,record,call,config,at,content,eventId,createdAt=at){
+function storeCallFollowUp(state,record,call,config,at,content,eventId,createdAt=at,emailReviewed=false){
   const issues=[];
+  if(record.proposals[call.call_id]?.review?.provenance?.provider==='netlify-gateway'&&!emailReviewed)issues.push('Review selected transcript facts and approve the exact email revision before sending');
   if(content.focus==='undecided')issues.push('A specific, reviewed service focus is needed before preparing a relevant follow-up');
   if(record.restriction||record.reply)issues.push('Contact stopped or a reply needs owner review');
   if(!content.to||!record.contact.verified)issues.push('A verified business email is needed; follow up with a confirmed address');
@@ -225,6 +231,7 @@ export class StudioLifecycle {
       check(this.config.operations.allowlist.includes(event.prospect_id), 'Call is outside the approved queue');
     }
     const validateMachineDraft=event.type==='transcript_added'&&(event.data?.transcription_draft_sha256||event.data?.transcription_policy_sha256)?(event.data.transcription_policy_sha256?(await import('./full-call-transcription.mjs')).validateFullCallDraft:(await import('./call-transcription.mjs')).validateTranscriptionDraft):null;
+    const validateHostedAssessment=event.type==='transcript_assessed'&&event.data?.assessment_attempt_id?(await import('./hosted-assessment.mjs')).validateHostedAssessment:null;
     const eventFingerprint=hash({event,actor});
     return this.change(state => {
       const fingerprint = hash({ event, actor });
@@ -483,6 +490,7 @@ export class StudioLifecycle {
             check(actor === 'worker' || actor === 'controlled-fixture', 'Assessment must come from the restricted worker boundary');
             const transcript = r.transcripts[data.call_id]; check(transcript && (r.stage === 'Connected review' || r.approved_calls[data.call_id]), 'Call is no longer awaiting analysis');
             validateTranscriptProposal(data.proposal, transcript);
+            if(validateHostedAssessment)validateHostedAssessment(this,state,r.id,data.call_id,data);
             check(data.review?.verdict === 'Accepted' && data.review.proposal_sha256 === hash(data.proposal) && data.review.independent === true, 'Independent review must accept the exact proposal');
             r.proposals[data.call_id] = { ...data.proposal, sha256: hash(data.proposal), review: data.review };
             state.exceptions = state.exceptions.filter(x => x.id !== `transcript-${hash(`${r.id}:${data.call_id}`).slice(0, 24)}`);
@@ -491,6 +499,7 @@ export class StudioLifecycle {
           }
           case 'follow_up_draft_saved': {
             owner(actor); const call=r.calls[data.call_id],proposal=r.proposals[data.call_id],transcript=r.transcripts[data.call_id],reviewed=r.approved_calls[data.call_id];
+            currentHostedTranscript(r,data.call_id);
             check(this.config.follow_up?.enabled && call?.outcome==='connected' && ['discovery','requested_info'].includes(reviewed?.outcome) && !r.reply && !['Connected review','Verification review'].includes(r.stage), 'Review the connected conversation before preparing a draft; replies need their own review');
             check(data.reviewed===true && ['ai','systems','website','marketing'].includes(data.focus), 'Review the customer wording and choose a relevant service focus');
             check(data.note_sha256===hash(call.note??''), 'Call notes changed; review the current notes before saving a draft');
@@ -504,6 +513,7 @@ export class StudioLifecycle {
           }
           case 'follow_up_draft_approved': {
             owner(actor);const draft=r.follow_up_drafts?.find(d=>d.id===data.draft_id),call=r.calls[draft?.call_id],prior=r.follow_ups?.[draft?.call_id];
+            if(call)currentHostedTranscript(r,call.call_id);
             check(this.config.follow_up?.enabled&&draft?.status==='Draft'&&data.approved===true&&data.sha256===draft.sha256&&hash(draft.content)===draft.sha256, 'Review and approve the exact current draft revision');
             check(call?.outcome==='connected'&&['discovery','requested_info'].includes(r.approved_calls[call.call_id]?.outcome)&&!r.reply&&!['Connected review','Verification review','Stopped'].includes(r.stage), 'Review the current conversation; replies or stopped contact cannot release a revision');
             const predecessors=Object.values(state.actions).filter(a=>a.prospect_id===r.id&&a.type==='email'&&a.payload.call_id===call.call_id);
@@ -515,7 +525,7 @@ export class StudioLifecycle {
             check(draft.source_follow_up_sha256===(prior?hash(prior):null), 'The original follow-up changed; prepare a fresh revision');
             check(draft.note_sha256===hash(call.note??'')&&draft.transcript_sha256===r.transcripts[call.call_id]?.sha256&&draft.proposal_sha256===r.proposals[call.call_id]?.sha256, 'Call evidence changed; review a current revision');
             check(text(draft.customer_context,1600)&&hash(composeFollowUp(r,{...call,focus:draft.content.focus,customer_context:draft.customer_context},this.config))===draft.sha256, 'Recipient, sender or settings changed; prepare and review a current revision');
-            const entry=storeCallFollowUp(state,r,call,this.config,event.at,draft.content,eid);
+            const entry=storeCallFollowUp(state,r,call,this.config,event.at,draft.content,eid,event.at,true);
             check(entry.status==='Prepared'&&entry.action_id, entry.reason||'Current conversation cannot release this revision');
             if(prior){r.follow_up_history??=[];r.follow_up_history.push(structuredClone(prior));}
             for(const action of predecessors)if(action.status==='Queued'){action.status='Cancelled';action.cancelled_by=eid;}
@@ -525,6 +535,7 @@ export class StudioLifecycle {
           }
           case 'call_reviewed': {
             owner(actor); const proposal = r.proposals[data.call_id];
+            currentHostedTranscript(r,data.call_id);
             check(r.stage === 'Connected review' && proposal?.sha256 === data.proposal_sha256 && !r.approved_calls[data.call_id], 'Approve the exact current transcript proposal');
             check(connectedOutcomes.includes(data.outcome), 'Unsupported reviewed outcome');
             r.approved_calls[data.call_id] = { outcome: data.outcome, at: event.at, actor, proposal_sha256: proposal.sha256, note: data.note ?? '' };

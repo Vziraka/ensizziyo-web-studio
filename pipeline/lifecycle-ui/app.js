@@ -1,4 +1,5 @@
 import {gatewayProofPanel} from './gateway-proof.js';
+import {renderHostedAssessment} from './transcript-assessment.js';
 import {preparationPanel} from './project-work.js';
 import { renderCallDesk } from './call-desk.js';
 import { centsFromDollars } from './money.js';
@@ -286,6 +287,7 @@ function review(r, node) {
   }
   const detail = el('details'); detail.append(el('summary', 'Read the saved transcript'), el('p', transcript.text, 'quote transcript')); node.append(detail);
   if (!proposal) {
+    if(renderHostedAssessment(node,r,call,state,{api,refresh,tell}))return;
     node.append(el('p', 'The transcript is saved. AI analysis uses the subscription allowance and preserves the website/client reserve.', 'notice'));
     const run = button(state.workers.includes(`${r.id}:${call.call_id}`) ? 'Analysis running…' : 'Request evidence review', async () => {
       try { await api('/api/analyze', { prospect_id: r.id, call_id: call.call_id }); tell('Analysis requested. Any allowance or evidence hold will appear in Exceptions.'); setTimeout(() => refresh().catch(e => tell(e.message, true)), 2500); }
@@ -293,6 +295,7 @@ function review(r, node) {
     }, 'primary'); run.disabled = state.workers.includes(`${r.id}:${call.call_id}`); node.append(run); return;
   }
   node.append(el('hr', undefined, 'divider'), el('h3', 'Proposed outcome'), pill(proposal.outcome), el('p', proposal.summary));
+  if(proposal.review.provenance)node.append(el('p','Hosted model proposal with a separate fresh-context model review. Check every quoted claim and uncertainty before confirming the outcome.','notice'));
   if (proposal.review.source) node.append(el('p', 'Simulated AI assessment/review for this design exercise. A live Luna/Sol run has not passed.', 'notice'));
   for (const claim of proposal.claims) node.append(el('p', claim.claim), el('blockquote', claim.quote, 'quote'));
   node.append(el('p', `Still unknown: ${proposal.unknowns.join('; ')}`, 'muted'));
