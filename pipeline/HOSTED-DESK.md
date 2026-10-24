@@ -41,3 +41,5 @@ The existing Personal plan and auto-recharge-off setting constrain costs; credit
 ### Function UI packaging
 
 The Netlify build runs `node scripts/build-desk-assets.mjs` before the public site build. It converts only the existing UI asset allowlist into the ignored `pipeline/hosted-assets.mjs`; the function imports that module so the bundler carries exact bytes without depending on a Lambda directory layout. Private state and environment configuration are never read by this build step. Missing internal UI files return a generic503. Verify with `node --test scripts/build-desk-assets.test.mjs` and an actual preview request; a local test does not establish a successful remote deployment.
+
+The pure `lifecycle-assets.mjs` manifest is shared by the local server, hosted handler and build. The hosted handler never imports the local HTTP server or starts its research-service dependency; that service computes a filesystem-based version only for the installed local host.

@@ -1,7 +1,7 @@
 import {readFile,writeFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
-import {lifecycleAssets} from '../pipeline/lifecycle-server.mjs';
+import {lifecycleAssets} from '../pipeline/lifecycle-assets.mjs';
 
 // Bundle only the explicit UI allowlist; runtime paths change when Netlify packages functions.
 export async function deskAssets(){
