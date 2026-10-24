@@ -4,9 +4,10 @@ import {createHash} from 'node:crypto';
 import {check} from './lifecycle.mjs';
 import {projectContext} from './project-work.mjs';
 
-const maxBytes=64_000_000,sha256=bytes=>createHash('sha256').update(bytes).digest('hex');
+export const projectOriginalLimit=64_000_000;
+const maxBytes=projectOriginalLimit,sha256=bytes=>createHash('sha256').update(bytes).digest('hex');
 const key=value=>typeof value==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(value)&&value!=='__proto__';
-function versionFor(state,project,assetId,versionId){
+export function projectAssetVersion(state,project,assetId,versionId){
  check([project,assetId,versionId].every(key)&&Object.hasOwn(state.prospects,project),'Choose an existing project and version');
  const asset=Object.hasOwn(state.asset_index??{},assetId)?state.asset_index[assetId]:null;
  check(asset&&(asset.scope==='studio'||asset.scope==='project'&&asset.project_id===project),'Asset is outside this project scope');
@@ -28,19 +29,21 @@ async function readOriginal(path,size,sha){
  }finally{await file.close();}
 }
 export async function readProjectAsset(app,project,assetId,versionId){
- const version=versionFor(await app.snapshot(),project,assetId,versionId),original=version.verified_original;
+ const version=projectAssetVersion(await app.snapshot(),project,assetId,versionId),original=version.verified_original;
  check(original&&original.reference===version.reference,'Original is not archived; recover this exact version first');
+ if(app.originalStore){const bytes=await app.originalStore.get(original);check(bytes.length===original.bytes&&sha256(bytes)===original.sha256,'Original integrity changed');return {bytes,filename:original.sha256+'.pdf',original};}
  const path=await archivePath(app,original.sha256);return {bytes:await readOriginal(path,original.bytes,original.sha256),path,filename:original.sha256+'.pdf',original};
 }
 export async function storeProjectPDF(app,bytes){
  check(Buffer.isBuffer(bytes)&&bytes.length>0&&bytes.length<=maxBytes&&bytes.subarray(0,5).toString()==='%PDF-','Use a bounded PDF original');
- const digest=sha256(bytes),path=await archivePath(app,digest,{create:true}).catch(async error=>{if(error.code==='EEXIST')return archivePath(app,digest);throw error;});
+ const digest=sha256(bytes);if(app.originalStore){await app.originalStore.put(bytes);return {sha256:digest,bytes:bytes.length};}
+ const path=await archivePath(app,digest,{create:true}).catch(async error=>{if(error.code==='EEXIST')return archivePath(app,digest);throw error;});
  let file;try{file=await open(path,'wx',0o600);await file.writeFile(bytes);}catch(error){if(error.code!=='EEXIST')throw error;}finally{await file?.close();}
  await readOriginal(path,bytes.length,digest);return {sha256:digest,bytes:bytes.length};
 }
 export async function archiveProjectAsset(app,input,bytes,source,actor){
  check(['owner','friend'].includes(actor),'Original recovery needs a signed operator');
- const state=await app.snapshot(),version=versionFor(state,input.project_id,input.asset_id,input.version_id);
+ const state=await app.snapshot(),version=projectAssetVersion(state,input.project_id,input.asset_id,input.version_id);
  check(projectContext(state,input.project_id).context_sha256===input.context_sha256,'Project context changed; reload before recovering');
  check(Buffer.isBuffer(bytes)&&bytes.length>0&&bytes.length<=maxBytes,'Original size exceeds the 64MB archive limit');
  check(sha256(bytes)===input.expected_sha256,'Original hash does not match the exact expected source');
@@ -50,7 +53,7 @@ export async function archiveProjectAsset(app,input,bytes,source,actor){
  const original={reference:version.reference,source_id:version.reference.split(':').slice(1).join(':'),name:source.name,mime_type:'application/pdf',modified_time:source.modified_time,account:source.account??null,sha256:sha,bytes:bytes.length,verified_at:app.now().toISOString(),verified_by:actor};
  await app.change(current=>{
   check(projectContext(current,input.project_id).context_sha256===input.context_sha256,'Project context changed; reload before recovering');
-  const target=versionFor(current,input.project_id,input.asset_id,input.version_id);
+  const target=projectAssetVersion(current,input.project_id,input.asset_id,input.version_id);
   check(!target.verified_original||target.verified_original.sha256===sha,'This version already has different original bytes; register a new version');
   check(Object.keys(current.events).length<20_000,'Event limit reached; archive closed records before recovery');
   target.verified_original=original;
@@ -73,7 +76,7 @@ export async function downloadOriginal(value,size,{fetcher=fetch}={}){
 }
 export async function recoverDriveAsset(app,input,{connector,email,actor='owner',download=downloadOriginal}={}){
  check(connector?.accountLinks?.google_drive&&typeof email==='string'&&email.includes('@'),'Select the authorized business account explicitly');
- const state=await app.snapshot(),version=versionFor(state,input.project_id,input.asset_id,input.version_id);
+ const state=await app.snapshot(),version=projectAssetVersion(state,input.project_id,input.asset_id,input.version_id);
  check(/^[a-f0-9]{64}$/.test(input.expected_sha256??''),'Use the retained original SHA-256 before a Drive read');
  check(projectContext(state,input.project_id).context_sha256===input.context_sha256,'Project context changed; reload before recovering');
  check(/^drive:[a-zA-Z0-9_-]{10,256}$/.test(version.reference),'This version needs an exact Drive file reference');

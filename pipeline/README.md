@@ -1,5 +1,7 @@
 # Controlled research proof
 
+[Exact project originals](ASSET-RECOVERY.md#disabled-shared-original-candidate) connect the existing asset/version context to a separately disabled shared PDF chunk candidate. Use the supported `shared-original push/pull` CLI to verify transfer and local materialization; no hosted upload, migration or PC-off acceptance is implied.
+
 [Source-bound reply review](REPLIES.md) documents bounded verified MIME retention, extractive clarification starters and exact human approvals held from sending (audit R33).
 
 [Internal alerts and team digest](TEAM-NOTIFICATIONS.md) prepare attributable, source-aware private messages with weekday 9am Eastern timing. UI/API/CLI/local clock are connected, with a separately disabled hosted preparation-clock candidate. Default builds declare no schedule; external recipients, delivery and actual computer-off scheduling remain unconfigured.

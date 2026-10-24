@@ -1,3 +1,4 @@
+import {blobProjectOriginalStore,reserveSharedOriginal,uploadSharedOriginalChunk,completeSharedOriginal,sharedOriginalManifest,readSharedOriginalChunk,originalChunkRequest} from './shared-project-originals.mjs';
 import {gatewayProofView,configureGatewayProof,runGatewayProof,pauseGatewayProof,reviewGatewayProof} from './gateway-proof.mjs';
 import {callTranscriptionView,approveCallTranscription,runCallTranscription,pauseCallTranscription} from './call-transcription.mjs';
 import {fullCallView,approveFullCall,runFullCall,pauseFullCall,fullCallWorkerPath} from './full-call-transcription.mjs';
@@ -60,11 +61,23 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
     if(!csrfValid(csrf,env.EVZ_OPERATIONS_SESSION_SECRET,now())){const payload=Buffer.from(JSON.stringify([+now()+8*3600000,randomBytes(16).toString('hex')])).toString('base64url');csrf=payload+'.'+sign(env.EVZ_OPERATIONS_SESSION_SECRET,payload).toString('base64url');}
     return json(200,{csrf,operator_auth_required:true},{'Set-Cookie':`${csrfCookie}=${csrf}; HttpOnly; Secure; SameSite=Strict; Path=/desk/; Max-Age=28800`});
    }
-   const post=request.method==='POST';if(post&&(!csrfValid(csrf,env.EVZ_OPERATIONS_SESSION_SECRET,now())||request.headers.get('x-studio-token')!==csrf||path!=='/api/call-audio'&&request.headers.get('content-type')?.split(';')[0]!=='application/json'))return json(403,{error:'Current same-origin approval token required'});
+   const post=request.method==='POST';if(post&&(!csrfValid(csrf,env.EVZ_OPERATIONS_SESSION_SECRET,now())||request.headers.get('x-studio-token')!==csrf||path!=='/api/call-audio'&&!/^\/api\/project-original\/[^/]+\/[^/]+\/[^/]+\/chunk\/[0-9]+$/.test(path)&&request.headers.get('content-type')?.split(';')[0]!=='application/json'))return json(403,{error:'Current same-origin approval token required'});
    if(post&&path==='/api/login'){const input=await inputBody(request),actor=settings.auth.authenticate(input.key);return actor?json(200,{operator:actor},{'Set-Cookie':settings.auth.cookie(settings.auth.issue(actor),{secure:true})}):json(401,{error:'The operator key was not recognized'});}
    const actor=settings.auth.actorFromCookie(request.headers.get('cookie'));if(!actor)return json(401,{error:'Sign in with your individual operator key'});
    if(post&&path==='/api/logout')return json(200,{signed_out:true},{'Set-Cookie':settings.auth.cookie('',{secure:true,clear:true})});
+   if(path.startsWith('/api/project-original/')&&env.EVZ_OPERATIONS_SHARED_ORIGINALS!=='fictional-chunks-v1')return json(503,{error:'Shared original transfer is not configured'});
    let app,raw;try{raw=await storeFactory(env.EVZ_OPERATIONS_BLOB_NAMESPACE);app=await openApp(raw,now);}catch{return json(503,{error:'Private shared storage is unavailable; no execution was started'});}
+   const originalRoute=/^\/api\/project-original\/([a-zA-Z0-9_-]{1,100})\/([a-zA-Z0-9_-]{1,100})\/([a-zA-Z0-9_-]{1,100})(?:\/(reserve|complete|chunk)(?:\/([0-9]{1,2}))?)?$/.exec(path);
+   if(originalRoute){
+    check(env.EVZ_OPERATIONS_SHARED_ORIGINALS==='fictional-chunks-v1','Shared original transfer is not configured');
+    const [,project_id,asset_id,version_id,operation,index]=originalRoute,ids={project_id,asset_id,version_id},store=blobProjectOriginalStore(raw);
+    if(request.method==='GET'&&!operation)return json(200,await sharedOriginalManifest(app,store,ids));
+    if(request.method==='GET'&&operation==='chunk'&&index!==undefined){const result=await readSharedOriginalChunk(app,store,ids,Number(index));return new Response(result.bytes,{headers:{...headers,'Content-Type':'application/octet-stream','Content-Length':String(result.bytes.length),'Content-Disposition':'attachment; filename="original-chunk.bin"','X-Content-SHA256':result.sha256}});}
+    if(post&&operation==='reserve'&&index===undefined)return json(200,await reserveSharedOriginal(app,{...await inputBody(request),...ids},actor));
+    if(post&&operation==='complete'&&index===undefined)return json(200,await completeSharedOriginal(app,store,{...ids,transfer_id:(await inputBody(request)).transfer_id},actor));
+    if(post&&operation==='chunk'&&index!==undefined)return json(200,await uploadSharedOriginalChunk(app,store,{...ids,transfer_id:request.headers.get('x-studio-transfer')},Number(index),await originalChunkRequest(request)));
+    return json(405,{error:'Use the bounded original transfer operation'});
+   }
    if(request.method==='GET'&&/^\/api\/project-context\/[a-zA-Z0-9_-]{1,100}(?:\/[a-zA-Z0-9_-]{1,100})?$/.test(path)){const [,,,project,workId]=path.split('/'),snapshot=await app.snapshot();return json(200,workId?projectWorkContext(snapshot,project,workId):projectContext(snapshot,project));}
    if(request.method==='GET'&&path==='/api/project-resolve')return json(200,resolveProject(await app.snapshot(),url.searchParams.get('name')));
    if(request.method==='GET'&&/^\/retained-source\/[a-zA-Z0-9_-]{1,100}\/[a-f0-9]{64}$/.test(path)){const [,,project,sha]=path.split('/');return json(200,retainedSource(await app.snapshot(),project,sha,url.searchParams.get('url'),url.searchParams.get('at')));}
