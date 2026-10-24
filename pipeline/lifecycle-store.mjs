@@ -1,0 +1,38 @@
+import {check} from './lifecycle.mjs';
+
+// Callbacks must reserve local state only: a conflict never reruns a callback or an external effect.
+export class ConditionalLifecycleStore {
+  constructor(store,{key='workspace',maxBytes=20_000_000}={}){this.store=store;this.key=key;this.maxBytes=maxBytes;}
+  async initialize(config,state){
+    const data={schema_version:1,config,state};this.validate(data);
+    const result=await this.store.setJSON(this.key,data,{onlyIfNew:true});
+    check(typeof result?.modified==='boolean','Conditional creation result is unavailable');
+    return this.envelope();
+  }
+  validate(data){
+    check(data?.schema_version===1&&data.config?.schema_version===1&&data.state?.schema_version===1,'Unknown shared workspace format');
+    check(data.state.run_id===data.config.run_id&&data.state.mode===data.config.mode,'Shared state belongs to another run or mode');
+    check(data.config.mode==='controlled'&&data.config.outreach_enabled===false&&data.config.research_enabled===false&&data.config.connector_writes_enabled===false&&data.config.transcript_ai?.enabled===false&&Object.values(data.state.prospects).every(r=>r.controlled===true),'Shared preview accepts execution-disabled fictional records only');
+    check(Buffer.byteLength(JSON.stringify(data))<=this.maxBytes,'Shared workspace size limit reached; archive closed records');
+  }
+  async envelope(){
+    let entry;try{entry=await this.store.getWithMetadata(this.key,{type:'json',consistency:'strong'});}catch{const error=Error('Shared storage read is unavailable');error.code='STATE_UNAVAILABLE';throw error;}
+    check(entry&&typeof entry.etag==='string'&&entry.etag.length>0,'Shared workspace is unavailable');this.validate(entry.data);
+    return {data:structuredClone(entry.data),etag:entry.etag};
+  }
+  async config(){return (await this.envelope()).data.config;}
+  async snapshot(){return (await this.envelope()).data.state;}
+  async change(fn,{eventId,eventFingerprint}={}){
+    const {data,etag}=await this.envelope(),before=JSON.stringify(data),result=await fn(data.state);this.validate(data);
+    if(JSON.stringify(data)===before)return result;
+    let modified,uncertain=false;
+    try {const written=await this.store.setJSON(this.key,data,{onlyIfMatch:etag});check(typeof written?.modified==='boolean'&&(!written.modified||typeof written.etag==='string'&&written.etag.length>0),'Conditional write result is unavailable');modified=written.modified;}
+    catch {uncertain=true;}
+    if(modified===true)return result;
+    if(eventId&&eventFingerprint){
+      try {const current=await this.snapshot();if(current.events[eventId]?.fingerprint===eventFingerprint)return {...result,reconciled:true};}catch {}
+    }
+    const error=Error(uncertain?'Shared write outcome is uncertain; retain the event ID and read back before retrying.':'Shared workspace changed; refresh before approving.');
+    error.code=uncertain?'STATE_UNCERTAIN':'STATE_CONFLICT';throw error;
+  }
+}

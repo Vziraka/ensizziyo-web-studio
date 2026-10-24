@@ -1,6 +1,9 @@
-import { renderCallDesk } from '/call-desk.js';
-import { centsFromDollars } from '/money.js';
+import { renderCallDesk } from './call-desk.js';
+import { centsFromDollars } from './money.js';
+import {deskPath} from './paths.js';
+import {createEventRequest} from './event-request.js';
 let state, csrf, operatorAuthRequired = false, view = 'today', selected = 'juniper', lane = 'all', assetProject = '', dirty = false, refreshAfter = 0;
+let eventRequest;
 const content = document.querySelector('#content'), message = document.querySelector('#message');
 const titles = { today: ['Your calling desk', 'Your next conversation.', 'Prepared leads, clear next steps and your notes in one place.'], reviews: ['Evidence → operator decision', 'Review calls and replies.', 'Connected calls and verified replies wait for an operator decision.'], clients: ['From scope to support', 'Deliver what you agreed.', 'Track materials, payment evidence, delivery checks and open requests.'], exceptions: ['Bounded recovery', 'Handle the exceptions.', 'Held work stays visible while unrelated records continue.'], launch: ['Before the first real contact', 'Approve a working system.', 'These gates stay closed until their evidence and your final approval are recorded.'] };
 Object.assign(titles,{businesses:['Your business directory','Businesses, with context.','Research, professional contacts, social profiles and saved conversations.'],emails:['After the call','Follow-ups at a glance.','Each performed call owns one message. Held work shows what is missing.'],meetings:['Your conversations','Meetings and next steps.','Booked conversations and invitations awaiting calendar verification.']});
@@ -9,9 +12,22 @@ function el(tag, text, className) { const node = document.createElement(tag); if
 function button(text, fn, className = 'quiet') { const node = el('button', text, className); node.type = 'button'; node.addEventListener('click', fn); return node; }
 function tell(text, error = false) { message.textContent = text; message.className = error ? 'error' : ''; }
 async function api(path, input) {
-  const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Studio-Token': csrf }, body: JSON.stringify(input) });
+  if (eventRequest && path === '/api/event') return eventRequest.send(input);
+  if (eventRequest?.pending && !['/api/login','/api/logout','/api/pause'].includes(path)) throw Error('Resolve the pending saved action before making another change.');
+  const response = await fetch(deskPath(path), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Studio-Token': csrf }, body: JSON.stringify(input) });
   if (response.status === 401 && operatorAuthRequired) { showOperatorLogin(); throw Error('Sign in with your operator key to continue'); }
   const data = await response.json(); if (!response.ok) throw Error(data.error); return data;
+}
+function showPendingEvent() {
+  document.querySelector('#pending-event')?.remove();
+  const pending = eventRequest?.pending; if (!pending) return;
+  const notice = el('section', undefined, 'notice'); notice.id = 'pending-event';
+  notice.append(el('p', `Pending ${pending.type} approval by ${pending.actor} · ${pending.id}. Its exact input is retained in this tab until confirmed or rejected. A second click cannot create a different action.`));
+  for (const [label, action] of [['Check saved action', () => eventRequest.recover()], ['Retry exact pending approval', () => eventRequest.retry()]]) notice.append(button(label, async () => {
+    try { const result = await action(); if (result === false) tell('No saved receipt is visible yet. The approval remains held; retry only the exact pending approval.'); else { await refresh(); tell('Pending action resolved. Review the refreshed record before the next change.'); } }
+    catch (error) { tell(error.message, true); }
+  }));
+  message.after(notice);
 }
 function showOperatorLogin(error = '') {
   state = null; document.querySelector('nav').hidden = true; document.querySelector('.aside-foot').hidden = true;
@@ -23,7 +39,7 @@ function showOperatorLogin(error = '') {
   const submit = el('button', 'Sign in', 'primary'); submit.type = 'submit'; form.append(submit); form.addEventListener('submit', async event => {
     event.preventDefault(); submit.disabled = true;
     try {
-      const response = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Studio-Token': csrf }, body: JSON.stringify({ key: input.value }) });
+      const response = await fetch(deskPath('/api/login'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Studio-Token': csrf }, body: JSON.stringify({ key: input.value }) });
       const result = await response.json(); if (!response.ok) throw Error(result.error);
       input.value = ''; await refresh();
     } catch (e) { tell(e.message, true); input.focus(); } finally { submit.disabled = false; }
@@ -33,10 +49,12 @@ function showOperatorLogin(error = '') {
   tell(error, Boolean(error));
 }
 async function refresh() {
-  const response = await fetch('/api/state');
+  const response = await fetch(deskPath('/api/state'));
   if (response.status === 401 && operatorAuthRequired) { showOperatorLogin(); return; }
   if (!response.ok) throw Error('Private session unavailable. Reload the console.');
   state = await response.json();
+  if (state.hosted_preview && !eventRequest) eventRequest = createEventRequest({fetch: (...args) => fetch(...args), storage: sessionStorage, csrf: () => csrf, actor: () => state?.current_operator, changed: showPendingEvent});
+  showPendingEvent();
   document.querySelector('nav').hidden = false; document.querySelector('.aside-foot').hidden = false;
   document.querySelector('#mode-banner').hidden = false; document.querySelector('#backup').hidden = false; document.querySelector('#pause').hidden = false;
   const operatorLabel = document.querySelector('#operator-label'), signOut = document.querySelector('#sign-out');
@@ -54,7 +72,7 @@ async function refresh() {
 }
 function pill(text) { return el('span', text, 'badge'); }
 function panel(title) { const node = el('section', undefined, 'panel'); if (title) node.append(el('h2', title)); return node; }
-function link(label, href) { const node = el('a', label); if (/^https:\/\//i.test(href) || href === '/preview/' || /^\/(?:proposal\/[a-zA-Z0-9_-]+|follow-up\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+)$/.test(href)) { node.href = href; node.target = '_blank'; node.rel = 'noreferrer'; } else node.removeAttribute('href'); return node; }
+function link(label, href) { const node = el('a', label); if (/^https:\/\//i.test(href) || href === '/preview/' || /^\/(?:proposal\/[a-zA-Z0-9_-]+|follow-up\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+)$/.test(href)) { node.href = deskPath(href); node.target = '_blank'; node.rel = 'noreferrer'; } else node.removeAttribute('href'); return node; }
 function summary(r) {
   const node = button('', () => { selected = r.id; render(); }, `record${selected === r.id ? ' selected' : ''}`);
   node.append(el('strong', r.name), pill(r.call_lane === 'verification' ? 'Verification call only' : 'Research reviewed'), pill(r.stage), el('small', r.idea)); return node;
@@ -458,7 +476,7 @@ document.querySelector('#pause').addEventListener('click', async () => { try { a
 document.querySelector('#backup').addEventListener('click', async () => { try { const result = await api('/api/backup', {}); tell(`Private backup saved and checksummed (${result.prospects} records).`); } catch (error) { tell(error.message, true); } });
 document.querySelector('#sign-out').addEventListener('click', async () => { try { await api('/api/logout', {}); showOperatorLogin(); } catch (error) { tell(error.message, true); } });
 async function start() {
-  const response = await fetch('/api/bootstrap'); if (!response.ok) throw Error('Private session unavailable. Reload the console.');
+  const response = await fetch(deskPath('/api/bootstrap')); if (!response.ok) throw Error('Private session unavailable. Reload the console.');
   const boot = await response.json(); csrf = boot.csrf; operatorAuthRequired = boot.operator_auth_required;
   await refresh();
 }

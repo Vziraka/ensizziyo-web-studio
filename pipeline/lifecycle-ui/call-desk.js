@@ -1,5 +1,6 @@
-import {composeFollowUp,followUpFocus} from '/follow-up-template.mjs';
-import {businessTypes,businessType,deskQueues,offers,carePlan,suggestedOffer} from '/business-types.mjs';
+import {composeFollowUp,followUpFocus} from './follow-up-template.mjs';
+import {businessTypes,businessType,deskQueues,offers,carePlan,suggestedOffer} from './business-types.mjs';
+import {deskPath} from './paths.js';
 let selected, lane='all', workView='team', lastSaved, showHistory=false,category='all',subtypes=[],searchTerm='';
 let detailTab='overview';
 const drafts=new Map();
@@ -152,7 +153,7 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty,
     if(r.contact.email){const email=el('a',r.contact.email,'contact-email');email.href='mailto:'+r.contact.email;contact.append(email,el('small',r.research_profile?.business_email?.kind??(r.contact.verified?'Verified business email':'Email needs verification')));}
     if(r.research_profile?.owner_phone){const p=r.research_profile.owner_phone;contact.append(el('p',`Published owner business number · ${p.person_name}: ${p.number}`,'muted'));}
     card.append(el('h2',r.name,'detail-title'),el('p',`${r.area??type.subtype} · ${r.call_lane==='verification'?'Quick verification':'Reviewed research'}`,'muted'),contact,tabbar,...panels.map(p=>p[2]));activate(detailTab);
-    for(const follow of Object.values(r.follow_ups??{}).reverse()){const box=el('section',undefined,'saved-follow-up'),preview=el('a','Open full email preview ↗');preview.href=`/follow-up/${r.id}/${follow.call_id}`;preview.target='_blank';preview.rel='noreferrer';box.append(el('h3','Saved follow-up'),el('p',`${follow.status}${follow.reason?' · '+follow.reason:''}`,'notice'),el('strong',follow.content.subject),el('p',follow.content.body,'email-copy'),preview);notesPanel.append(box);}
+    for(const follow of Object.values(r.follow_ups??{}).reverse()){const box=el('section',undefined,'saved-follow-up'),preview=el('a','Open full email preview ↗');preview.href=deskPath(`/follow-up/${r.id}/${follow.call_id}`);preview.target='_blank';preview.rel='noreferrer';box.append(el('h3','Saved follow-up'),el('p',`${follow.status}${follow.reason?' · '+follow.reason:''}`,'notice'),el('strong',follow.content.subject),el('p',follow.content.body,'email-copy'),preview);notesPanel.append(box);}
     if(!callable)notesPanel.prepend(el('p',r.restriction?'Contact is stopped. You can review this business and its history.':Object.keys(r.calls).length?'This call is saved. Review its follow-up and next step below.':'Review this business’s research and contact details. It is not in the callable queue.','muted'));
     grid.append(card,notesPanel);
   }
@@ -176,12 +177,12 @@ function savedCallWorkspace(node,r,call,state,{api,refresh,tell,event,run,noteIn
   node.append(btn('Save unsent follow-up revision',()=>run(async()=>{if(noteInput.value!==(call.note??''))throw Error('Save the edited call notes before preparing a revision.');const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(call.note??'')),noteHash=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');await event(r,'follow_up_draft_saved',{call_id:call.call_id,focus:focus.value,note_sha256:noteHash,proposal_sha256:proposal.sha256,claim_indexes:choices.filter(c=>c.input.checked).map(c=>c.index),customer_context:context.value,reviewed:reviewed.checked});tell('Follow-up revision saved for review. Nothing was sent or added to the send queue.');})));
  }
  for(const draft of [...(r.follow_up_drafts??[])].reverse().filter(d=>d.call_id===call.call_id)){
-  const box=disclosure(`${draft.status==='Approved'?'Approved':'Unsent'} revision · ${when(draft.at)}`,el('p',draft.content.body,'email-copy')),preview=el('a','Open revision email preview ↗');preview.href=`/follow-up-draft/${r.id}/${draft.id}`;preview.target='_blank';preview.rel='noreferrer';
+  const box=disclosure(`${draft.status==='Approved'?'Approved':'Unsent'} revision · ${when(draft.at)}`,el('p',draft.content.body,'email-copy')),preview=el('a','Open revision email preview ↗');preview.href=deskPath(`/follow-up-draft/${r.id}/${draft.id}`);preview.target='_blank';preview.rel='noreferrer';
   box.append(el('p',`${draft.status} · ${draft.actor} · ${when(draft.at)} · ${draft.status==='Approved'?`approved by ${draft.approved_by}; existing send gates apply`:'not queued or sent'}`,'notice'),el('strong',draft.content.subject),preview);
   if(draft.status==='Draft'&&!r.restriction&&!r.reply){const approved=field(box,`I reviewed this full email and approve revision ${when(draft.at)} for sending. Only an unreserved local message may be replaced.`,'','checkbox');box.append(btn('Approve exact revision for sending',()=>run(async()=>{if(noteInput.value!==(call.note??''))throw Error('Save the edited call notes and prepare a current revision before approval.');await event(r,'follow_up_draft_approved',{draft_id:draft.id,sha256:draft.sha256,approved:approved.checked});tell('Exact revision approved for the existing send queue. Commercial gates still apply.');})));}
   node.append(box);
  }
- for(const [index,entry] of (r.follow_up_history??[]).entries())if(entry.call_id===call.call_id){const box=disclosure(`Earlier follow-up · ${when(entry.created_at)}`,el('p',entry.content.body,'email-copy')),preview=el('a','Open original email history ↗');preview.href=`/follow-up-history/${r.id}/${index}`;preview.target='_blank';preview.rel='noreferrer';box.append(el('p','Superseded local message · original content retained; its old action is cancelled.','muted'),preview);node.append(box);}
+ for(const [index,entry] of (r.follow_up_history??[]).entries())if(entry.call_id===call.call_id){const box=disclosure(`Earlier follow-up · ${when(entry.created_at)}`,el('p',entry.content.body,'email-copy')),preview=el('a','Open original email history ↗');preview.href=deskPath(`/follow-up-history/${r.id}/${index}`);preview.target='_blank';preview.rel='noreferrer';box.append(el('p','Superseded local message · original content retained; its old action is cancelled.','muted'),preview);node.append(box);}
 }
 function socialPanel(record){
  const panel=el('div');panel.append(el('h3','Social media'));const profile=record.research_profile;

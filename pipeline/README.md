@@ -1,5 +1,7 @@
 # Controlled research proof
 
+The execution-disabled fictional [shared-host preview](HOSTED-DESK.md) reuses these lifecycle rules through Netlify Functions and strong conditional Blobs writes. It is separate from the loopback rehearsal below; absent configuration fails closed. Its configuration, exact-event retry, test commands, deployment proof limits and rollback live in that contract.
+
 ## Local two-operator console rehearsal — October 23
 
 This is a same-computer rehearsal of separate owner/friend sessions on fictional records. It does not establish remote authentication, shared cloud storage, computer-off execution, or production readiness. Keep all state in a new temporary directory outside the Git checkout; never put operator keys in `.env`, source files, or a committed example.

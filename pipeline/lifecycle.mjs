@@ -168,6 +168,13 @@ export function validateTranscriptProposal(proposal, transcript) {
 
 export class StudioLifecycle {
   constructor(directory, now = () => new Date()) { this.directory = directory; this.now = now; }
+  static async fromStore({store,now}){
+    const app=new StudioLifecycle(null,now);app.store=store;app.config=await store.config();
+    check(app.config.schema_version===1&&['controlled','production'].includes(app.config.mode)&&key(app.config.run_id)&&app.config.timezone==='America/New_York','Invalid shared lifecycle configuration');
+    check(app.config.mode==='controlled'&&app.config.outreach_enabled===false&&app.config.connector_writes_enabled===false&&app.config.research_enabled===false&&app.config.transcript_ai.enabled===false,'Shared preview accepts execution-disabled fictional work only');
+    const state=await app.snapshot();check(state.run_id===app.config.run_id&&state.mode===app.config.mode&&Object.values(state.prospects).every(r=>r.controlled===true),'Shared preview cannot load production records');return app;
+  }
+  async loadConfig(){return this.store?this.store.config():readJson(join(this.directory,'lifecycle-config.json'));}
   static async open({ directory, now }) {
     directory = await privateStateDirectory(directory);
     const app = new StudioLifecycle(directory, now);
@@ -188,7 +195,8 @@ export class StudioLifecycle {
       revision: 0, updated_at: new Date().toISOString(), prospects: {}, events: {}, actions: {}, asset_index: {}, ai_attempts: {}, exceptions: [] }, null, 2), { flag: 'wx', mode: 0o600 });
     return StudioLifecycle.open({ directory, now });
   }
-  async change(fn) {
+  async change(fn,options) {
+    if(this.store)return this.store.change(fn,options);
     const previous = this.changeTail ?? Promise.resolve();
     let finish;
     this.changeTail = new Promise(resolve => { finish = resolve; });
@@ -204,15 +212,16 @@ export class StudioLifecycle {
       return result;
     } finally { try { await release?.(); } finally { finish(); } }
   }
-  async snapshot() { return readJson(join(this.directory, 'lifecycle-state.json')); }
+  async snapshot() { return this.store?this.store.snapshot():readJson(join(this.directory, 'lifecycle-state.json')); }
   async apply(event, { actor = 'owner', expectedRevision } = {}) {
-    this.config = await readJson(join(this.directory, 'lifecycle-config.json'));
+    this.config = await this.loadConfig();
     check(key(event?.id) && key(event.prospect_id) && text(event.type, 80) && date(event.at), 'Event needs stable IDs and an explicit timestamp');
     check(Date.parse(event.at) <= +this.now() + 60_000, 'An event cannot claim a future action');
     if (event.type === 'call_logged' && this.config.mode === 'production') {
       const { requireCallRelease } = await import('./production.mjs'); requireCallRelease(this.config);
       check(this.config.operations.allowlist.includes(event.prospect_id), 'Call is outside the approved queue');
     }
+    const eventFingerprint=hash({event,actor});
     return this.change(state => {
       const fingerprint = hash({ event, actor });
       if (state.events[event.id]) { check(state.events[event.id].fingerprint === fingerprint, 'Event ID conflicts with saved evidence'); return { duplicate: true, revision: state.revision }; }
@@ -616,14 +625,14 @@ export class StudioLifecycle {
       }
       r.updated_at = event.at; state.events[eid] = { fingerprint, actor, ...event }; state.revision++;
       return { prospect_id: r.id, stage: r.stage, revision: state.revision };
-    });
+    },{eventId:event.id,eventFingerprint});
   }
   async dashboard() {
     const {discoverySummary,discoveryCampaignSummary,discoveryDailySummary}=await import('./discovery-batches.mjs');
-    this.config = await readJson(join(this.directory, 'lifecycle-config.json'));
+    this.config = await this.loadConfig();
     const state = await this.snapshot(), today = businessDate(this.now());
     let supplementalReviews = null, supplementalHold;
-    try {
+    if(!this.store)try {
       const ledger = JSON.parse(await readFile(join(this.directory, 'supplemental-reviews.json'), 'utf8'));
       supplementalReviews = verifySupplementalReviewLedger(ledger, state);
     } catch (error) {

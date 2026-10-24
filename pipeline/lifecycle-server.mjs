@@ -15,9 +15,9 @@ import {startDiscoveryBatch,controlDiscoveryBatch} from './discovery-batches.mjs
 import {renderFollowUpPreview} from './follow-up-template.mjs';
 import { createOperatorAuth } from './operators.mjs';
 
-const assets = new Map([['/', ['index.html', 'text/html']], ['/app.js', ['app.js', 'text/javascript']], ['/money.js', ['money.js', 'text/javascript']], ['/app.css', ['app.css', 'text/css']],
+export const lifecycleAssets = new Map([['/', ['index.html', 'text/html']], ['/event-request.js',['event-request.js','text/javascript']], ['/paths.js',['paths.js','text/javascript']], ['/app.js', ['app.js', 'text/javascript']], ['/money.js', ['money.js', 'text/javascript']], ['/app.css', ['app.css', 'text/css']],
   ['/call-desk.js', ['call-desk.js', 'text/javascript']], ['/follow-up-template.mjs', ['../follow-up-template.mjs', 'text/javascript']], ['/business-types.mjs', ['../business-types.mjs', 'text/javascript']], ['/preview/', ['preview.html', 'text/html']], ['/preview.js', ['preview.js', 'text/javascript']], ['/assets/evz-wordmark.png',['assets/evz-wordmark.png','image/png']], ['/assets/voice-demo-preview.png',['assets/voice-demo-preview.png','image/png']], ['/assets/manrope-regular.ttf',['assets/manrope-regular.ttf','font/ttf']], ['/assets/manrope-bold.ttf',['assets/manrope-bold.ttf','font/ttf']]]);
-for(const icon of ['house','building-2','mail','calendar-days','file-text','users','circle-alert','settings'])assets.set(`/assets/nav-${icon}.svg`,[`assets/nav-${icon}.svg`,'image/svg+xml']);
+for(const icon of ['house','building-2','mail','calendar-days','file-text','users','circle-alert','settings'])lifecycleAssets.set(`/assets/nav-${icon}.svg`,[`assets/nav-${icon}.svg`,'image/svg+xml']);
 export function serveLifecycle(app, { port = 8807, quiet = false, analyze = assessTranscript, operatorAuth = createOperatorAuth() } = {}) {
   const version = runtimeVersion();
   check(Number.isInteger(port) && port >= 0 && port <= 65535, 'Invalid local port');
@@ -37,8 +37,8 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
       check(req.headers.host === `127.0.0.1:${server.address().port}`, 'Unrecognized local host');
       check(!req.headers.origin || req.headers.origin === origin, 'Cross-origin requests are blocked');
       const url = new URL(req.url, origin);
-      if (req.method === 'GET' && assets.has(url.pathname)) {
-        const [file, type] = assets.get(url.pathname);
+      if (req.method === 'GET' && lifecycleAssets.has(url.pathname)) {
+        const [file, type] = lifecycleAssets.get(url.pathname);
         res.writeHead(200, { ...headers, 'Content-Type': `${type}; charset=utf-8`, ...(url.pathname === '/' ? { 'Set-Cookie': `studio_session=${session}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800` } : {}) });
         res.end(await readFile(join(fileURLToPath(new URL('./lifecycle-ui/', import.meta.url)), file))); return;
       }
