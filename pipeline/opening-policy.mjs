@@ -14,7 +14,7 @@ export function openingAssessment(packet,review){
   const source=packet.sources.find(s=>s.url===c.source_url&&s.content_sha256===c.source_sha256);
   check(source&&['business','social'].includes(source.kind)&&source.capture_method!=='search_snippet'&&text(c.excerpt,600)&&source.text.includes(c.excerpt),'Opening needs an exact retained primary-source quote and hash');
   check(text(c.customer_difficulty,800)&&text(c.hypothesis,800)&&text(c.owner_question,400)&&text(c.opening,800),'State a specific customer difficulty, possible improvement and focused owner question');
-  check(!/mobile (?:layout|usability|site|screen)|on (?:a )?phone|hard to (?:find|tap)|responsive|looks? (?:dated|old)|outdated (?:design|look)/i.test([c.customer_difficulty,c.hypothesis,c.opening].join(' ')),'Visual or mobile usability claims need a separate retained visual inspection; text-only discovery must hold them');
+  check(!/mobile (?:layout|usability|screen)|tap targets?|font size|horizontal scrolling|(?:layout|website|web page|contact button|menu button|form).{0,45}(?:hard to (?:find|tap)|not responsive|unresponsive)|looks? (?:dated|old)|outdated (?:design|look)/i.test([c.customer_difficulty,c.hypothesis,c.opening].join(' ')),'Visual or mobile usability claims need a separate retained visual inspection; text-only discovery must hold them');
   if(c.service==='website')check(!/dated|old[- ]fashion|outdated|old[- ]looking/i.test(c.customer_difficulty),'A dated-looking website alone is not a customer difficulty');
  }
  check(review.selected_opening_id===null||ids.has(review.selected_opening_id),'Select an exact supported opening alternative');

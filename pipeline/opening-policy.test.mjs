@@ -11,6 +11,10 @@ test('source-bound alternatives reject invented quotes, visual claims, dated-onl
  assert.throws(()=>openingAssessment(p,{...r,opening_candidates:[],selected_opening_id:null}),/selected strong opening/);
  assert.equal(openingAssessment(p,{...r,opening_candidates:[],selected_opening_id:null,pitch_supported:false}).selected_id,null);
 });
+test('published phone-process and contact-finding difficulties are not misclassified as visual claims',()=>{
+ const p=packet(),quote='Customers on the phone tell us it is hard to find the person responsible for callback.';p.sources[0].text+=' '+quote;p.sources[0].content_sha256=sourceContentHash(p.sources[0]);const r=review(p);r.opening_candidates[0]={...r.opening_candidates[0],excerpt:quote,customer_difficulty:'Customers on the phone may find it hard to find the person responsible for the promised callback.',hypothesis:'Ask who owns the callback queue and whether the existing phone process works for urgent requests.',opening:'Could I ask who is responsible when a customer is on the phone about an emergency callback?'};assert.equal(openingAssessment(p,r).selected_id,'urgent-routing');
+ const claim={...r.opening_candidates[0],customer_difficulty:'The website contact button is hard to find.'};assert.throws(()=>openingAssessment(p,{...r,opening_candidates:[claim]}),/visual inspection/);
+});
 test('signed operator chooses another supported opening through real HTTP without replacing verification evidence or releasing outreach',async t=>{
  const directory=await mkdtemp(join(tmpdir(),'evz-opening-policy-'));t.after(()=>rm(directory,{recursive:true,force:true}));const app=await StudioLifecycle.initialize({directory,now:()=>new Date(at)}),p=packet();p.opening_assessment=openingAssessment(p,review(p));const data=verificationData(p,new Date(at),true);await app.apply({id:'opening-import',prospect_id:p.id,type:'verification_imported',at,data});
  const before=await app.snapshot(),original=structuredClone(before.prospects[p.id].verification),view=openingView(before.prospects[p.id]);assert.equal(view.selected.id,'urgent-routing');
