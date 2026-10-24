@@ -1,3 +1,4 @@
+import {projectContext,projectWorkContext} from './project-work.mjs';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -57,6 +58,7 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
         check(operatorAuth && operator && req.headers['x-studio-token'] === csrf && req.headers['content-type'] === 'application/json', 'Operator session or approval token required');
         return json(200, { signed_out: true }, { 'Set-Cookie': operatorAuth.cookie('', { secure: Boolean(req.socket.encrypted), clear: true }) });
       }
+      if(req.method==='GET'&&/^\/api\/project-context\/[a-zA-Z0-9_-]{1,100}(?:\/[a-zA-Z0-9_-]{1,100})?$/.test(url.pathname)){const [,,,project,workId]=url.pathname.split('/'),snapshot=await app.snapshot();return json(200,workId?projectWorkContext(snapshot,project,workId):projectContext(snapshot,project));}
       if (req.method === 'GET' && url.pathname === '/api/state') return json(200, { ...await app.dashboard(), build:await version, csrf, workers: [...work.keys()], current_operator: operator, operator_auth_enabled: Boolean(operatorAuth) });
       if(req.method==='GET'&&/^\/call-audio\/[a-zA-Z0-9_-]{1,100}\/[a-zA-Z0-9_-]{1,80}$/.test(url.pathname)){
         const [, ,project,id]=url.pathname.split('/'),clip=await readCallAudio(app,localAudioStore(app.directory),project,id);

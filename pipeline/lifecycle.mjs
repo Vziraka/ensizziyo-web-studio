@@ -9,6 +9,7 @@ import { verifySupplementalReviewLedger } from './supplemental-reviews.mjs';
 import { callSupply } from './call-desk.mjs';
 import { ownerContactView, ownerContactSummary } from './owner-contacts.mjs';
 import { providerContactView, providerContactSummary } from './provider-contacts.mjs';
+import {applyProjectWork,syncProjectWork} from './project-work.mjs';
 import {businessType} from './business-types.mjs';
 import {composeFollowUp,followUpOutcomes,followUpSetupIssues} from './follow-up-template.mjs';
 
@@ -334,6 +335,11 @@ export class StudioLifecycle {
         check(r, 'Unknown prospect');
         if (r.restriction) check(['support_opened', 'support_closed', 'note_added', 'call_note_updated', 'call_audio_reserved', 'call_audio_stored', 'reply_received', 'email_delivered', 'meeting_verified'].includes(event.type), 'Restriction cannot be cleared by a later event');
         switch (event.type) {
+          case 'project_preparation_requested':
+          case 'project_work_recorded':
+          case 'concept_refinement_requested':
+          case 'unpaid_refinement_exception':
+            applyProjectWork(state,r,event,actor);break;
           case 'call_audio_reserved': {
             check(actor==='artifact-store'&&['owner','friend'].includes(data.recorded_by),'Audio metadata must come from authenticated private storage');
             check(key(data.id)&&data.id.length<=80&&key(data.call_id)&&['call','operator_note'].includes(data.kind),'Choose an exact audio clip and purpose');
@@ -360,7 +366,7 @@ export class StudioLifecycle {
             check(data.focus===undefined||['ai','systems','website','marketing','undecided'].includes(data.focus),'Choose a supported call focus');
             if (data.desk) {
               check(data.desk === true && (data.intent === undefined || data.outcome === 'connected' && ['discovery','requested_info'].includes(data.intent)), 'Choose the interested next step');
-              r.call_undo = {call_id:data.call_id,event_id:eid,record:Object.fromEntries(['stage','cold_paused','callback_at','callback_due_at','next_check','suppression','note','follow_ups'].map(k=>[k,structuredClone(r[k]??null)])),actions:structuredClone(Object.fromEntries(Object.entries(state.actions).filter(([,a])=>a.prospect_id===r.id)))};
+              r.call_undo = {call_id:data.call_id,event_id:eid,record:Object.fromEntries(['stage','cold_paused','callback_at','callback_due_at','next_check','suppression','note','follow_ups','project_work'].map(k=>[k,structuredClone(r[k]??null)])),actions:structuredClone(Object.fromEntries(Object.entries(state.actions).filter(([,a])=>a.prospect_id===r.id)))};
             }
             check(data.simulated === r.controlled, 'Simulated and actual calls cannot be mixed');
             check(date(data.performed_at) && Date.parse(data.performed_at) <= Date.parse(event.at) && (!r.attempts.length || Date.parse(data.performed_at) >= Date.parse(r.attempts.at(-1).at)), 'Call time must be performed, ordered and dated');
@@ -417,6 +423,7 @@ export class StudioLifecycle {
           }
           case 'follow_up_handed_off': {
             owner(actor); check(['owner', 'friend'].includes(actor) && r.follow_up_owner === actor && ['owner', 'friend'].includes(data.to) && data.to !== actor, 'Only the assigned operator can hand this business to the other operator');
+            for(const work of Object.values(r.project_work??{}))if(work.status==='Ready')work.assigned_to=data.to;
             r.follow_up_owner = data.to; r.follow_up_handoffs ??= [];
             r.follow_up_handoffs.push({ from: actor, to: data.to, at: event.at, event_id: eid });
             for (const action of Object.values(state.actions)) if (action.prospect_id === r.id && ['call_task', 'callback_task', 'email'].includes(action.type) && ['Queued', 'Pending', 'Uncertain', 'Awaiting readback', 'Verified'].includes(action.status)) action.assigned_to = data.to;
@@ -638,6 +645,7 @@ export class StudioLifecycle {
           default: throw Error('Unsupported lifecycle event');
         }
       }
+      if(r?.calls)syncProjectWork(state,r,event,actor);
       const cycle = state.operations?.cycle;
       if (cycle && !cycle.completed_at) {
         cycle.completed_records = (cycle.completed_records ?? []).filter(id => id !== r.id);

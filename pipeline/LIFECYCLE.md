@@ -1,5 +1,7 @@
 # Private sales, delivery and support workspace
 
+Current [project preparation](PROJECT-WORK.md) connects reviewed interest, approved assets and scoped preferences to attributed workflow tasks and exact output review, with one unpaid focused refinement before scope/price. Automatic authoring and connected file retrieval remain separate acceptance items.
+
 Current production preparation, direct connector service, separate records and remaining launch gates are in [PRODUCTION.md](PRODUCTION.md). The earlier chat-supervised controlled proof below remains useful evidence; it is no longer the intended production dispatch loop. Both old test heartbeats are paused.
 
 The owner approved this design on October 17, 2026. [Controlled operations](OPERATIONS.md) connects its email, booking, synchronization and supervision paths. The owner later authorized bounded research to prepare the call queue; real outreach and the previous heartbeats remain paused. It reuses Node 24, the existing Google library, Apollo/Gmail/Calendar connections and subscription CLIs. No dependency, paid model API or new subscription was added.

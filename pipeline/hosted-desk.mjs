@@ -1,3 +1,4 @@
+import {projectContext,projectWorkContext} from './project-work.mjs';
 import {readFile} from 'node:fs/promises';import {join} from 'node:path';import {fileURLToPath} from 'node:url';import {createHmac,randomBytes,timingSafeEqual} from 'node:crypto';
 import {StudioLifecycle,initialConfig,check} from './lifecycle.mjs';import {ConditionalLifecycleStore} from './lifecycle-store.mjs';import {createOperatorAuth} from './operators.mjs';import {fixtureProspect} from './lifecycle-fixtures.mjs';import {lifecycleAssets} from './lifecycle-assets.mjs';import {renderFollowUpPreview} from './follow-up-template.mjs';import {callingSession,saveInformationDraft} from './call-desk-actions.mjs';
 import {audioRequest,saveCallAudio,readCallAudio,reconcileCallAudio,blobAudioStore} from './call-audio.mjs';
@@ -55,6 +56,7 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    const actor=settings.auth.actorFromCookie(request.headers.get('cookie'));if(!actor)return json(401,{error:'Sign in with your individual operator key'});
    if(post&&path==='/api/logout')return json(200,{signed_out:true},{'Set-Cookie':settings.auth.cookie('',{secure:true,clear:true})});
    let app,raw;try{raw=await storeFactory(env.EVZ_OPERATIONS_BLOB_NAMESPACE);app=await openApp(raw,now);}catch{return json(503,{error:'Private shared storage is unavailable; no execution was started'});}
+   if(request.method==='GET'&&/^\/api\/project-context\/[a-zA-Z0-9_-]{1,100}(?:\/[a-zA-Z0-9_-]{1,100})?$/.test(path)){const [,,,project,workId]=path.split('/'),snapshot=await app.snapshot();return json(200,workId?projectWorkContext(snapshot,project,workId):projectContext(snapshot,project));}
    if(request.method==='GET'&&path==='/api/state')return json(200,{...projectDashboard(await app.dashboard()),csrf,current_operator:actor,operator_auth_enabled:true,workers:[],hosted_preview:true});
    if(request.method==='GET'&&/^\/api\/events\/[a-zA-Z0-9_-]{1,100}$/.test(path)){const id=path.split('/').at(-1),state=await app.snapshot(),event=state.events[id];return json(200,{found:Boolean(event),id,...(event?{actor:event.actor,fingerprint:event.fingerprint,at:event.at}:{}),revision:state.revision});}
    if(request.method==='GET'&&/^\/follow-up(?:-draft|-history)?\/[a-zA-Z0-9_-]{1,100}\/[a-zA-Z0-9_-]{1,100}$/.test(path)){

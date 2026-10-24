@@ -1,3 +1,4 @@
+import {preparationPanel} from './project-work.js';
 import { renderCallDesk } from './call-desk.js';
 import { centsFromDollars } from './money.js';
 import {deskPath} from './paths.js';
@@ -398,6 +399,7 @@ function detail(r) {
     node.append(el('p', r.callback_at ? `Requested callback at ${when}. Cold email remains paused.` : when ? `Callback requested without an exact time. Internal reminder set for ${when}; no time was promised. Cold email remains paused.` : 'Callback requested. Check the saved reminder before calling.', 'notice'));
   }
   if (['Ready to contact', 'Contacting', 'Ready to verify', 'Verifying', 'Callback'].includes(r.stage)) node.append(callPrep(r));
+  if(Object.keys(r.project_work??{}).length||['Discovery','Information requested','Preview','Proposal','Agreement'].includes(r.stage))node.append(preparationPanel(r,state,{el,button,eventForm,tell}));
   nextForm(r, node);
   const history = el('details'); history.append(el('summary', 'Review the saved event history'));
   const list = el('ol', undefined, 'timeline');
@@ -464,7 +466,7 @@ function render() {
   if(view==='meetings'){const node=panel('Meetings');const page=state.follow_up_settings?.follow_up?.booking_url;if(page)node.append(link('Open EVZ booking page ↗',page));const meetings=Object.values(state.prospects).filter(r=>r.meeting);for(const r of meetings)node.append(el('h3',r.name),el('p',`${new Date(r.meeting.start).toLocaleString()} · ${r.meeting.current_status??'Verified'}`));for(const b of state.pending_bookings??[])node.append(el('h3',state.prospects[b.prospect_id]?.name??'Pending invitation'),el('p',`${new Date(b.start).toLocaleString()} · ${b.status}`));if(!meetings.length&&!state.pending_bookings?.length)node.append(el('p','No meetings booked yet. You can also book an agreed discovery time from the calling desk.','empty'));content.append(node);return;}
   if (['today','businesses'].includes(view)) { renderCallDesk(content,state,{api,refresh,tell,evidence:callPrep,clearDirty:()=>{dirty=false;},uploadAudio:uploadCallAudio,allBusinesses:view==='businesses'}); return; }
   if (view === 'today') content.append(stats(), el('p', `Prepared due call cards: ${state.daily.prepared.research} research-reviewed · ${state.daily.prepared.verification} verification only. These are prepared records, not calls made or accepted detailed assessments.`, 'notice'));
-  const grid = el('div', undefined, 'grid'), records = Object.values(state.prospects).filter(r => view === 'reviews' ? ['Connected review', 'Verification review', 'Reply review'].includes(r.stage) : view === 'clients' ? r.handover || r.quote || ['Preview', 'Delivery', 'Client review', 'Onboarding'].includes(r.stage) : lane === 'all' || (r.call_lane === 'verification' ? lane === 'verification' : lane === 'research'));
+  const grid = el('div', undefined, 'grid'), records = Object.values(state.prospects).filter(r => view === 'reviews' ? ['Connected review', 'Verification review', 'Reply review'].includes(r.stage) : view === 'clients' ? Object.keys(r.project_work??{}).length || r.handover || r.quote || ['Discovery','Information requested','Proposal','Preview', 'Delivery', 'Client review', 'Onboarding'].includes(r.stage) : lane === 'all' || (r.call_lane === 'verification' ? lane === 'verification' : lane === 'research'));
   if (view === 'today') { const order = new Map(state.daily.due.map((a, i) => [a.prospect_id, i])); records.sort((a, b) => (order.get(a.id) ?? 10000) - (order.get(b.id) ?? 10000)); }
   const left = panel(view === 'reviews' ? 'Awaiting your review' : view === 'clients' ? 'Client work' : state.controls.mode === 'controlled' ? 'Controlled working records' : 'Daily call queue & prospects');
   left.append(el('p', view === 'today' ? 'Review the purpose and evidence before calling. Apollo tasks publish after final release; task completion is never call evidence.' : 'Select a record to review its current step.', 'muted'));
