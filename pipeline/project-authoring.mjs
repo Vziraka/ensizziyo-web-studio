@@ -8,6 +8,7 @@ import {check,hash} from './lifecycle.mjs';
 import {projectWorkContext} from './project-work.mjs';
 import {readProjectAsset,storeProjectPDF} from './project-assets.mjs';
 import {operatorDisplayName,evzIdentity} from './follow-up-template.mjs';
+import {applyDesignPreferences} from './design-preferences.mjs';
 
 const exec=promisify(execFile),sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const key=v=>typeof v==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(v)&&v!=='__proto__';
@@ -56,14 +57,33 @@ function validateAuthored(source,packet,job){
  if(job.kind==='website-refinement')check(source.selected_direction===packet.source.request.selected_direction&&source.previous_asset_id===packet.source.request.asset_id&&source.previous_version_id===packet.source.request.version_id&&source.feedback===packet.source.request.feedback&&source.preserves_direction===true,'Refine the exact selected direction, previous version and consolidated feedback');
  if(job.kind==='client-proposal')check(source.quote_sha256===packet.source.quote_sha256,'Proposal source must bind exact approved scope and price');
 }
+async function designSource(app,source,packet){
+ let baseline=null;
+ if(source.kind==='website-refinement'){
+  const approved=packet.source.approved_assets.find(a=>a.asset_id===packet.source.request.asset_id);
+  if(approved){
+   check(approved.version_id===packet.source.request.version_id,'Refine the current approved version; the selected source is stale against its baseline');
+   const provenance=approved.provenance,match=/^private-path:project-authored\/(author-[a-f0-9]{32})\/authored\.json$/.exec(provenance?.source_reference??'');
+   check(match,'Approved refinement has no verified declarative source; preserve it and recover/review its source before changing it');
+   const prior=JSON.parse(await safeFile(join(await folder(app,match[1]),'authored.json')));
+   check(hash(prior)===provenance.source_sha256,'Approved declarative source changed; preserve the baseline');
+   const direction=prior.directions?.find(d=>d.id===source.selected_direction||d.name===source.selected_direction)?.id??source.selected_direction;
+   const pages=prior.kind==='website-concepts'?prior.pages?.filter(p=>p.direction===direction):prior.pages;
+   check(pages?.length,'Selected direction is absent from the approved declarative source');
+   baseline={asset_id:approved.asset_id,version_id:approved.version_id,source_sha256:provenance.source_sha256,pages,dispute:approved.dispute};
+  }
+ }
+ return applyDesignPreferences(source,packet,baseline);
+}
 async function hold(app,input,job,error){await app.change(s=>{const work=s.prospects[input.project_id]?.project_work?.[input.work_id];if(work?.execution?.id===job.id&&work.execution.status!=='Review'){Object.assign(work.execution,{status:'Held',hold:error.message,held_at:app.now().toISOString()});bump(s,app);}});}
 export async function renderAuthoring(app,input,runtime,actor='owner'){
  const state=await app.snapshot(),job=getJob(state,input);if(job.status!=='Claimed')return inspectAuthoring(app,input,actor);
- const {packet}=current(state,input,actor,job),source=JSON.parse(await safeFile(input.source_file));validateAuthored(source,packet,job);
+ const {packet}=current(state,input,actor,job),inputSource=JSON.parse(await safeFile(input.source_file));validateAuthored(inputSource,packet,job);
+ const source=await designSource(app,inputSource,packet);
  check(runtime&&isAbsolute(runtime.python)&&isAbsolute(runtime.pdftoppm)&&isAbsolute(runtime.proposal_assets),'Configure trusted local Python, Poppler and installed proposal assets separately from authored content');
  for(const [id,image] of Object.entries(runtime.images??{}))check(key(id)&&image.project_id===job.project_id&&isAbsolute(image.path)&&/^[a-f0-9]{64}$/.test(image.sha256??'')&&text(image.provenance,1200),'Original images need exact project ownership, hash, private path and provenance in trusted runtime configuration');
  if(job.kind==='client-proposal'){const master=sha(await readFile(join(runtime.proposal_assets,'EVZ-Digital-Master-Proposal-Review.pdf')));check(job.references.some(r=>r.sha256===master),'Retrieve the exact installed approved EVZ template before proposal rendering');}
- const path=await folder(app,job.id);await immutableJSON(join(path,'authored.json'),source);await immutableJSON(join(path,'runtime.json'),runtime);
+ const path=await folder(app,job.id);await immutableJSON(join(path,'input.json'),inputSource);await immutableJSON(join(path,'authored.json'),source);await immutableJSON(join(path,'runtime.json'),runtime);
  await app.change(s=>{const {work}=current(s,input,actor,job);check(work.execution.status==='Claimed','This export is already reserved; inspect its receipt');Object.assign(work.execution,{status:'Rendering',source_sha256:hash(source),runtime_sha256:hash(runtime),renderer_sha256:null});bump(s,app);});
  try{
   check(hash(await references(app,job.project_id,job.references))===hash(job.references),'Original references changed');
@@ -101,8 +121,9 @@ export async function resumeAuthoring(app,input,actor='owner'){
 export async function reviewAuthoring(app,input,actor='owner'){
  let state=await app.snapshot(),job=getJob(state,input);
  if(job.status==='Review'){check(hash(input.review)===job.review_sha256&&actor===job.reviewed_by,'Review retry differs from the saved exact review');return inspectAuthoring(app,input,actor);}
- check(job.status==='Rendered','Render and inspect every page first');current(state,input,actor,job);
+ check(job.status==='Rendered','Render and inspect every page first');const {packet:reviewPacket}=current(state,input,actor,job);
  const {receipt,source,pdf}=await verifyExport(app,job);
+ check(hash(await designSource(app,source,reviewPacket))===hash(source),'Saved output no longer matches current preference/baseline checks');
  check(input.review?.export_sha256===hash(receipt)&&hash(input.review.pages)===hash(receipt.pages)&&input.review.requirements===true&&input.review.visual_design===true&&input.review.export===true&&text(input.review.notes,3000),'Review requirements, visual design and every exact rendered page separately');
  await references(app,job.project_id,job.references);const original=await storeProjectPDF(app,pdf);
  await app.change(s=>{
@@ -113,7 +134,7 @@ export async function reviewAuthoring(app,input,actor='owner'){
   const assetId=job.kind==='website-refinement'?work.request.asset_id:job.id,versionId=job.id,reference=`private-path:project-authored/${job.id}/output.pdf`;
   const index=s.asset_index??={},asset=index[assetId]??{id:assetId,name:`${r.name} - ${job.kind}`,kind:job.kind==='client-proposal'?'proposal':'mockup',scope:'project',project_id:r.id,baseline_version:null,choices:{},dispute:null,versions:{}};
   check(asset.project_id===r.id&&asset.scope==='project'&&!Object.hasOwn(asset.versions,versionId),'Output ownership/version conflicts');
-  const provenance={job_id:job.id,context_sha256:job.context_sha256,source_sha256:job.source_sha256,source_reference:`private-path:project-authored/${job.id}/authored.json`,renderer_sha256:job.renderer_sha256,export_sha256:hash(receipt),resources:receipt.resources??[],references:job.references,author:source.author,limitations:source.limitations,review:input.review,reviewed_by:actor,quote_sha256:packet.source.quote_sha256??null,request:work.request};
+  const provenance={job_id:job.id,context_sha256:job.context_sha256,source_sha256:job.source_sha256,source_reference:`private-path:project-authored/${job.id}/authored.json`,renderer_sha256:job.renderer_sha256,export_sha256:hash(receipt),resources:receipt.resources??[],references:job.references,author:source.author,limitations:source.limitations,preference_application:source.preference_application??null,review:input.review,reviewed_by:actor,quote_sha256:packet.source.quote_sha256??null,request:work.request};
   asset.versions[versionId]={id:versionId,label:job.id,reference,registered_by:actor,registered_at:app.now().toISOString(),provenance,verified_original:{...original,reference,name:'output.pdf',mime_type:'application/pdf',modified_time:app.now().toISOString(),verified_at:app.now().toISOString(),verified_by:actor}};index[assetId]=asset;s.asset_index=index;
   work.result={asset_id:assetId,version_id:versionId,reference,export_reviewed:true,pdf_sha256:original.sha256,...(job.kind==='website-concepts'?{direction_count:5}:{}),...(job.kind==='client-proposal'?{quote_sha256:packet.source.quote_sha256}:{})};
   Object.assign(work,{status:'Review',prepared_by:actor,prepared_at:app.now().toISOString(),prepared_context_sha256:job.context_sha256});

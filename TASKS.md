@@ -2,6 +2,8 @@
 
 ## Shared operations desk redesign — October 23, 2026
 
+- [x] Add bounded saved-preference application (audit F5 local increment): quoted scoped typography/background interpretation, tentative/repeated suggestions without promotion, equal-operator conflict/baseline guards, and actual declarative refinement checks. A new fictional CLI/PDF rehearsal applies the current rules while preserving approved wording/composition and held attachment hashes. General semantic interpretation, imported-PDF visual comparison and unattended authoring remain open. [Preference contract](pipeline/PROJECT-AUTHORING.md#scoped-preferences-in-actual-authoring).
+
 - [x] Add bounded source-bound reply preparation (audit R33): verified MIME text/provenance, accurately labelled extractive summary and conservative editable clarification starter, signed exact held approval and source/ownership/edit/stop invalidation. Fictional connector/local/hosted-handler and desktop/narrow proofs; no model/provider/send/notification execution. Semantic response quality, live body compatibility and computer-off monitoring/delivery remain open. [Reply contract](pipeline/REPLIES.md).
 
 - [x] Add actual local agent-assisted authoring (audit F2 bounded local increment): exact Ready/context/original claims, deterministic design and approved-template proposal PDFs, page renders/hash review, unapproved immutable versions and held exact-attachment drafts. Fictional five-direction, selected refinement and exact approved-price proposal proofs executed; no send, autonomous inference or baseline/client acceptance. Unattended authoring, hosted originals and attachment delivery remain open. [Authoring contract](pipeline/PROJECT-AUTHORING.md).

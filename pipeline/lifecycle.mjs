@@ -13,6 +13,7 @@ import { callSupply } from './call-desk.mjs';
 import { ownerContactView, ownerContactSummary, contactEvidenceView } from './owner-contacts.mjs';
 import { providerContactView, providerContactSummary } from './provider-contacts.mjs';
 import {applyProjectWork,syncProjectWork} from './project-work.mjs';
+import {scopedDesignPreferences} from './design-preferences.mjs';
 import {businessType} from './business-types.mjs';
 import {composeFollowUp,followUpOutcomes,followUpSetupIssues} from './follow-up-template.mjs';
 
@@ -273,7 +274,7 @@ export class StudioLifecycle {
             if(scope==='project')check(key(projectId)&&Object.hasOwn(state.prospects,projectId)&&(!asset.project_id||asset.project_id===projectId), 'Choose the existing project that owns this feedback');
             else check(data.project_id===undefined||data.project_id===null, 'Studio-wide feedback cannot name a project');
             asset.feedback??=[];
-            asset.feedback.push({id:eid,version_id:data.version_id,feedback:data.feedback,scope,...(scope==='project'?{project_id:projectId}:{}),actor,at:event.at});
+            asset.feedback.push({id:eid,version_id:data.version_id,feedback:data.feedback,scope,...(scope==='project'?{project_id:projectId}:{}),actor,at:event.at,baseline_at_feedback:asset.baseline_version??null,approval_at_feedback:asset.baseline_approval_event??null});
           } else if (event.type === 'asset_version_disputed') {
             check(!asset.dispute, 'A disagreement is already open; select a version to resolve it');
             check(asset.baseline_version && Object.hasOwn(asset.versions, data.version_id), 'Choose a registered version to dispute against an approved baseline');
@@ -284,6 +285,9 @@ export class StudioLifecycle {
           } else {
             check(Object.hasOwn(asset.versions, data.version_id), 'Select a registered asset version');
             const choice = { version_id: data.version_id, event_id: eid, at: event.at };
+            if(!asset.dispute&&asset.baseline_version&&asset.baseline_version!==data.version_id&&scopedDesignPreferences(state,asset.project_id??null).design_preferences.conflicts.length){
+              asset.dispute={id:eid,baseline_version:asset.baseline_version,opened_by:actor,opened_at:event.at,reason:'Unresolved scoped design preferences; both operators must select the same new version',choices:{}};asset.choices={};
+            }
             asset.choices ??= {};
             if (asset.dispute) {
               asset.dispute.choices[actor] = choice;

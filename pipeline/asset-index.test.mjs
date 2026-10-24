@@ -27,7 +27,7 @@ test('version feedback retains exact operator directions and scope without chang
   const event={id:'feedback-one',prospect_id:'studio-assets',type:'asset_feedback_added',at,data:{asset_id:'project-design',version_id:'v1',feedback:'Keep this typography. Make the enquiry link clearer.'}};
   await app.apply(event,{actor:'friend'});
   let state=await app.snapshot(),asset=state.asset_index['project-design'];
-  assert.equal(asset.baseline_version,'v1');assert.deepEqual(asset.feedback,[{id:'feedback-one',version_id:'v1',feedback:event.data.feedback,scope:'project',project_id:'juniper',actor:'friend',at}]);
+  assert.equal(asset.baseline_version,'v1');assert.deepEqual(asset.feedback,[{id:'feedback-one',version_id:'v1',feedback:event.data.feedback,scope:'project',project_id:'juniper',actor:'friend',at,baseline_at_feedback:'v1',approval_at_feedback:'feedback-baseline'}]);
   assert.equal((await app.apply(event,{actor:'friend'})).duplicate,true);
   await assetEvent(app,'studio-feedback','asset_feedback_added',{asset_id:'project-design',version_id:'v1',feedback:'Always explore distinctive typography.',scope:'studio'},'owner');
   state=await app.snapshot();assert.equal(state.asset_index['project-design'].feedback[1].scope,'studio');assert.equal(state.asset_index['project-design'].feedback[1].actor,'owner');assert.equal(state.asset_index['project-design'].baseline_version,'v1');
