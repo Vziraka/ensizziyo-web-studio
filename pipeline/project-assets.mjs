@@ -32,6 +32,12 @@ export async function readProjectAsset(app,project,assetId,versionId){
  check(original&&original.reference===version.reference,'Original is not archived; recover this exact version first');
  const path=await archivePath(app,original.sha256);return {bytes:await readOriginal(path,original.bytes,original.sha256),path,filename:original.sha256+'.pdf',original};
 }
+export async function storeProjectPDF(app,bytes){
+ check(Buffer.isBuffer(bytes)&&bytes.length>0&&bytes.length<=maxBytes&&bytes.subarray(0,5).toString()==='%PDF-','Use a bounded PDF original');
+ const digest=sha256(bytes),path=await archivePath(app,digest,{create:true}).catch(async error=>{if(error.code==='EEXIST')return archivePath(app,digest);throw error;});
+ let file;try{file=await open(path,'wx',0o600);await file.writeFile(bytes);}catch(error){if(error.code!=='EEXIST')throw error;}finally{await file?.close();}
+ await readOriginal(path,bytes.length,digest);return {sha256:digest,bytes:bytes.length};
+}
 export async function archiveProjectAsset(app,input,bytes,source,actor){
  check(['owner','friend'].includes(actor),'Original recovery needs a signed operator');
  const state=await app.snapshot(),version=versionFor(state,input.project_id,input.asset_id,input.version_id);
@@ -40,9 +46,7 @@ export async function archiveProjectAsset(app,input,bytes,source,actor){
  check(sha256(bytes)===input.expected_sha256,'Original hash does not match the exact expected source');
  check(source.reference===version.reference&&typeof source.name==='string'&&source.name.length<=200&&source.mime_type==='application/pdf'&&bytes.subarray(0,5).toString()==='%PDF-','Original source or PDF type does not match this version');
  check(typeof source.modified_time==='string'&&Number.isFinite(Date.parse(source.modified_time))&&(!source.account||/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(source.account)),'Original source metadata is incomplete');
- const sha=input.expected_sha256,path=await archivePath(app,sha,{create:true}).catch(async error=>{if(error.code==='EEXIST')return archivePath(app,sha);throw error;});
- let file;try{file=await open(path,'wx',0o600);await file.writeFile(bytes);}catch(error){if(error.code!=='EEXIST')throw error;}finally{await file?.close();}
- await readOriginal(path,bytes.length,sha);
+ const sha=input.expected_sha256;await storeProjectPDF(app,bytes);
  const original={reference:version.reference,source_id:version.reference.split(':').slice(1).join(':'),name:source.name,mime_type:'application/pdf',modified_time:source.modified_time,account:source.account??null,sha256:sha,bytes:bytes.length,verified_at:app.now().toISOString(),verified_by:actor};
  await app.change(current=>{
   check(projectContext(current,input.project_id).context_sha256===input.context_sha256,'Project context changed; reload before recovering');

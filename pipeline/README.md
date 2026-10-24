@@ -4,7 +4,7 @@
 
 [Opening selection](OPENINGS.md) binds new discovery choices to exact sources and keeps weak/unsupported cases held while preserving existing research budgets. Actual provider research quality still needs a representative live proof.
 
-Current [project preparation](PROJECT-WORK.md) connects reviewed interest, approved assets and scoped preferences to attributed workflow tasks and exact output review, with one unpaid focused refinement before scope/price. Automatic authoring and connected file retrieval remain separate acceptance items.
+Current [project preparation](PROJECT-WORK.md) connects reviewed interest, approved assets and scoped preferences to attributed workflow tasks and exact output review, with one unpaid focused refinement before scope/price. The [local authoring CLI](PROJECT-AUTHORING.md) renders actual agent-authored PDF output and held companion drafts from [retrieved originals](ASSET-RECOVERY.md); unattended semantic authoring and hosted originals remain separate acceptance items.
 
 The calling card's [desktop recording workflow](CALL-RECORDING.md) saves private call and spoken-note audio separately, with immutable IDs, exact retries, source-linked manual transcripts and audio-inclusive local backup/restore. Actual microphone and speakerphone quality still require an operator rehearsal; no paid transcription route is connected.
 

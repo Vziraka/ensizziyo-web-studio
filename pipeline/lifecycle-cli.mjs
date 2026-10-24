@@ -23,6 +23,15 @@ async function main() {
   if(command==='project-context'){const state=await app.snapshot();return operation?projectWorkContext(state,key,operation):projectContext(state,key);}
   if(command==='project-resolve')return resolveProject(await app.snapshot(),key);
   if(command==='project-asset'){const {bytes,...result}=await readProjectAsset(app,key,operation,actionId);return result;}
+  if(command==='project-author'){
+    const author=await import('./project-authoring.mjs'),input=await readJson(operation),actor=input.actor??'owner';
+    if(key==='claim')return author.claimAuthoring(app,input,actor);
+    if(key==='render')return author.renderAuthoring(app,input,await readJson(actionId),actor);
+    if(key==='resume')return author.resumeAuthoring(app,input,actor);
+    if(key==='review')return author.reviewAuthoring(app,input,actor);
+    if(key==='revise')return author.reviseAuthoring(app,input,actor);
+    check(key==='inspect','Use project-author claim, render, resume, review, revise or inspect');return author.inspectAuthoring(app,input,actor);
+  }
   if(command==='recover-drive-asset'){
     const context=projectContext(await app.snapshot(),key),connector=new AppConnectors({cwd:process.cwd(),accountLinks:{google_drive:process.env.STUDIO_DRIVE_ACCOUNT_LINK}});
     try{await connector.connect();return await recoverDriveAsset(app,{project_id:key,asset_id:operation,version_id:actionId,expected_sha256:prospectId,context_sha256:context.context_sha256},{connector,email:process.env.STUDIO_DRIVE_ACCOUNT_EMAIL});}finally{await connector.close();}
