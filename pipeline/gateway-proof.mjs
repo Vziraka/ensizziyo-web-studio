@@ -22,7 +22,7 @@ export function gatewayCapability(env=process.env){
  const present=Boolean(env.NETLIFY_AI_GATEWAY_KEY&&env.NETLIFY_AI_GATEWAY_URL&&env.GEMINI_API_KEY&&env.GOOGLE_GEMINI_BASE_URL),matching=Boolean(present&&env.GEMINI_API_KEY===env.NETLIFY_AI_GATEWAY_KEY),conflict=Boolean(env.GOOGLE_API_KEY||env.GOOGLE_VERTEX_BASE_URL||env.GOOGLE_GENAI_USE_VERTEXAI==='true');
  return {ready:env.CONTEXT==='deploy-preview'&&present&&matching&&sameOrigin&&!conflict,runtime_credentials_present:present,provider_key_matches_gateway:matching,provider_origin_matches_gateway:sameOrigin,conflicting_google_configuration:conflict,limits:'Runtime booleans only; no credential values. Capability is not an inference, audio pass-through or quota proof.'};
 }
-async function liveCatalog(request=fetch){
+export async function liveCatalog(request=fetch){
  const response=await request('https://api.netlify.com/api/v1/ai-gateway/providers/detailed',{signal:AbortSignal.timeout(5000)});check(response.ok,'Gateway model catalog unavailable');const body=await response.text();check(Buffer.byteLength(body)<=300_000,'Gateway model catalog exceeds inspection limit');const catalog=JSON.parse(body),price=catalog.providers?.gemini?.models?.[gatewayPolicy.model]?.pricing;
  check(price&&Number.isFinite(price.input)&&Number.isFinite(price.output)&&price.input>=0&&price.output>=0&&(!price.long_context||price.long_context.above_tokens>gatewayPolicy.maximum_input_tokens)&&price.input<=gatewayPolicy.maximum_catalog_input_usd_per_million&&price.output<=gatewayPolicy.maximum_catalog_output_usd_per_million,'Pinned Gateway model is missing or exceeds reviewed pricing');return {sha256:hash(catalog),pricing:price};
 }

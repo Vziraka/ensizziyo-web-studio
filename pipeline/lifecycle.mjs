@@ -224,6 +224,7 @@ export class StudioLifecycle {
       const { requireCallRelease } = await import('./production.mjs'); requireCallRelease(this.config);
       check(this.config.operations.allowlist.includes(event.prospect_id), 'Call is outside the approved queue');
     }
+    const validateMachineDraft=event.type==='transcript_added'&&event.data?.transcription_draft_sha256?(await import('./call-transcription.mjs')).validateTranscriptionDraft:null;
     const eventFingerprint=hash({event,actor});
     return this.change(state => {
       const fingerprint = hash({ event, actor });
@@ -475,7 +476,8 @@ export class StudioLifecycle {
             check(!r.transcripts[data.call_id] && text(data.text, 60_000) && data.permission_confirmed === true, 'Supply one permitted transcript; recording consent is separate');
             check(!/-----BEGIN [A-Z ]*PRIVATE KEY|\b(?:sk-|ghp_|github_pat_)[A-Za-z0-9_-]{20,}|\b(?:password|api[_ -]?key|authorization)\s*[:=]\s*\S+/i.test(data.text), 'Redact credentials before saving or analyzing a transcript');
             check(data.audio_ids===undefined||Array.isArray(data.audio_ids)&&data.audio_ids.length>0&&data.audio_ids.length<=20&&new Set(data.audio_ids).size===data.audio_ids.length&&data.audio_ids.every(id=>r.call_audio?.[id]?.status==='Stored'&&r.call_audio[id].call_id===data.call_id&&r.call_audio[id].kind==='call'),'Transcript audio must belong to this exact saved call');
-            r.transcripts[data.call_id] = { text: data.text, sha256: hash(data.text), added_at: event.at, call_id: data.call_id, actor,...(data.audio_ids?{audio_ids:[...data.audio_ids]}:{}), source: data.audio_ids?'Operator-supplied transcript linked to saved call audio; wording requires review':'Operator-supplied transcript; audio capture not verified' };
+            const machine=validateMachineDraft?validateMachineDraft(state,r.id,data.call_id,data):null;
+            r.transcripts[data.call_id] = { text: data.text, sha256: hash(data.text), added_at: event.at, call_id: data.call_id, actor,...(data.audio_ids?{audio_ids:[...data.audio_ids]}:{}),...(machine?{machine_draft:machine}:{}), source:machine?'Operator-reviewed machine transcript linked to exact saved call audio; factual claims still need review':data.audio_ids?'Operator-supplied transcript linked to saved call audio; wording requires review':'Operator-supplied transcript; audio capture not verified' };
             request(state, r, 'transcript_review', { call_id: data.call_id }, eid); break;
           case 'transcript_assessed': {
             check(actor === 'worker' || actor === 'controlled-fixture', 'Assessment must come from the restricted worker boundary');

@@ -1,3 +1,4 @@
+import {callTranscriptionView,approveCallTranscription,runCallTranscription,pauseCallTranscription} from './call-transcription.mjs';
 import {retainedSource} from './retained-sources.mjs';
 import {prepareTeamNotifications,notificationView} from './team-notifications.mjs';
 import {projectContext,projectWorkContext} from './project-work.mjs';
@@ -62,6 +63,7 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
       }
       if(req.method==='GET'&&/^\/api\/project-context\/[a-zA-Z0-9_-]{1,100}(?:\/[a-zA-Z0-9_-]{1,100})?$/.test(url.pathname)){const [,,,project,workId]=url.pathname.split('/'),snapshot=await app.snapshot();return json(200,workId?projectWorkContext(snapshot,project,workId):projectContext(snapshot,project));}
       if(req.method==='GET'&&/^\/retained-source\/[a-zA-Z0-9_-]{1,100}\/[a-f0-9]{64}$/.test(url.pathname)){const [,,project,sha]=url.pathname.split('/');return json(200,retainedSource(await app.snapshot(),project,sha,url.searchParams.get('url'),url.searchParams.get('at')));}
+      if(req.method==='GET'&&url.pathname==='/api/call-transcription')return json(200,await callTranscriptionView(app));
       if(req.method==='GET'&&url.pathname==='/api/team-notifications')return json(200,notificationView(await app.snapshot()));
       if (req.method === 'GET' && url.pathname === '/api/state') return json(200, { ...await app.dashboard(), build:await version, csrf, workers: [...work.keys()], current_operator: operator, operator_auth_enabled: Boolean(operatorAuth) });
       if(req.method==='GET'&&/^\/call-audio\/[a-zA-Z0-9_-]{1,100}\/[a-zA-Z0-9_-]{1,80}$/.test(url.pathname)){
@@ -89,6 +91,8 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
       check(req.method === 'POST' && req.headers['x-studio-token'] === csrf && req.headers['content-type'] === 'application/json', 'Owner session and same-origin approval token required');
       const input = await readInput();
       if(url.pathname==='/api/team-notifications/prepare')return json(200,await prepareTeamNotifications(app));
+      if(url.pathname==='/api/call-transcription/approve')return json(200,await approveCallTranscription(app,input,operator));
+      if(url.pathname==='/api/call-transcription/run')return json(200,await runCallTranscription(app,localAudioStore(app.directory),input,operator));
       if(url.pathname==='/api/call-audio-check')return json(200,await reconcileCallAudio(app,localAudioStore(app.directory),input.prospect_id,input.id));
       if (url.pathname === '/api/event') {
         check(!['prospect_imported', 'verification_imported', 'transcript_assessed', 'reply_received', 'email_delivered', 'meeting_verified','call_audio_reserved','call_audio_stored'].includes(input.event?.type), 'Provider/research/worker events cannot be submitted as owner decisions');
@@ -106,7 +110,7 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
       if (url.pathname === '/api/information-draft') return json(200, await saveInformationDraft(app,input,operator));
       if (url.pathname === '/api/information-send') return json(200, await sendInformation(app,input,{actor:operator}));
       if (url.pathname === '/api/pause') {
-        return json(200, await pauseStudio(app));
+        const paused=await pauseStudio(app);return json(200,{...paused,...await pauseCallTranscription(app,operator)});
       }
       if (url.pathname === '/api/research-priority') return json(200, await setResearchPriority(app, input.priority));
       if (url.pathname === '/api/discovery-batches') return json(202,await startDiscoveryBatch(app,input));
