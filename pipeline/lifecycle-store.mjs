@@ -1,8 +1,9 @@
 import {check} from './lifecycle.mjs';
+import {validateInertEnvelope,validateInertChange} from './inert-shared-workspace.mjs';
 
 // Callbacks must reserve local state only: a conflict never reruns a callback or an external effect.
 export class ConditionalLifecycleStore {
-  constructor(store,{key='workspace',maxBytes=20_000_000}={}){this.store=store;this.key=key;this.maxBytes=maxBytes;}
+  constructor(store,{key='workspace',maxBytes=20_000_000,inertBinding=null}={}){this.store=store;this.key=key;this.maxBytes=maxBytes;this.inertBinding=inertBinding;}
   async initialize(config,state){
     const data={schema_version:1,config,state};this.validate(data);
     const result=await this.store.setJSON(this.key,data,{onlyIfNew:true});
@@ -12,7 +13,8 @@ export class ConditionalLifecycleStore {
   validate(data){
     check(data?.schema_version===1&&data.config?.schema_version===1&&data.state?.schema_version===1,'Unknown shared workspace format');
     check(data.state.run_id===data.config.run_id&&data.state.mode===data.config.mode,'Shared state belongs to another run or mode');
-    check(data.config.mode==='controlled'&&data.config.outreach_enabled===false&&data.config.research_enabled===false&&data.config.connector_writes_enabled===false&&data.config.transcript_ai?.enabled===false&&Object.values(data.state.prospects).every(r=>r.controlled===true),'Shared preview accepts execution-disabled fictional records only');
+    if(this.inertBinding)validateInertEnvelope(data,this.inertBinding);
+    else check(!data.inert_source&&data.config.mode==='controlled'&&data.config.outreach_enabled===false&&data.config.research_enabled===false&&data.config.connector_writes_enabled===false&&data.config.transcript_ai?.enabled===false&&Object.values(data.state.prospects).every(r=>r.controlled===true),'Shared preview accepts execution-disabled fictional records only');
     check(Buffer.byteLength(JSON.stringify(data))<=this.maxBytes,'Shared workspace size limit reached; archive closed records');
   }
   async envelope(){
@@ -22,8 +24,12 @@ export class ConditionalLifecycleStore {
   }
   async config(){return (await this.envelope()).data.config;}
   async snapshot(){return (await this.envelope()).data.state;}
-  async change(fn,{eventId,eventFingerprint}={}){
-    const {data,etag}=await this.envelope(),before=JSON.stringify(data),result=await fn(data.state);this.validate(data);
+  async change(fn,options={}){
+    const {eventId,eventFingerprint}=options;
+    const {data,etag}=await this.envelope(),before=JSON.stringify(data);
+    if(this.inertBinding)check(options.inertNote,'Inert storage rejects worker and provider mutations');
+    const result=await fn(data.state);this.validate(data);
+    if(this.inertBinding)validateInertChange(JSON.parse(before).state,data.state,options);
     if(JSON.stringify(data)===before)return result;
     let modified,uncertain=false;
     try {const written=await this.store.setJSON(this.key,data,{onlyIfMatch:etag});check(typeof written?.modified==='boolean'&&(!written.modified||typeof written.etag==='string'&&written.etag.length>0),'Conditional write result is unavailable');modified=written.modified;}

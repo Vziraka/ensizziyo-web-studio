@@ -101,6 +101,9 @@ export async function writeLifecycleBackup(directory,state,output,created_at){
  }catch(error){if(!published)await removeOwned(sidecar,identity);throw error;}
  return {sha256:bundle.sha256,prospects:Object.keys(state.prospects).length,audio_clips,project_files:manifest.length-audio_clips,package_schema:2};
 }
+export async function validateBackupDependencies(state,files){
+ const result=await inventory(state,async(path,max,optional)=>{const bytes=files.get(path);check(bytes||optional,'Missing required backup dependency');check(!bytes||bytes.length<=max,'Oversized backup dependency');return bytes??null;},{restoring:true});check(result.files.size===files.size,'Backup contains undeclared dependencies');return result;
+}
 export async function readLifecycleBackup(input){
  const stat=await lstat(input);check(stat.isFile()&&!stat.isSymbolicLink()&&stat.size<=25_000_000,'Invalid bounded backup file');
  const bundle=JSON.parse(await readRegularExternal(resolve(input),25_000_000));check([1,2].includes(bundle.schema_version)&&typeof bundle.body==='string'&&hash(bundle.body)===bundle.sha256,'Backup checksum mismatch');
@@ -109,7 +112,7 @@ export async function readLifecycleBackup(input){
  check(Array.isArray(bundle.files)&&bundle.files.length<=countLimit&&hash(bundle.files)===bundle.files_sha256,'Backup manifest checksum mismatch');let total=0;const files=new Map(),paths=new Set();
  for(const entry of bundle.files){check(entry&&allowed(entry.path)&&!paths.has(entry.path)&&sha(entry.sha256)&&Number.isSafeInteger(entry.bytes)&&entry.bytes>0&&entry.bytes<=fileLimit,'Invalid bounded backup manifest');paths.add(entry.path);total+=entry.bytes;check(total<=totalLimit,'Backup exceeds its verified bounds');}
  for(const entry of bundle.files){const bytes=await readRegularExternal(join(resolve(input)+'.files',entry.sha256),entry.bytes);check(bytes.length===entry.bytes&&digest(bytes)===entry.sha256,'Backup dependency checksum or size mismatch');files.set(entry.path,bytes);}
- const result=await inventory(state,async(path,max,optional)=>{const bytes=files.get(path);check(bytes||optional,'Missing required backup dependency');check(!bytes||bytes.length<=max,'Oversized backup dependency');return bytes??null;},{restoring:true});check(result.files.size===files.size,'Backup contains undeclared dependencies');return {state,...result};
+ const result=await validateBackupDependencies(state,files);return {state,...result};
 }
 export async function restoreLifecycleBackup(input,destination){
  const {state,files,audio_clips}=await readLifecycleBackup(input);destination=await privateStateDirectory(destination);await mkdir(destination,{mode:0o700});const identity=await lstat(destination);let published=false;

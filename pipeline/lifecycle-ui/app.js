@@ -69,7 +69,7 @@ async function refresh() {
   if (state.hosted_preview && !eventRequest) eventRequest = createEventRequest({fetch: (...args) => fetch(...args), storage: sessionStorage, csrf: () => csrf, actor: () => state?.current_operator, changed: showPendingEvent});
   showPendingEvent();
   document.querySelector('nav').hidden = false; document.querySelector('.aside-foot').hidden = false;
-  document.querySelector('#mode-banner').hidden = false; document.querySelector('#backup').hidden = false; document.querySelector('#pause').hidden = false;
+  document.querySelector('#mode-banner').hidden = false; document.querySelector('#backup').hidden = Boolean(state.shared_workspace); document.querySelector('#pause').hidden = Boolean(state.shared_workspace);
   const operatorLabel = document.querySelector('#operator-label'), signOut = document.querySelector('#sign-out');
   operatorLabel.hidden = !state.operator_auth_enabled; operatorLabel.textContent = state.current_operator === 'friend' ? 'Friend · shared team' : 'Owner · shared team';
   signOut.hidden = !state.operator_auth_enabled;
@@ -466,6 +466,7 @@ function render() {
   attentionNav.setAttribute('aria-label', attentionCount ? `Needs attention, ${attentionCount} open items` : 'Needs attention');
   document.querySelector('#mode-banner').textContent = state.controls.mode === 'controlled' ? 'Controlled operations proof · Fictional businesses, simulated calls and payments. Approved test emails go only to owner-controlled inboxes.' : state.controls.calls_paused ? 'Production workspace · Saved research, verification calls and client work. Contact remains paused until final owner release.' : state.controls.outreach_paused ? 'Calling enabled · You place and log calls. Booking requires verified business Calendar setup and your approval of the guest and time. Commercial email remains paused.' : 'Production workspace · Live calls and email operate within the approved campaign rules. Review due work and exceptions before contacting.';
   const discovery=state.discovery_batches?.find(b=>!['Complete','Stopped','Held'].includes(b.status));
+  if(state.shared_workspace)document.querySelector('#mode-banner').textContent='Shared workspace · Execution disabled. Read saved records and edit private notes. Imported actions, approvals and monitoring are history; external effects require reconciliation. Hosted authoring and backup are unavailable.';
   document.querySelector('#research-status').textContent = discovery ? `Discovery ${discovery.status.toLowerCase()} · ${discovery.reviewed}/25 checked` : `${state.controls.research_paused ? 'Research paused' : 'Research enabled'}${state.research_runtime ? ` · ${state.research_runtime.status}${state.research_runtime.counts ? ` · ${state.research_runtime.counts.Complete} reviewed` : ''}` : ''}`;
   document.querySelector('#outreach-status').textContent = state.controls.calls_paused ? 'Outreach paused' : state.controls.outreach_paused ? 'Calls only · email paused' : 'Outreach enabled';
   content.replaceChildren(); const title = titles[view]; document.querySelector('#view-kicker').textContent = title[0]; document.querySelector('#view-title').textContent = title[1]; document.querySelector('#view-description').textContent = title[2];
@@ -488,7 +489,7 @@ function render() {
     node.append(notices,el('p','Routine checks stay in private logs. The earlier test monitor stays paused; no external delivery is enabled by these prepared messages.','muted'));content.append(node);return;
   }
   if (view === 'launch') {
-    if(state.hosted_preview)content.append(gatewayProofPanel(state,{el,button,api,tell,refresh,clearDirty:()=>{dirty=false;}}));
+    if(state.hosted_preview&&!state.shared_workspace)content.append(gatewayProofPanel(state,{el,button,api,tell,refresh,clearDirty:()=>{dirty=false;}}));
     if (state.controls.mode === 'production') {
       const calls = panel('Calls-only final review'), review = state.controls.final_review.calls;
       calls.append(el('p', 'Release your manual calls and Apollo call tasks separately from email. Verification calls confirm activity and goals; they never trigger no-answer email. All real contact stays paused until your final approval.', 'notice'));

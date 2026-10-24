@@ -1,5 +1,40 @@
 # Protected shared-desk preview
 
+## Inert shared-record source
+
+D2 adds a separate **disabled source capability**, `inert-shared-v1`, for production-mode records. The existing `fictional-preview` selection, namespace pattern, seed and 2 MB limit remain unchanged. A deployment cannot silently widen that selection or open production records through the fictional adapter. No real data import, environment change or activation is part of this increment.
+
+The existing 20 MB conditional object stores one coherent configuration/state/source manifest. Production `mode`, run, company/project IDs and each record's original `controlled` presence/value are retained. No real record is relabelled fictional. The source manifest hashes the complete source state and configuration and lists the verified G1 dependency paths, sizes and hashes. Original PDFs use the existing D1 immutable 1 MB chunks. Other G1 dependencies remain explicitly `offline-package-only`; this does **not** implement hosted editable authoring sidecars, rendering, audio playback or complete hosted backup. The standard G1 inventory remains the authority for portable dependency completeness.
+
+`prepareInertWorkspace({backup,sourceConfig,scope})` reads an existing verified local backup package; it reads no cloud service and stores no source credentials. The fresh configuration copies only run/mode, the two display names and the transcript budget caps. Every execution flag is false, runtime/operations are disabled and call/production releases are revoked. The original source configuration is represented by a hash, not copied connection settings, paths or approvals. All historical state, including approvals, baseline versions, attempts, budgets, leases and pending requests, remains unchanged evidence. The manifest and dashboard list imported unresolved actions/requests and explicitly require provider reconciliation before any future release. No imported lease or approval authorizes this host.
+
+The exact scope has only these fields:
+
+```json
+{
+  "schema_version": 1,
+  "capability": "inert-shared-v1",
+  "workspace_id": "<reviewed-workspace>",
+  "run_id": "<exact-source-run>",
+  "mode": "production",
+  "state_schema": 1,
+  "site_id": "<exact-site>",
+  "deploy_id": "<exact-deploy>",
+  "origin": "https://<exact-preview-origin>",
+  "namespace": "evz-inert-shared-<new-8-to-40-character-suffix>"
+}
+```
+
+Preparation returns `{envelope,binding,files}`. `binding` is `{scope,manifest_sha256}`. `installInertWorkspace(store,packet)` validates without even reading the supplied store; it defaults to dry run. A separately authorized caller must deliberately pass `{commit:true}` with a `ConditionalLifecycleStore(raw,{inertBinding:packet.binding})` for the exact isolated namespace. This source API is not a hosted upload route or an automatic migration CLI. It revalidates all dependency bytes, writes immutable original chunks first and publishes the complete envelope with `onlyIfNew` last. Existing destinations are never overwritten/reseeded. A lost import acknowledgement requires exact manifest/envelope readback; orphan chunks grant no record access. Actual deployment/import orchestration and real-data/connector migration remain separate work.
+
+A future approved Deploy Preview would require `EVZ_OPERATIONS_DESK_ENABLED=inert-shared-v1`, the existing authentication/CSRF settings and exact origin/namespace, plus `EVZ_OPERATIONS_INERT_BINDING` containing that reviewed binding. The function obtains site ID, deploy ID and context from trusted Netlify context. All three must match; production context is rejected. Replacing any source manifest, configuration, site, deployment, origin or namespace revokes access until a new exact binding is reviewed. This task sets none of these values. Removing the inert selection disables access; retain the namespace for reconciliation instead of replaying or deleting it.
+
+Both existing signed operators can load paged saved-state reads, exact project context/name resolution, event receipts, follow-up previews, retained evidence and declared original-PDF chunks. The first edit capability is **private `note_added` only**, with an explicit current revision, stable event ID, signed actor and existing CSRF/origin checks. The store independently checks the resulting state against that exact note edit, protecting every other record, budget and execution ledger. No notification preparation, project synchronization or worker callback runs as a side effect. Other lifecycle edits, asset decisions, provider routes, original uploads, authoring, backup and release controls return explicit disabled responses. Broader shared collaboration needs its own complete bounded contract.
+
+`exportInertBackup(app,localDependencies,output)` is local only and uses the current strongly read state plus G1-validated local dependencies. It fails for missing/corrupt originals or sidecars. Standard restore retains histories/baselines/budgets, converts pending external mutations to Uncertain, removes inherited runtime/lease and creates a disabled local configuration. It does not restore a hosted binding or authorize execution. The source/deployment manifest remains in the reviewed private handoff; hosted backup orchestration is unimplemented.
+
+Verify with `node --test pipeline/inert-shared-workspace.test.mjs` from the repository root. New synthetic production-shaped records exceed 11,338,010 bytes and pass the pinned SDK through a substituted local fetch boundary, exact chunk retrieval, signed owner/friend contexts and private-note readback, conflict/uncertain reconciliation, config/binding/namespace/CSRF rejection, no auto-seed and local complete original export/restore. This establishes the bounded source contract only. Actual hosted storage/latency/cost, friend device access, complete hosted sidecars/backup, broader team edits, external connectors, PC-off authoring and production release remain open.
+
 The [disabled hosted fact assessment bridge](CALL-RECORDING.md#disabled-hosted-fact-assessment-bridge) reuses Gateway, ai_attempts and existing human reviews. Its separate preview flag is unset and allowance unapproved. Local substituted checks close the interface gap only; actual hosted execution, quality, billing and production remain open.
 
 This is an execution-disabled fictional proof of the existing desk on Netlify Functions and one strongly consistent conditional-write blob. The existing local runtime is unchanged. Production context always returns 503 for this endpoint; no production records, credentials, Drive files, connectors or workers are copied into it.

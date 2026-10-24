@@ -1,4 +1,5 @@
 import {replySuggestion,replyDraftContent,replyDraftCurrent,validReplySource} from './reply-content.mjs';
+import {applyInertNote,inertReconciliation} from './inert-shared-workspace.mjs';
 import {prepareNotificationsInState,notificationView} from './team-notifications.mjs';
 import {openingView,selectOpening} from './opening-policy.mjs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -182,6 +183,7 @@ export class StudioLifecycle {
   static async fromStore({store,now}){
     const app=new StudioLifecycle(null,now);app.store=store;app.config=await store.config();
     check(app.config.schema_version===1&&['controlled','production'].includes(app.config.mode)&&key(app.config.run_id)&&app.config.timezone==='America/New_York','Invalid shared lifecycle configuration');
+    if(store.inertBinding){await store.envelope();return app;}
     check(app.config.mode==='controlled'&&app.config.outreach_enabled===false&&app.config.connector_writes_enabled===false&&app.config.research_enabled===false&&app.config.transcript_ai.enabled===false,'Shared preview accepts execution-disabled fictional work only');
     const state=await app.snapshot();check(state.run_id===app.config.run_id&&state.mode===app.config.mode&&Object.values(state.prospects).every(r=>r.controlled===true),'Shared preview cannot load production records');return app;
   }
@@ -228,6 +230,7 @@ export class StudioLifecycle {
     this.config = await this.loadConfig();
     check(key(event?.id) && key(event.prospect_id) && text(event.type, 80) && date(event.at), 'Event needs stable IDs and an explicit timestamp');
     check(Date.parse(event.at) <= +this.now() + 60_000, 'An event cannot claim a future action');
+    if(this.store?.inertBinding)return this.change(state=>applyInertNote(state,event,actor,expectedRevision,this.now()),{eventId:event.id,eventFingerprint:hash({event,actor}),inertNote:{event,actor,revision:expectedRevision}});
     if (event.type === 'call_logged' && this.config.mode === 'production') {
       const { requireCallRelease } = await import('./production.mjs'); requireCallRelease(this.config);
       check(this.config.operations.allowlist.includes(event.prospect_id), 'Call is outside the approved queue');
@@ -712,6 +715,7 @@ export class StudioLifecycle {
     const {discoverySummary,discoveryCampaignSummary,discoveryDailySummary}=await import('./discovery-batches.mjs');
     this.config = await this.loadConfig();
     const state = await this.snapshot(), today = businessDate(this.now());
+    if(this.store?.inertBinding)state.shared_workspace={capability:'inert-shared-v1',workspace_id:this.store.inertBinding.scope.workspace_id,manifest_sha256:this.store.inertBinding.manifest_sha256,allowed_edits:['note_added'],reconciliation:inertReconciliation(state),unsupported:['hosted-authoring-sidecars','hosted-backup','provider-execution']};
     let supplementalReviews = null, supplementalHold;
     if(!this.store)try {
       const ledger = JSON.parse(await readFile(join(this.directory, 'supplemental-reviews.json'), 'utf8'));
