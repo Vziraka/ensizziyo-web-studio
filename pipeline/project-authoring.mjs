@@ -96,7 +96,13 @@ export async function renderAuthoring(app,input,runtime,actor='owner'){
 }
 async function verifyExport(app,job){
  const path=await folder(app,job.id),receipt=JSON.parse(await safeFile(join(path,'export.json'))),source=JSON.parse(await safeFile(join(path,'authored.json')));
- check(sha(await safeFile(join(path,'renderer.py')))===job.renderer_sha256&&hash(JSON.parse(await safeFile(join(path,'runtime.json'))))===job.runtime_sha256,'Retained renderer or trusted runtime changed');
+ let renderer;
+ try{renderer=sha(await safeFile(join(path,'renderer.py')));}catch(error){
+  if(error.code!=='ENOENT')throw error;
+  const evidence=JSON.parse(await safeFile(join(path,'renderer-evidence.json')));
+  check(evidence.schema_version===1&&evidence.execution==='disabled'&&evidence.requires_trusted_runtime_rebinding===true,'Invalid restored renderer evidence');renderer=evidence.renderer_sha256;
+ }
+ check(renderer===job.renderer_sha256&&hash(JSON.parse(await safeFile(join(path,'runtime.json'))))===job.runtime_sha256,'Retained renderer or trusted runtime changed');
  check(receipt.schema_version===1&&receipt.source_sha256===hash(source)&&receipt.context_sha256===job.context_sha256&&receipt.source_sha256===job.source_sha256,'Partial or mismatched export; preserve it for inspection');
  check(receipt.pdf?.name==='output.pdf'&&Array.isArray(receipt.pages)&&receipt.pages.length>0&&receipt.pages.length<=16,'Incomplete export receipt');
  const pdf=await safeFile(join(path,'output.pdf'),64_000_000);check(pdf.subarray(0,5).toString()==='%PDF-'&&sha(pdf)===receipt.pdf.sha256&&pdf.length===receipt.pdf.bytes,'PDF hash or size changed');

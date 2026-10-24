@@ -1,7 +1,7 @@
 import {replySuggestion,replyDraftContent,replyDraftCurrent,validReplySource} from './reply-content.mjs';
 import {prepareNotificationsInState,notificationView} from './team-notifications.mjs';
 import {openingView,selectOpening} from './opening-policy.mjs';
-import { mkdir, readFile, writeFile, lstat } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -744,34 +744,17 @@ export class StudioLifecycle {
         ...Object.values(state.prospects).filter(r => r.stage === 'Hold').map(r => ({ id: r.id, reason: r.next_check }))] };
   }
   async backup(output) {
-    output = await privateStateDirectory(output);
+    check(!this.store, 'Use the private local workspace for complete backups');
     const release = await acquireLifecycleLock(this.directory);
     try {
       const state = await this.snapshot();
       check(!Object.values(state.ai_attempts).some(a => a.status === 'Running'), 'Stop workers before backup');
-      const body = JSON.stringify(state), bundle = { schema_version: 1, created_at: this.now().toISOString(), sha256: hash(body), body };
-      check(Buffer.byteLength(JSON.stringify(bundle)) <= 25_000_000, 'Backup exceeds the verified restore limit; archive closed records first');
-      const {audioArchiveFiles,localAudioStore}=await import('./call-audio.mjs'),audioFiles=await audioArchiveFiles(state,localAudioStore(this.directory));
-      if(audioFiles.length){await mkdir(`${output}.audio`,{mode:0o700});for(const file of audioFiles)await writeFile(join(`${output}.audio`,file.id),file.bytes,{flag:'wx',mode:0o600});}
-      await writeFile(output, JSON.stringify(bundle), { flag: 'wx', mode: 0o600 });
-      return { sha256: bundle.sha256, prospects: Object.keys(state.prospects).length,audio_clips:audioFiles.length };
+      const {writeLifecycleBackup} = await import('./lifecycle-backup.mjs');
+      return await writeLifecycleBackup(this.directory, state, output, this.now().toISOString());
     } finally { await release(); }
   }
   static async restore({ input, destination }) {
-    const stat = await lstat(input); check(stat.isFile() && !stat.isSymbolicLink() && stat.size <= 25_000_000, 'Invalid bounded backup file');
-    const bundle = JSON.parse(await readFile(input, 'utf8'));
-    check(bundle.schema_version === 1 && hash(bundle.body) === bundle.sha256, 'Backup checksum mismatch');
-    const state = JSON.parse(bundle.body); check(state.schema_version === 1 && key(state.run_id) && ['controlled', 'production'].includes(state.mode), 'Invalid backup state');
-    check(!Object.values(state.ai_attempts).some(a => a.status === 'Running'), 'Cannot restore running worker state');
-    const {audioArchiveFiles,localAudioStore}=await import('./call-audio.mjs'),audioFiles=await audioArchiveFiles(state,{get:async id=>{const folder=await lstat(`${input}.audio`),file=await lstat(join(`${input}.audio`,id));check(folder.isDirectory()&&!folder.isSymbolicLink()&&file.isFile()&&!file.isSymbolicLink()&&file.size<=4_000_000,'Restore requires bounded regular audio files');return readFile(join(`${input}.audio`,id));}});
-    destination = await privateStateDirectory(destination); await mkdir(destination, { mode: 0o700 });
-    for(const file of audioFiles)await localAudioStore(destination).put(file.id,file.bytes);
-    for (const a of Object.values(state.actions)) if (a.status === 'Pending') { a.status = 'Uncertain'; a.hold = 'Restored pending mutation; read back provider, never resend'; }
-    for (const r of Object.values(state.operations?.requests ?? {})) if (r.status === 'Pending' && ['draft', 'send', 'stop', 'booking_create', 'task_create', 'task_skip', 'contact_create', 'personalize', 'intent'].includes(r.operation)) r.status = 'Uncertain';
-    if (state.operations) delete state.operations.lease;
-    delete state.runtime;
-    await writeFile(join(destination, 'lifecycle-config.json'), JSON.stringify({ ...initialConfig, run_id: state.run_id, mode: state.mode }), { flag: 'wx', mode: 0o600 });
-    await writeFile(join(destination, 'lifecycle-state.json'), JSON.stringify(state), { flag: 'wx', mode: 0o600 });
-    return { execution: 'disabled', prospects: Object.keys(state.prospects).length,audio_clips:audioFiles.length };
+    const {restoreLifecycleBackup} = await import('./lifecycle-backup.mjs');
+    return restoreLifecycleBackup(input, destination);
   }
 }

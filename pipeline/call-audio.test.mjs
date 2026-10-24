@@ -18,7 +18,7 @@ test('audio is private, immutable and tied to the exact operator/call before and
  const record=(await app.snapshot()).prospects['audio-proof'];assert.deepEqual(record.transcripts['audio-call'].audio_ids,['first-clip']);assert.match(record.transcripts['audio-call'].source,/Operator-supplied/);assert.equal(record.calls['audio-call'].note,undefined);
  const backup=join(app.directory,'audio-backup.json'),destination=join(app.directory,'restored-audio');assert.equal((await app.backup(backup)).audio_clips,2);
  assert.equal((await StudioLifecycle.restore({input:backup,destination})).audio_clips,2);const restored=await StudioLifecycle.open({directory:destination,now:app.now});assert.deepEqual((await readCallAudio(restored,localAudioStore(destination),'audio-proof','first-clip')).bytes,bytes);assert.equal(restored.config.outreach_enabled,false);
- await rm(backup+'.audio',{recursive:true});await assert.rejects(StudioLifecycle.restore({input:backup,destination:join(app.directory,'must-not-restore')}));
+ await rm(backup+'.files',{recursive:true});await assert.rejects(StudioLifecycle.restore({input:backup,destination:join(app.directory,'must-not-restore')}));
 });
 test('artifact reservation prevents quota bypass and forgery; a lost blob acknowledgement reconciles bytes without overwriting',async t=>{
  const app=await setup(t),objects=new Map();let writes=0;
