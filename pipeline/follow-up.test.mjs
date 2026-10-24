@@ -4,7 +4,7 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {StudioLifecycle,initialConfig,hash} from './lifecycle.mjs';
-import {fixtureProspect} from './lifecycle-fixtures.mjs';
+import {fixtureProspect,fixtureTranscript,fixtureProposal} from './lifecycle-fixtures.mjs';
 import {composeFollowUp,renderFollowUpHtml,followUpSetupIssues} from './follow-up-template.mjs';
 import {approvedFollowUp,nativeMessage} from './production.mjs';
 const at='2026-10-19T15:00:00Z';
@@ -20,6 +20,48 @@ test('blank postal address is omitted from the preview while commercial setup st
 });
 async function setup(t,{operatorNames}={}){const directory=await mkdtemp(join(tmpdir(),'evz-followup-'));t.after(()=>rm(directory,{recursive:true,force:true}));const config=structuredClone(initialConfig);if(operatorNames)config.sender.operator_names=operatorNames;config.follow_up.enabled=true;const app=await StudioLifecycle.initialize({directory,config,now:()=>new Date(at)});await app.apply(fixtureProspect('sample',at));return app;}
 const call=(outcome='no_answer',extra={})=>({id:'call-one',prospect_id:'sample',type:'call_logged',at,data:{call_id:'call-one',performed_at:at,outcome,simulated:true,desk:true,note:'Explore AI enquiry handling. Private internal note: do not quote this.',...extra}});
+
+async function revisedCall(t){
+ const app=await setup(t,{operatorNames:{owner:'Owner Test',friend:'Friend Test'}});await app.apply(call('connected',{intent:'requested_info',focus:'ai'}));
+ await app.apply({id:'revised-transcript',prospect_id:'sample',type:'transcript_added',at,data:{call_id:'call-one',text:fixtureTranscript,permission_confirmed:true}});
+ await app.apply({id:'revised-analysis',prospect_id:'sample',type:'transcript_assessed',at,data:{call_id:'call-one',proposal:fixtureProposal,review:{verdict:'Accepted',proposal_sha256:hash(fixtureProposal),independent:true}}},{actor:'controlled-fixture'});
+ const r=(await app.snapshot()).prospects.sample;
+ await app.apply({id:'revision',prospect_id:'sample',type:'follow_up_draft_saved',at,data:{call_id:'call-one',focus:'website',note_sha256:hash(r.calls['call-one'].note),proposal_sha256:r.proposals['call-one'].sha256,claim_indexes:[1],customer_context:'You wanted customers to choose a box and request pickup.',reviewed:true}},{actor:'friend'});
+ const state=await app.snapshot();return {app,draft:state.prospects.sample.follow_up_drafts[0],original:state.prospects.sample.follow_ups['call-one']};
+}
+const approveRevision=draft=>({id:'approve-revision',prospect_id:'sample',type:'follow_up_draft_approved',at,data:{draft_id:draft.id,sha256:draft.sha256,approved:true}});
+
+test('exact revision approval replaces only an unreserved local message and retains its complete original',async t=>{
+ const {app,draft,original}=await revisedCall(t),approval=approveRevision(draft);await app.apply(approval,{actor:'owner'});
+ let state=await app.snapshot(),r=state.prospects.sample,replacement=r.follow_ups['call-one'];
+ assert.deepEqual(r.follow_up_history,[original]);assert.equal(state.actions[original.action_id].status,'Cancelled');assert.deepEqual(replacement.content,draft.content);assert.equal(replacement.approved_by,'owner');assert.equal(replacement.draft_id,draft.id);assert.equal(replacement.status,'Prepared');assert.equal(state.actions[replacement.action_id].status,'Queued');
+ assert.equal(Object.values(state.actions).filter(a=>a.type==='email'&&a.status==='Queued').length,1);assert.equal(approvedFollowUp(r,state.actions[original.action_id],app.config),false);assert.equal(approvedFollowUp(r,state.actions[replacement.action_id],app.config),true);assert.equal(r.follow_up_drafts[0].status,'Approved');
+ await assert.rejects(app.apply({id:'old-action-receipt',prospect_id:'sample',type:'email_delivered',at,data:{action_id:original.action_id,message_id:'old-receipt',simulated:true}},{actor:'provider'}),/current exact message/);
+ assert.equal((await app.apply(approval,{actor:'owner'})).duplicate,true);
+ const reopened=await StudioLifecycle.open({directory:app.directory,now:()=>new Date(at)});state=await reopened.snapshot();assert.deepEqual(state.prospects.sample.follow_ups['call-one'],replacement);assert.equal(Object.values(state.actions).filter(a=>a.type==='email'&&a.status==='Queued').length,1);
+});
+
+test('native reservations, requests, uncertain/sent history and changed evidence block revision release without mutation',async t=>{
+ for(const scenario of ['reservation','native-request','uncertain','sent','changed-notes','changed-transcript','changed-recipient','changed-config','stale-hash','no-approval','reply','stopped','two-email-cap','expired-campaign']){
+  const {app,draft,original}=await revisedCall(t);let approval=approveRevision(draft);
+  await app.change(s=>{const r=s.prospects.sample;s.operations??={};s.operations.email??={};s.operations.requests??={};
+   if(scenario==='reservation')s.operations.email[original.action_id]={prospect_id:'sample',status:'Awaiting native release'};
+   if(scenario==='native-request')s.operations.requests[`${original.action_id}-personalize`]={status:'Uncertain'};
+   if(scenario==='uncertain')s.actions[original.action_id].status='Uncertain';
+   if(scenario==='sent')r.follow_ups['call-one'].status='Sent';
+   if(scenario==='changed-notes')r.calls['call-one'].note='Changed notes';
+   if(scenario==='changed-transcript')r.transcripts['call-one'].sha256=hash('different source');
+   if(scenario==='changed-recipient')r.contact.email='changed@example.invalid';
+   if(scenario==='reply'){r.reply={source_id:'verified-reply',kind:'reply'};r.stage='Reply review';}
+   if(scenario==='stopped'){r.restriction='do_not_contact';r.stage='Stopped';}
+   if(scenario==='two-email-cap')r.attempts.push({channel:'email',id:'one',at},{channel:'email',id:'two',at});
+  });
+  if(scenario==='expired-campaign'){app.now=()=>new Date('2026-11-09T15:00:00Z');approval.at=app.now().toISOString();}
+  if(scenario==='changed-config'){const {readJson,saveJson}=await import('./engine.mjs'),file=join(app.directory,'lifecycle-config.json'),c=await readJson(file);c.sender.operator_names.owner='Changed Sender';await saveJson(file,c);}
+  if(scenario==='stale-hash')approval.data.sha256=hash('different content');if(scenario==='no-approval')approval.data.approved=false;
+  const before=await app.snapshot();await assert.rejects(app.apply(approval),/review|changed|reserved|Reconcile|sent|current|Restriction|campaign/i,scenario);assert.deepEqual(await app.snapshot(),before,scenario);
+ }
+});
 
 test('a reviewed connected call keeps transcript, private notes and an unsent evidence-bound email revision separate',async t=>{
  const app=await setup(t);await app.apply(call('connected',{intent:'requested_info',focus:'ai'}));

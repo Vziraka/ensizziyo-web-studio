@@ -134,7 +134,11 @@ function prepareCallFollowUp(state,record,call,config,at,reviewed=false){
   // The original performed call owns this message. Historical note changes never regenerate it.
   const prior=record.follow_ups[call.call_id];
   if(prior&&(!reviewed||prior.status!=='Held'||prior.action_id))return;
-  const content=prior?{...prior.content,to:record.contact.email??null}:composeFollowUp(record,call,config),issues=[];
+  const content=prior?{...prior.content,to:record.contact.email??null}:composeFollowUp(record,call,config);
+  storeCallFollowUp(state,record,call,config,at,content,call.event_id,prior?.created_at);
+}
+function storeCallFollowUp(state,record,call,config,at,content,eventId,createdAt=at){
+  const issues=[];
   if(content.focus==='undecided')issues.push('A specific, reviewed service focus is needed before preparing a relevant follow-up');
   if(record.restriction||record.reply)issues.push('Contact stopped or a reply needs owner review');
   if(!content.to||!record.contact.verified)issues.push('A verified business email is needed; follow up with a confirmed address');
@@ -145,9 +149,11 @@ function prepareCallFollowUp(state,record,call,config,at,reviewed=false){
   if(record.attempts[0]&&businessDaysBetween(record.attempts[0].at,at)>=10)issues.push('The ten-business-day campaign has ended');
   const setup=record.controlled?[]:followUpSetupIssues(config);
   const unansweredCalls=record.attempts.filter(a=>a.channel==='call').length,sendAfter=unansweredCalls>=2&&['no_answer','voicemail'].includes(call.outcome)?addBusinessDays(at,3).toISOString():at;
-  const entry={call_id:call.call_id,call_sha256:hash(call),content,status:issues.length?'Held':'Prepared',reason:[...issues,...setup,...(!record.controlled&&!config.outreach_enabled?['Commercial email sending is held']:[])].join('. '),created_at:prior?.created_at??at,send_after:sendAfter};
+  const entry={call_id:call.call_id,call_sha256:hash(call),content,status:issues.length?'Held':'Prepared',reason:[...issues,...setup,...(!record.controlled&&!config.outreach_enabled?['Commercial email sending is held']:[])].join('. '),created_at:createdAt,send_after:sendAfter};
+  record.follow_ups??={};
   record.follow_ups[call.call_id]=entry;
-  if(!issues.length){request(state,record,'email',{call_id:call.call_id,follow_up:true,content_sha256:hash(content),email:content.to,due_at:sendAfter},call.event_id);entry.action_id=`${call.event_id}-email`;}
+  if(!issues.length){request(state,record,'email',{call_id:call.call_id,follow_up:true,content_sha256:hash(content),email:content.to,due_at:sendAfter},eventId);entry.action_id=`${eventId}-email`;}
+  return entry;
 }
 
 export function validateTranscriptProposal(proposal, transcript) {
@@ -442,7 +448,28 @@ export class StudioLifecycle {
             check(text(data.customer_context,1600) && !/[<>]|{{|}}/.test(data.customer_context), 'Review a plain-text customer-facing summary within 1600 characters');
             const content=composeFollowUp(r,{...call,focus:data.focus,customer_context:data.customer_context},this.config);
             r.follow_up_drafts??=[];
-            r.follow_up_drafts.push({id:eid,call_id:data.call_id,at:event.at,actor,status:'Draft',content,sha256:hash(content),note_sha256:data.note_sha256,proposal_sha256:proposal.sha256,transcript_sha256:transcript.sha256,claim_indexes:[...data.claim_indexes],source_follow_up_sha256:r.follow_ups?.[data.call_id]?hash(r.follow_ups[data.call_id]):null});
+            r.follow_up_drafts.push({id:eid,call_id:data.call_id,at:event.at,actor,status:'Draft',content,customer_context:data.customer_context,sha256:hash(content),note_sha256:data.note_sha256,proposal_sha256:proposal.sha256,transcript_sha256:transcript.sha256,claim_indexes:[...data.claim_indexes],source_follow_up_sha256:r.follow_ups?.[data.call_id]?hash(r.follow_ups[data.call_id]):null});
+            break;
+          }
+          case 'follow_up_draft_approved': {
+            owner(actor);const draft=r.follow_up_drafts?.find(d=>d.id===data.draft_id),call=r.calls[draft?.call_id],prior=r.follow_ups?.[draft?.call_id];
+            check(this.config.follow_up?.enabled&&draft?.status==='Draft'&&data.approved===true&&data.sha256===draft.sha256&&hash(draft.content)===draft.sha256, 'Review and approve the exact current draft revision');
+            check(call?.outcome==='connected'&&['discovery','requested_info'].includes(r.approved_calls[call.call_id]?.outcome)&&!r.reply&&!['Connected review','Verification review','Stopped'].includes(r.stage), 'Review the current conversation; replies or stopped contact cannot release a revision');
+            const predecessors=Object.values(state.actions).filter(a=>a.prospect_id===r.id&&a.type==='email'&&a.payload.call_id===call.call_id);
+            check(!prior||['Held','Prepared'].includes(prior.status), 'Reconcile reserved, uncertain or sent follow-up before approving a revision');
+            for(const action of predecessors){
+              check(['Queued','Cancelled'].includes(action.status)&&!Object.hasOwn(state.operations?.email??{},action.id)&&!Object.keys(state.operations?.requests??{}).some(k=>k.startsWith(`${action.id}-`)), 'Reconcile every native reservation or request before replacing this message');
+              check(action.status==='Cancelled'||action.id===prior?.action_id, 'Reconcile the current local message before approving a revision');
+            }
+            check(draft.source_follow_up_sha256===(prior?hash(prior):null), 'The original follow-up changed; prepare a fresh revision');
+            check(draft.note_sha256===hash(call.note??'')&&draft.transcript_sha256===r.transcripts[call.call_id]?.sha256&&draft.proposal_sha256===r.proposals[call.call_id]?.sha256, 'Call evidence changed; review a current revision');
+            check(text(draft.customer_context,1600)&&hash(composeFollowUp(r,{...call,focus:draft.content.focus,customer_context:draft.customer_context},this.config))===draft.sha256, 'Recipient, sender or settings changed; prepare and review a current revision');
+            const entry=storeCallFollowUp(state,r,call,this.config,event.at,draft.content,eid);
+            check(entry.status==='Prepared'&&entry.action_id, entry.reason||'Current conversation cannot release this revision');
+            if(prior){r.follow_up_history??=[];r.follow_up_history.push(structuredClone(prior));}
+            for(const action of predecessors)if(action.status==='Queued'){action.status='Cancelled';action.cancelled_by=eid;}
+            Object.assign(entry,{draft_id:draft.id,approved_by:actor,approval_event:eid});
+            Object.assign(draft,{status:'Approved',approved_by:actor,approved_at:event.at,action_id:entry.action_id,approval_event:eid});
             break;
           }
           case 'call_reviewed': {
@@ -490,6 +517,7 @@ export class StudioLifecycle {
             check(actor === 'provider' && data.simulated === r.controlled && key(data.message_id), 'Verified provider email identity required');
             const action = state.actions[data.action_id];
             check(action?.prospect_id === r.id && action.type === 'email' && (['no_answer','voicemail'].includes(r.calls[action.payload.call_id]?.outcome)||this.config.follow_up?.enabled&&action.payload.follow_up&&followUpOutcomes.includes(r.calls[action.payload.call_id]?.outcome)), 'Delivery must match the explicit call/email handoff');
+            if(action.payload.follow_up)check(r.follow_ups?.[action.payload.call_id]?.action_id===action.id, 'Delivery must match the current exact message; reconcile a superseded action separately');
             check(!action.payload.due_at || date(action.payload.due_at) && Date.parse(action.payload.due_at) <= Date.parse(event.at), 'Scheduled follow-up cannot be delivered before its due time');
             check(r.attempts.filter(a => a.channel === 'email').length < 2, 'Two-email campaign cap reached');
             r.attempts.push({ id: data.message_id, channel: 'email', at: event.at, simulated: data.simulated });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, readFile, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { StudioLifecycle, initialConfig } from './lifecycle.mjs';
+import { StudioLifecycle, initialConfig, hash } from './lifecycle.mjs';
 import { fixtureProspect } from './lifecycle-fixtures.mjs';
 import { saveJson } from './engine.mjs';
 import { productionConfig, releaseFingerprint, requireProductionRelease, approveProductionRelease, approveCallRelease, callReleaseFingerprint, ProductionOperations, NativeProofOperations, operationsFor, importResearch, importVerification, syncResearchImports, queueMeeting, pauseStudio, nativeMessage,nativeProofMessage } from './production.mjs';
@@ -108,6 +108,17 @@ test('a connected follow-up hands the full branded HTML to one native executor a
  const s=await setup(t,true,'connected',true),p=provider(s.config);await drive(s.app,p);
  let state=await s.app.snapshot(),r=state.prospects['synthetic-cafe'];assert.equal(r.follow_ups['call-one'].status,'Sent');assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.match(p.person.typed_custom_fields['body-1'],/voice-demo-preview\.png/);assert.match(p.person.typed_custom_fields['body-1'],/Owner Test/);assert.doesNotMatch(p.person.typed_custom_fields['body-1'],/PRIVATE BUDGET NOTE/);
  s.advance();const reopened=await StudioLifecycle.open({directory:s.directory,now:s.app.now});await drive(reopened,p,'followup-restart');assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);
+});
+
+test('an exactly approved call revision reaches the existing native executor once instead of its unreserved predecessor',async t=>{
+ const s=await setup(t,true,'connected',true),text='Customer: Please send the pickup website example.',proposal={schema_version:1,transcript_sha256:hash(text),outcome:'requested_info',summary:'Customer requested the pickup website example.',claims:[{claim:'A pickup website example was requested.',quote:'Please send the pickup website example.'}],unknowns:['Scope and budget'],callback_at:null};
+ await s.app.apply({id:'revision-transcript',prospect_id:'synthetic-cafe',type:'transcript_added',at,data:{call_id:'call-one',text,permission_confirmed:true}});
+ await s.app.apply({id:'revision-assessment',prospect_id:'synthetic-cafe',type:'transcript_assessed',at,data:{call_id:'call-one',proposal,review:{verdict:'Accepted',proposal_sha256:hash(proposal),independent:true}}},{actor:'worker'});
+ let r=(await s.app.snapshot()).prospects['synthetic-cafe'];const original=structuredClone(r.follow_ups['call-one']);
+ await s.app.apply({id:'revision-draft',prospect_id:r.id,type:'follow_up_draft_saved',at,data:{call_id:'call-one',focus:'website',note_sha256:hash(r.calls['call-one'].note),proposal_sha256:r.proposals['call-one'].sha256,claim_indexes:[0],customer_context:'You asked for a pickup website example.',reviewed:true}});
+ r=(await s.app.snapshot()).prospects[r.id];const draft=r.follow_up_drafts[0];await s.app.apply({id:'revision-approval',prospect_id:r.id,type:'follow_up_draft_approved',at,data:{draft_id:draft.id,sha256:draft.sha256,approved:true}},{actor:'friend'});
+ const p=provider(s.config);await drive(s.app,p);let state=await s.app.snapshot();r=state.prospects[r.id];assert.equal(p.calls.filter(c=>c.operation==='intent').length,1);assert.match(p.person.typed_custom_fields['body-1'],/You asked for a pickup website example/);assert.doesNotMatch(p.person.typed_custom_fields['body-1'],/PRIVATE BUDGET NOTE|voice-demo-preview/);assert.deepEqual(r.follow_up_history,[original]);assert.equal(state.actions[original.action_id].status,'Cancelled');assert.equal(r.follow_ups['call-one'].status,'Sent');assert.equal(r.attempts.filter(a=>a.channel==='email').length,1);
+ const reopened=await StudioLifecycle.open({directory:s.directory,now:s.app.now});s.advance();await drive(reopened,p,'revision-restart');assert.equal(p.calls.filter(c=>c.operation==='intent').length,1);
 });
 test('a reply observed in the provider read phase cancels a prepared next follow-up before native release',async t=>{
  const s=await setup(t,true,'no_answer',true),p=provider(s.config);await drive(s.app,p);s.advance();const next=s.app.now().toISOString();await s.app.apply({id:'second-call',prospect_id:'synthetic-cafe',type:'call_logged',at:next,data:{call_id:'second-call',outcome:'voicemail',performed_at:next,simulated:false,desk:true,focus:'ai',note:'Discuss AI enquiry handling.'}});assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['second-call'].status,'Prepared');p.addReply();s.advance();await drive(s.app,p,'reply-before-second-release');assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['second-call'].status,'Cancelled');
