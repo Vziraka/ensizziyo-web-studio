@@ -23,6 +23,7 @@ test('stateless owner/friend sessions share actual lifecycle records with CSRF, 
  const page=await make()(request('/'));assert.equal(page.status,200);const html=await page.text();assert.match(html,/data-base="\/desk"/);assert.match(html,/src="\/desk\/app.js"/);assert.doesNotMatch(html,/Shared source-bound|EVZ_OPERATIONS_OWNER_KEY/);
  const navigationHeaders={'sec-fetch-site':'cross-site','sec-fetch-mode':'navigate','sec-fetch-dest':'document'};
  assert.equal((await make()(request('/',{headers:navigationHeaders}))).status,200);
+ assert.equal((await make()(request('',{headers:navigationHeaders}))).status,200);
  assert.equal((await make()(request('/api/state',{headers:{...navigationHeaders,cookie:sessions.get('owner').cookie}}))).status,403);
  const unavailable=await make()(request('/api/analyze',{method:'POST',headers:{cookie:sessions.get('owner').cookie,'content-type':'application/json',origin,'x-studio-token':sessions.get('owner').csrf},body:{prospect_id:'shared-proof'}}));assert.equal(unavailable.status,409);
  const bodyLimit=await make()(request('/api/event',{method:'POST',headers:{cookie:sessions.get('owner').cookie,'content-type':'application/json',origin,'x-studio-token':sessions.get('owner').csrf},body:{event:{...event,id:'oversized',data:{note:'x'.repeat(120_000)}}}}));assert.equal(bodyLimit.status,400);assert.equal((await read('owner')).events.oversized,undefined);

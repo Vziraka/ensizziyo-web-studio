@@ -12,11 +12,6 @@ node_bundler = "esbuild"
 included_files = ["pipeline/lifecycle-ui/**", "pipeline/follow-up-template.mjs", "pipeline/business-types.mjs"]
 
 [[redirects]]
-from = "/desk"
-to = "/desk/"
-status = 301
-
-[[redirects]]
 from = "/"
 to = "/studio/"
 status = 302

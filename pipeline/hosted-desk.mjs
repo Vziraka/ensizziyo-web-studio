@@ -36,7 +36,7 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
   let settings;try{settings=configured(env,now);}catch{return json(503,{error:'Private desk is not configured'});}
   const url=new URL(request.url),path=url.pathname.slice(base.length)||'/';
   const publicNavigation=request.method==='GET'&&path==='/'&&request.headers.get('sec-fetch-mode')==='navigate'&&request.headers.get('sec-fetch-dest')==='document';
-  if(url.origin!==settings.origin||!url.pathname.startsWith(base+'/')||request.headers.get('origin')&&request.headers.get('origin')!==settings.origin||!publicNavigation&&request.headers.get('sec-fetch-site')&&!['same-origin','none'].includes(request.headers.get('sec-fetch-site')))return json(403,{error:'Private desk origin is not permitted'});
+  if(url.origin!==settings.origin||url.pathname!==base&&!url.pathname.startsWith(base+'/')||request.headers.get('origin')&&request.headers.get('origin')!==settings.origin||!publicNavigation&&request.headers.get('sec-fetch-site')&&!['same-origin','none'].includes(request.headers.get('sec-fetch-site')))return json(403,{error:'Private desk origin is not permitted'});
   try{
    if(request.method==='GET'&&lifecycleAssets.has(path)&&!['/preview/','/preview.js'].includes(path)){
     const [file,type]=lifecycleAssets.get(path);let body=await readFile(join(assetDirectory,file));
