@@ -1,5 +1,7 @@
 # Controlled research proof
 
+[Disabled owner Google grant](GOOGLE-OAUTH.md) adds owner-only authorization-code start/callback/local disconnect, encrypted separated credentials and serialized server-only tokens for the existing exact-mail caller. Run `node --test pipeline/google-oauth.test.mjs pipeline/exact-mail.test.mjs` from repository root for account-free signature/handler/provider-wire checks. All flags remain unset; no real client, consent, exchange, send, hosted callback or production activation occurred.
+
 [Disabled exact Gmail delivery](GOOGLE-EXACT-MAIL.md) connects current held replies and authored PDF companion packages to a separate signed send approval and the existing lifecycle intent ledger. Run `node --test pipeline/exact-mail.test.mjs` from the repository root for account-free actual-caller/provider-wire checks. No OAuth grant, provider request, production capability or scheduler is enabled.
 
 [Inert shared records](HOSTED-DESK.md#inert-shared-record-source) add a separate, deployment-bound production-record source while execution remains disabled. `node --test pipeline/inert-shared-workspace.test.mjs` from the repository root verifies new synthetic 11 MB records, existing backup/original dependencies, signed owner/friend reads and note edits, CAS failure/reconciliation, disabled routes and local export/restore. No remote import or configuration change is performed by that command.

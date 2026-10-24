@@ -3,6 +3,7 @@ import {check} from './lifecycle.mjs';
 import {replyContent} from './reply-content.mjs';
 
 export const gmailScopes=['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.send'];
+const identityScopes=['openid','https://www.googleapis.com/auth/userinfo.email'];
 export const mailLimits={attachments:20_000_000,mime:28_000_000,response:38_000_000};
 export const byteHash=value=>createHash('sha256').update(value).digest('hex');
 export const mailMessageId=intent=>'<evz.'+byteHash(intent)+'@evzdigital.studio>';
@@ -64,14 +65,14 @@ export function verifySentRaw(message,expected){
  compare(actual,wanted,true);return {message_id:message.id,thread_id:message.threadId,rfc_message_id:expected.message_id,mime_sha256:byteHash(expected.raw),verification:'Exact sender Sent readback; recipient delivery not established'};
 }
 
-// Credentials exist only in this server-owned closure. OAuth consent/storage is a separate task.
+// Credentials exist only in this server-owned closure; the owner grant supplies them.
 export function googleHostedTransport({getAccessToken,fetcher=fetch,account,grantId}={}){
  async function request(path,{method='GET',body,max=120_000}={}){
   check(typeof getAccessToken==='function','New hosted owner OAuth grant is unavailable');
   let token;try{token=await getAccessToken();}catch{throw Error('Hosted Google authorization unavailable; owner reauthorization required');}
-  check(token?.account===account&&token.grant_id===grantId&&typeof token.access_token==='string'&&/^[\x21-\x7e]{10,8192}$/.test(token.access_token)&&token.expires_at>Date.now()+30_000&&Array.isArray(token.scopes)&&gmailScopes.every(s=>token.scopes.includes(s))&&token.scopes.length===gmailScopes.length,'Exact hosted gmail.readonly + gmail.send grant/account required; no broader grant is requested');
+  check(token?.account===account&&token.grant_id===grantId&&typeof token.access_token==='string'&&/^[\x21-\x7e]{10,8192}$/.test(token.access_token)&&token.expires_at>Date.now()+30_000&&Array.isArray(token.scopes)&&new Set(token.scopes).size===token.scopes.length&&gmailScopes.every(s=>token.scopes.includes(s))&&(token.scopes.length===gmailScopes.length||token.scopes.length===4&&identityScopes.every(s=>token.scopes.includes(s))),'Exact hosted gmail.readonly + gmail.send grant/account required; only essential OpenID email identity may accompany it');
   let response;try{response=await fetcher('https://gmail.googleapis.com/gmail/v1/users/me/'+path,{method,headers:{Authorization:'Bearer '+token.access_token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'error',signal:AbortSignal.timeout(25_000)});}catch{throw Error('Gmail response unavailable; never retry an uncertain send');}
-  if(!response.ok){await response.body?.cancel();throw Error(response.status===403?'Gmail 403: exact grant/API or send-as access unavailable; verify required grant without expanding scopes':`Gmail ${response.status}: held; automatic retry disabled`);}
+  if(!response.ok){await response.body?.cancel();if(response.status===401&&typeof getAccessToken.invalidate==='function'){try{await getAccessToken.invalidate(token);}catch{}}throw Error(response.status===403?'Gmail 403: exact grant/API or send-as access unavailable; verify required grant without expanding scopes':`Gmail ${response.status}: held; automatic retry disabled`);}
   check(response.body,'Gmail response incomplete');const reader=response.body.getReader(),chunks=[];let size=0;
   try{for(;;){const {value,done}=await reader.read();if(done)break;size+=value.length;check(size<=max,'Gmail response exceeds bounded read');chunks.push(Buffer.from(value));}}finally{await reader.cancel();}
   try{return JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw Error('Gmail returned invalid JSON; held without retry');}
