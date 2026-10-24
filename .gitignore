@@ -13,6 +13,7 @@ coverage/
 playwright-report/
 test-results/
 pipeline/hosted-assets.mjs
+pipeline/netlify-functions/notification-clock.mjs
 CLAUDE-SECURITY-*/
 *.credentials.json
 *.service-account.json

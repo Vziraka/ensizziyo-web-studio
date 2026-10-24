@@ -1,6 +1,6 @@
 # Controlled research proof
 
-[Internal alerts and team digest](TEAM-NOTIFICATIONS.md) now prepare attributable, source-aware private messages with weekday 9am Eastern timing. UI/API/CLI/local clock are connected; external recipients, delivery and computer-off scheduling remain unconfigured.
+[Internal alerts and team digest](TEAM-NOTIFICATIONS.md) prepare attributable, source-aware private messages with weekday 9am Eastern timing. UI/API/CLI/local clock are connected, with a separately disabled hosted preparation-clock candidate. Default builds declare no schedule; external recipients, delivery and actual computer-off scheduling remain unconfigured.
 
 [Opening selection](OPENINGS.md) binds new discovery choices to exact sources and keeps weak/unsupported cases held while preserving existing research budgets. Actual provider research quality still needs a representative live proof.
 

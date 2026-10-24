@@ -2,6 +2,8 @@
 
 ## Shared operations desk redesign — October 23, 2026
 
+- [x] Add the smallest disabled hosted notification clock candidate, reusing mutation-time alerts and weekday 9am Eastern preparation/CAS. Default builds emit no schedule or storage-capable entry; the future published-context candidate is separately gated and fictional-only. Handler/build tests cover timing/DST, auth/context, concurrency/uncertain writes, routing, stops, privacy and bounds. External recipients/transport, actual scheduler/credit evidence and computer-off delivery remain unfulfilled. [Clock contract](pipeline/TEAM-NOTIFICATIONS.md#disabled-hosted-clock-candidate).
+
 The 49-decision interview and four-phase acceptance criteria live in the owner's private redesign brief. The first local increment is in [draft PR #123](https://github.com/Vziraka/ensizziyo-web-studio/pull/123) on `codex/operations-desk-redesign`; the primary checkout and installed runtime are preserved.
 
 October 24 hosted implementation: an execution-disabled fictional Netlify Functions preview reuses the lifecycle rules, strong conditional shared-state writes, HTTPS operator sessions, CSRF/origin checks and exact event readback/retry. Absent or non-preview configuration fails closed before storage. The SDK and stateless callers pass substituted-boundary tests; [the hosted proof recipe](pipeline/HOSTED-DESK.md) records exact preview-only fields, rollback and size limits. Actual HTTPS owner/friend authentication and shared fictional Blobs read/write passed at `0276568` using sequential logins in one browser. Independent-device/external-friend access, production migration/capacity and computer-off execution remain open.

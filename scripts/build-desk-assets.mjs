@@ -2,6 +2,7 @@ import {readFile,writeFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
 import {lifecycleAssets} from '../pipeline/lifecycle-assets.mjs';
+import {notificationClockEntry} from '../pipeline/notification-clock.mjs';
 
 // Bundle only the explicit UI allowlist; runtime paths change when Netlify packages functions.
 export async function deskAssets(){
@@ -13,5 +14,6 @@ export async function deskAssets(){
   return assets;
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
+  await writeFile(new URL('../pipeline/netlify-functions/notification-clock.mjs',import.meta.url),notificationClockEntry(process.env));
   await writeFile(new URL('../pipeline/hosted-assets.mjs',import.meta.url),`// Generated from the UI allowlist; no private state or environment values.\nexport default ${JSON.stringify(await deskAssets())};\n`);
 }
