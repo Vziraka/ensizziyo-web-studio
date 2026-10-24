@@ -1,5 +1,5 @@
 import {validateProjectBinding} from './shared-project-continuation.mjs';
-import {refinementCapability,refinementWorkerPath,generateRefinement,executeRefinement,verifyRefinementDispatch,refinementStatus,authorizeRefinement,pauseRefinement,continueRefinementRender} from './refinement-generation.mjs';
+import {refinementCapability,refinementWorkerPath,generateRefinement,executeRefinement,verifyRefinementDispatch,refinementStatus,authorizeRefinement,pauseRefinement,continueRefinementRender,refinementRuntimeEnabled,refinementPolicyProjection,refinementStatusText} from './refinement-generation.mjs';
 import {blobProjectOriginalStore,reserveSharedOriginal,uploadSharedOriginalChunk,completeSharedOriginal,sharedOriginalManifest,readSharedOriginalChunk,originalChunkRequest,originalDigest} from './shared-project-originals.mjs';
 import {validateInertBinding} from './inert-shared-workspace.mjs';
 import {validateManualBinding} from './shared-manual-records.mjs';
@@ -94,7 +94,7 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    }
    if(request.method==='GET'&&lifecycleAssets.has(path)&&!['/preview/','/preview.js'].includes(path)){
     const [file,type]=lifecycleAssets.get(path);let body=readAsset?await readAsset(file):await readFile(join(assetDirectory,file));
-    if(type==='text/html')body=body.toString().replace('<html lang="en">','<html lang="en" data-base="/desk">').replaceAll('href="/','href="/desk/').replaceAll('src="/','src="/desk/').replace('Private on this computer',(settings.inertBinding||settings.manualBinding||settings.projectBinding)?'Private shared workspace · execution disabled':'Private shared fictional preview');
+    if(type==='text/html')body=body.toString().replace('<html lang="en">','<html lang="en" data-base="/desk">').replaceAll('href="/','href="/desk/').replaceAll('src="/','src="/desk/').replace('Private on this computer',settings.projectBinding?.scope.capability===refinementCapability?'Private shared workspace · bounded refinement requires an exact grant and enabled runtime':(settings.inertBinding||settings.manualBinding||settings.projectBinding)?'Private shared workspace · execution disabled':'Private shared fictional preview');
     if(type==='text/css')body=body.toString().replaceAll('url(/assets/','url(/desk/assets/');
     return new Response(body,{headers:{...headers,'Content-Type':type+(type.startsWith('text/')?'; charset=utf-8':'')}});
    }
@@ -120,7 +120,7 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    }
    if(settings.projectBinding){
     const reads=request.method==='GET'&&(path==='/api/state'||path==='/api/project-resolve'||/^\/api\/project-context\//.test(path)||/^\/api\/events\//.test(path)||/^\/retained-source\//.test(path)||/^\/follow-up(?:-draft|-history)?\//.test(path)||/^\/api\/project-original\//.test(path));
-    if(!reads&&!(post&&path==='/api/event')&&!path.startsWith('/api/project-author/'))return json(409,{error:'Shared project supports saved context, signed design feedback and interactive authoring only; provider execution is disabled'});
+    if(!reads&&!(post&&path==='/api/event')&&!path.startsWith('/api/project-author/'))return json(409,{error:settings.projectBinding.scope.capability===refinementCapability?'Shared refinement permits exact bounded source generation and saved project authoring only; contact and sending remain disabled':'Shared project supports saved context, signed design feedback and interactive authoring only; provider execution is disabled'});
    }
    if(settings.inertBinding||settings.manualBinding){
     const reads=request.method==='GET'&&(path==='/api/state'||path==='/api/project-resolve'||/^\/api\/project-context\//.test(path)||/^\/api\/events\//.test(path)||/^\/retained-source\//.test(path)||/^\/follow-up(?:-draft|-history)?\//.test(path)||/^\/api\/project-original\//.test(path));
@@ -188,7 +188,9 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
     const asOf=url.searchParams.get('as_of')??now().toISOString(),age=+now()-Date.parse(asOf);
     check(Number.isFinite(age)&&age>=0&&age<=300_000,'Desk snapshot expired; refresh to load the current workspace');
     app.now=()=>new Date(asOf);
-    return json(200,deskSnapshotPage({...projectDashboard(await app.dashboard()),csrf,current_operator:actor,operator_auth_enabled:true,workers:[],hosted_preview:true},url.searchParams));
+    const dashboard=await app.dashboard();
+    if(dashboard.shared_workspace?.generation){dashboard.shared_workspace.generation=refinementPolicyProjection(settings.projectBinding,dashboard,now());dashboard.shared_workspace.generation.runtime=await refinementRuntimeEnabled(env)?'Enabled':'Disabled';dashboard.shared_workspace.execution=refinementStatusText(dashboard.shared_workspace.generation);}
+    return json(200,deskSnapshotPage({...projectDashboard(dashboard),csrf,current_operator:actor,operator_auth_enabled:true,workers:[],hosted_preview:true},url.searchParams));
    }
    if(request.method==='GET'&&/^\/api\/events\/[a-zA-Z0-9_-]{1,100}$/.test(path)){const id=path.split('/').at(-1),state=await app.snapshot(),event=state.events[id];return json(200,{found:Boolean(event),id,...(event?{actor:event.actor,fingerprint:event.fingerprint,at:event.at}:{}),revision:state.revision});}
    if(request.method==='GET'&&/^\/follow-up(?:-draft|-history)?\/[a-zA-Z0-9_-]{1,100}\/[a-zA-Z0-9_-]{1,100}$/.test(path)){

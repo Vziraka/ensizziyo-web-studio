@@ -118,6 +118,16 @@ export async function validateGenerationTransition(app,c){
 function validateRaw(a,p){const r=a.raw,u=r.usage;check(!r.truncated&&r.text_bytes===Buffer.byteLength(r.text)&&r.text_sha256===hash(r.text)&&r.model===p.model&&r.catalog.sha256===p.catalog_sha256&&r.candidates===1&&r.finish==='STOP','Unexpected model/catalog or incomplete response');check(u&&Number.isSafeInteger(u.promptTokenCount)&&u.promptTokenCount===a.phases.count.tokens&&u.promptTokenCount>0&&u.promptTokenCount<=p.maximum_input_tokens&&Number.isSafeInteger(u.candidatesTokenCount)&&u.candidatesTokenCount>0&&u.candidatesTokenCount<=p.maximum_output_tokens&&[null,0].includes(u.thoughtsTokenCount)&&[null,0].includes(u.toolUsePromptTokenCount),'Missing/mismatched usage or token caps');}
 async function transition(app,type,input,actor,details={},expectedRevision){const state=await app.snapshot(),command={type,input,actor,revision:expectedRevision??state.revision,details,binding:structuredClone(app.store.projectBinding)};await validateGenerationTransition(app,command);const at=app.now();return app.change(s=>applyGenerationTransition(s,command,app.config,at),{projectGeneration:command});}
 const enabled=async env=>env.EVZ_OPERATIONS_DESK_ENABLED===refinementCapability&&env.EVZ_OPERATIONS_PROJECT_AUTHORING==='shared-project-node-v1'&&env.EVZ_REFINEMENT_GENERATION_ENABLED===refinementCapability&&(await import('./gateway-proof.mjs')).gatewayCapability(env).ready;
+export {enabled as refinementRuntimeEnabled};
+export function refinementPolicyProjection(binding,state,now){
+ const grant=state.refinement_generation_policy;
+ let policy='Unapproved';
+ if(grant?.approved_by==='owner'&&grant.policy_sha256===binding.scope.policy_sha256){
+  policy=grant.binding_sha256!==hash(binding)?'Held: binding changed':grant.paused_at?'Paused':Date.parse(grant.expires_at)>+now?'Authorized':'Expired';
+ }
+ return {policy,runtime:'Not checked'};
+}
+export function refinementStatusText(status){return `Bounded refinement source generation · policy grant: ${status.policy} · runtime flags: ${status.runtime}. Each job still requires exact source, assignment and finite limits. Contact and sending remain disabled; generated PDFs require actual raster and human semantic/design review.`;}
 export async function refinementStatus(app,input,actor){capability(app);exact(input,['job_id']);check(['owner','friend'].includes(actor),'Signed operator required');const s=await app.snapshot(),job=registeredAuthoring(s,input.job_id);return {revision:s.revision,policy:proposedRefinementPolicy,approval:s.refinement_generation_policy??null,attempt:s.ai_attempts[attemptID(input.job_id)]??null,authoring:job,next:'Rendered source requires actual PDF rasters and human semantic/design review; no automatic completion'};}
 export async function authorizeRefinement(app,input,actor,{env=process.env,catalogRequest=fetch}={}){check(await enabled(env)&&actor==='owner','Only the signed owner may authorize enabled refinement generation');const p=capability(app);exact(input,['policy_sha256','remaining_credits','observed_at','auto_recharge_disabled']);const catalog=await (await import('./gateway-proof.mjs')).liveCatalog(catalogRequest,p);return transition(app,'authorize',input,actor,{catalog});}
 export async function pauseRefinement(app,input,actor){capability(app);return transition(app,'pause',input,actor);}

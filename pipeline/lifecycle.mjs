@@ -723,7 +723,7 @@ export class StudioLifecycle {
     const {discoverySummary,discoveryCampaignSummary,discoveryDailySummary}=await import('./discovery-batches.mjs');
     this.config = await this.loadConfig();
     const state = await this.snapshot(), today = businessDate(this.now());
-    if(this.store?.projectBinding)state.shared_workspace=sharedProjectDashboard(this.store.projectBinding,state);
+    if(this.store?.projectBinding)state.shared_workspace=sharedProjectDashboard(this.store.projectBinding,state,this.now());
     if(this.store?.inertBinding)state.shared_workspace={capability:'inert-shared-v1',workspace_id:this.store.inertBinding.scope.workspace_id,manifest_sha256:this.store.inertBinding.manifest_sha256,allowed_edits:['note_added'],reconciliation:inertReconciliation(state),unsupported:['hosted-authoring-sidecars','hosted-backup','provider-execution']};
     if(this.store?.manualBinding)state.shared_workspace={capability:'shared-manual-records-v1',workspace_id:this.store.manualBinding.scope.workspace_id,manifest_sha256:this.store.manualBinding.manifest_sha256,allowed_edits:manualRecordEvents,reconciliation:inertReconciliation(state),execution:'disabled',external_suppression:'unverified',unsupported:['hosted-authoring-sidecars','hosted-backup','provider-execution']};
     let supplementalReviews = null, supplementalHold;

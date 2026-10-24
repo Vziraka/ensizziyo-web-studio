@@ -4,9 +4,10 @@ import {fixture,at,event} from './fixtures/refinement-generation.mjs';
 import {hash,StudioLifecycle} from './lifecycle.mjs';
 import {review,substitutedPNG,fictionalBlobs} from './fixtures/hosted-authoring.mjs';
 import {readLifecycleBackup} from './lifecycle-backup.mjs';
-import {prepareProjectWorkspace,installProjectWorkspace} from './shared-project-continuation.mjs';
+import {prepareProjectWorkspace,installProjectWorkspace,sharedProjectDashboard} from './shared-project-continuation.mjs';
 import {ConditionalLifecycleStore} from './lifecycle-store.mjs';
 import {attachHostedAuthoring} from './hosted-authoring.mjs';
+import {sharedDeskSession} from './shared-originals-client.mjs';
 import {refinementStatus,refinementRequest,verifyRefinementDispatch} from './refinement-generation.mjs';
 
 test('both actual signed roles generate through injected provider only to a real Node PDF, then separate review preserves baseline and exact held attachment',async t=>{
@@ -69,4 +70,16 @@ test('expired inference allowance does not require new spending to review an alr
 
 test('fresh authority reads reject stop, reassignment, reply, feedback, baseline and editable-source changes before count',async t=>{
  for(const change of ['stop','assignment','reply','feedback','baseline','editable-source']){const f=await fixture(t);await f.authorize();const entry=await f.storage.raw.getWithMetadata('workspace',{type:'json',consistency:'strong'}),r=entry.data.state.prospects['shared-proof'];if(change==='stop')r.restriction={kind:'dnc',source:'Fictional trusted stop change'};if(change==='assignment')r.follow_up_owner='friend';if(change==='reply')r.reply.body='Changed fictional reply';if(change==='feedback')r.project_work[f.job.work_id].request.feedback='Change the complete layout';if(change==='baseline')entry.data.state.asset_index[f.seed.id].baseline_version=null;if(change==='editable-source')delete entry.data.state.asset_index[f.seed.id].versions[f.seed.id].provenance.source_reference;await f.storage.raw.setJSON('workspace',entry.data,{onlyIfMatch:entry.etag});await assert.rejects(f.generate(),/context|assignment|changed/);assert.equal(f.counts.count,0,change);}
+});
+
+test('status distinguishes grant and runtime readiness without widening the old project profile or dispatching work',async t=>{
+ let time=Date.parse(at);const f=await fixture(t,{clock:()=>new Date(time)}),session=await f.signed('owner');
+ const projection=async()=>{const view=await session.json('/api/state');return view.shared_workspace;};
+ const unapproved=await projection();assert.deepEqual(unapproved.generation,{policy:'Unapproved',runtime:'Enabled'});assert.match(unapproved.execution,/policy grant: Unapproved/);assert.doesNotMatch(unapproved.execution,/External execution disabled|interactive Node authoring only/);assert.ok(unapproved.unsupported.includes('sending'));assert.ok(!unapproved.unsupported.includes('provider-execution'));
+ const landing=await f.make()(new Request('https://preview.example.invalid/desk/'));assert.match(await landing.text(),/bounded refinement requires an exact grant and enabled runtime/);
+ await f.authorize();const active=await projection();assert.deepEqual(active.generation,{policy:'Authorized',runtime:'Enabled'});assert.match(active.execution,/Contact and sending remain disabled/);assert.match(active.execution,/actual raster and human semantic\/design review/);
+ const disabledHandler=f.make({EVZ_REFINEMENT_GENERATION_ENABLED:undefined}),disabledSession=await sharedDeskSession({origin:'https://preview.example.invalid',key:f.env.EVZ_OPERATIONS_OWNER_KEY,fetcher:(url,options)=>disabledHandler(new Request(url,options))});assert.deepEqual((await disabledSession.json('/api/state')).shared_workspace.generation,{policy:'Authorized',runtime:'Disabled'});
+ const local=await f.app.dashboard();assert.deepEqual(local.shared_workspace.generation,{policy:'Authorized',runtime:'Not checked'});
+ const old=sharedProjectDashboard(f.original.packet.binding,await f.original.app.snapshot(),new Date(at));assert.equal(old.execution,'External execution disabled; interactive Node authoring only');assert.deepEqual(old.unsupported,['provider-execution','unattended-authoring']);assert.equal(old.generation,undefined);
+ time+=16*60000;assert.equal((await projection()).generation.policy,'Expired');assert.equal((await session.json('/api/state?as_of=2026-10-24T21:14:00.000Z')).shared_workspace.generation.policy,'Expired');await f.caller.pauseGeneration(hash(f.policy));assert.equal((await projection()).generation.policy,'Paused');assert.deepEqual(f.counts,{count:0,generation:0,dispatch:0});
 });

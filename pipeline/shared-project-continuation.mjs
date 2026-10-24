@@ -6,7 +6,7 @@ import {blobAuthoringStore,attachHostedAuthoring} from './hosted-authoring.mjs';
 import {blobAudioStore} from './call-audio.mjs';
 import {applyAuthoringTransition,validateAuthoringTransition} from './project-authoring.mjs';
 import {validateAuthoringRecovery} from './authoring-recovery.mjs';
-import {refinementCapability,validateRefinementPolicy,applyGenerationTransition,validateGenerationTransition,reconcileGeneration,validateGenerationAuthoring} from './refinement-generation.mjs';
+import {refinementCapability,validateRefinementPolicy,applyGenerationTransition,validateGenerationTransition,reconcileGeneration,validateGenerationAuthoring,refinementPolicyProjection,refinementStatusText} from './refinement-generation.mjs';
 
 export const supportsProjectAuthoring=app=>Boolean(app.store?.projectBinding&&['shared-project-continuation-v1',refinementCapability].includes(app.config.shared_capability));
 
@@ -93,4 +93,8 @@ export async function validateProjectChange(before,after,options,raw){
  }
  check(hash(expected)===hash(after.state),'Shared project edit changed protected records, budgets, approvals, history or execution evidence');
 }
-export function sharedProjectDashboard(binding,state){return {capability:binding.scope.capability,workspace_id:binding.scope.workspace_id,manifest_sha256:binding.manifest_sha256,allowed_edits:sharedProjectEvents,reconciliation:inertReconciliation(state),execution:'External execution disabled; interactive Node authoring only',unsupported:['provider-execution','unattended-authoring']};}
+export function sharedProjectDashboard(binding,state,now=new Date()){
+ const view={capability:binding.scope.capability,workspace_id:binding.scope.workspace_id,manifest_sha256:binding.manifest_sha256,allowed_edits:sharedProjectEvents,reconciliation:inertReconciliation(state),execution:'External execution disabled; interactive Node authoring only',unsupported:['provider-execution','unattended-authoring']};
+ if(binding.scope.capability===refinementCapability){view.generation=refinementPolicyProjection(binding,state,now);view.execution=refinementStatusText(view.generation);view.unsupported=['general-provider-execution','automatic-design-review','new-concept-exploration','contact-execution','sending'];}
+ return view;
+}
