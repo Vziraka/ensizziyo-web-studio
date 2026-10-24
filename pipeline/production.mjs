@@ -167,10 +167,13 @@ async function stageProspect(app, prospectId) {
     app.config = c;
   });
 }
-export async function queueMeeting(app, input) {
-  const path = join(app.directory, 'lifecycle-config.json');
-  return app.change(async state => {
-    const c = await readJson(path);
+export const bookingContext = r => hash({contact:r.contact,reply:r.reply??null,discovery:r.discovery??null,calls:r.calls,owner:r.follow_up_owner??null});
+export async function queueMeeting(app, input, {actor='owner',hostedCalendar=false,configFingerprint,calendarPolicy}={}) {
+  const path = app.store?null:join(app.directory, 'lifecycle-config.json');
+  return app.change(async (state,sharedConfig) => {
+    const c = sharedConfig??await readJson(path);
+    check(!app.store?.inertBinding,'D2 notes-only authority rejects booking');
+    if(hostedCalendar)check(app.store&&c.mode==='controlled'&&['owner','friend'].includes(actor)&&input.revision===state.revision,'Hosted booking requires a current signed fictional confirmation');
     if(c.mode==='production') requireBookingRelease(c);
     const r = state.prospects[input.prospect_id];
     check(r && !r.restriction && ['Discovery', 'Information requested'].includes(r.stage), 'Review the owner conversation before scheduling');
@@ -182,17 +185,23 @@ export async function queueMeeting(app, input) {
     const key = `meeting-${hash({ prospect_id: r.id, start: input.start, end: input.end, attendee: input.attendee_email }).slice(0, 32)}`;
     check(!r.meeting||r.meeting.event_id===key,'A meeting already exists; reconcile or reschedule that event instead of creating another');
     check(!Object.entries(c.operations?.bookings??{}).some(([id,b])=>b.prospect_id===r.id&&id!==key),'An invitation is already reserved for this business; review it before choosing another slot');
-    if(c.mode==='controlled') {r.meeting={event_id:key,start:input.start,end:input.end,mode:input.mode??'video',reference:`fixture:${key}`,current_status:'Simulated',verified_at:app.now().toISOString()};state.revision++;return {simulated:true,booked:false,booking_id:key};}
+    if(c.mode==='controlled'&&!hostedCalendar) {r.meeting={event_id:key,start:input.start,end:input.end,mode:input.mode??'video',reference:`fixture:${key}`,current_status:'Simulated',verified_at:app.now().toISOString()};state.revision++;return {simulated:true,booked:false,booking_id:key};}
     const booking = { prospect_id: r.id, attendee_email: input.attendee_email, start: input.start, end: input.end, title: input.title, description: input.description,
-      ...(input.mode?{mode:input.mode}:{}), ...(input.recipient_confirmed === true ? { recipient_confirmed: true } : {}), approved: true, approval_ref: `owner-console:${key}` };
+      ...(input.mode?{mode:input.mode}:{}), ...(input.recipient_confirmed === true ? { recipient_confirmed: true } : {}), approved: true, approval_ref: `owner-console:${key}`,
+      ...(hostedCalendar?{mode:input.mode??'video',location:input.location??'',timezone:'America/New_York',approved_by:actor,source_sha256:bookingContext(r),policy_sha256:calendarPolicy,confirmation_event:key+'-confirmed',transport:'google-calendar-v1'}:{}) };
+    if(hostedCalendar){
+      check(r.controlled&&r.contact?.verified&&input.attendee_email.endsWith('@example.invalid')&&(!r.follow_up_owner||r.follow_up_owner===actor),'Exact current fictional contact and conversation owner required');
+      check(!Object.entries(c.operations?.bookings??{}).some(([id,b])=>id!==key&&Date.parse(b.start)<Date.parse(input.end)+c.calendar.buffer_minutes*60000&&Date.parse(b.end)>Date.parse(input.start)-c.calendar.buffer_minutes*60000),'Another invitation already reserves this slot or buffer');
+    }
     check(!c.operations.bookings[key] || hash(c.operations.bookings[key]) === hash(booking), 'An existing slot changed; preserve its reservation');
     c.operations.bookings[key] ??= booking;
-    await saveJson(path, c); app.config = c;
+    if(hostedCalendar)state.events[booking.confirmation_event]??={id:booking.confirmation_event,type:'meeting_queued',prospect_id:r.id,actor,at:app.now().toISOString(),data:{booking_id:key,booking_sha256:hash(booking)}};
+    if(path)await saveJson(path, c); app.config = c;
     if (state.operations?.cycle) { state.operations.cycle.completed_bookings = state.operations.cycle.completed_bookings.filter(id => id !== key); delete state.operations.cycle.completed_at; }
     state.runtime = { ...state.runtime, wake_requested: true };
     state.revision++; state.updated_at=app.now().toISOString();
     return { queued: true, booking_id: key, booked: false };
-  });
+  },configFingerprint?{configFingerprint}:undefined);
 }
 export async function pauseStudio(app) {
   const c = await app.change(async state => {

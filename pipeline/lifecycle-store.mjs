@@ -29,7 +29,7 @@ export class ConditionalLifecycleStore {
     const {data,etag}=await this.envelope(),before=JSON.stringify(data);
     if(options.configFingerprint)check(hash(data.config)===options.configFingerprint,'Incoming configuration changed during read; no cursor or effects committed');
     if(this.inertBinding)check(options.inertNote,'Inert storage rejects worker and provider mutations');
-    const result=await fn(data.state);this.validate(data);
+    const result=await fn(data.state,data.config);this.validate(data);
     if(this.inertBinding)validateInertChange(JSON.parse(before).state,data.state,options);
     if(JSON.stringify(data)===before)return result;
     let modified,uncertain=false;

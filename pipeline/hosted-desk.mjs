@@ -15,6 +15,8 @@ import {exactMailPackage,approveExactMail,dispatchExactMail,reconcileExactMail} 
 import {createGoogleOAuth,googleOAuthPath,googleOAuthCallbackHTML,googleOAuthCallbackJS} from './google-oauth.mjs';
 import {readDriveOriginalStep} from './google-drive-originals.mjs';
 import {driveOAuthProfile,driveOAuthPath,driveOAuthCallbackHTML,driveOAuthCallbackJS} from './google-oauth.mjs';
+import {calendarOAuthProfile,calendarOAuthPath,calendarOAuthCallbackHTML,calendarOAuthCallbackJS} from './google-oauth.mjs';
+import {calendarAvailability,queueGoogleMeeting,dispatchGoogleMeeting,reconcileGoogleMeeting} from './google-calendar.mjs';
 import {syncIncomingMail,incomingMailView} from './google-incoming-mail.mjs';
 
 const base='/desk',csrfCookie='evz_desk_csrf',maxBody=120_000;
@@ -52,21 +54,23 @@ export function projectDashboard(view){
  delete view.ai_attempts;delete view.transcript_assessment;delete view.gateway_proof;delete view.gateway_proof_reviews;delete view.call_transcription_rehearsal;delete view.full_call_transcription;return projectSourceBodies(view);
 }
 
-export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=()=>new Date(),assetDirectory=fileURLToPath(new URL('./lifecycle-ui/',import.meta.url)),readAsset=null,gatewayOptions={},googleMailOptions={},googleIncomingOptions={},googleOAuthOptions={},googleDriveOptions={},backgroundOnly=false}={}){
+export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=()=>new Date(),assetDirectory=fileURLToPath(new URL('./lifecycle-ui/',import.meta.url)),readAsset=null,gatewayOptions={},googleMailOptions={},googleIncomingOptions={},googleOAuthOptions={},googleDriveOptions={},googleCalendarOptions={},backgroundOnly=false}={}){
  return async request=>{
   let settings;try{settings=configured(env,now);}catch{return json(503,{error:'Private desk is not configured'});}
   const url=new URL(request.url),path=url.pathname.slice(base.length)||'/';
   const workerPath=backgroundOnly===true?fullCallWorkerPath:backgroundOnly;
   if(workerPath&&(url.pathname!==workerPath||request.method!=='POST')||!workerPath&&[fullCallWorkerPath,assessmentWorkerPath].includes(url.pathname))return json(409,{error:'Use the protected background entry and read its durable receipt'});
-  const driveOAuth=url.pathname.startsWith(driveOAuthPath+'/')||path==='/google-drive-oauth-callback.js',oauthPath=driveOAuth?driveOAuthPath:googleOAuthPath;
+  const calendarOAuth=url.pathname.startsWith(calendarOAuthPath+'/')||path==='/google-calendar-oauth-callback.js';
+  const selectedProfile=calendarOAuth?{profile:calendarOAuthProfile}:{};
+  const driveOAuth=url.pathname.startsWith(driveOAuthPath+'/')||path==='/google-drive-oauth-callback.js',oauthPath=driveOAuth?driveOAuthPath:calendarOAuth?calendarOAuthPath:googleOAuthPath;
   const oauthLanding=request.method==='GET'&&url.pathname===oauthPath+'/callback';
   const publicNavigation=request.method==='GET'&&(path==='/'||oauthLanding)&&request.headers.get('sec-fetch-mode')==='navigate'&&request.headers.get('sec-fetch-dest')==='document';
   if(url.origin!==settings.origin||url.pathname!==base&&!url.pathname.startsWith(base+'/')||request.headers.get('origin')&&request.headers.get('origin')!==settings.origin||!publicNavigation&&request.headers.get('sec-fetch-site')&&!['same-origin','none'].includes(request.headers.get('sec-fetch-site')))return json(403,{error:'Private desk origin is not permitted'});
   try{
-   if(oauthLanding||request.method==='GET'&&['/google-oauth-callback.js','/google-drive-oauth-callback.js'].includes(path)){
-    createGoogleOAuth({...googleOAuthOptions,env,now:()=>+now(),...(driveOAuth?{profile:driveOAuthProfile}:{})});
+   if(oauthLanding||request.method==='GET'&&['/google-oauth-callback.js','/google-drive-oauth-callback.js','/google-calendar-oauth-callback.js'].includes(path)){
+    createGoogleOAuth({...googleOAuthOptions,env,now:()=>+now(),...(driveOAuth?{profile:driveOAuthProfile}:selectedProfile)});
     check(url.href.length<=8192,'Google callback exceeds bounds');
-    return new Response(oauthLanding?(driveOAuth?driveOAuthCallbackHTML:googleOAuthCallbackHTML):(driveOAuth?driveOAuthCallbackJS:googleOAuthCallbackJS),{headers:{...headers,'Content-Type':oauthLanding?'text/html; charset=utf-8':'text/javascript; charset=utf-8'}});
+    return new Response(oauthLanding?(driveOAuth?driveOAuthCallbackHTML:calendarOAuth?calendarOAuthCallbackHTML:googleOAuthCallbackHTML):(driveOAuth?driveOAuthCallbackJS:calendarOAuth?calendarOAuthCallbackJS:googleOAuthCallbackJS),{headers:{...headers,'Content-Type':oauthLanding?'text/html; charset=utf-8':'text/javascript; charset=utf-8'}});
    }
    if(request.method==='GET'&&lifecycleAssets.has(path)&&!['/preview/','/preview.js'].includes(path)){
     const [file,type]=lifecycleAssets.get(path);let body=readAsset?await readAsset(file):await readFile(join(assetDirectory,file));
@@ -83,10 +87,10 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    if(post&&path==='/api/login'){const input=await inputBody(request),actor=settings.auth.authenticate(input.key);return actor?json(200,{operator:actor},{'Set-Cookie':settings.auth.cookie(settings.auth.issue(actor),{secure:true})}):json(401,{error:'The operator key was not recognized'});}
    const actor=settings.auth.actorFromCookie(request.headers.get('cookie'));if(!actor)return json(401,{error:'Sign in with your individual operator key'});
    if(post&&path==='/api/logout')return json(200,{signed_out:true},{'Set-Cookie':settings.auth.cookie('',{secure:true,clear:true})});
-   if(path.startsWith('/api/google-oauth/')||path.startsWith('/api/google-drive-oauth/')){
-    const connectionPath=driveOAuth?'/api/google-drive-oauth':'/api/google-oauth',connectionEnabled=driveOAuth?env.EVZ_OPERATIONS_GOOGLE_DRIVE_OAUTH==='owner-drive-code-v1':env.EVZ_OPERATIONS_GOOGLE_OAUTH==='owner-code-v1';
+   if(path.startsWith('/api/google-oauth/')||path.startsWith('/api/google-drive-oauth/')||path.startsWith('/api/google-calendar-oauth/')){
+    const connectionPath=driveOAuth?'/api/google-drive-oauth':calendarOAuth?'/api/google-calendar-oauth':'/api/google-oauth',connectionEnabled=driveOAuth?env.EVZ_OPERATIONS_GOOGLE_DRIVE_OAUTH==='owner-drive-code-v1':calendarOAuth?env.EVZ_OPERATIONS_GOOGLE_CALENDAR_OAUTH==='owner-calendar-code-v1':env.EVZ_OPERATIONS_GOOGLE_OAUTH==='owner-code-v1';
     if(request.method==='GET'&&path===connectionPath+'/status'&&!connectionEnabled)return json(200,{enabled:false,status:'Disabled',scopes:[]});
-    const oauth=createGoogleOAuth({...googleOAuthOptions,env,now:()=>+now(),...(driveOAuth?{profile:driveOAuthProfile}:{})}),session=cookieValue(request.headers.get('cookie'),'evz_operator_session');
+    const oauth=createGoogleOAuth({...googleOAuthOptions,env,now:()=>+now(),...(driveOAuth?{profile:driveOAuthProfile}:selectedProfile)}),session=cookieValue(request.headers.get('cookie'),'evz_operator_session');
     if(request.method==='GET'&&path===connectionPath+'/status')return json(200,await oauth.status());
     check(actor==='owner','Only the signed owner can manage Google authorization');
     if(post&&path===connectionPath+'/start'){await inputBody(request);return json(200,await oauth.start(actor,session));}
@@ -167,6 +171,17 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
     if(path==='/api/exact-mail/approve')return json(200,await approveExactMail(app,input,actor));
     if(path==='/api/exact-mail/dispatch')return json(200,await dispatchExactMail(app,input,options));
     if(path==='/api/exact-mail/reconcile')return json(200,await reconcileExactMail(app,input,options));
+   }
+   if(path.startsWith('/api/calendar/')){
+    check(env.EVZ_OPERATIONS_GOOGLE_CALENDAR==='fictional-calendar-v1','Hosted Calendar is disabled');
+    const options={...googleCalendarOptions,actor,env};
+    if(!options.getAccessToken)options.getAccessToken=createGoogleOAuth({...googleOAuthOptions,env,now:()=>+now(),profile:calendarOAuthProfile,grantId:app.config.google_calendar?.grant_id}).getAccessToken;
+    if(request.method==='GET'&&path==='/api/calendar/availability')return json(200,await calendarAvailability(app,options));
+    if(post){const input=await inputBody(request);
+     if(path==='/api/calendar/queue')return json(200,await queueGoogleMeeting(app,input,options));
+     if(path==='/api/calendar/dispatch')return json(200,await dispatchGoogleMeeting(app,input,options));
+     if(path==='/api/calendar/reconcile')return json(200,await reconcileGoogleMeeting(app,input,options));
+    }
    }
    if(post&&path==='/api/pause'){const proof=await pauseGatewayProof(app,actor),recording=await pauseCallTranscription(app,actor),full=await pauseFullCall(app,actor),assessment=await pauseAssessment(app,actor);return json(200,{paused:true,...proof,...recording,...full,...assessment,in_flight_may_complete:proof.in_flight_may_complete||recording.in_flight_may_complete||full.in_flight_may_complete||assessment.in_flight_may_complete||false,reason:'Operational execution stays disabled; further finite Gateway jobs are paused'});}
    return json(409,{error:'This action needs a connected execution or file service; it is disabled in the fictional shared preview'});

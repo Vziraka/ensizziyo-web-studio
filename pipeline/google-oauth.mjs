@@ -7,6 +7,10 @@ export const googleOAuthPath='/desk/api/google-oauth';
 export const driveOAuthProfile='drive-originals-readonly-v1';
 export const driveOAuthPath='/desk/api/google-drive-oauth';
 export const driveOAuthScopes=['openid','https://www.googleapis.com/auth/userinfo.email','https://www.googleapis.com/auth/drive.readonly'];
+export const calendarOAuthProfile='calendar-booking-v1';
+export const calendarOAuthPath='/desk/api/google-calendar-oauth';
+export const calendarOAuthScopes=['openid','https://www.googleapis.com/auth/userinfo.email',...['calendar.freebusy','calendar.events.owned','calendar.calendars.readonly'].map(s=>'https://www.googleapis.com/auth/'+s)];
+const scopesFor=profile=>profile===driveOAuthProfile?driveOAuthScopes:profile===calendarOAuthProfile?calendarOAuthScopes:googleOAuthScopes;
 export const googleOAuthScopes=['openid','https://www.googleapis.com/auth/userinfo.email',...gmailScopes];
 const digest=value=>createHash('sha256').update(value).digest('base64url');
 const opaque=()=>randomBytes(32).toString('base64url');
@@ -14,36 +18,37 @@ const safeToken=value=>typeof value==='string'&&/^[\x21-\x7e]{10,8192}$/.test(va
 const short=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(value);
 const unavailable=()=>Error('Google connection unavailable; owner reauthorization required');
 export function normalizedGoogleScopes(value,profile){
- const expected=profile===driveOAuthProfile?driveOAuthScopes:googleOAuthScopes;
+ const expected=scopesFor(profile);
  check(typeof value==='string'&&value.length<2048,'Exact Google scopes required');
  const scopes=[...new Set(value.trim().split(/\s+/).map(s=>s==='email'?'https://www.googleapis.com/auth/userinfo.email':s))];
- check(scopes.length===expected.length&&expected.every(s=>scopes.includes(s)),profile===driveOAuthProfile?'Exact Google identity and Drive read-only scopes required':'Exact Google identity and Gmail scopes required');
+ check(scopes.length===expected.length&&expected.every(s=>scopes.includes(s)),profile===driveOAuthProfile?'Exact Google identity and Drive read-only scopes required':profile===calendarOAuthProfile?'Exact Google identity and Calendar scopes required':'Exact Google identity and Gmail scopes required');
  return [...expected];
 }
 function configuration(env,profile){
- check(profile===undefined||profile===driveOAuthProfile,'Unsupported Google grant profile');
- const drive=profile===driveOAuthProfile;
+ check(profile===undefined||profile===driveOAuthProfile||profile===calendarOAuthProfile,'Unsupported Google grant profile');
+ const drive=profile===driveOAuthProfile,calendar=profile===calendarOAuthProfile;
  const originalEnv=env;
- if(drive){
-  check(env.EVZ_OPERATIONS_GOOGLE_DRIVE_OAUTH==='owner-drive-code-v1','Drive owner connection is disabled');
-  env={...env,EVZ_OPERATIONS_GOOGLE_OAUTH:'owner-code-v1',...Object.fromEntries(['OAUTH_BINDING','CREDENTIAL_NAMESPACE','CREDENTIAL_KEY_ID','CREDENTIAL_KEY','CLIENT_SECRET'].map(k=>['EVZ_GOOGLE_'+k,env['EVZ_DRIVE_'+k]]))};
+ if(drive||calendar){
+  check(calendar?env.EVZ_OPERATIONS_GOOGLE_CALENDAR_OAUTH==='owner-calendar-code-v1':env.EVZ_OPERATIONS_GOOGLE_DRIVE_OAUTH==='owner-drive-code-v1',calendar?'Calendar owner connection is disabled':'Drive owner connection is disabled');
+  env={...env,EVZ_OPERATIONS_GOOGLE_OAUTH:'owner-code-v1',...Object.fromEntries(['OAUTH_BINDING','CREDENTIAL_NAMESPACE','CREDENTIAL_KEY_ID','CREDENTIAL_KEY','CLIENT_SECRET'].map(k=>['EVZ_GOOGLE_'+k,env[(calendar?'EVZ_CALENDAR_':'EVZ_DRIVE_')+k]]))};
  }
  check(env.EVZ_OPERATIONS_GOOGLE_OAUTH==='owner-code-v1','Google owner connection is disabled');
  let binding;try{binding=JSON.parse(env.EVZ_GOOGLE_OAUTH_BINDING);}catch{throw unavailable();}
  const origin=new URL(binding.origin);
  check(env.CONTEXT==='deploy-preview'&&env.EVZ_OPERATIONS_DESK_ENABLED==='fictional-preview'&&origin.protocol==='https:'&&origin.origin===binding.origin&&origin.origin===env.EVZ_OPERATIONS_ORIGIN&&binding.site_id===env.SITE_ID&&binding.deploy_id===env.DEPLOY_ID&&short(binding.site_id)&&short(binding.deploy_id)&&short(binding.tenant_id),'Exact Google deployment binding required');
- check(binding.redirect_uri===origin.origin+(drive?driveOAuthPath:googleOAuthPath)+'/callback'&&binding.account==='ensizziyo@evzdigital.studio'&&/^[A-Za-z0-9_-]{6,180}\.apps\.googleusercontent\.com$/.test(binding.client_id)&&['external-testing','internal'].includes(binding.audience),'Exact business Google client/account/redirect required');
+ check(binding.redirect_uri===origin.origin+(drive?driveOAuthPath:calendar?calendarOAuthPath:googleOAuthPath)+'/callback'&&binding.account==='ensizziyo@evzdigital.studio'&&/^[A-Za-z0-9_-]{6,180}\.apps\.googleusercontent\.com$/.test(binding.client_id)&&['external-testing','internal'].includes(binding.audience),'Exact business Google client/account/redirect required');
  const namespace=env.EVZ_GOOGLE_CREDENTIAL_NAMESPACE,keyId=env.EVZ_GOOGLE_CREDENTIAL_KEY_ID,encoded=env.EVZ_GOOGLE_CREDENTIAL_KEY;
- check((drive?/^evz-drive-credentials-[a-z0-9-]{8,40}$/:/^evz-google-credentials-[a-z0-9-]{8,40}$/).test(namespace??'')&&namespace!==env.EVZ_OPERATIONS_BLOB_NAMESPACE&&short(keyId)&&typeof encoded==='string'&&/^[A-Za-z0-9_-]{43}$/.test(encoded),'Separate Google credential storage and key required');
+ check((drive?/^evz-drive-credentials-[a-z0-9-]{8,40}$/:calendar?/^evz-calendar-credentials-[a-z0-9-]{8,40}$/:/^evz-google-credentials-[a-z0-9-]{8,40}$/).test(namespace??'')&&namespace!==env.EVZ_OPERATIONS_BLOB_NAMESPACE&&short(keyId)&&typeof encoded==='string'&&/^[A-Za-z0-9_-]{43}$/.test(encoded),'Separate Google credential storage and key required');
  const key=Buffer.from(encoded,'base64url');check(key.length===32&&key.toString('base64url')===encoded&&![env.EVZ_OPERATIONS_OWNER_KEY,env.EVZ_OPERATIONS_FRIEND_KEY,env.EVZ_OPERATIONS_SESSION_SECRET].includes(encoded)&&safeToken(env.EVZ_GOOGLE_CLIENT_SECRET),'Google secret configuration is unavailable');
  if(drive)check(namespace!==originalEnv.EVZ_GOOGLE_CREDENTIAL_NAMESPACE&&encoded!==originalEnv.EVZ_GOOGLE_CREDENTIAL_KEY,'Drive credentials must be independent of Gmail');
- return {binding:{...(drive?{profile}:{}),tenant_id:binding.tenant_id,site_id:binding.site_id,deploy_id:binding.deploy_id,origin:binding.origin,redirect_uri:binding.redirect_uri,client_id:binding.client_id,account:binding.account,audience:binding.audience},namespace,keyId,key,secret:env.EVZ_GOOGLE_CLIENT_SECRET};
+ if(calendar)check([originalEnv.EVZ_GOOGLE_CREDENTIAL_NAMESPACE,originalEnv.EVZ_DRIVE_CREDENTIAL_NAMESPACE].every(v=>v!==namespace)&&[originalEnv.EVZ_GOOGLE_CREDENTIAL_KEY,originalEnv.EVZ_DRIVE_CREDENTIAL_KEY].every(v=>v!==encoded)&&[originalEnv.EVZ_GOOGLE_CLIENT_SECRET,originalEnv.EVZ_DRIVE_CLIENT_SECRET].every(v=>v!==env.EVZ_GOOGLE_CLIENT_SECRET)&&[originalEnv.EVZ_GOOGLE_OAUTH_BINDING,originalEnv.EVZ_DRIVE_OAUTH_BINDING].every(v=>!v||JSON.parse(v).client_id!==binding.client_id),'Calendar credentials and client must be independent of Gmail and Drive');
+ return {binding:{...(drive||calendar?{profile}:{}),tenant_id:binding.tenant_id,site_id:binding.site_id,deploy_id:binding.deploy_id,origin:binding.origin,redirect_uri:binding.redirect_uri,client_id:binding.client_id,account:binding.account,audience:binding.audience},namespace,keyId,key,secret:env.EVZ_GOOGLE_CLIENT_SECRET};
 }
 async function defaultStore(namespace){const {getStore}=await import('@netlify/blobs');return getStore({name:namespace,consistency:'strong'});}
 
 // A single bounded envelope is the grant authority. A claim is never retried or reclaimed.
 export function createGoogleOAuth({env=process.env,storeFactory=defaultStore,fetcher=fetch,now=()=>Date.now(),certificates,grantId,profile}={}){
- const c=configuration(env,profile),b=c.binding,scopes=profile===driveOAuthProfile?driveOAuthScopes:googleOAuthScopes;
+ const c=configuration(env,profile),b=c.binding,scopes=scopesFor(profile);
  const aad=grant=>Buffer.from(JSON.stringify({v:1,namespace:c.namespace,key_id:c.keyId,binding:b,grant_id:grant}));
  function encrypt(data){
   const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',c.key,iv,{authTagLength:16});cipher.setAAD(aad(data.grant_id));
@@ -148,3 +153,6 @@ complete().catch(()=>{document.querySelector('[role="status"]').textContent='Con
 
 export const driveOAuthCallbackHTML=googleOAuthCallbackHTML.replaceAll('google-oauth-callback.js','google-drive-oauth-callback.js');
 export const driveOAuthCallbackJS=googleOAuthCallbackJS.replaceAll('/google-oauth/','/google-drive-oauth/').replace('Sending still requires its separate exact approval and transport policy.','Original reads require their separate exact registered-source policy.');
+
+export const calendarOAuthCallbackHTML=googleOAuthCallbackHTML.replaceAll('google-oauth-callback.js','google-calendar-oauth-callback.js');
+export const calendarOAuthCallbackJS=googleOAuthCallbackJS.replaceAll('/google-oauth/','/google-calendar-oauth/').replace('Sending still requires its separate exact approval and transport policy.','Calendar invitations require their separate exact guest confirmation and transport policy.');

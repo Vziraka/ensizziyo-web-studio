@@ -63,3 +63,7 @@ Rollback removes routes/provider with flags unset. Preserve exact-mail actions/i
 ## Separate future Drive original read profile
 
 The default Gmail grant above stays exact and unchanged. An explicitly selected `drive-originals-readonly-v1` profile reuses the state machine with its own callback, encrypted credential namespace/key and exact OIDC email + Drive read-only scopes. It requires separately reviewed new owner consent and cannot be reused for Gmail. [Drive consent, placeholders and caller](GOOGLE-DRIVE-ORIGINALS.md#future-new-owner-consent-profile) own its contract; this source increment performed no new grant or setup.
+
+## Separate future Calendar booking profile
+
+The explicitly selected `calendar-booking-v1` profile reuses this state machine with a new Calendar-only client/callback, independent credential namespace/key and exact OIDC + FreeBusy/owned-event/calendar-metadata-read-only scopes. Gmail defaults and Drive equality remain unchanged. [Calendar source and future consent contract](GOOGLE-CALENDAR.md) own the scope rationale, disabled placeholders and caller. No real consent or grant was configured.
