@@ -31,7 +31,7 @@ export function preparationPanel(r,state,{el,button,eventForm,tell}){
     }catch(error){tell(error.message,true);}}),loaded);node.append(section);
   }
   const last=work.filter(w=>['website-concepts','website-refinement'].includes(w.kind)&&w.status==='Review'&&w.result).at(-1);
-  if(last&&!r.quote&&!r.agreement&&!work.some(w=>w.kind==='website-refinement'&&!w.result)){
+  if(last&&!r.quote&&!r.agreement&&!work.some(w=>w.kind==='website-refinement'&&w.status!=='Held'&&!w.result)){
     const used=(r.pre_sale_refinements??[]).length,exceptions=(r.unpaid_refinement_exceptions??[]).filter(e=>!e.used_by);
     node.append(el('p',used?'The included unpaid refinement is used. Agree scope and price, or explicitly approve one additional unpaid round.':'One focused unpaid refinement is included before agreeing scope and price. Paid project revision rounds are separate.','notice'));
     if(!used||exceptions.length)node.append(eventForm(r,'Request a focused refinement of the exact prepared version','concept_refinement_requested',[

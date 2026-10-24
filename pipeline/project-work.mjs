@@ -57,7 +57,7 @@ export function applyProjectWork(state,r,event,actor){
     check(!r.restriction&&!r.quote&&!r.agreement&&['Discovery','Information requested','Preview','Proposal'].includes(r.stage),'Unpaid refinement is separate from quoted project revisions');
     const prior=Object.values(r.project_work??{}).filter(w=>['website-concepts','website-refinement'].includes(w.kind)&&w.status==='Review'&&w.result).at(-1);
     check(prior?.result.asset_id===data.asset_id&&prior.result.version_id===data.version_id&&text(data.feedback,3000)&&text(data.selected_direction,300),'Refine the exact prepared version, selected direction and specific feedback');
-    check(Object.values(r.project_work).filter(w=>w.kind==='website-refinement').every(w=>w.result),'Finish the current focused refinement before requesting another');
+    check(Object.values(r.project_work).filter(w=>w.kind==='website-refinement').every(w=>w.status==='Held'||w.result),'Finish the current focused refinement before requesting another');
     r.pre_sale_refinements??=[];let exception;
     if(r.pre_sale_refinements.length){exception=r.unpaid_refinement_exceptions?.find(e=>e.id===data.exception_id&&!e.used_by);check(exception,'One unpaid refinement is used; approve a specific extra exception or agree scope and price');}
     else check(data.exception_id===undefined||data.exception_id===null,'The first focused refinement uses its included unpaid round');
