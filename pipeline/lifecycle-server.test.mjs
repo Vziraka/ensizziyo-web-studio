@@ -1,3 +1,4 @@
+import {sourceContentHash} from './sources.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -28,6 +29,11 @@ test('the existing operations desk requires individual operator sessions and att
   assert.equal(login.status,200);const authCookie=cookieFrom(login);assert.match(login.headers.get('set-cookie'),/HttpOnly/);assert.match(login.headers.get('set-cookie'),/SameSite=Strict/);cookies.set(actor,`${studioCookie}; ${authCookie}`);
   const state=await fetch(`${base}/api/state`,{headers:{cookie:cookies.get(actor)}});assert.equal((await state.json()).current_operator,actor);
  }
+ const retained={url:'https://evidence.example.invalid/source',text:'<script>Fictional source, not executable HTML</script>',capture_method:'http',fetched_at:at};retained.content_sha256=sourceContentHash(retained);await app.change(state=>{state.prospects['fictional-business'].retained_test={source:retained};});
+ const savedPath=`/retained-source/fictional-business/${retained.content_sha256}?url=${encodeURIComponent(retained.url)}&at=${encodeURIComponent(at)}`;
+ assert.equal((await fetch(base+savedPath,{headers:{cookie:studioCookie}})).status,401);
+ const sourceRead=await fetch(base+savedPath,{headers:{cookie:cookies.get('friend')}});assert.equal(sourceRead.status,200);assert.match(sourceRead.headers.get('content-type'),/application\/json/);assert.equal(sourceRead.headers.get('x-content-type-options'),'nosniff');assert.equal(sourceRead.headers.get('cache-control'),'no-store');assert.deepEqual(await sourceRead.json(),retained);
+ assert.equal((await fetch(base+savedPath.replace('/fictional-business/','/other-business/'),{headers:{cookie:cookies.get('owner')}})).status,400);
  await app.change(state=>{const record=state.prospects['fictional-business'];record.follow_up_drafts=[{id:'fictional-revision',status:'Draft',content:composeFollowUp(record,{outcome:'connected',focus:'website',customer_context:'You asked for a clearer contact page.'})}];});
  assert.equal((await fetch(`${base}/follow-up-draft/fictional-business/fictional-revision`,{headers:{cookie:studioCookie}})).status,401);
  const revisionPreview=await fetch(`${base}/follow-up-draft/fictional-business/fictional-revision`,{headers:{cookie:cookies.get('friend')}});assert.equal(revisionPreview.status,200);const previewHtml=await revisionPreview.text();assert.match(previewHtml,/Draft · this page sends nothing/);assert.match(previewHtml,/You asked for a clearer contact page/);assert.doesNotMatch(previewHtml,/Shared fictional workspace note/);

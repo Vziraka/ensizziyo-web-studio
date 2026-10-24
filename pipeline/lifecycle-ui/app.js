@@ -82,7 +82,7 @@ async function refresh() {
 }
 function pill(text) { return el('span', text, 'badge'); }
 function panel(title) { const node = el('section', undefined, 'panel'); if (title) node.append(el('h2', title)); return node; }
-function link(label, href) { const node = el('a', label); if (/^https:\/\//i.test(href) || href === '/preview/' || /^\/(?:proposal\/[a-zA-Z0-9_-]+|follow-up\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+)$/.test(href)) { node.href = deskPath(href); node.target = '_blank'; node.rel = 'noreferrer'; } else node.removeAttribute('href'); return node; }
+function link(label, href) { const node = el('a', label); if (/^https:\/\//i.test(href) || href === '/preview/' || /^\/retained-source\/[a-zA-Z0-9_-]{1,100}\/[a-f0-9]{64}\?url=[^#]+&at=[^#]+$/.test(href) || /^\/(?:proposal\/[a-zA-Z0-9_-]+|follow-up\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+)$/.test(href)) { node.href = deskPath(href); node.target = '_blank'; node.rel = 'noreferrer'; } else node.removeAttribute('href'); return node; }
 function summary(r) {
   const node = button('', () => { selected = r.id; render(); }, `record${selected === r.id ? ' selected' : ''}`);
   node.append(el('strong', r.name), pill(r.call_lane === 'verification' ? 'Verification call only' : 'Research reviewed'), pill(r.stage), el('small', r.idea)); return node;
@@ -231,10 +231,10 @@ function callPrep(r) {
     card.append(el('p', `Verification call only · current activity and owner fit are unconfirmed. This is not a detailed, independently accepted assessment. ${state.controls.follow_up_enabled?'Eligible saved attempts prepare a follow-up when a verified business email is available; commercial release has separate gates.':'No automatic email follows an unanswered call.'}`, 'notice'));
     for (const [key, title] of [['identity', 'Business identity'], ['location', 'Location'], ['offering', 'Public offering'], ['public_phone', 'Public business phone']]) {
       const proof = packet[key], source = packet.sources.find(s => s.url === proof.url), line = el('p');
-      line.append(el('strong', `${title}: `), document.createTextNode(proof.excerpt), document.createTextNode(' · '), link('Source ↗', proof.url), document.createTextNode(` · checked ${source.fetched_at}`)); card.append(line);
+      line.append(el('strong', `${title}: `), document.createTextNode(proof.excerpt), document.createTextNode(' · '), link('Saved capture ↗', `/retained-source/${r.id}/${source.content_sha256}?url=${encodeURIComponent(source.url)}&at=${encodeURIComponent(source.fetched_at)}`), document.createTextNode(' · '), link('Live source ↗', proof.url), document.createTextNode(` · checked ${source.fetched_at}`)); card.append(line);
     }
     const opening=r.opening_view;
-    if(opening?.selected){const c=opening.selected;card.append(el('h4','Strongest source-backed opening'),el('blockquote',c.opening,'quote'),el('p',`Customer step / difficulty: ${c.customer_difficulty}`),el('blockquote',c.excerpt,'quote'),link('Retained source ↗',c.source_url),el('p',`Possible improvement to discuss: ${c.hypothesis}`),el('p',`${opening.selected_by}: ${opening.reason}`,'muted'));
+    if(opening?.selected){const c=opening.selected,source=r.verification.packet.sources.find(s=>s.url===c.source_url&&s.content_sha256===c.source_sha256);card.append(el('h4','Strongest source-backed opening'),el('blockquote',c.opening,'quote'),el('p',`Customer step / difficulty: ${c.customer_difficulty}`),el('blockquote',c.excerpt,'quote'),link('Saved capture ↗',`/retained-source/${r.id}/${c.source_sha256}?url=${encodeURIComponent(c.source_url)}&at=${encodeURIComponent(source?.fetched_at??'')}`),link('Live source ↗',c.source_url),el('p',`Possible improvement to discuss: ${c.hypothesis}`),el('p',`${opening.selected_by}: ${opening.reason}`,'muted'));
       card.append(eventForm(r,'Choose another supported opening','opening_selected',[
         ['Supported alternative','candidate_id',c.id,'text',opening.candidates.map(option=>({value:option.id,label:`${option.service}: ${option.owner_question}`}))],['Reason for your selection','reason','','textarea']
       ],{assessment_sha256:opening.assessment_sha256},'Save opening selection'));
