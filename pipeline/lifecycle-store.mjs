@@ -1,10 +1,11 @@
+import {validateProjectEnvelope,validateProjectChange} from './shared-project-continuation.mjs';
 import {check,hash} from './lifecycle.mjs';
 import {validateInertEnvelope,validateInertChange} from './inert-shared-workspace.mjs';
 import {validateManualEnvelope,validateManualChange} from './shared-manual-records.mjs';
 
 // Callbacks must reserve local state only: a conflict never reruns a callback or an external effect.
 export class ConditionalLifecycleStore {
-  constructor(store,{key='workspace',maxBytes=20_000_000,inertBinding=null,manualBinding=null}={}){this.store=store;this.key=key;this.maxBytes=maxBytes;this.inertBinding=inertBinding;this.manualBinding=manualBinding;check(!(inertBinding&&manualBinding),'Choose one shared capability');}
+  constructor(store,{key='workspace',maxBytes=20_000_000,inertBinding=null,manualBinding=null,projectBinding=null}={}){this.store=store;this.key=key;this.maxBytes=maxBytes;this.inertBinding=inertBinding;this.manualBinding=manualBinding;this.projectBinding=projectBinding;check([inertBinding,manualBinding,projectBinding].filter(Boolean).length<=1,'Choose one shared capability');}
   async initialize(config,state){
     const data={schema_version:1,config,state};this.validate(data);
     const result=await this.store.setJSON(this.key,data,{onlyIfNew:true});
@@ -16,7 +17,8 @@ export class ConditionalLifecycleStore {
     check(data.state.run_id===data.config.run_id&&data.state.mode===data.config.mode,'Shared state belongs to another run or mode');
     if(this.inertBinding)validateInertEnvelope(data,this.inertBinding);
     else if(this.manualBinding)validateManualEnvelope(data,this.manualBinding);
-    else check(!data.manual_source&&!data.inert_source&&data.config.mode==='controlled'&&data.config.outreach_enabled===false&&data.config.research_enabled===false&&data.config.connector_writes_enabled===false&&data.config.transcript_ai?.enabled===false&&Object.values(data.state.prospects).every(r=>r.controlled===true),'Shared preview accepts execution-disabled fictional records only');
+    else if(this.projectBinding)validateProjectEnvelope(data,this.projectBinding);
+    else check(!data.project_source&&!data.manual_source&&!data.inert_source&&data.config.mode==='controlled'&&data.config.outreach_enabled===false&&data.config.research_enabled===false&&data.config.connector_writes_enabled===false&&data.config.transcript_ai?.enabled===false&&Object.values(data.state.prospects).every(r=>r.controlled===true),'Shared preview accepts execution-disabled fictional records only');
     check(Buffer.byteLength(JSON.stringify(data))<=this.maxBytes,'Shared workspace size limit reached; archive closed records');
   }
   async envelope(){
@@ -32,9 +34,11 @@ export class ConditionalLifecycleStore {
     if(options.configFingerprint)check(hash(data.config)===options.configFingerprint,'Incoming configuration changed during read; no cursor or effects committed');
     if(this.inertBinding)check(options.inertNote,'Inert storage rejects worker and provider mutations');
     if(this.manualBinding)check(options.manualRecord,'Manual storage rejects worker and provider mutations');
+    if(this.projectBinding)check(options.projectRecord||options.projectAuthoring||options.projectReconcile,'Shared project storage rejects untyped worker and provider mutations');
     const result=await fn(data.state,data.config);this.validate(data);
     if(this.inertBinding)validateInertChange(JSON.parse(before).state,data.state,options);
     if(this.manualBinding)validateManualChange(JSON.parse(before),data,options);
+    if(this.projectBinding)await validateProjectChange(JSON.parse(before),data,options,this.store);
     if(JSON.stringify(data)===before)return result;
     let modified,uncertain=false;
     try {const written=await this.store.setJSON(this.key,data,{onlyIfMatch:etag});check(typeof written?.modified==='boolean'&&(!written.modified||typeof written.etag==='string'&&written.etag.length>0),'Conditional write result is unavailable');modified=written.modified;}

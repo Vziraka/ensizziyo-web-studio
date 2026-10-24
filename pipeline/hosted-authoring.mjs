@@ -58,7 +58,7 @@ export function blobAuthoringStore(raw){
   async put(id,name,bytes){const m=authoringManifest(bytes);for(let i=0;i<m.chunks.length;i++)await this.putChunk(m,i,bytes.subarray(i*originalChunkSize,(i+1)*originalChunkSize));await this.publish(id,name,m);}
  };
 }
-export function attachHostedAuthoring(app,raw){check(!app.store?.inertBinding&&app.config.mode==='controlled','Hosted authoring permits only the fictional controlled workspace');app.authoringStore=blobAuthoringStore(raw);app.originalStore=blobProjectOriginalStore(raw);return app;}
+export function attachHostedAuthoring(app,raw){check(!app.store?.inertBinding&&!app.store?.manualBinding&&(app.config.mode==='controlled'||app.store?.projectBinding&&app.config.shared_capability==='shared-project-continuation-v1'),'Hosted authoring requires the fictional controlled workspace or an exact shared project binding');app.authoringStore=blobAuthoringStore(raw);app.originalStore=blobProjectOriginalStore(raw);return app;}
 function locate(state,id){check(jobID(id),'Choose an exact authoring job');const results=Object.values(state.prospects).flatMap(r=>Object.values(r.project_work??{}).filter(w=>w.execution?.id===id).map(w=>({project_id:r.id,work_id:w.id,job_id:id,job:w.execution})));check(results.length===1,'Unknown current authoring job');return results[0];}
 function registered(state,id){
  check(jobID(id),'Choose an exact authoring job');const found=[];
@@ -77,7 +77,7 @@ async function reconcile(app,input,actor){
  const result={...job,status:'Reconciled',recovery};await validateAuthoringRecovery(result,async(name)=>observed.bytes.get(name));
  // Content-addressed evidence may survive a failed CAS. It grants no authority until the state commit.
  for(const [name,bytes] of observed.bytes)await app.authoringStore.put(job.id,name,bytes);
- return app.change(s=>{check(hash(s)===hash(observed.state),'Recovery snapshot changed before closure; inspect again');const current=registered(s,job.id);check(hash(current)===hash(job),'Authoring ownership changed');Object.assign(current,result);s.revision++;s.updated_at=app.now().toISOString();return current;});
+ return app.change(s=>{check(hash(s)===hash(observed.state),'Recovery snapshot changed before closure; inspect again');const current=registered(s,job.id);check(hash(current)===hash(job),'Authoring ownership changed');Object.assign(current,result);s.revision++;s.updated_at=app.now().toISOString();return current;},{projectReconcile:{job,result,snapshot:input.snapshot,actor}});
 }
 function writable(state,id,name,actor){
  check(uploadOK(name),'Upload only submitted source, registered runtime or actual raster pages');const input=locate(state,id),work=state.prospects[input.project_id].project_work[input.work_id],packet=projectWorkContext(state,input.project_id,input.work_id);
@@ -116,5 +116,6 @@ export async function hostedAuthoringFile(app,id,name,index){
 export async function hostedAuthoringBackup(app,raw){
  const result=await hostedBackupInventory(app,blobAudioStore(raw)),body=JSON.stringify(result.state),files=[...result.files].map(([path,bytes])=>({path,bytes:bytes.length,sha256:originalDigest(bytes)}));
  const bundle={schema_version:2,created_at:result.state.updated_at,sha256:hash(body),body,files,files_sha256:hash(files)};
- check(Buffer.byteLength(JSON.stringify(bundle))<=4_000_000,'Hosted backup manifest exceeds this fictional workspace response bound');return {bundle,files:result.files};
+ const bytes=Buffer.from(body),wire=bytes.length<=3_000_000?bundle:{...bundle,body:undefined,body_manifest:authoringManifest(bytes)};
+ check(Buffer.byteLength(JSON.stringify(wire))<=4_000_000,'Hosted backup manifest exceeds the bounded response limit');return {bundle,wire,body:bytes,files:result.files};
 }

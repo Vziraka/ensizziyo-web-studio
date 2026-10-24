@@ -351,3 +351,7 @@ Ensizziyo owns accounts, runtime availability and business exceptions. Proposed 
 ### Disabled direct Drive original reads
 
 [Exact registered Drive PDF reads](GOOGLE-DRIVE-ORIGINALS.md) reuse the existing authenticated original client, D1 chunks/hash authority and portable backup. `connectSharedOriginals(...).readDriveOriginal(ids)` performs one explicit bounded step; `node --test google-drive-originals.test.mjs` checks the injected signed HTTP/OAuth path. Default/production/D2 stay disabled. A separate future read-only owner grant, live provider/hosted proof and cost/latency review remain open.
+
+### Disabled shared project continuation
+
+The [shared project contract](SHARED-PROJECT-CONTINUATION.md) documents the separate default-disabled binding, local verified-package preparation, signed authoring caller, existing feedback/current-context UI, typed whole-state validation and complete backup/restore. Focused verification: `node --test shared-project-continuation.test.mjs hosted-authoring.test.mjs shared-manual-records.test.mjs inert-shared-workspace.test.mjs`. No production configuration, provider execution or real migration is included.

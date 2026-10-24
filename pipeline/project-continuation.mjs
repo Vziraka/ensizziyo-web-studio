@@ -6,7 +6,7 @@ import {readProjectAsset} from './project-assets.mjs';
 import {claimAuthoring,renderAuthoring,reviewAuthoring,inspectAuthoring,readAuthoringFile,retainAuthoringRasters} from './project-authoring.mjs';
 
 const kinds=['website-concepts','website-refinement','client-proposal'];
-function local(app,actor){check((app.directory&&!app.store||app.authoringStore&&app.store&&!app.store.inertBinding&&app.config.mode==='controlled')&&['owner','friend'].includes(actor),'Continuation needs an authorized local or injected fictional workspace/operator');}
+function local(app,actor){check((app.directory&&!app.store||app.authoringStore&&app.store&&!app.store.inertBinding&&!app.store.manualBinding&&(app.config.mode==='controlled'||app.store.projectBinding&&app.config.shared_capability==='shared-project-continuation-v1'))&&['owner','friend'].includes(actor),'Continuation needs an authorized local or injected fictional/exact shared project workspace/operator');}
 function locate(state,id){
  const matches=Object.values(state.prospects).flatMap(r=>Object.values(r.project_work??{}).filter(w=>w.execution?.id===id).map(w=>({project_id:r.id,work_id:w.id,job_id:id})));
  check(matches.length===1,'Unknown or ambiguous continuation job; begin from the company name');return matches[0];

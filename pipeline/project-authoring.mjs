@@ -16,7 +16,7 @@ const text=(v,max=3000)=>typeof v==='string'&&v.trim()&&v.length<=max;
 const kinds=['website-concepts','website-refinement','client-proposal'];
 async function safeFile(path,max=4_000_000){const s=await lstat(path);check(s.isFile()&&!s.isSymbolicLink()&&s.size>0&&s.size<=max,'Unsafe or oversized authoring file');return readFile(path);}
 async function folder(app,id){
- if(app.authoringStore){check(app.store&&!app.store.inertBinding&&app.config.mode==='controlled'&&key(id),'Injected authoring storage supports only the fictional controlled workspace; inert/production stay closed');return null;}
+ if(app.authoringStore){check(app.store&&!app.store.inertBinding&&!app.store.manualBinding&&(app.config.mode==='controlled'||app.store.projectBinding&&app.config.shared_capability==='shared-project-continuation-v1')&&key(id),'Authoring storage requires fictional controlled work or an exact shared project binding');return null;}
  check(app.directory&&!app.store&&key(id),'Authoring needs the private local workspace');
  const root=join(app.directory,'project-authored');await mkdir(root,{recursive:true,mode:0o700});
  check(!(await lstat(root)).isSymbolicLink()&&await realpath(root)===join(await realpath(app.directory),'project-authored'),'Unsafe authoring root');
@@ -57,7 +57,7 @@ export async function claimAuthoring(app,input,actor='owner'){
  check(required.every(ref=>input.references?.some(r=>r.asset_id===ref.asset_id&&r.version_id===ref.version_id)),'Retrieve every approved baseline and the exact selected refinement source before authoring');
  const refs=await references(app,input.project_id,input.references),id='author-'+hash({project:input.project_id,work:work.id,event:work.request_event,context:packet.context_sha256,attempt:work.authoring_attempt??0}).slice(0,32);
  const job={id,project_id:input.project_id,work_id:work.id,kind:work.kind,request_event:work.request_event,context_sha256:packet.context_sha256,references:refs,actor,status:'Claimed',claimed_at:app.now().toISOString()};
- const saved=await app.change(s=>{const found=target(s,input,actor);check(found.packet.context_sha256===job.context_sha256,'Context changed before claim');if(found.work.execution){check(found.work.execution.id===id&&hash(found.work.execution.references)===hash(refs),'An authoring claim already exists; inspect it before creating another');return found.work.execution;}found.work.execution=job;bump(s,app);return job;});
+ const saved=await authoringChange(app,'claim',input,actor,{job,refs});
  const path=await folder(app,id);await immutableJSON(app,id,'context.json',{...packet,work:{...packet.work,execution:undefined}});return {...saved,directory:path,authoring:'Author the existing named skill against context.json and retrieved originals; no unattended model is enabled.'};
 }
 async function immutableJSON(app,id,name,value){const bytes=Buffer.from(JSON.stringify(value,null,2));try{await writeAuthoringFile(app,id,name,bytes);}catch(e){if(e.code!=='EEXIST')throw e;check(sha(await readAuthoringFile(app,id,name,36_000_000))===sha(bytes),'Immutable authoring file differs; inspect the existing job');}}
@@ -89,7 +89,7 @@ async function designSource(app,source,packet){
  }
  return applyDesignPreferences(source,packet,baseline);
 }
-async function hold(app,input,job,error){await app.change(s=>{const work=s.prospects[input.project_id]?.project_work?.[input.work_id];if(work?.execution?.id===job.id&&!['Review','Reconciled'].includes(work.execution.status)){Object.assign(work.execution,{status:'Held',hold:error.message,held_at:app.now().toISOString()});bump(s,app);}});}
+async function hold(app,input,job,error){await authoringChange(app,'hold',input,job.actor,{job,message:error.message});}
 export async function renderAuthoring(app,input,runtime,actor='owner'){
  const state=await app.snapshot(),job=getJob(state,input);if(job.status!=='Claimed')return inspectAuthoring(app,input,actor);
  const {packet}=current(state,input,actor,job),inputSource=app.authoringStore?structuredClone(input.source):JSON.parse(await safeFile(input.source_file));
@@ -104,7 +104,7 @@ export async function renderAuthoring(app,input,runtime,actor='owner'){
   if(job.kind==='client-proposal'){const master=sha(await readFile(join(runtime.proposal_assets,'EVZ-Digital-Master-Proposal-Review.pdf')));check(job.references.some(r=>r.sha256===master),'Retrieve the exact installed approved EVZ template before proposal rendering');}
  }
  const path=await folder(app,job.id);await immutableJSON(app,job.id,'input.json',inputSource);await immutableJSON(app,job.id,'authored.json',source);await immutableJSON(app,job.id,'runtime.json',runtime);
- await app.change(s=>{const {work}=current(s,input,actor,job);check(work.execution.status==='Claimed','This export is already reserved; inspect its receipt');Object.assign(work.execution,{status:'Rendering',source_sha256:hash(source),runtime_sha256:hash(runtime),renderer_sha256:null,...(nodeRuntime?{renderer:'node-pdf-v1'}:{})});bump(s,app);});
+ await authoringChange(app,'rendering',input,actor,{job,source,runtime,nodeRuntime});
  try{
   check(hash(await references(app,job.project_id,job.references))===hash(job.references),'Original references changed');
   let renderer_sha256,renderer_lock_sha256,script;
@@ -114,7 +114,7 @@ export async function renderAuthoring(app,input,runtime,actor='owner'){
   }else{
    const renderer=await readFile(fileURLToPath(new URL('./project-authoring-render.py',import.meta.url)));renderer_sha256=sha(renderer);script=join(path,'renderer.py');await writeAuthoringFile(app,job.id,'renderer.py',renderer);
   }
-  await app.change(s=>{const {work}=current(s,input,actor,job);work.execution.renderer_sha256=renderer_sha256;if(nodeRuntime)work.execution.renderer_lock_sha256=renderer_lock_sha256;bump(s,app);});
+  await authoringChange(app,'renderer',input,actor,{job,renderer_sha256,renderer_lock_sha256,nodeRuntime});
   if(nodeRuntime){
    const {renderNodePDF}=await import('./project-authoring-node.mjs');
    const {files}=await renderNodePDF(source,packet,runtime,{source_sha256:hash(source)});
@@ -148,14 +148,12 @@ export async function inspectAuthoring(app,input,actor='owner'){
  check(['owner','friend'].includes(actor),'Local operator required');const state=await app.snapshot(),job=getJob(state,input);return {...job,directory:await folder(app,job.id),companion_draft:state.prospects[input.project_id].project_email_drafts?.find(d=>d.id===job.companion_draft_id)??null,unattended_authoring:'Unavailable: no approved autonomous model transport/allowance; this command never invokes one.'};
 }
 export async function reviseAuthoring(app,input,actor='owner'){
- return app.change(s=>{check(['owner','friend'].includes(actor),'Local operator required');const job=getJob(s,input),work=s.prospects[input.project_id].project_work[input.work_id];
-  check(work.assigned_to===actor&&work.status==='Ready'&&job.actor===actor&&['Claimed','Rendered','Held','Reconciled'].includes(job.status)&&text(input.reason,1600),'Explicitly retain a non-published attempt and its reason; reconcile a Rendering job before revising');
-  work.authoring_history??=[];check(work.authoring_history.length<10,'Review repeated authoring failures before creating more attempts');work.authoring_history.push({...job,retained_by:actor,retained_at:app.now().toISOString(),reason:input.reason});work.authoring_attempt=(work.authoring_attempt??0)+1;delete work.execution;bump(s,app);return {status:'Previous attempt retained',next:'Reload current context and claim a new authored attempt. No file or baseline was overwritten.'};});
+ return authoringChange(app,'revise',input,actor,{});
 }
 export async function resumeAuthoring(app,input,actor='owner'){
- const job=getJob(await app.snapshot(),input);if(job.status==='Review')return inspectAuthoring(app,input,actor);
- check(['Rendering','Rendered'].includes(job.status),'Resume only a reserved export; a held or partial job needs inspection');
- try{const {receipt}=await verifyExport(app,job);await references(app,job.project_id,job.references);await app.change(s=>{const {work}=current(s,input,actor,job);Object.assign(work.execution,{status:'Rendered',pdf:receipt.pdf,pages:receipt.pages,export_sha256:hash(receipt)});bump(s,app);});return inspectAuthoring(app,input,actor);}catch(error){if(job.status!=='Rendering')await hold(app,input,job,error);throw error;}
+ const state=await app.snapshot(),job=getJob(state,input);if(job.status==='Review')return inspectAuthoring(app,input,actor);
+ check(['Rendering','Rendered'].includes(job.status),'Resume only a reserved export; a held or partial job needs inspection');current(state,input,actor,job);
+ try{const {receipt}=await verifyExport(app,job);await references(app,job.project_id,job.references);await authoringChange(app,'rendered',input,actor,{job,receipt});return inspectAuthoring(app,input,actor);}catch(error){if(job.status!=='Rendering')await hold(app,input,job,error);throw error;}
 }
 function rasterPNG(bytes){check(Buffer.isBuffer(bytes)&&bytes.length>=33&&bytes.length<=16_000_000&&bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))&&bytes.toString('ascii',12,16)==='IHDR','Retain actual bounded PNG raster pages');const w=bytes.readUInt32BE(16),h=bytes.readUInt32BE(20);check(w>0&&h>0&&w*h<=40_000_000,'Excessive raster dimensions');}
 // The trusted reviewer supplies real PDF raster exports; this does not execute a rasterizer or approve them.
@@ -168,16 +166,35 @@ export async function retainAuthoringRasters(app,input,rasters,actor='owner'){
 export async function reviewAuthoring(app,input,actor='owner'){
  let state=await app.snapshot(),job=getJob(state,input);
  if(job.status==='Review'){check(hash(input.review)===job.review_sha256&&actor===job.reviewed_by,'Review retry differs from the saved exact review');return inspectAuthoring(app,input,actor);}
- check(job.status==='Rendered','Render and inspect every page first');const {packet:reviewPacket}=current(state,input,actor,job);
- const {receipt,source,pdf}=await verifyExport(app,job);
- check(hash(await designSource(app,source,reviewPacket))===hash(source),'Saved output no longer matches current preference/baseline checks');
- check(input.review?.export_sha256===hash(receipt)&&hash(input.review.pages)===hash(receipt.pages)&&input.review.requirements===true&&input.review.visual_design===true&&input.review.export===true&&text(input.review.notes,3000),'Review requirements, visual design and every exact rendered page separately');
- if(job.renderer==='node-pdf-v1'){
-  const raster=input.review.raster_review;check(raster?.pdf_sha256===receipt.pdf.sha256&&text(raster.rasterizer,200)&&raster.pages?.length===receipt.pages.length,'Canonical layout is not visual review; retain and inspect every actual PDF raster page first');
-  for(const [i,page] of raster.pages.entries()){check(page.page===i+1&&page.name===`review-page-${i+1}.png`,'Invalid raster review page');const bytes=await readAuthoringFile(app,job.id,page.name,16_000_000);rasterPNG(bytes);check(sha(bytes)===page.sha256,'Raster review page changed');}
+ const {receipt,source,pdf}=await reviewFacts(app,input,actor,state,job),original=await storeProjectPDF(app,pdf);
+ await authoringChange(app,'complete',input,actor,{job,source,receipt,original});return inspectAuthoring(app,input,actor);
+}
+
+export async function authoringChange(app,type,input,actor,details={}){
+ const command={type,input:structuredClone(Object.fromEntries(Object.entries(input).filter(([key])=>['project_id','work_id','job_id','context_sha256','references','reason','review'].includes(key)))),actor,details:structuredClone(details)};
+ return app.change(state=>applyAuthoringTransition(state,command,app.config,app.now()),{projectAuthoring:command});
+}
+export function applyAuthoringTransition(s,command,config,now){
+ const {type,input,actor,details}=command,{job,refs,source,runtime,nodeRuntime,renderer_sha256,renderer_lock_sha256,receipt,original,message}=details;
+ const app={config,now:()=>new Date(now)};
+ check(['owner','friend'].includes(actor),'Signed authoring operator required');
+ if(job)check(job.actor===actor&&job.project_id===input.project_id&&job.work_id===input.work_id,'Authoring actor or project differs');
+ switch(type){
+ case 'claim':{check(Number.isFinite(Date.parse(job.claimed_at))&&Date.parse(job.claimed_at)<=+app.now()&&+app.now()-Date.parse(job.claimed_at)<=300_000,'Claim timestamp differs from this transaction');const found=target(s,input,actor);check(found.packet.context_sha256===job.context_sha256,'Context changed before claim');if(found.work.execution){check(found.work.execution.id===job.id&&hash(found.work.execution.references)===hash(refs),'An authoring claim already exists; inspect it before creating another');return found.work.execution;}found.work.execution=job;bump(s,app);return job;
  }
- await references(app,job.project_id,job.references);const original=await storeProjectPDF(app,pdf);
- await app.change(s=>{
+ case 'hold':{const work=s.prospects[input.project_id]?.project_work?.[input.work_id];if(work?.execution?.id===job.id&&!['Review','Reconciled'].includes(work.execution.status)){Object.assign(work.execution,{status:'Held',hold:message,held_at:app.now().toISOString()});bump(s,app);}
+ return;}
+ case 'rendering':{const {work}=current(s,input,actor,job);check(work.execution.status==='Claimed','This export is already reserved; inspect its receipt');Object.assign(work.execution,{status:'Rendering',source_sha256:hash(source),runtime_sha256:hash(runtime),renderer_sha256:null,...(nodeRuntime?{renderer:'node-pdf-v1'}:{})});bump(s,app);
+ return;}
+ case 'renderer':{const {work}=current(s,input,actor,job);work.execution.renderer_sha256=renderer_sha256;if(nodeRuntime)work.execution.renderer_lock_sha256=renderer_lock_sha256;bump(s,app);
+ return;}
+ case 'revise':{check(['owner','friend'].includes(actor),'Local operator required');const job=getJob(s,input),work=s.prospects[input.project_id].project_work[input.work_id];
+  check(work.assigned_to===actor&&work.status==='Ready'&&job.actor===actor&&['Claimed','Rendered','Held','Reconciled'].includes(job.status)&&text(input.reason,1600),'Explicitly retain a non-published attempt and its reason; reconcile a Rendering job before revising');
+  work.authoring_history??=[];check(work.authoring_history.length<10,'Review repeated authoring failures before creating more attempts');work.authoring_history.push({...job,retained_by:actor,retained_at:app.now().toISOString(),reason:input.reason});work.authoring_attempt=(work.authoring_attempt??0)+1;delete work.execution;bump(s,app);return {status:'Previous attempt retained',next:'Reload current context and claim a new authored attempt. No file or baseline was overwritten.'};
+ }
+ case 'rendered':{const {work}=current(s,input,actor,job);Object.assign(work.execution,{status:'Rendered',pdf:receipt.pdf,pages:receipt.pages,export_sha256:hash(receipt)});bump(s,app);
+ return;}
+ case 'complete':{
   const {work,r,packet}=current(s,input,actor,job);check(work.execution.status==='Rendered','This output was already recorded');
   validateAuthored(source,packet,job);check(hash(receipt)===work.execution.export_sha256,'Export receipt changed');
   check(text(app.config.sender?.operator_names?.[actor],80),'Configure the preparing operator display name before drafting');
@@ -195,5 +212,54 @@ export async function reviewAuthoring(app,input,actor='owner'){
   draft.sha256=hash(draft);r.project_email_drafts??=[];r.project_email_drafts.push(draft);
   Object.assign(work.execution,{status:'Review',review_sha256:hash(input.review),reviewed_by:actor,companion_draft_id:draft.id});
   check(Object.keys(s.events).length<20_000,'Event limit reached; archive closed records before authoring review');const id=job.id+'-review';s.events[id]={id,type:'project_authoring_reviewed',prospect_id:r.id,actor,at:app.now().toISOString(),data:{result:work.result,provenance,companion_sha256:draft.sha256}};bump(s,app);
- });return inspectAuthoring(app,input,actor);
+
+ return;}
+ default:throw Error('Unknown typed authoring transition');
+ }
+}
+
+async function reviewFacts(app,input,actor,state,job){
+ check(job.status==='Rendered','Render and inspect every page first');const {packet:reviewPacket}=current(state,input,actor,job);
+ const {receipt,source,pdf}=await verifyExport(app,job);
+ check(hash(await designSource(app,source,reviewPacket))===hash(source),'Saved output no longer matches current preference/baseline checks');
+ check(input.review?.export_sha256===hash(receipt)&&hash(input.review.pages)===hash(receipt.pages)&&input.review.requirements===true&&input.review.visual_design===true&&input.review.export===true&&text(input.review.notes,3000),'Review requirements, visual design and every exact rendered page separately');
+ if(job.renderer==='node-pdf-v1'){
+  const raster=input.review.raster_review;check(raster?.pdf_sha256===receipt.pdf.sha256&&text(raster.rasterizer,200)&&raster.pages?.length===receipt.pages.length,'Canonical layout is not visual review; retain and inspect every actual PDF raster page first');
+  for(const [i,page] of raster.pages.entries()){check(page.page===i+1&&page.name===`review-page-${i+1}.png`,'Invalid raster review page');const bytes=await readAuthoringFile(app,job.id,page.name,16_000_000);rasterPNG(bytes);check(sha(bytes)===page.sha256,'Raster review page changed');}
+ }
+ await references(app,job.project_id,job.references);return {receipt,source,pdf};
+}
+
+// Store replay independently checks every typed witness against immutable dependencies.
+export async function validateAuthoringTransition(app,command){
+ const {type,input,actor,details:d}=command,state=await app.snapshot();
+ check(['owner','friend'].includes(actor),'Signed authoring operator required');
+ if(type==='revise')return;
+ const job=d.job;
+ check(job&&job.actor===actor&&job.project_id===input.project_id&&job.work_id===input.work_id,'Authoring job or actor differs');
+ if(type==='claim'){
+  const {packet,work}=target(state,input,actor),refs=await references(app,input.project_id,input.references),id='author-'+hash({project:input.project_id,work:work.id,event:work.request_event,context:packet.context_sha256,attempt:work.authoring_attempt??0}).slice(0,32);
+  const required=[...packet.source.approved_assets.map(a=>({asset_id:a.asset_id,version_id:a.version_id})),...(work.kind==='website-refinement'?[{asset_id:work.request.asset_id,version_id:work.request.version_id}]:[])];
+  check(required.every(ref=>refs.some(r=>r.asset_id===ref.asset_id&&r.version_id===ref.version_id)),'Retrieve every approved reference');
+  check(hash(d.refs)===hash(refs)&&hash(job)===hash({id,project_id:input.project_id,work_id:work.id,kind:work.kind,request_event:work.request_event,context_sha256:packet.context_sha256,references:refs,actor,status:'Claimed',claimed_at:job.claimed_at})&&input.context_sha256===packet.context_sha256,'Authoring claim witness differs');return;
+ }
+ const saved=getJob(state,input),identity=value=>Object.fromEntries(['id','project_id','work_id','kind','request_event','context_sha256','references','actor','claimed_at'].map(k=>[k,value[k]]));check(hash(identity(saved))===hash(identity(job))&&saved.actor===actor,'Authoring ownership changed');
+ if(type==='hold'){check(text(d.message,3000),'Hold needs a bounded reason');return;}
+ const {packet}=current(state,input,actor,job);
+ if(type==='rendering'){
+  check(d.nodeRuntime===true&&d.runtime?.renderer==='node-pdf-v1','Shared authoring requires the Node renderer');
+  const submitted=JSON.parse(await readAuthoringFile(app,job.id,'input.json')),runtime=JSON.parse(await readAuthoringFile(app,job.id,'runtime.json',36_000_000));
+  validateAuthored(submitted,packet,job);const source=await designSource(app,submitted,packet);
+  check(hash(d.source)===hash(source)&&hash(d.runtime)===hash(runtime)&&hash(JSON.parse(await readAuthoringFile(app,job.id,'authored.json')))===hash(source),'Authoring source/runtime witness differs');
+  const {nodePDFResources}=await import('./project-authoring-node.mjs');const resources=nodePDFResources(runtime,job.project_id);
+  if(job.kind==='client-proposal')check(job.references.some(r=>r.sha256===resources.get(runtime.proposal_template)?.sha256),'Proposal requires exact approved template');return;
+ }
+ if(type==='renderer'){
+  const {nodePDFSourceSHA256,nodePDFLockSHA256}=await import('./project-authoring-node-version.mjs');check(saved.status==='Rendering'&&d.nodeRuntime===true&&d.renderer_sha256===nodePDFSourceSHA256&&d.renderer_lock_sha256===nodePDFLockSHA256,'Pinned Node renderer witness differs');return;
+ }
+ if(type==='rendered'){check(['Rendering','Rendered'].includes(saved.status),'Export no longer reserved');const {receipt}=await verifyExport(app,saved);await references(app,job.project_id,job.references);check(hash(d.receipt)===hash(receipt),'Export witness differs');return;}
+ check(type==='complete','Unknown typed authoring transition');
+ const facts=await reviewFacts(app,input,actor,state,saved);
+ check(hash(d.source)===hash(facts.source)&&hash(d.receipt)===hash(facts.receipt)&&hash(d.original)===hash({sha256:sha(facts.pdf),bytes:facts.pdf.length}),'Reviewed output witness differs');
+ check((await app.originalStore.get(d.original)).equals(facts.pdf),'Held PDF original differs');
 }

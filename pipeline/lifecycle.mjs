@@ -1,3 +1,4 @@
+import {applySharedProjectEvent,sharedProjectDashboard} from './shared-project-continuation.mjs';
 import {replySuggestion,replyDraftContent,replyDraftCurrent,validReplySource} from './reply-content.mjs';
 import {applyInertNote,inertReconciliation} from './inert-shared-workspace.mjs';
 import {applyManualRecord,manualRecordEvents} from './shared-manual-records.mjs';
@@ -185,7 +186,7 @@ export class StudioLifecycle {
   static async fromStore({store,now}){
     const app=new StudioLifecycle(null,now);app.store=store;app.config=await store.config();
     check(app.config.schema_version===1&&['controlled','production'].includes(app.config.mode)&&key(app.config.run_id)&&app.config.timezone==='America/New_York','Invalid shared lifecycle configuration');
-    if(store.inertBinding||store.manualBinding){await store.envelope();return app;}
+    if(store.inertBinding||store.manualBinding||store.projectBinding){await store.envelope();return app;}
     check(app.config.mode==='controlled'&&app.config.outreach_enabled===false&&app.config.connector_writes_enabled===false&&app.config.research_enabled===false&&app.config.transcript_ai.enabled===false,'Shared preview accepts execution-disabled fictional work only');
     const state=await app.snapshot();check(state.run_id===app.config.run_id&&state.mode===app.config.mode&&Object.values(state.prospects).every(r=>r.controlled===true),'Shared preview cannot load production records');return app;
   }
@@ -233,6 +234,7 @@ export class StudioLifecycle {
     this.config = await this.loadConfig();
     check(key(event?.id) && key(event.prospect_id) && text(event.type, 80) && date(event.at), 'Event needs stable IDs and an explicit timestamp');
     check(Date.parse(event.at) <= +this.now() + 60_000, 'An event cannot claim a future action');
+    if(this.store?.projectBinding)return this.change(state=>applySharedProjectEvent(state,event,actor,expectedRevision,this.now(),this.config),{eventId:event.id,eventFingerprint:hash({event,actor}),projectRecord:{event,actor,revision:expectedRevision}});
     if(this.store?.inertBinding)return this.change(state=>applyInertNote(state,event,actor,expectedRevision,this.now()),{eventId:event.id,eventFingerprint:hash({event,actor}),inertNote:{event,actor,revision:expectedRevision}});
     if(this.store?.manualBinding)return this.change(state=>applyManualRecord(state,event,actor,expectedRevision,this.now(),this.config),{eventId:event.id,eventFingerprint:hash({event,actor}),manualRecord:{event,actor,revision:expectedRevision}});
     if (event.type === 'call_logged' && this.config.mode === 'production') {
@@ -245,7 +247,7 @@ export class StudioLifecycle {
     return this.change(state=>this.reduceEvent(state,event,{actor,expectedRevision,validateMachineDraft,validateHostedAssessment}),{eventId:event.id,eventFingerprint});
   }
   // Shared manual recording reuses this reducer without the production call-execution release.
-  reduceEvent(state,event,{actor,expectedRevision,validateMachineDraft=null,validateHostedAssessment=null,manualRecording=false}) {
+  reduceEvent(state,event,{actor,expectedRevision,validateMachineDraft=null,validateHostedAssessment=null,manualRecording=false,projectRecording=false}) {
       const fingerprint = hash({ event, actor });
       if (state.events[event.id]) { check(state.events[event.id].fingerprint === fingerprint, 'Event ID conflicts with saved evidence'); return { duplicate: true, revision: state.revision }; }
       check(expectedRevision === undefined || expectedRevision === state.revision, 'Record changed; refresh before approving');
@@ -708,8 +710,8 @@ export class StudioLifecycle {
         }
       }
       if(!manualRecording&&r?.calls)syncProjectWork(state,r,event,actor);
-      if(!manualRecording)prepareNotificationsInState(state,this.now(),{origin:event.id,includeDigest:false});
-      const cycle = manualRecording?null:state.operations?.cycle;
+      if(!manualRecording&&!projectRecording)prepareNotificationsInState(state,this.now(),{origin:event.id,includeDigest:false});
+      const cycle = manualRecording||projectRecording?null:state.operations?.cycle;
       if (cycle && !cycle.completed_at) {
         cycle.completed_records = (cycle.completed_records ?? []).filter(id => id !== r.id);
         cycle.completed_bookings = [];
@@ -721,6 +723,7 @@ export class StudioLifecycle {
     const {discoverySummary,discoveryCampaignSummary,discoveryDailySummary}=await import('./discovery-batches.mjs');
     this.config = await this.loadConfig();
     const state = await this.snapshot(), today = businessDate(this.now());
+    if(this.store?.projectBinding)state.shared_workspace=sharedProjectDashboard(this.store.projectBinding,state);
     if(this.store?.inertBinding)state.shared_workspace={capability:'inert-shared-v1',workspace_id:this.store.inertBinding.scope.workspace_id,manifest_sha256:this.store.inertBinding.manifest_sha256,allowed_edits:['note_added'],reconciliation:inertReconciliation(state),unsupported:['hosted-authoring-sidecars','hosted-backup','provider-execution']};
     if(this.store?.manualBinding)state.shared_workspace={capability:'shared-manual-records-v1',workspace_id:this.store.manualBinding.scope.workspace_id,manifest_sha256:this.store.manualBinding.manifest_sha256,allowed_edits:manualRecordEvents,reconciliation:inertReconciliation(state),execution:'disabled',external_suppression:'unverified',unsupported:['hosted-authoring-sidecars','hosted-backup','provider-execution']};
     let supplementalReviews = null, supplementalHold;

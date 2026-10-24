@@ -10,11 +10,11 @@ export function preparationPanel(r,state,{el,button,eventForm,tell}){
     if(item.hold)section.append(el('p',item.hold,'notice'));
     if(item.result)section.append(el('p',item.result.reference??item.result.internal_review,'source'),el('p',`Prepared by ${item.prepared_by}; awaiting human asset review. No send or client acceptance recorded.`,'muted'));
     const loaded=el('div');
-    section.append(button('Load current context & output form',async()=>{try{
+    section.append(button(state.shared_workspace?.capability==='shared-project-continuation-v1'?'Load current context':'Load current context & output form',async()=>{try{
       const response=await fetch(deskPath(`/api/project-context/${r.id}/${item.id}`)),packet=await response.json();if(!response.ok)throw Error(packet.error);
       loaded.replaceChildren(el('p',`${packet.workflow.skill} · ${packet.workflow.output}`),el('p','Only the approved baseline is an approved asset. Exact source feedback may concern a draft or disputed alternative; it does not change approval.','notice'));
       const raw=el('details');raw.append(el('summary','Read the private source packet'));const pre=el('pre',JSON.stringify(packet,null,2));raw.append(pre);loaded.append(raw);
-      if(item.status!=='Ready')return;
+      if(item.status!=='Ready'||state.shared_workspace?.capability==='shared-project-continuation-v1')return;
       let fields,fixed={work_id:item.id,context_sha256:packet.context_sha256};
       if(item.kind==='internal-scope'){fields=[['Internal scope and price review (never client-addressed)','internal_review','','textarea'],['This is an internal review only','internal_only',false,'checkbox']];}
       else{
