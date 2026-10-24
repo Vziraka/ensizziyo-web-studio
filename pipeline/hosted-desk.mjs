@@ -120,7 +120,7 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
      const {bundle,files}=await hostedAuthoringBackup(app,raw);check(url.searchParams.get('snapshot')===hash(bundle),'Backup changed; retain the prior package and restart its exact read');
      const item=Number(url.searchParams.get('file')),index=Number(url.searchParams.get('chunk'));check(Number.isInteger(item)&&item>=0&&item<bundle.files.length&&Number.isInteger(index)&&index>=0,'Choose an exact backup chunk');const entry=bundle.files[item],bytes=files.get(entry.path);check(index*1_000_000<bytes.length,'Invalid backup chunk');const part=bytes.subarray(index*1_000_000,(index+1)*1_000_000);return binary({bytes:part,sha256:originalDigest(part)});
     }
-    if(post&&/^\/api\/project-author\/(begin|render|inspect|resume|revise|rasters|complete)$/.test(path))return json(200,await hostedAuthoringCommand(app,path.split('/').at(-1),await inputBody(request),actor));
+    if(post&&/^\/api\/project-author\/(begin|render|inspect|resume|revise|rasters|complete|recovery|reconcile)$/.test(path))return json(200,await hostedAuthoringCommand(app,path.split('/').at(-1),await inputBody(request),actor));
     return json(405,{error:'Use the existing bounded project authoring caller'});
    }
    const originalRoute=/^\/api\/project-original\/([a-zA-Z0-9_-]{1,100})\/([a-zA-Z0-9_-]{1,100})\/([a-zA-Z0-9_-]{1,100})(?:\/(reserve|complete|chunk|drive-read)(?:\/([0-9]{1,2}))?)?$/.exec(path);

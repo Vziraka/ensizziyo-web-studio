@@ -6,9 +6,10 @@ import {projectWorkContext} from './project-work.mjs';
 import {nodePDFResources} from './project-authoring-node.mjs';
 import {hostedBackupInventory} from './lifecycle-backup.mjs';
 import {blobAudioStore} from './call-audio.mjs';
+import {recoveryNames,recoveryName,validateAuthoringRecovery} from './authoring-recovery.mjs';
 
 const jobID=v=>typeof v==='string'&&/^author-[a-f0-9]{32}$/.test(v),sha=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
-const nameOK=v=>typeof v==='string'&&/^(context|input|authored|runtime|export|renderer-evidence)\.json$|^output\.pdf$|^(review-)?page-[1-9][0-9]?\.(json|png)$/.test(v);
+const nameOK=v=>typeof v==='string'&&(/^(context|input|authored|runtime|export|renderer-evidence)\.json$|^output\.pdf$|^(review-)?page-[1-9][0-9]?\.(json|png)$/.test(v)||recoveryName.test(v));
 const uploadOK=name=>['input.json','runtime.json'].includes(name)||/^review-page-([1-9]|1[0-6])\.png$/.test(name);
 const limit=name=>name==='runtime.json'?36_000_000:name==='input.json'?4_000_000:name.startsWith('review-page-')?16_000_000:64_000_000;
 export function authoringManifest(bytes){
@@ -33,6 +34,25 @@ export function blobAuthoringStore(raw){
   async putChunk(m,index,bytes){m=manifest(m);check(Buffer.isBuffer(bytes)&&bytes.length===length(m,index)&&originalDigest(bytes)===m.chunks[index],'Authoring chunk differs from the reserved manifest');await immutable(raw,chunkKey(m,index),bytes);},
   async reserve(id,name,m){m=manifest(m,limit(name));await immutable(raw,prefix(id,name)+'/candidate',Buffer.from(JSON.stringify(m)));return m;},
   async candidate(id,name){const saved=await stored(raw,prefix(id,name)+'/candidate');check(saved,'Reserve the exact authoring file first');return manifest(JSON.parse(Buffer.from(saved.data)),limit(name));},
+  async evidence(id){
+   const files=[],bytes=new Map();let total=0;
+   for(const name of recoveryNames){
+    const f={name,published:null,candidate:null};
+    for(const [authority,key] of [['published','manifest'],['candidate','candidate']]){
+     const saved=await stored(raw,prefix(id,name)+'/'+key);if(!saved)continue;
+     const m=manifest(JSON.parse(Buffer.from(saved.data)),limit(name)),chunks=[];let complete=true,corrupt=false;const data=[];
+     for(let i=0;i<m.chunks.length;i++){
+      const saved=await stored(raw,chunkKey(m,i)),c={index:i,expected_sha256:m.chunks[i]};
+      if(!saved){c.disposition='absent-at-observation';complete=false;}else{
+       const b=Buffer.from(saved.data);check(b.length>0&&b.length<=originalChunkSize,'Oversized recovery evidence');const valid=b.length===length(m,i)&&originalDigest(b)===m.chunks[i];
+       Object.assign(c,{disposition:valid?'available':'corrupt-at-observation',sha256:originalDigest(b),bytes:b.length,evidence:`recovery-${originalDigest(b)}.bin`});if(!bytes.has(c.evidence)){total+=b.length;check(total<=512_000_000,'Recovery evidence exceeds the existing backup bound');bytes.set(c.evidence,b);}data.push(b);if(!valid)corrupt=true;
+      }chunks.push(c);
+     }
+     if(complete&&!corrupt&&originalDigest(Buffer.concat(data))!==m.sha256)corrupt=true;
+     f[authority]={manifest:m,chunks,disposition:corrupt?'corrupt':complete?'available':'partial'};
+    }files.push(f);
+   }return {files,bytes};
+  },
   async publish(id,name,m){m=manifest(m);await immutable(raw,prefix(id,name)+'/manifest',Buffer.from(JSON.stringify(m)));},
   async get(id,name){if(jobID(id)&&['renderer.mjs','renderer.py'].includes(name))return null;const m=await this.manifest(id,name);if(!m)return null;const chunks=[];for(let i=0;i<m.chunks.length;i++)chunks.push(await this.chunk(m,i));const bytes=Buffer.concat(chunks);check(originalDigest(bytes)===m.sha256,'Authoring whole-file checksum changed');return bytes;},
   async put(id,name,bytes){const m=authoringManifest(bytes);for(let i=0;i<m.chunks.length;i++)await this.putChunk(m,i,bytes.subarray(i*originalChunkSize,(i+1)*originalChunkSize));await this.publish(id,name,m);}
@@ -40,6 +60,25 @@ export function blobAuthoringStore(raw){
 }
 export function attachHostedAuthoring(app,raw){check(!app.store?.inertBinding&&app.config.mode==='controlled','Hosted authoring permits only the fictional controlled workspace');app.authoringStore=blobAuthoringStore(raw);app.originalStore=blobProjectOriginalStore(raw);return app;}
 function locate(state,id){check(jobID(id),'Choose an exact authoring job');const results=Object.values(state.prospects).flatMap(r=>Object.values(r.project_work??{}).filter(w=>w.execution?.id===id).map(w=>({project_id:r.id,work_id:w.id,job_id:id,job:w.execution})));check(results.length===1,'Unknown current authoring job');return results[0];}
+function registered(state,id){
+ check(jobID(id),'Choose an exact authoring job');const found=[];
+ function visit(w){if(w.execution?.id===id)found.push(w.execution);for(const j of w.authoring_history??[])if(j.id===id)found.push(j);for(const prior of w.history??[])visit(prior);}
+ for(const r of Object.values(state.prospects))for(const w of Object.values(r.project_work??{}))visit(w);
+ check(found.length===1,'Unknown or ambiguous registered authoring job');return found[0];
+}
+async function recoveryObservation(app,id){const state=await app.snapshot(),job=registered(state,id);check(job.status!=='Review','Published authoring cannot be reconciled');if(job.status==='Reconciled')return {state,job,files:job.recovery.files,snapshot:job.recovery.snapshot};const evidence=await app.authoringStore.evidence(id);return {state,job,...evidence,snapshot:hash({state,job_id:id,files:evidence.files})};}
+async function reconcile(app,input,actor){
+ check(Object.keys(input).every(k=>['job_id','snapshot','reason','disposition'].includes(k))&&input.disposition==='close-publication'&&typeof input.reason==='string'&&input.reason.trim()&&input.reason.length<=1600,'Explicitly close publication with a reason; renderer stop cannot be attested');
+ const observed=await recoveryObservation(app,input.job_id),{job}=observed;
+ check(job.actor===actor,'Only the preparing operator may reconcile this attempt');
+ if(job.status==='Reconciled'){check(job.recovery.snapshot===input.snapshot&&job.recovery.reason===input.reason,'Reconciliation retry differs; inspect retained recovery');return job;}
+ check(['Claimed','Rendering','Rendered','Held'].includes(job.status)&&observed.snapshot===input.snapshot,'Recovery snapshot changed; inspect exact dependencies again');
+ const recovery={schema_version:1,disposition:'close-publication',snapshot:input.snapshot,reason:input.reason,actor,at:app.now().toISOString(),prior_status:job.status,execution:'not-attested-stopped',export_usable:false,observation:'Exact available bytes at per-dependency observation; absent or late in-flight writes remain uncertain and grant no file/export authority.',files:observed.files};
+ const result={...job,status:'Reconciled',recovery};await validateAuthoringRecovery(result,async(name)=>observed.bytes.get(name));
+ // Content-addressed evidence may survive a failed CAS. It grants no authority until the state commit.
+ for(const [name,bytes] of observed.bytes)await app.authoringStore.put(job.id,name,bytes);
+ return app.change(s=>{check(hash(s)===hash(observed.state),'Recovery snapshot changed before closure; inspect again');const current=registered(s,job.id);check(hash(current)===hash(job),'Authoring ownership changed');Object.assign(current,result);s.revision++;s.updated_at=app.now().toISOString();return current;});
+}
 function writable(state,id,name,actor){
  check(uploadOK(name),'Upload only submitted source, registered runtime or actual raster pages');const input=locate(state,id),work=state.prospects[input.project_id].project_work[input.work_id],packet=projectWorkContext(state,input.project_id,input.work_id);
  check(work.status==='Ready'&&work.assigned_to===actor&&input.job.actor===actor&&packet.context_sha256===input.job.context_sha256&&!work.context_hold,'Authoring context or operator changed; hold this transfer');
@@ -58,6 +97,8 @@ export async function hostedAuthoringTransfer(app,id,name,operation,input,actor,
 }
 export async function hostedAuthoringCommand(app,operation,input,actor){
  if(operation==='begin'){const result=await beginContinuation(app,input,actor);for(const original of result.originals)if(original.editable_source?.source){delete original.editable_source.source;original.editable_source.retrieval='Download the exact authored.json through this signed authoring caller';}return result;}
+ if(operation==='recovery'){const v=await recoveryObservation(app,input.job_id);return {job_id:v.job.id,status:v.job.status,snapshot:v.snapshot,files:v.files,recovery:v.job.recovery??null};}
+ if(operation==='reconcile')return reconcile(app,input,actor);
  const id=input.job_id,ids=locate(await app.snapshot(),id);
  if(operation==='inspect')return readContinuation(app,id,actor);
  if(operation==='render'){const source=JSON.parse(await readAuthoringFile(app,id,'input.json')),runtime=JSON.parse(await readAuthoringFile(app,id,'runtime.json',36_000_000));return renderContinuation(app,id,source,runtime,actor);}
@@ -65,7 +106,7 @@ export async function hostedAuthoringCommand(app,operation,input,actor){
  if(operation==='revise')return reviseAuthoring(app,{...ids,reason:input.reason},actor);
  if(operation==='rasters'){const job=ids.job;check(job.pages?.length,'Render the exact PDF first');const pages=[];for(let i=0;i<job.pages.length;i++)pages.push(await readAuthoringFile(app,id,`review-page-${i+1}.png`,16_000_000));return retainContinuationRasters(app,id,{pdf_sha256:input.pdf_sha256,rasterizer:input.rasterizer,pages},actor);}
  if(operation==='complete')return completeContinuation(app,id,input.review,actor);
- throw Error('Use the existing begin/render/inspect/resume/rasters/complete/revise caller');
+ throw Error('Use the existing begin/render/inspect/resume/rasters/complete/revise/recovery/reconcile caller');
 }
 export async function hostedAuthoringFile(app,id,name,index){
  // Both signed operators can read current and retained attempts, only within registered workspace history.

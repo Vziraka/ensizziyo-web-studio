@@ -19,7 +19,7 @@ export function fictionalBlobs(){
  const control={entries,requests,lose:null,hook:null};
  control.raw=getStore({name:'fictional-authoring',siteID:'fictional-site',token:'fictional-token',edgeURL:'https://edge.example.invalid',uncachedEdgeURL:'https://strong.example.invalid',fetch:async(url,options)=>{
   const key=decodeURIComponent(new URL(url).pathname.split('/').slice(3).join('/')),headers=new Headers(options.headers),method=options.method.toUpperCase(),prior=entries.get(key);requests.push({method,key,url:String(url),match:headers.get('if-match'),fresh:headers.get('if-none-match')});
-  if(method==='GET')return prior?new Response(prior.bytes,{headers:{etag:prior.etag}}):new Response(null,{status:404});
+  if(method==='GET'){if(control.readHook)await control.readHook(key);return prior?new Response(prior.bytes,{headers:{etag:prior.etag}}):new Response(null,{status:404});}
   const bytes=Buffer.from(await new Response(options.body).arrayBuffer()),current=entries.get(key);
   if(headers.get('if-none-match')==='*'&&current||headers.get('if-match')&&headers.get('if-match')!==current?.etag)return new Response(null,{status:412});
   const etag='"'+(++serial)+'"';entries.set(key,{bytes,etag});

@@ -44,7 +44,7 @@ function target(state,input,actor){
  if(work.kind==='client-proposal')check(r.quote&&['owner','friend'].includes(r.quote.approved_by),'Exact operator scope and price approval is required');
  return {packet,work,r};
 }
-function current(state,input,actor,job){const result=target(state,input,actor);check(result.work.execution?.id===job.id&&result.packet.context_sha256===job.context_sha256&&result.work.request_event===job.request_event,'Context, reply, assignment, stop or baseline changed; hold this output and reload');return result;}
+function current(state,input,actor,job){const result=target(state,input,actor);check(result.work.execution?.id===job.id&&result.work.execution.status!=='Reconciled'&&result.packet.context_sha256===job.context_sha256&&result.work.request_event===job.request_event,'Context, reply, assignment, stop or baseline changed; hold this output and reload');return result;}
 async function references(app,project,refs){
  check(Array.isArray(refs)&&refs.length>0&&refs.length<=12,'Select exact retrieved original references (at most 12)');
  const result=[];for(const ref of refs){check(key(ref.asset_id)&&key(ref.version_id),'Use exact reference version IDs');const {original}=await readProjectAsset(app,project,ref.asset_id,ref.version_id);result.push({asset_id:ref.asset_id,version_id:ref.version_id,sha256:original.sha256,bytes:original.bytes,reference:original.reference});}return result;
@@ -89,7 +89,7 @@ async function designSource(app,source,packet){
  }
  return applyDesignPreferences(source,packet,baseline);
 }
-async function hold(app,input,job,error){await app.change(s=>{const work=s.prospects[input.project_id]?.project_work?.[input.work_id];if(work?.execution?.id===job.id&&work.execution.status!=='Review'){Object.assign(work.execution,{status:'Held',hold:error.message,held_at:app.now().toISOString()});bump(s,app);}});}
+async function hold(app,input,job,error){await app.change(s=>{const work=s.prospects[input.project_id]?.project_work?.[input.work_id];if(work?.execution?.id===job.id&&!['Review','Reconciled'].includes(work.execution.status)){Object.assign(work.execution,{status:'Held',hold:error.message,held_at:app.now().toISOString()});bump(s,app);}});}
 export async function renderAuthoring(app,input,runtime,actor='owner'){
  const state=await app.snapshot(),job=getJob(state,input);if(job.status!=='Claimed')return inspectAuthoring(app,input,actor);
  const {packet}=current(state,input,actor,job),inputSource=app.authoringStore?structuredClone(input.source):JSON.parse(await safeFile(input.source_file));
@@ -149,13 +149,13 @@ export async function inspectAuthoring(app,input,actor='owner'){
 }
 export async function reviseAuthoring(app,input,actor='owner'){
  return app.change(s=>{check(['owner','friend'].includes(actor),'Local operator required');const job=getJob(s,input),work=s.prospects[input.project_id].project_work[input.work_id];
-  check(work.assigned_to===actor&&work.status==='Ready'&&job.actor===actor&&['Claimed','Rendered','Held'].includes(job.status)&&text(input.reason,1600),'Explicitly retain a non-published attempt and its reason; reconcile a Rendering job before revising');
+  check(work.assigned_to===actor&&work.status==='Ready'&&job.actor===actor&&['Claimed','Rendered','Held','Reconciled'].includes(job.status)&&text(input.reason,1600),'Explicitly retain a non-published attempt and its reason; reconcile a Rendering job before revising');
   work.authoring_history??=[];check(work.authoring_history.length<10,'Review repeated authoring failures before creating more attempts');work.authoring_history.push({...job,retained_by:actor,retained_at:app.now().toISOString(),reason:input.reason});work.authoring_attempt=(work.authoring_attempt??0)+1;delete work.execution;bump(s,app);return {status:'Previous attempt retained',next:'Reload current context and claim a new authored attempt. No file or baseline was overwritten.'};});
 }
 export async function resumeAuthoring(app,input,actor='owner'){
  const job=getJob(await app.snapshot(),input);if(job.status==='Review')return inspectAuthoring(app,input,actor);
  check(['Rendering','Rendered'].includes(job.status),'Resume only a reserved export; a held or partial job needs inspection');
- try{const {receipt}=await verifyExport(app,job);await references(app,job.project_id,job.references);await app.change(s=>{const {work}=current(s,input,actor,job);Object.assign(work.execution,{status:'Rendered',pdf:receipt.pdf,pages:receipt.pages,export_sha256:hash(receipt)});bump(s,app);});return inspectAuthoring(app,input,actor);}catch(error){await hold(app,input,job,error);throw error;}
+ try{const {receipt}=await verifyExport(app,job);await references(app,job.project_id,job.references);await app.change(s=>{const {work}=current(s,input,actor,job);Object.assign(work.execution,{status:'Rendered',pdf:receipt.pdf,pages:receipt.pages,export_sha256:hash(receipt)});bump(s,app);});return inspectAuthoring(app,input,actor);}catch(error){if(job.status!=='Rendering')await hold(app,input,job,error);throw error;}
 }
 function rasterPNG(bytes){check(Buffer.isBuffer(bytes)&&bytes.length>=33&&bytes.length<=16_000_000&&bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))&&bytes.toString('ascii',12,16)==='IHDR','Retain actual bounded PNG raster pages');const w=bytes.readUInt32BE(16),h=bytes.readUInt32BE(20);check(w>0&&h>0&&w*h<=40_000_000,'Excessive raster dimensions');}
 // The trusted reviewer supplies real PDF raster exports; this does not execute a rasterizer or approve them.

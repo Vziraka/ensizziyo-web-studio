@@ -5,11 +5,12 @@ import {check,hash,initialConfig} from './lifecycle.mjs';
 import {privateStateDirectory} from './engine.mjs';
 import {audioArchiveFiles} from './call-audio.mjs';
 import {nodePDFResources} from './project-authoring-node.mjs';
+import {validateAuthoringRecovery} from './authoring-recovery.mjs';
 
 const digest=b=>createHash('sha256').update(b).digest('hex'),sha=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 const jobID=v=>typeof v==='string'&&/^author-[a-f0-9]{32}$/.test(v);
 const fileLimit=64_000_000,totalLimit=512_000_000,countLimit=6000,jsonLimit=4_000_000;
-const authorPath=/^project-authored\/(author-[a-f0-9]{32})\/(context\.json|input\.json|authored\.json|runtime\.json|renderer-evidence\.json|export\.json|output\.pdf|(review-)?page-[1-9][0-9]?\.(png|json)|image-[a-zA-Z0-9_-]{1,100}\.(png|jpg|jpeg|webp))$/;
+const authorPath=/^project-authored\/(author-[a-f0-9]{32})\/(context\.json|input\.json|authored\.json|runtime\.json|renderer-evidence\.json|export\.json|output\.pdf|(review-)?page-[1-9][0-9]?\.(png|json)|image-[a-zA-Z0-9_-]{1,100}\.(png|jpg|jpeg|webp)|recovery-[a-f0-9]{64}\.bin)$/;
 function allowed(path){return typeof path==='string'&&(/^(project-originals\/[a-f0-9]{64}\.pdf|call-audio\/[a-zA-Z0-9_-]{1,80})$/.test(path)||authorPath.test(path));}
 
 // Every ancestor is checked: a regular leaf alone does not prevent junction escapes.
@@ -51,6 +52,11 @@ async function inventory(state,read,{restoring=false}={}){
   job({...p,id:match[1],pdf:{name:'output.pdf',sha256:original.sha256,bytes:original.bytes},pages:p.review?.pages,status:'Review'});
  }
  for(const j of jobs.values()){
+  if(j.recovery){
+   check(j.status==='Reconciled','Published authoring cannot use incomplete recovery evidence');
+   for(const ref of j.references??[]){const original=state.asset_index?.[ref.asset_id]?.versions?.[ref.version_id]?.verified_original;check(original&&original.sha256===ref.sha256&&original.bytes===ref.bytes&&original.reference===ref.reference,'Authoring reference has no matching verified original');}
+   await validateAuthoringRecovery(j,(name,expected,size)=>add(`project-authored/${j.id}/${name}`,{max:1_000_000,expected,size}));continue;
+  }
   const prefix=`project-authored/${j.id}/`,context=await json(prefix+'context.json');check(context.context_sha256===j.context_sha256&&hash(context.source)===j.context_sha256,'Authoring context checksum mismatch');
   for(const ref of j.references??[]){const original=state.asset_index?.[ref.asset_id]?.versions?.[ref.version_id]?.verified_original;check(original&&original.sha256===ref.sha256&&original.bytes===ref.bytes&&original.reference===ref.reference,'Authoring reference has no matching verified original');}
   const input=await json(prefix+'input.json',{optional:!j.source_sha256});if(input)check(input.context_sha256===j.context_sha256,'Submitted authoring context changed');
@@ -99,7 +105,7 @@ export async function hostedBackupInventory(app,audioStore){
  check(app.authoringStore&&app.originalStore&&app.store&&!app.store.inertBinding&&app.config.mode==='controlled','Hosted project backup supports the fictional controlled workspace only');
  const state=await app.snapshot();
  // Incomplete transfers/attempts require reconciliation before claiming a complete hosted package.
- for(const work of workHistory(state))for(const job of [...(work.authoring_history??[]),...(work.execution?[work.execution]:[])])check(job.status==='Review','Hosted backup held: reconcile unfinished authoring attempts before exporting complete dependencies');
+ for(const work of workHistory(state))for(const job of [...(work.authoring_history??[]),...(work.execution?[work.execution]:[])])check(job.status==='Review'||job.status==='Reconciled'&&job.recovery,'Hosted backup held: reconcile unfinished authoring attempts before exporting complete dependencies');
  const originals=new Map(Object.values(state.asset_index??{}).flatMap(a=>Object.values(a.versions??{}).filter(v=>v.verified_original).map(v=>[v.verified_original.sha256,v.verified_original])));
  const read=async(path,max,optional)=>{
   check(allowed(path),'Unsafe hosted backup path');let bytes;

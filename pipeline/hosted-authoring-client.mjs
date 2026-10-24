@@ -9,7 +9,7 @@ export async function connectSharedAuthoring(options={}){
  const session=await sharedDeskSession(options),{operator,request}=session,base='/api/project-author/';
  const json=(path,options)=>session.json(path,options,4_500_000);
  const idOK=id=>check(typeof id==='string'&&/^author-[a-f0-9]{32}$/.test(id),'Choose an exact current authoring job');
- const path=(id,name)=>{idOK(id);check(/^[a-z0-9.-]{1,60}$/.test(name),'Choose a retained sidecar name');return base+id+'/file/'+name;};
+ const path=(id,name)=>{idOK(id);check(/^[a-z0-9.-]{1,90}$/.test(name),'Choose a retained sidecar name');return base+id+'/file/'+name;};
  const command=(operation,input)=>json(base+operation,{method:'POST',body:input});
  async function upload(id,name,bytes){
   const p=path(id,name),manifest=authoringManifest(bytes),reserved=await json(p+'/reserve',{method:'POST',body:{manifest}});check(hash(reserved)===hash(manifest),'Reserved authoring transfer differs');
@@ -22,6 +22,8 @@ export async function connectSharedAuthoring(options={}){
   inspect:job_id=>command('inspect',{job_id}),
   resume:job_id=>command('resume',{job_id}),
   revise:(job_id,reason)=>command('revise',{job_id,reason}),
+  recovery:job_id=>command('recovery',{job_id}),
+  reconcile:(job_id,input)=>command('reconcile',{job_id,...input}),
   async render(job_id,source,runtime){
    await upload(job_id,'input.json',Buffer.from(JSON.stringify(source,null,2)));await upload(job_id,'runtime.json',Buffer.from(JSON.stringify(runtime,null,2)));return command('render',{job_id});
   },

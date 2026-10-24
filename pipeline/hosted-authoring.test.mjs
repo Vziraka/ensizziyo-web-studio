@@ -13,6 +13,60 @@ import {readProjectAsset} from './project-assets.mjs';
 import {beginContinuation,renderContinuation} from './project-continuation.mjs';
 
 const name='STUDIO TEST Shared project';
+test('reconciled interrupted upload and retained Held export permit complete backup after successful revision',async t=>{
+ const f=await fixture(),client=await f.connect(),job=await client.begin(name,'website-concepts'),p=`/api/project-author/${job.id}/file/input.json`,s=source(job.context);s.limitations='Fictional interrupted source. '.repeat(50000);
+ const bytes=Buffer.from(JSON.stringify(s,null,2)),m=authoringManifest(bytes);await f.session.json(p+'/reserve',{method:'POST',body:{manifest:m}});await f.session.json(p+'/chunk/0',{method:'POST',binary:true,headers:{'x-studio-transfer':hash(m)},body:bytes.subarray(0,1_000_000)});
+ await assert.rejects(client.backup('unused.json'),/unfinished authoring/);
+ const observed=await client.recovery(job.id);assert.equal(observed.status,'Claimed');
+ const closed=await client.reconcile(job.id,{snapshot:observed.snapshot,reason:'Interrupted fictional upload; retain exact available evidence.',disposition:'close-publication'});assert.equal(closed.status,'Reconciled');assert.equal(closed.recovery.files.find(v=>v.name==='input.json').candidate.disposition,'partial');
+ await client.revise(job.id,'Prepare corrected source from fresh context.');const next=await client.begin(name,'website-concepts');let changed=false;
+ f.storage.hook=async key=>{if(!changed&&key.endsWith('/output.pdf/manifest')){changed=true;await f.app.apply(event('recovery-note','note_added',{note:'Stale context during fictional render.'}),{actor:'friend'});}};
+ await assert.rejects(client.render(next.id,source(next.context),await runtime()),/Context, reply/);f.storage.hook=null;assert.equal((await client.inspect(next.id)).status,'Held');
+ await client.revise(next.id,'Retain failed context attempt and correct it.');const done=await completed(f);await assert.rejects(client.backup('unused.json'),/unfinished authoring/);
+ const old=await (await f.connect('friend')).recovery(next.id);await assert.rejects((await f.connect('friend')).reconcile(next.id,{snapshot:old.snapshot,reason:'Wrong actor',disposition:'close-publication'}),/operator/);
+ await client.reconcile(next.id,{snapshot:old.snapshot,reason:'Retain stale export as unusable evidence.',disposition:'close-publication'});
+ const directory=await mkdtemp(join(tmpdir(),'evz-reconciled-'));t.after(()=>rm(directory,{recursive:true,force:true}));const backup=join(directory,'portable.json');await (await f.connect('friend')).backup(backup);const restored=join(directory,'restored');await StudioLifecycle.restore({input:backup,destination:restored});const state=JSON.parse(await readFile(join(restored,'lifecycle-state.json'))),history=state.prospects['shared-proof'].project_work[done.job.work_id].authoring_history;
+ assert.equal(history.length,2);assert.ok(history.every(j=>j.status==='Reconciled'));assert.equal(state.prospects['shared-proof'].project_email_drafts.length,1);assert.equal(state.prospects['shared-proof'].project_email_drafts[0].attachment.sha256,done.receipt.pdf.sha256);
+ const entry=history[0].recovery.files.find(v=>v.name==='input.json').candidate.chunks[0];assert.deepEqual(await readFile(join(restored,'project-authored',job.id,entry.evidence)),bytes.subarray(0,1_000_000));
+ assert.deepEqual(await (await f.connect('friend')).download(job.id,entry.evidence),bytes.subarray(0,1_000_000));await assert.rejects(done.client.recovery(done.job.id),/Published authoring/);
+ const store=blobAuthoringStore(f.storage.raw),published=await store.manifest(done.job.id,'output.pdf'),key=`authoring-chunks/${published.sha256}/0-${published.chunks[0]}`,prior=f.storage.entries.get(key);f.storage.entries.delete(key);await assert.rejects(client.backup(join(directory,'missing-published.json')),/Missing authoring chunk/);f.storage.entries.set(key,prior);prior.bytes[0]^=1;await assert.rejects(client.backup(join(directory,'corrupt-published.json')),/integrity/);prior.bytes[0]^=1;
+ const evidence=await store.manifest(job.id,entry.evidence),evidenceKey=`authoring-chunks/${evidence.sha256}/0-${evidence.chunks[0]}`;f.storage.entries.get(evidenceKey).bytes[0]^=1;await assert.rejects(client.backup(join(directory,'corrupt-recovery.json')),/integrity/);
+});
+test('active renderer is never declared stopped; reconciliation fences late publication and resume cannot manufacture a stopped Held state',async()=>{
+ const f=await fixture(),client=await f.connect(),job=await client.begin(name,'website-concepts');let entered,release;
+ const waiting=new Promise(r=>entered=r),blocked=new Promise(r=>release=r);let paused=false;
+ f.storage.hook=async key=>{if(!paused&&key.endsWith('/renderer-evidence.json/manifest')){paused=true;entered();await blocked;}};
+ const rendering=client.render(job.id,source(job.context),await runtime()).then(value=>({value}),error=>({error}));await waiting;
+ try{
+  assert.equal((await client.inspect(job.id)).status,'Rendering');await assert.rejects(client.revise(job.id,'Pretend it stopped.'),/Rendering/);
+  await assert.rejects(client.resume(job.id),/unavailable/);assert.equal((await client.inspect(job.id)).status,'Rendering');
+  const observation=await client.recovery(job.id);await assert.rejects(client.reconcile(job.id,{snapshot:observation.snapshot,reason:'Declare stopped',disposition:'stopped'}),/stop cannot be attested/);
+  const closed=await client.reconcile(job.id,{snapshot:observation.snapshot,reason:'Fence uncertain renderer publication; do not attest process exit.',disposition:'close-publication'});assert.equal(closed.recovery.prior_status,'Rendering');assert.equal(closed.recovery.execution,'not-attested-stopped');assert.equal(closed.recovery.export_usable,false);
+ }finally{release();}
+ const result=await rendering;assert.match(result.error.message,/Context, reply/);assert.equal((await client.inspect(job.id)).status,'Reconciled');assert.equal((await f.app.snapshot()).asset_index[job.id],undefined);assert.equal((await f.app.snapshot()).prospects['shared-proof'].project_email_drafts,undefined);
+ await client.revise(job.id,'Use a new explicit claim.');const next=await client.begin(name,'website-concepts');assert.notEqual(next.id,job.id);
+});
+
+test('recovery snapshots reject changed transfers, changed workspace, CAS races and differing retries',async()=>{
+ const f=await fixture(),client=await f.connect(),job=await client.begin(name,'website-concepts'),initial=await client.recovery(job.id),p=`/api/project-author/${job.id}/file/input.json`,bytes=Buffer.from(JSON.stringify(source(job.context),null,2)),manifest=authoringManifest(bytes);
+ await f.session.json(p+'/reserve',{method:'POST',body:{manifest}});await assert.rejects(client.reconcile(job.id,{snapshot:initial.snapshot,reason:'Stale transfer snapshot',disposition:'close-publication'}),/snapshot changed/);
+ const before=await client.recovery(job.id);await f.app.apply(event('change-recovery','note_added',{note:'Concurrent workspace change.'}),{actor:'friend'});await assert.rejects(client.reconcile(job.id,{snapshot:before.snapshot,reason:'Stale workspace',disposition:'close-publication'}),/snapshot changed/);
+ await f.session.json(p+'/chunk/0',{method:'POST',binary:true,headers:{'x-studio-transfer':hash(manifest)},body:bytes}).catch(()=>{});
+ const observed=await client.recovery(job.id);let raced=false;
+ f.storage.hook=async key=>{if(!raced&&key.includes('/recovery-')&&key.endsWith('/manifest')){raced=true;await f.app.apply(event('recovery-cas-race','note_added',{note:'Race during immutable evidence persistence.'}),{actor:'friend'});}};
+ await assert.rejects(client.reconcile(job.id,{snapshot:observed.snapshot,reason:'Race guard',disposition:'close-publication'}),/snapshot changed before closure/);f.storage.hook=null;assert.equal((await client.inspect(job.id)).status,'Claimed');
+ const fresh=await client.recovery(job.id),input={snapshot:fresh.snapshot,reason:'Explicit evidence closure.',disposition:'close-publication'};f.loseResponse('reconcile');await assert.rejects(client.reconcile(job.id,input),/response lost/);assert.equal((await client.reconcile(job.id,input)).status,'Reconciled');await assert.rejects(client.reconcile(job.id,{...input,reason:'Changed reason'}),/retry differs/);
+});
+test('in-flight resume and review readbacks cannot cross a later publication fence; both preparing roles can reconcile',async()=>{
+ for(const actor of ['owner','friend'])for(const operation of ['resume','complete']){
+  const f=await fixture({actor}),done=await rendered(f),{job,client,receipt}=done,rasters=operation==='complete'?await client.rasters(job.id,{pdf_sha256:receipt.pdf.sha256,rasterizer:'Unit boundary substitute',pages:receipt.pages.map(()=>substitutedPNG)}):null;let entered,release;
+  const waiting=new Promise(r=>entered=r),blocked=new Promise(r=>release=r);let paused=false;
+  f.storage.readHook=async key=>{if(!paused&&key===`project-authored/${job.id}/export.json/manifest`){paused=true;entered();await blocked;}};
+  const pending=(operation==='resume'?client.resume(job.id):client.complete(job.id,review(receipt,rasters))).then(value=>({value}),error=>({error}));await waiting;
+  try{const observed=await client.recovery(job.id);await client.reconcile(job.id,{snapshot:observed.snapshot,reason:'Fence in-flight readback without attesting process exit.',disposition:'close-publication'});}finally{release();}
+  assert.match((await pending).error.message,/Context, reply/);assert.equal((await client.inspect(job.id)).status,'Reconciled');const state=await f.app.snapshot();assert.equal(state.asset_index[job.id],undefined);assert.equal(state.prospects['shared-proof'].project_email_drafts,undefined);await assert.rejects(client.resume(job.id),/Resume only/);await assert.rejects(client.complete(job.id,review(receipt,rasters)),/Render and inspect/);
+ }
+});
 async function rendered(f){const client=await f.connect(),job=await client.begin(name,'website-concepts');await client.render(job.id,source(job.context),await runtime());return {client,job,receipt:JSON.parse(await client.download(job.id,'export.json'))};}
 async function completed(f){const {client,job,receipt}=await rendered(f),rasters=await client.rasters(job.id,{pdf_sha256:receipt.pdf.sha256,rasterizer:'Substituted one-pixel unit-test boundary only',pages:receipt.pages.map(()=>substitutedPNG)});const saved=await client.complete(job.id,review(receipt,rasters));return {client,job,receipt,saved};}
 
