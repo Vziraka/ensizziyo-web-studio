@@ -3,10 +3,10 @@ import {join} from 'node:path';
 import {check,hash} from './lifecycle.mjs';
 import {resolveProject,projectWorkContext,projectContext} from './project-work.mjs';
 import {readProjectAsset} from './project-assets.mjs';
-import {claimAuthoring,renderAuthoring,reviewAuthoring,inspectAuthoring} from './project-authoring.mjs';
+import {claimAuthoring,renderAuthoring,reviewAuthoring,inspectAuthoring,readAuthoringFile,retainAuthoringRasters} from './project-authoring.mjs';
 
 const kinds=['website-concepts','website-refinement','client-proposal'];
-function local(app,actor){check(app.directory&&!app.store&&['owner','friend'].includes(actor),'Continuation needs an authorized local workspace/operator');}
+function local(app,actor){check((app.directory&&!app.store||app.authoringStore&&app.store&&!app.store.inertBinding&&app.config.mode==='controlled')&&['owner','friend'].includes(actor),'Continuation needs an authorized local or injected fictional workspace/operator');}
 function locate(state,id){
  const matches=Object.values(state.prospects).flatMap(r=>Object.values(r.project_work??{}).filter(w=>w.execution?.id===id).map(w=>({project_id:r.id,work_id:w.id,job_id:id})));
  check(matches.length===1,'Unknown or ambiguous continuation job; begin from the company name');return matches[0];
@@ -15,6 +15,7 @@ async function editableSource(app,version){
  const provenance=version.provenance;if(!provenance?.source_reference)return null;
  const match=/^private-path:project-authored\/(author-[a-f0-9]{32})\/authored\.json$/.exec(provenance.source_reference);
  if(!match)return {status:'Reference only; recover and review editable source before changing an approved design',reference:provenance.source_reference};
+ if(app.authoringStore){const bytes=await readAuthoringFile(app,match[1],'authored.json'),source=JSON.parse(bytes);check(hash(source)===provenance.source_sha256,'Editable source hash changed; preserve the approved baseline');return {reference:provenance.source_reference,source,sha256:provenance.source_sha256,status:'Hash-verified declarative source; inspect alongside original PDF'};}
  const path=join(app.directory,'project-authored',match[1],'authored.json'),root=await realpath(app.directory);
  check(await realpath(path)===join(root,'project-authored',match[1],'authored.json'),'Unsafe editable source path');
  const stat=await lstat(path);check(stat.isFile()&&!stat.isSymbolicLink()&&stat.size>0&&stat.size<=4_000_000,'Unsafe editable source');
@@ -34,10 +35,13 @@ export async function beginContinuation(app,{name,kind},actor='owner'){
  const originals=[];
  for(const ref of refs){const file=await readProjectAsset(app,project,ref.asset_id,ref.version_id);originals.push({asset_id:ref.asset_id,version_id:ref.version_id,path:file.path,original:file.original,editable_source:await editableSource(app,ref.version)});}
  const job=await claimAuthoring(app,{project_id:project,work_id:work.id,context_sha256:packet.context_sha256,references:refs.map(({asset_id,version_id})=>({asset_id,version_id}))},actor);
- return {...job,name:resolved.name,loaded_revision:state.revision,skill:packet.workflow.skill,context_file:join(job.directory,'context.json'),originals,contract:'pipeline/PROJECT-AUTHORING.md',next:'Read the named existing skill, context and original PDFs; author private source, render, visually inspect every page, then complete with its exact review. This command does not invoke an AI.'};
+ return {...job,name:resolved.name,loaded_revision:state.revision,skill:packet.workflow.skill,...(job.directory?{context_file:join(job.directory,'context.json')}:{context:packet}),originals,contract:'pipeline/PROJECT-AUTHORING.md',next:'Read the named existing skill, context and original PDFs; author private source, render, visually inspect every page, then complete with its exact review. This command does not invoke an AI.'};
 }
 export async function renderContinuation(app,id,source_file,runtime,actor='owner'){
- local(app,actor);const input=locate(await app.snapshot(),id);return renderAuthoring(app,{...input,source_file},runtime,actor);
+ local(app,actor);const input=locate(await app.snapshot(),id);return renderAuthoring(app,{...input,...(app.authoringStore?{source:source_file}:{source_file})},runtime,actor);
+}
+export async function retainContinuationRasters(app,id,rasters,actor='owner'){
+ local(app,actor);return retainAuthoringRasters(app,locate(await app.snapshot(),id),rasters,actor);
 }
 export async function readContinuation(app,id,actor='owner'){
  local(app,actor);const state=await app.snapshot(),input=locate(state,id),job=await inspectAuthoring(app,input,actor);

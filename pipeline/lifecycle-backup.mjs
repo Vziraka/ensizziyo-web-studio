@@ -4,11 +4,12 @@ import {createHash,randomUUID} from 'node:crypto';
 import {check,hash,initialConfig} from './lifecycle.mjs';
 import {privateStateDirectory} from './engine.mjs';
 import {audioArchiveFiles} from './call-audio.mjs';
+import {nodePDFResources} from './project-authoring-node.mjs';
 
 const digest=b=>createHash('sha256').update(b).digest('hex'),sha=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 const jobID=v=>typeof v==='string'&&/^author-[a-f0-9]{32}$/.test(v);
 const fileLimit=64_000_000,totalLimit=512_000_000,countLimit=6000,jsonLimit=4_000_000;
-const authorPath=/^project-authored\/(author-[a-f0-9]{32})\/(context\.json|input\.json|authored\.json|runtime\.json|renderer-evidence\.json|export\.json|output\.pdf|page-[1-9][0-9]?\.png|image-[a-zA-Z0-9_-]{1,100}\.(png|jpg|jpeg|webp))$/;
+const authorPath=/^project-authored\/(author-[a-f0-9]{32})\/(context\.json|input\.json|authored\.json|runtime\.json|renderer-evidence\.json|export\.json|output\.pdf|(review-)?page-[1-9][0-9]?\.(png|json)|image-[a-zA-Z0-9_-]{1,100}\.(png|jpg|jpeg|webp))$/;
 function allowed(path){return typeof path==='string'&&(/^(project-originals\/[a-f0-9]{64}\.pdf|call-audio\/[a-zA-Z0-9_-]{1,80})$/.test(path)||authorPath.test(path));}
 
 // Every ancestor is checked: a regular leaf alone does not prevent junction escapes.
@@ -37,7 +38,7 @@ async function inventory(state,read,{restoring=false}={}){
   check((!expected||digest(bytes)===expected)&&(size===undefined||bytes.length===size),'Backup dependency checksum or size mismatch');return bytes;
  };
  const json=async(path,options={})=>{const bytes=await add(path,{max:jsonLimit,...options});return bytes?JSON.parse(bytes):null;};
- function job(value){check(jobID(value.id)&&sha(value.context_sha256),'Unsafe authoring dependency declaration');const prior=jobs.get(value.id)??{};for(const k of ['context_sha256','source_sha256','runtime_sha256','renderer_sha256','export_sha256'])check(!prior[k]||!value[k]||prior[k]===value[k],'Conflicting authoring dependency declarations');jobs.set(value.id,{...prior,...value});}
+ function job(value){check(jobID(value.id)&&sha(value.context_sha256),'Unsafe authoring dependency declaration');const prior=jobs.get(value.id)??{};for(const k of ['context_sha256','source_sha256','runtime_sha256','renderer_sha256','renderer_lock_sha256','export_sha256'])check(!prior[k]||!value[k]||prior[k]===value[k],'Conflicting authoring dependency declarations');jobs.set(value.id,{...prior,...value});}
  for(const work of workHistory(state))for(const value of [...(work.authoring_history??[]),...(work.execution?[work.execution]:[])])job(value);
  for(const r of Object.values(state.prospects??{})){
   for(const draft of r.project_email_drafts??[]){const a=draft.attachment;if(!a)continue;const version=state.asset_index?.[a.asset_id]?.versions?.[a.version_id];check(version?.verified_original?.sha256===a.sha256&&version.verified_original.bytes===a.bytes&&version.reference===a.reference,'Held attachment has no matching verified original');}
@@ -54,7 +55,9 @@ async function inventory(state,read,{restoring=false}={}){
   for(const ref of j.references??[]){const original=state.asset_index?.[ref.asset_id]?.versions?.[ref.version_id]?.verified_original;check(original&&original.sha256===ref.sha256&&original.bytes===ref.bytes&&original.reference===ref.reference,'Authoring reference has no matching verified original');}
   const input=await json(prefix+'input.json',{optional:!j.source_sha256});if(input)check(input.context_sha256===j.context_sha256,'Submitted authoring context changed');
   const source=await json(prefix+'authored.json',{optional:!j.source_sha256});if(source){check(!j.source_sha256||hash(source)===j.source_sha256,'Authored source checksum mismatch');check(source.context_sha256===j.context_sha256,'Authored context changed');}
-  const runtime=await json(prefix+'runtime.json',{optional:!j.runtime_sha256});if(runtime){check(!j.runtime_sha256||hash(runtime)===j.runtime_sha256,'Runtime evidence checksum mismatch');
+  const runtime=await json(prefix+'runtime.json',{optional:!j.runtime_sha256,max:36_000_000});if(runtime){check(!j.runtime_sha256||hash(runtime)===j.runtime_sha256,'Runtime evidence checksum mismatch');
+   if(runtime.renderer==='node-pdf-v1')nodePDFResources(runtime,context.project_id);
+   else{
    // Declarations are evidence only. Unknown fields might hide credentials.
    check(Object.keys(runtime).every(k=>['python','pdftoppm','proposal_assets','images','fonts'].includes(k)),'Unsupported runtime evidence fields; exclude credentials before backup');
    for(const [id,image] of Object.entries(runtime.images??{})){
@@ -65,17 +68,23 @@ async function inventory(state,read,{restoring=false}={}){
     check(ext==='png'?bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])):ext==='webp'?bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WEBP':bytes[0]===255&&bytes[1]===216&&bytes[2]===255,'Original image container mismatch');
    }
    for(const entry of Object.values(runtime.fonts??{}))check(entry&&Object.keys(entry).every(k=>['path','sha256'].includes(k)),'Unsupported font declaration');
+   }
   }
   if(j.renderer_sha256){check(sha(j.renderer_sha256),'Invalid renderer evidence');const path=prefix+'renderer-evidence.json';let evidence=await json(path,{optional:!restoring});
-   if(!evidence){const bytes=await read.renderer(prefix+'renderer.py');check(digest(bytes)===j.renderer_sha256,'Renderer checksum mismatch');evidence={schema_version:1,renderer_sha256:j.renderer_sha256,execution:'disabled',requires_trusted_runtime_rebinding:true};const data=Buffer.from(JSON.stringify(evidence));files.set(path,data);total+=data.length;}
+   if(!evidence){const bytes=await read.renderer(prefix+(j.renderer==='node-pdf-v1'?'renderer.mjs':'renderer.py'));check(digest(bytes)===j.renderer_sha256,'Renderer checksum mismatch');evidence={schema_version:1,renderer_sha256:j.renderer_sha256,execution:'disabled',requires_trusted_runtime_rebinding:true};const data=Buffer.from(JSON.stringify(evidence));files.set(path,data);total+=data.length;}
    check(evidence.schema_version===1&&evidence.renderer_sha256===j.renderer_sha256&&evidence.execution==='disabled'&&evidence.requires_trusted_runtime_rebinding===true,'Invalid renderer evidence');
+   check(Object.keys(evidence).every(k=>['schema_version','renderer_sha256','lock_sha256','execution','requires_trusted_runtime_rebinding'].includes(k)),'Unsupported renderer evidence fields');
+   if(j.renderer==='node-pdf-v1')check(sha(j.renderer_lock_sha256)&&evidence.lock_sha256===j.renderer_lock_sha256,'Pinned renderer dependency evidence changed');
   }
   const receipt=await json(prefix+'export.json',{optional:!j.export_sha256&&!j.pdf});
   if(receipt){check(receipt.schema_version===1&&receipt.context_sha256===j.context_sha256&&receipt.source_sha256===j.source_sha256&&(!j.export_sha256||hash(receipt)===j.export_sha256),'Export receipt checksum mismatch');check(receipt.pdf?.name==='output.pdf'&&sha(receipt.pdf.sha256)&&Array.isArray(receipt.pages)&&receipt.pages.length>0&&receipt.pages.length<=16,'Incomplete authored export');
    const pdf=await add(prefix+'output.pdf',{expected:receipt.pdf.sha256,size:receipt.pdf.bytes});check(pdf.subarray(0,5).toString()==='%PDF-'&&(!j.pdf||j.pdf.name===receipt.pdf.name&&j.pdf.sha256===receipt.pdf.sha256&&j.pdf.bytes===receipt.pdf.bytes),'Authored PDF mismatch');
-   check(new Set(receipt.pages.map(p=>p.name)).size===receipt.pages.length,'Duplicate authored pages');for(const [i,p] of receipt.pages.entries()){check(p.page===i+1&&/^page-[1-9][0-9]?\.png$/.test(p.name)&&sha(p.sha256),'Invalid authored page');await add(prefix+p.name,{max:16_000_000,expected:p.sha256});}
+   const pagePattern=j.renderer==='node-pdf-v1'?/^page-[1-9][0-9]?\.json$/:/^page-[1-9][0-9]?\.png$/;
+   check(new Set(receipt.pages.map(p=>p.name)).size===receipt.pages.length,'Duplicate authored pages');for(const [i,p] of receipt.pages.entries()){check(p.page===i+1&&pagePattern.test(p.name)&&sha(p.sha256),'Invalid authored page');await add(prefix+p.name,{max:16_000_000,expected:p.sha256});}
    check(!j.pages||hash(j.pages)===hash(receipt.pages),'Reviewed pages changed');
    if(j.review)check(j.review.export_sha256===hash(receipt)&&hash(j.review.pages)===hash(receipt.pages)&&(!j.review_sha256||hash(j.review)===j.review_sha256),'Authoring review evidence changed');
+   const raster=j.review?.raster_review;if(j.renderer==='node-pdf-v1'&&j.review)check(raster?.pdf_sha256===receipt.pdf.sha256&&raster.pages?.length===receipt.pages.length,'Missing actual PDF raster review');
+   if(raster){check(raster.pdf_sha256===receipt.pdf.sha256&&raster.pages?.length===receipt.pages.length,'Raster review differs from PDF');for(const [i,p] of raster.pages.entries()){check(p.page===i+1&&p.name===`review-page-${i+1}.png`&&sha(p.sha256),'Invalid raster review dependency');const bytes=await add(prefix+p.name,{max:16_000_000,expected:p.sha256});check(bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])),'Invalid raster review PNG');}}
   }
  }
  const audio=await audioArchiveFiles(state,{get:id=>add('call-audio/'+id,{max:4_000_000})});
@@ -83,7 +92,7 @@ async function inventory(state,read,{restoring=false}={}){
 }
 async function localInventory(directory,state){
  const read=(path,max,optional)=>boundedBackupRead(directory,path,max,optional);
- read.renderer=async path=>{check(/^project-authored\/author-[a-f0-9]{32}\/renderer\.py$/.test(path),'Unsafe renderer evidence path');return readRegularExternal(join(directory,...path.split('/')),jsonLimit,directory);};
+ read.renderer=async path=>{check(/^project-authored\/author-[a-f0-9]{32}\/renderer\.(py|mjs)$/.test(path),'Unsafe renderer evidence path');return readRegularExternal(join(directory,...path.split('/')),jsonLimit,directory);};
  read.external=readRegularExternal;return inventory(state,read);
 }
 async function readRegularExternal(path,max=fileLimit,inside){
@@ -125,5 +134,5 @@ export async function restoreLifecycleBackup(input,destination){
   // Publish state last: interrupted directories cannot be opened as a workspace.
   const temporary=join(destination,'.state.pending');await writeFile(temporary,JSON.stringify(state),{flag:'wx',mode:0o600,flush:true});await link(temporary,join(destination,'lifecycle-state.json'));published=true;await unlink(temporary);
  }catch(error){if(!published)await removeOwned(destination,identity);throw error;}
- return {execution:'disabled',prospects:Object.keys(state.prospects).length,audio_clips,project_files:files.size-audio_clips,trusted_runtime:'Rebind Python, Poppler, fonts, proposal assets and original image paths explicitly before new rendering'};
+ return {execution:'disabled',prospects:Object.keys(state.prospects).length,audio_clips,project_files:files.size-audio_clips,trusted_runtime:'Rebind the installed trusted renderer before new rendering. Local Python needs Python/Poppler/assets; Node uses retained hash-verified portable resources and pinned dependencies.'};
 }

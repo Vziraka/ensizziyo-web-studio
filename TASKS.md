@@ -2,6 +2,8 @@
 
 ## Shared operations desk redesign — October 23, 2026
 
+- [x] Add an explicit portable Node PDF renderer to the existing declarative concept/refinement/proposal caller, with pinned licensed dependencies, immutable resource/source/runtime/output evidence and mandatory separate actual-page raster review. A new fictional five-direction PDF, protected heading-font refinement, approved-quote proposal, exact held attachment/index and portable backup/restore pass. Bundled Node 24 conditional-store/injected-sidecar equivalence passes without Python/Poppler runtime or external resource paths. D2/production stay closed; actual hosted storage/execution/volume/cost, hosted raster QA and computer-off acceptance remain open. [Supported renderer and limits](pipeline/PROJECT-AUTHORING.md#portable-node-renderer).
+
 - [x] Add a separately disabled direct business Calendar transport through existing exact guest-confirmed booking, buffered availability, durable creation intent and provider meeting verification. Both signed roles, independent future owner grant, real local fictional HTTP/OAuth, uncertainty and DST proofs pass. No actual consent/invitation/acceptance, production/D2 execution or computer-off proof. [Caller and limits](pipeline/GOOGLE-CALENDAR.md).
 
 - [x] Add separately disabled exact registered Drive PDF reads through a distinct future owner read-only grant profile, existing signed original caller, bounded 1 MB ranges/CAS resume and D1 final hash authority. Both roles, realistic fictional HTTP/OAuth wiring, baseline/history and portable backup checks pass. No new consent, real provider/hosted proof, sharing, migration, scheduler or activation. [Contract and limits](pipeline/GOOGLE-DRIVE-ORIGINALS.md).

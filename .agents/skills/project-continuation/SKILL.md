@@ -17,7 +17,7 @@ Author the actual output using those skills and `pipeline/PROJECT-AUTHORING.md`'
 node lifecycle-cli.mjs project-continue render JOB /absolute/private/source.json /absolute/private/runtime.json
 ```
 
-Inspect every `page-N.png` in the returned directory and check requirements, visual design and export separately. Correct a failed/partial attempt through the existing `project-author revise` recovery; never manufacture a successful review or overwrite a baseline. Save the actual review as private JSON (`export_sha256` = lifecycle `hash` of parsed `export.json`, exact receipt `pages`, `requirements`, `visual_design`, `export` all true, and useful `notes`). Then:
+Inspect every actual PDF raster page and check requirements, visual design and export separately. The default local runtime produces `page-N.png`. The explicit `node-pdf-v1` runtime produces actual PDF bytes and **canonical `page-N.json` only**; those are not visual evidence. Use the available local PDF rasterizer separately, inspect every exported page, then follow `PROJECT-AUTHORING.md`'s `project-continue rasters JOB MANIFEST` step and include its returned `raster_review` in the review. If actual page exports/review are unavailable, leave the output unreviewed; never infer quality from JSON or count. Correct a failed/partial attempt through the existing `project-author revise` recovery; never manufacture a successful review or overwrite a baseline. Save the actual review as private JSON (`export_sha256` = lifecycle `hash` of parsed `export.json`, exact receipt `pages`, `requirements`, `visual_design`, `export` all true, and useful `notes`). Then:
 
 ```text
 node lifecycle-cli.mjs project-continue complete JOB /absolute/private/review.json

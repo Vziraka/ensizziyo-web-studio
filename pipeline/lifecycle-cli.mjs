@@ -3,9 +3,9 @@ import {prepareTeamNotifications,notificationView} from './team-notifications.mj
 import {projectContext,projectWorkContext,resolveProject} from './project-work.mjs';
 import {readProjectAsset,recoverDriveAsset} from './project-assets.mjs';
 import {AppConnectors} from './app-connectors.mjs';
-import { join } from 'node:path';
+import { join,isAbsolute } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { mkdir } from 'node:fs/promises';
+import { mkdir,lstat,readFile } from 'node:fs/promises';
 import { StudioLifecycle, initialConfig, check } from './lifecycle.mjs';
 import { readJson } from './engine.mjs';
 import { seedLifecycle } from './lifecycle-fixtures.mjs';
@@ -27,8 +27,13 @@ async function main() {
     const continuation=await import('./project-continuation.mjs'),actor=process.env.STUDIO_PROJECT_OPERATOR??'owner';
     if(key==='begin')return continuation.beginContinuation(app,{name:operation,kind:actionId},actor);
     if(key==='render')return continuation.renderContinuation(app,operation,actionId,await readJson(prospectId),actor);
+    if(key==='rasters'){
+      const manifest=await readJson(actionId);check(Array.isArray(manifest.pages)&&manifest.pages.length>=1&&manifest.pages.length<=16,'Provide every actual PDF raster page');
+      const pages=[];for(const path of manifest.pages){check(typeof path==='string'&&isAbsolute(path),'Use explicit private raster paths');const stat=await lstat(path);check(stat.isFile()&&!stat.isSymbolicLink()&&stat.size>0&&stat.size<=16_000_000,'Unsafe raster page');pages.push(await readFile(path));}
+      return continuation.retainContinuationRasters(app,operation,{...manifest,pages},actor);
+    }
     if(key==='complete')return continuation.completeContinuation(app,operation,await readJson(actionId),actor);
-    check(key==='inspect','Use project-continue begin COMPANY KIND, render JOB SOURCE RUNTIME, complete JOB REVIEW or inspect JOB');
+    check(key==='inspect','Use project-continue begin COMPANY KIND, render JOB SOURCE RUNTIME, rasters JOB MANIFEST, complete JOB REVIEW or inspect JOB');
     return continuation.readContinuation(app,operation,actor);
   }
   if(command==='project-asset'){const {bytes,...result}=await readProjectAsset(app,key,operation,actionId);return result;}
