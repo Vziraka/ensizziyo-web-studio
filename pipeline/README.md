@@ -1,5 +1,7 @@
 # Controlled research proof
 
+[Internal alerts and team digest](TEAM-NOTIFICATIONS.md) now prepare attributable, source-aware private messages with weekday 9am Eastern timing. UI/API/CLI/local clock are connected; external recipients, delivery and computer-off scheduling remain unconfigured.
+
 [Opening selection](OPENINGS.md) binds new discovery choices to exact sources and keeps weak/unsupported cases held while preserving existing research budgets. Actual provider research quality still needs a representative live proof.
 
 Current [project preparation](PROJECT-WORK.md) connects reviewed interest, approved assets and scoped preferences to attributed workflow tasks and exact output review, with one unpaid focused refinement before scope/price. Automatic authoring and connected file retrieval remain separate acceptance items.

@@ -203,4 +203,6 @@ Use shared documents as the bridge. Work owns business planning and updates the 
 
 Suggested implementation kickoff: "Read AGENTS.md and the linked project documents. Confirm the current branch and setup status. Continue the next agreed task from TASKS.md; consult upstream guidance as needed and install nothing yet."
 
-October24 preparation source: [Project work](pipeline/PROJECT-WORK.md) owns private context/read-write handoffs, exact quote gating and unpaid-refinement limits. Existing connected tools must load the current private packet and record exact indexed output; no automatic remote authoring or Drive retrieval is established by the source implementation.
+October 24 preparation source: [Project work](pipeline/PROJECT-WORK.md) owns private context/read-write handoffs, exact quote gating and unpaid-refinement limits. Existing connected tools must load the current private packet and record exact indexed output; no automatic remote authoring or Drive retrieval is established by the source implementation.
+
+October 24 [notification preparation](pipeline/TEAM-NOTIFICATIONS.md) connects source-aware alerts and the 9am weekday team digest through existing local/hosted private callers. Delivery is explicitly held: exact recipient addresses and a verified hosted transport are absent; the Sheets service-account scope and local spawned Codex connector do not provide computer-off Gmail delivery.

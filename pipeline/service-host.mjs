@@ -1,3 +1,4 @@
+import {runNotificationPreparation} from './team-notifications.mjs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { rename, mkdir } from 'node:fs/promises';
@@ -35,7 +36,7 @@ export async function startStudioService(directory) {
   try {
     const app = await StudioLifecycle.open({ directory });
     server = await serveLifecycle(app, { port: app.config.runtime?.port ?? 8807 });
-    const runners = [runOperationsService(app, { signal: stop.signal }), runResearchService(app, { signal: stop.signal }), runContactQueueService(app, { signal: stop.signal }),runDiscoveryService(app,{signal:stop.signal})];
+    const runners = [runNotificationPreparation(app,{signal:stop.signal}),runOperationsService(app, { signal: stop.signal }), runResearchService(app, { signal: stop.signal }), runContactQueueService(app, { signal: stop.signal }),runDiscoveryService(app,{signal:stop.signal})];
     try { await Promise.all(runners); }
     finally { shutdown(); await Promise.allSettled(runners); }
   } finally { shutdown(); process.removeListener('SIGINT', shutdown); process.removeListener('SIGTERM', shutdown); await releaseHost(); }

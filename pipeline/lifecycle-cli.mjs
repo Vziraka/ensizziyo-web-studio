@@ -1,3 +1,4 @@
+import {prepareTeamNotifications,notificationView} from './team-notifications.mjs';
 import {projectContext,projectWorkContext} from './project-work.mjs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -18,6 +19,8 @@ async function main() {
   const app = await StudioLifecycle.open({ directory });
   if (command === 'seed') return seedLifecycle(app);
   if(command==='project-context'){const state=await app.snapshot();return operation?projectWorkContext(state,key,operation):projectContext(state,key);}
+  if(command==='notifications')return notificationView(await app.snapshot());
+  if(command==='prepare-notifications')return prepareTeamNotifications(app);
   if (command === 'status') return app.dashboard();
   if(command==='discover-home-100'){const {startDiscoveryCampaign}=await import('./discovery-batches.mjs');return startDiscoveryCampaign(app,{id:key,target:100,verification_ref:operation});}
   if (command === 'ops-next') {
@@ -45,7 +48,7 @@ async function main() {
   const bridge = new LifecycleBridge(app, process.env.STUDIO_LIFECYCLE_SESSION);
   if (command === 'prepare') return bridge.prepare(key, operation, actionId, prospectId);
   if (command === 'settle') { check(/^[a-zA-Z0-9_-]{1,100}$/.test(key ?? ''), 'Invalid receipt key'); return bridge.settle(key, await readJson(join(app.directory, 'receipts', `${key}.json`))); }
-  throw Error('Use init, init-production, import-research, discover-home-100, release, seed, status, project-context, event, assess, serve, service, prepare, settle, ops-next, ops-settle, ops-ack, pause, backup or restore');
+  throw Error('Use init, init-production, import-research, discover-home-100, release, seed, status, project-context, notifications, prepare-notifications, event, assess, serve, service, prepare, settle, ops-next, ops-settle, ops-ack, pause, backup or restore');
 }
 try { const result = await main(); if (result !== undefined) console.log(JSON.stringify(result)); }
 catch (error) { console.error(error.message); process.exitCode = 1; }

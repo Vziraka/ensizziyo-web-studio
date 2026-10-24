@@ -435,7 +435,13 @@ function render() {
     if (!state.exceptions.length && !state.reply_alerts?.length) node.append(el('p', 'No unresolved exceptions.', 'empty'));
     for (const alert of state.reply_alerts ?? []) { const row = el('div', undefined, 'check-item'); row.append(el('span', '!'), el('p', alert.reason), button('Review reply', () => { selected = alert.prospect_id; view = 'reviews'; render(); }, 'primary')); node.append(row); }
     for (const item of state.exceptions) { const row = el('div', undefined, 'check-item'); row.append(el('span', '!'), el('p', item.reason)); node.append(row); }
-    node.append(el('p', 'Routine checks stay in private logs. Notifications are consolidated and sent only for a meaningful change or required decision. The earlier test monitor stays paused.', 'muted')); content.append(node); return;
+    const notices=el('section');notices.append(el('h3','Owner alerts and team summary'),el('p','Verified attention items prepare private messages for the responsible operator. The team summary becomes due at 9am Eastern on weekdays. External delivery is held until recipients and a supported channel are verified.','notice'));
+    notices.append(button('Check due alerts and team summary',async()=>{try{await api('/api/team-notifications/prepare',{});await refresh();tell('Preparation checked. No external notification was sent.');}catch(error){tell(error.message,true);}}));
+    const preparation=state.notification_preparation;
+    if(preparation?.hold)notices.append(el('p',preparation.hold,'notice'));
+    for(const notice of preparation?.messages??[]){const entry=el('details');entry.append(el('summary',`${notice.recipient_role} · ${notice.subject} · ${notice.status}`),el('p',`Due ${new Date(notice.due_at).toLocaleString('en-US',{timeZone:'America/New_York'})} Eastern${notice.late_minutes?`; prepared ${notice.late_minutes} minutes late`:''}`,'muted'),el('pre',notice.body),el('p',notice.delivery_hold,'muted'));notices.append(entry);}
+    if(!preparation?.messages?.length)notices.append(el('p','No notification messages prepared yet.','empty'));
+    node.append(notices,el('p','Routine checks stay in private logs. The earlier test monitor stays paused; no external delivery is enabled by these prepared messages.','muted'));content.append(node);return;
   }
   if (view === 'launch') {
     if (state.controls.mode === 'production') {

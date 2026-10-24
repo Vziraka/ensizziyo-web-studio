@@ -1,3 +1,4 @@
+import {prepareTeamNotifications,notificationView} from './team-notifications.mjs';
 import {projectContext,projectWorkContext} from './project-work.mjs';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
@@ -59,6 +60,7 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
         return json(200, { signed_out: true }, { 'Set-Cookie': operatorAuth.cookie('', { secure: Boolean(req.socket.encrypted), clear: true }) });
       }
       if(req.method==='GET'&&/^\/api\/project-context\/[a-zA-Z0-9_-]{1,100}(?:\/[a-zA-Z0-9_-]{1,100})?$/.test(url.pathname)){const [,,,project,workId]=url.pathname.split('/'),snapshot=await app.snapshot();return json(200,workId?projectWorkContext(snapshot,project,workId):projectContext(snapshot,project));}
+      if(req.method==='GET'&&url.pathname==='/api/team-notifications')return json(200,notificationView(await app.snapshot()));
       if (req.method === 'GET' && url.pathname === '/api/state') return json(200, { ...await app.dashboard(), build:await version, csrf, workers: [...work.keys()], current_operator: operator, operator_auth_enabled: Boolean(operatorAuth) });
       if(req.method==='GET'&&/^\/call-audio\/[a-zA-Z0-9_-]{1,100}\/[a-zA-Z0-9_-]{1,80}$/.test(url.pathname)){
         const [, ,project,id]=url.pathname.split('/'),clip=await readCallAudio(app,localAudioStore(app.directory),project,id);
@@ -84,6 +86,7 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
       }
       check(req.method === 'POST' && req.headers['x-studio-token'] === csrf && req.headers['content-type'] === 'application/json', 'Owner session and same-origin approval token required');
       const input = await readInput();
+      if(url.pathname==='/api/team-notifications/prepare')return json(200,await prepareTeamNotifications(app));
       if(url.pathname==='/api/call-audio-check')return json(200,await reconcileCallAudio(app,localAudioStore(app.directory),input.prospect_id,input.id));
       if (url.pathname === '/api/event') {
         check(!['prospect_imported', 'verification_imported', 'transcript_assessed', 'reply_received', 'email_delivered', 'meeting_verified','call_audio_reserved','call_audio_stored'].includes(input.event?.type), 'Provider/research/worker events cannot be submitted as owner decisions');
