@@ -1,4 +1,7 @@
-import {join} from 'node:path';
+import assets from '../hosted-assets.mjs';
 import {createHostedDesk} from '../hosted-desk.mjs';
-export default (request,context)=>createHostedDesk({env:{...process.env,CONTEXT:context.deploy?.context??''},assetDirectory:join(process.cwd(),'pipeline','lifecycle-ui')})(request);
+export default (request,context)=>createHostedDesk({env:{...process.env,CONTEXT:context.deploy?.context??''},readAsset:file=>{
+ if(!Object.hasOwn(assets,file))throw Object.assign(Error('Bundled UI asset unavailable'),{code:'ENOENT'});
+ return Buffer.from(assets[file],'base64');
+}})(request);
 export const config={path:['/desk','/desk/*']};

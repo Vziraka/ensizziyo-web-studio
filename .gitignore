@@ -12,6 +12,7 @@ Thumbs.db
 coverage/
 playwright-report/
 test-results/
+pipeline/hosted-assets.mjs
 CLAUDE-SECURITY-*/
 *.credentials.json
 *.service-account.json
