@@ -10,6 +10,14 @@ The desk distinguishes **Owner/operator direct business**, **General business li
 
 The contact-completeness view covers all cards. The existing business-phone verification flag is valid for the general-line category; it is not owner verification. Evidence older than 30 days or a changed provider-bound contact invalidates the owner-direct view until rechecked. Reviewing a retained capture preserves its original date and cannot extend source freshness. A newly found number is retained separately. Import changes only `owner_contact` and saved revision/time metadata; it cannot change research grades, calls, restrictions, follow-ups, provider contacts/tasks or release approval. Existing call permission and email holds remain independently enforced.
 
+## Evidence labels and reuse — October 24
+
+The main card describes the saved observation: Published business number, Business number/email · source reviewed, or an exact Email confirmed during conversation. Published professional identity and owner-direct access remain distinct. A conversation can confirm the business identity at the current phone; it does not establish an owner-exclusive direct line. New operator confirmations retain exact phone/email bindings. The transcript-confirmed email additionally retains its exact address, call and quote; changed addresses, changed transcript bytes and undone calls cannot inherit that label. Older unbound confirmations stay historical and are not silently upgraded.
+
+Wrong contact reported and Bounce reported · route held take priority over positive labels. The contact evidence disclosure shows original source/confirmation dates, expiry and recheck reasons. Missing/future/expired checks, changed contact bindings or corrupted verification packets prevent a reusable-proof status. These are evidence observations, never successful delivery/reachability guarantees or new contact authorization.
+
+This view exposes the existing bounds: 14 days for verification-call records, 30 days for accepted detailed research/contact evidence. The separate owner-direct view retains its existing 30-day binding/source checks. These limits are not extended and the original source date is never replaced by a later review date. Reuse the existing immutable contact discovery receipt and explicitly supplied fresh capture receipts under the current bounded queue; opening a card starts no new lookup. No autonomous refresh, paid enrichment, automatic bounce recovery or hold removal is added. The call queue, actual dispatch, reply stops and commercial release gates remain authoritative. A different refresh policy needs a separate explicit decision and proof.
+
 ## Tools and cost
 
 | Capability | Role and current boundary |

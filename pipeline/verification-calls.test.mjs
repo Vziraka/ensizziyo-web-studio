@@ -108,6 +108,7 @@ test('a connected verification call needs independently reviewed transcript and 
   assert.equal(r.qualification.verdict, 'Verification call only');
   assert.equal(r.verification.conversation.transcript_sha256, hash(transcript));
   assert.equal(r.contact.email, 'owner@example.net'); assert.equal(r.contact.email_evidence.source, `call:${callId}`);
+  assert.deepEqual(r.verification.conversation.contact_binding,{phone:r.contact.phone,email:r.contact.email});assert.equal(r.contact.email_evidence.email,r.contact.email);const evidence=(await s.app.dashboard()).prospects[s.id].contact_evidence;assert.equal(evidence.phone.label,'Business identity confirmed during conversation');assert.equal(evidence.email.label,'Email confirmed during conversation');
   assert.equal(Object.values((await s.app.snapshot()).actions).some(a => a.type === 'email'), false);
 });
 
