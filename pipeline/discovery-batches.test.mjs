@@ -167,6 +167,12 @@ test('source-reviewed home-service business gets a narrow evidence-backed openin
   await discoveryTick(app,{invoke:()=>{throw Error('No replay');}});assert.equal(Object.keys((await app.snapshot()).prospects).length,1);
 });
 test('a separate opening review can hold a candidate even when identity and contact are accepted',async t=>{const {app}=await setup(t);await seed(app);await discoveryTick(app,{collect:async()=>sources(),usage,invoke:async options=>({...await review(options),pitch_supported:false,pitch_reason:'The opening assumes an unverified customer problem.'})});const s=await app.snapshot(),batch=s.discovery_batches[request.id];assert.equal(Object.keys(s.prospects).length,0);assert.equal(batch.candidates[0].status,'Held');assert.match(batch.candidates[0].reason,/Opening review/);assert.match(batch.candidates[0].reason,/unverified customer problem/);});
+test('an Accepted review with a solution command stays held without another model call or queue padding',async t=>{
+ const {app}=await setup(t);await seed(app);let calls=0;
+ await discoveryTick(app,{collect:async()=>sources(),usage,invoke:async options=>{calls++;assert.match(options.promptText,/published process is not proof of a problem/);assert.match(options.promptText,/same model is not independent semantic quality/);const result=await review(options);result.opening_candidates[0].opening='Automate emergency callback handling.';result.opening_candidates[0].owner_question='How can we automate emergency callbacks to reduce wait times?';return result;}});
+ const s=await app.snapshot();assert.equal(calls,1);assert.equal(Object.keys(s.prospects).length,0);assert.equal(s.discovery_batches[request.id].candidates[0].status,'Held');assert.match(s.discovery_batches[request.id].candidates[0].reason,/process question/);
+});
+
 test('accepted identity without a strong selected opening stays held and uses no extra review call',async t=>{
  const {app}=await setup(t);await seed(app);let calls=0;await discoveryTick(app,{collect:async()=>sources(),usage,invoke:async options=>{calls++;return {...await review(options),opening_candidates:[],selected_opening_id:null};}});const s=await app.snapshot();assert.equal(calls,1);assert.equal(Object.keys(s.prospects).length,0);assert.equal(s.discovery_batches[request.id].candidates[0].status,'Held');assert.match(s.discovery_batches[request.id].candidates[0].reason,/selected strong opening/);
 });

@@ -399,7 +399,8 @@ export class StudioLifecycle {
               if (r.stage !== 'Callback') contactable(r, data.performed_at);
               r.attempts.push({ id: data.call_id, channel: 'call', at: data.performed_at, simulated: data.simulated, connected: ![...coldOutcomes, 'wrong_contact'].includes(data.outcome) });
             }
-            r.calls[data.call_id] = { ...data, purpose, actor, event_id: eid };
+            const opening=openingView(r);
+            r.calls[data.call_id] = { ...data, purpose, actor, event_id: eid,opening_context:opening?{status:opening.status,assessment_sha256:opening.assessment_sha256,selected:opening.selected,selected_by:opening.selected_by}:null };
             for (const a of Object.values(state.actions)) if (a.prospect_id === r.id && ['call_task', 'callback_task'].includes(a.type)) {
               if (a.status === 'Queued') a.status = 'Cancelled';
               else if (a.provider_task) a.cancel_requested = true;

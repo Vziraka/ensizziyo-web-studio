@@ -246,8 +246,9 @@ function callPrep(r) {
       card.append(eventForm(r,'Choose another supported opening','opening_selected',[
         ['Supported alternative','candidate_id',c.id,'text',opening.candidates.map(option=>({value:option.id,label:`${option.service}: ${option.owner_question}`}))],['Reason for your selection','reason','','textarea']
       ],{assessment_sha256:opening.assessment_sha256},'Save opening selection'));
-    }else card.append(el('h4','Verification question'),el('blockquote',r.verification.opening,'quote'),el('p','An offering/locality check is not a strong pitch. This older verification record has not received the current focused opening assessment.','muted'));
-    card.append(el('h4', 'Then ask'), el('p', r.opening_view?.selected?.owner_question ?? r.verification.owner_question ?? 'What would you most like to make easier for customers or for yourself?'), el('p', 'How do customers order or enquire today? Which tools already handle this, and what works well?'), el('p', `Possible enhancement to discuss: ${r.idea}`, 'muted'));
+    }else if(opening?.status==='Held')card.append(el('p',opening.reason,'notice'));
+    else card.append(el('h4','Verification question'),el('blockquote',r.verification.opening,'quote'),el('p','An offering/locality check is not a strong pitch. This older verification record has not received the current focused opening assessment.','muted'));
+    if(!opening)card.append(el('h4', 'Then ask'), el('p', r.verification.owner_question ?? 'What would you most like to make easier for customers or for yourself?'), el('p', 'How do customers order or enquire today? Which tools already handle this, and what works well?'), el('p', `Possible enhancement to discuss: ${r.idea}`, 'muted'));
     const unknowns = el('ul'); for (const unknown of packet.unknowns) unknowns.append(el('li', unknown)); card.append(unknowns);
     if (Date.now() - Date.parse(r.contact.checked_at) > 14 * 86400000) card.append(el('p', 'The identity/phone check is stale. Reverify before calling.', 'notice'));
     return card;
