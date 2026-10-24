@@ -1,5 +1,7 @@
 # Project context and preparation
 
+For an actual fresh-client task, use [the supported project continuation entry](PROJECT-AUTHORING.md#fresh-project-entry): one company-name resolution, exact originals/current context, existing named skill, actual local PDF and held draft, followed by same-record readback. Loading this context packet alone is still preparation.
+
 The current packet includes [bounded design-preference interpretation and application](PROJECT-AUTHORING.md#scoped-preferences-in-actual-authoring): exact source feedback remains quoted, automatic scope defaults to the project except supported unqualified Always/Never shared standards, explicit operator scope wins, tentative/repeated suggestions never become approvals, and conflicting supported rules preserve approved work. The local authoring CLI applies/checks actual declarative typography/background properties; the manual output form remains an export attestation. Broader semantic judgment is still assisted.
 
 Confirmed website interest creates one **website concepts** work item. Qualified discovery and preview review create an **internal scope** item; exact operator scope/price approval creates a **client proposal** item. Either signed operator can prepare output. The assigned operator follows the existing claim/handoff. Existing interested projects can create the same eligible work item from **Clients & support**, without importing or rewriting old records.

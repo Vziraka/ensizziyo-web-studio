@@ -23,6 +23,14 @@ async function main() {
   if (command === 'seed') return seedLifecycle(app);
   if(command==='project-context'){const state=await app.snapshot();return operation?projectWorkContext(state,key,operation):projectContext(state,key);}
   if(command==='project-resolve')return resolveProject(await app.snapshot(),key);
+  if(command==='project-continue'){
+    const continuation=await import('./project-continuation.mjs'),actor=process.env.STUDIO_PROJECT_OPERATOR??'owner';
+    if(key==='begin')return continuation.beginContinuation(app,{name:operation,kind:actionId},actor);
+    if(key==='render')return continuation.renderContinuation(app,operation,actionId,await readJson(prospectId),actor);
+    if(key==='complete')return continuation.completeContinuation(app,operation,await readJson(actionId),actor);
+    check(key==='inspect','Use project-continue begin COMPANY KIND, render JOB SOURCE RUNTIME, complete JOB REVIEW or inspect JOB');
+    return continuation.readContinuation(app,operation,actor);
+  }
   if(command==='project-asset'){const {bytes,...result}=await readProjectAsset(app,key,operation,actionId);return result;}
   if(command==='shared-original'){
     const client=await connectSharedOriginals({origin:process.env.STUDIO_SHARED_DESK_ORIGIN,key:process.env.STUDIO_SHARED_OPERATOR_KEY}),ids={project_id:operation,asset_id:actionId,version_id:prospectId};
@@ -71,7 +79,7 @@ async function main() {
   const bridge = new LifecycleBridge(app, process.env.STUDIO_LIFECYCLE_SESSION);
   if (command === 'prepare') return bridge.prepare(key, operation, actionId, prospectId);
   if (command === 'settle') { check(/^[a-zA-Z0-9_-]{1,100}$/.test(key ?? ''), 'Invalid receipt key'); return bridge.settle(key, await readJson(join(app.directory, 'receipts', `${key}.json`))); }
-  throw Error('Use init, init-production, import-research, discover-home-100, release, seed, status, project-resolve, project-context, project-asset, shared-original, recover-drive-asset, notifications, prepare-notifications, event, assess, serve, service, prepare, settle, ops-next, ops-settle, ops-ack, pause, backup or restore');
+  throw Error('Use init, init-production, import-research, discover-home-100, release, seed, status, project-resolve, project-context, project-asset, shared-original, project-author, project-continue, recover-drive-asset, notifications, prepare-notifications, event, assess, serve, service, prepare, settle, ops-next, ops-settle, ops-ack, pause, backup or restore');
 }
 try { const result = await main(); if (result !== undefined) console.log(JSON.stringify(result)); }
 catch (error) { console.error(error.message); process.exitCode = 1; }

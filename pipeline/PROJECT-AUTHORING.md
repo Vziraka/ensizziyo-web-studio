@@ -4,6 +4,27 @@ The local CLI executes actual composition for `website-concepts`, `website-refin
 
 A human or authorized agent reads/applies the installed `company-design-concepts` / `evz-proposals` skills and authors the source; the deterministic renderer composes/exports it. The [bounded preference checks](#scoped-preferences-in-actual-authoring) apply supported typography/background rules. Broader interpretation, research and design judgment remain assisted; no image generation or autonomous model is invoked. The October 24 fictional proof actually authored five desktop directions, an exact selected-direction refinement and a proposal from an explicitly approved fictional quote. ImageGen was expressly excluded; retained October 20 reference captures were inspected. This exception does not waive the design skill's normal research/exploration/original-asset requirements for client work.
 
+## Fresh project entry
+
+An authorized AI client with local file/CLI access can use the repository's [project-continuation skill](../.agents/skills/project-continuation/SKILL.md) from only a workspace bootstrap, company name and requested task. It routes to the actual installed `company-design-concepts` or `evz-proposals` skill. The client interprets the request, reads that skill and the saved material, authors source and visually reviews exports. Executable code resolves identity, reads/verifies originals and editable source, claims current context, renders offline, records actual output and verifies same-project readback. It never launches an AI client or invokes a provider.
+
+From `pipeline`, set the existing `STUDIO_LIFECYCLE_STATE_DIR` and authorized `STUDIO_PROJECT_OPERATOR` (`owner` by default, or `friend`):
+
+```text
+node lifecycle-cli.mjs project-continue begin "Existing company name" website-refinement
+node lifecycle-cli.mjs project-continue render JOB /absolute/private/source.json /absolute/private/runtime.json
+node lifecycle-cli.mjs project-continue complete JOB /absolute/private/review.json
+node lifecycle-cli.mjs project-continue inspect JOB
+```
+
+`begin` supports `website-concepts`, `website-refinement` and `client-proposal`. It requires one exact company and one Ready item of that kind; missing/ambiguous identity or work holds rather than creating a duplicate or choosing a newer file. It reads every relevant verified original (at most twelve), requires every approved baseline/selected refinement original, and returns original PDF paths, exact provenance and hash-verified declarative source paths with the existing claimed `context.json`. Recover missing originals first through [the existing reader or authenticated D1 materialization](ASSET-RECOVERY.md). A reference-only approved original cannot be silently skipped. Source content supplies no executable paths.
+
+The returned job handle feeds render/complete/inspect directly; callers need not construct claim/writeback packets. Render uses the source and trusted-runtime contracts below. Complete requires the actual separate page review, records the immutable **unapproved** version and held companion draft through existing authoring, then independently re-reads exact version/PDF/attachment hashes and current project context. Context changes still block publication. Exact retries inspect the existing job; Held/partial jobs retain existing recovery. Completion does not select a new baseline or authorize sending.
+
+October 24 local integration: a new private fictional existing company with an owner-approved one-page baseline and exact friend-authored feedback was resolved by name. Real CLI processes read its original and editable source, ran the existing offline renderer, and saved/read back a reviewed refinement and held exact attachment. Only the requested background changed; wording/composition/baseline remained intact. The original was an explicitly seeded fixture, not evidence of historical client approval or five-direction generation. An untouched second fictional workspace and minimal bootstrap are prepared for a later independent fresh-AI trial; that trial has not occurred in this increment.
+
+This is supported **interactive AI-assisted** local continuation. The AI supplies interpretation, design judgment and review; executable code does not implement a general semantic author. Arbitrary imported-PDF editing, absent source recovery, unattended work, hosted execution, computer-off operation, migration and sending remain separate. No UI, schedule, new model transport, allowance or credential transfer is added.
+
 ## Local commands and trust boundary
 
 Use the existing private local `STUDIO_LIFECYCLE_STATE_DIR`. Workspace write access is the local trust boundary, as for CLI event writes. `actor` attributes an already authorized local operator; it is not remote authentication. No HTTP route, hosted worker, provider, schedule, installation or persistent environment change is added. Keep client inputs, configuration and evidence outside Git.

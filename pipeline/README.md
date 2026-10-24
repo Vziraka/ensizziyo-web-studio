@@ -1,5 +1,7 @@
 # Controlled research proof
 
+[Fresh project continuation](PROJECT-AUTHORING.md#fresh-project-entry) supplies a callable name-to-originals-to-reviewed-output workflow through the existing CLI and repository-owned skill. The AI client loads the real design/proposal skill and authors/reviews; code verifies identity, current context, originals, rendering, held attachment and same-project readback. Local interactive execution only; fresh-AI validation and unattended/PC-off authoring remain separate.
+
 [Exact project originals](ASSET-RECOVERY.md#disabled-shared-original-candidate) connect the existing asset/version context to a separately disabled shared PDF chunk candidate. Use the supported `shared-original push/pull` CLI to verify transfer and local materialization; no hosted upload, migration or PC-off acceptance is implied.
 
 [Source-bound reply review](REPLIES.md) documents bounded verified MIME retention, extractive clarification starters and exact human approvals held from sending (audit R33).
