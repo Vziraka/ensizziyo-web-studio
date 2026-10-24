@@ -18,8 +18,9 @@ function transport({ approval = false, silent = false, linked = false } = {}) {
         'apollo_io.apollo_users_api_profile': { name: 'apollo_io.apollo_users_api_profile', inputSchema: { properties: { include_credit_usage: {}, _conversation_ref: {}, _rationale: {} } } }
       } }] }
     };
-    if (linked) for (const name of ['gmail.get_profile', 'gmail.send_email', 'google_calendar.get_profile', 'google_calendar.get_availability', 'google_calendar.create_event']) {
+    if (linked) for (const name of ['gmail.get_profile', 'gmail.send_email', 'google_calendar.get_profile', 'google_calendar.get_availability', 'google_calendar.create_event','google_drive.get_profile','google_drive.get_file_metadata','google_drive.fetch']) {
       results['mcpServerStatus/list'].data[0].tools[name] = { name, inputSchema: { properties: { link_id: { type: 'string' } }, required: ['link_id'] } };
+      if(name==='google_drive.fetch')Object.assign(results['mcpServerStatus/list'].data[0].tools[name].inputSchema.properties,{url:{},download_raw_file:{},include_base64:{}});
     }
     if (r.method === 'mcpServer/tool/call') {
       if (approval) reply({ id: 'approval-id', method: 'tool/requestUserInput', params: { questions: [] } });
@@ -32,6 +33,8 @@ function transport({ approval = false, silent = false, linked = false } = {}) {
   return { launch, requests, get killed() { return killed; }, get launches() { return launches; }, get args() { return launchArgs; } };
 }
 test('supported connector mapping rejects arbitrary tools and namespace lookalikes', () => {
+  assert.equal(connectorName('mcp__codex_apps__google_drive_fetch'),'google_drive.fetch');
+  assert.throws(()=>connectorName('mcp__codex_apps__google_drive_upload_file'),/allowlist/);
   assert.equal(connectorName('mcp__codex_apps__gmail_get_profile'), 'gmail.get_profile');
   assert.equal(connectorName('mcp__codex_apps__apollo_io_apollo_tasks_show'), 'apollo_io.apollo_tasks_show');
   assert.equal(connectorName('mcp__codex_apps__apollo_io_apollo_mixed_people_api_search'), 'apollo_io.apollo_mixed_people_api_search');
@@ -39,6 +42,14 @@ test('supported connector mapping rejects arbitrary tools and namespace lookalik
   assert.equal(connectorName('mcp__codex_apps__gmail_send_email'), 'gmail.send_email');
   assert.throws(() => connectorName('mcp__codex_apps__gmail_delete_email'), /allowlist/);
   assert.throws(() => connectorName('mcp__other__gmail_get_profile'), /allowlist/);
+});
+test('Drive transport requires the configured account and exact raw-file request without inline bytes',async()=>{
+ const p=transport({linked:true}),c=new AppConnectors({launch:p.launch,accountLinks:{google_drive:'link_business'}});try{
+  await c.connect();await c.call('mcp__codex_apps__google_drive_get_profile',{});
+  for(const input of [{url:'file:///C:/secret',download_raw_file:true,include_base64:false},{url:'https://drive.google.com/file/d/original-file-123456/view',download_raw_file:true,include_base64:true},{url:'https://drive.google.com/file/d/original-file-123456/view',download_raw_file:true,include_base64:false,link_id:'link_personal'}])await assert.rejects(c.call('mcp__codex_apps__google_drive_fetch',input),/raw originals|account/);
+  await c.call('mcp__codex_apps__google_drive_fetch',{url:'https://drive.google.com/file/d/original-file-123456/view',download_raw_file:true,include_base64:false});
+  const calls=p.requests.filter(r=>r.method==='mcpServer/tool/call');assert.equal(calls.length,2);assert.equal(calls[1].params.arguments.link_id,'link_business');
+ }finally{await c.close();}
 });
 
 test('Google reads and writes use the configured accounts without changing caller inputs or Apollo', async () => {

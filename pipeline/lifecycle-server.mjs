@@ -1,7 +1,8 @@
 import {callTranscriptionView,approveCallTranscription,runCallTranscription,pauseCallTranscription} from './call-transcription.mjs';
 import {retainedSource} from './retained-sources.mjs';
 import {prepareTeamNotifications,notificationView} from './team-notifications.mjs';
-import {projectContext,projectWorkContext} from './project-work.mjs';
+import {projectContext,projectWorkContext,resolveProject} from './project-work.mjs';
+import {readProjectAsset} from './project-assets.mjs';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -62,6 +63,11 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
         return json(200, { signed_out: true }, { 'Set-Cookie': operatorAuth.cookie('', { secure: Boolean(req.socket.encrypted), clear: true }) });
       }
       if(req.method==='GET'&&/^\/api\/project-context\/[a-zA-Z0-9_-]{1,100}(?:\/[a-zA-Z0-9_-]{1,100})?$/.test(url.pathname)){const [,,,project,workId]=url.pathname.split('/'),snapshot=await app.snapshot();return json(200,workId?projectWorkContext(snapshot,project,workId):projectContext(snapshot,project));}
+      if(req.method==='GET'&&url.pathname==='/api/project-resolve')return json(200,resolveProject(await app.snapshot(),url.searchParams.get('name')));
+      if(req.method==='GET'&&/^\/api\/project-asset\/[a-zA-Z0-9_-]{1,100}\/[a-zA-Z0-9_-]{1,100}\/[a-zA-Z0-9_-]{1,100}$/.test(url.pathname)){
+        const [,,,project,asset,version]=url.pathname.split('/'),original=await readProjectAsset(app,project,asset,version);
+        res.writeHead(200,{...headers,'Content-Type':'application/pdf','Content-Length':original.bytes.length,'Content-Disposition':`attachment; filename="${original.filename}"`,'X-Content-SHA256':original.original.sha256});res.end(original.bytes);return;
+      }
       if(req.method==='GET'&&/^\/retained-source\/[a-zA-Z0-9_-]{1,100}\/[a-f0-9]{64}$/.test(url.pathname)){const [,,project,sha]=url.pathname.split('/');return json(200,retainedSource(await app.snapshot(),project,sha,url.searchParams.get('url'),url.searchParams.get('at')));}
       if(req.method==='GET'&&url.pathname==='/api/call-transcription')return json(200,await callTranscriptionView(app));
       if(req.method==='GET'&&url.pathname==='/api/team-notifications')return json(200,notificationView(await app.snapshot()));

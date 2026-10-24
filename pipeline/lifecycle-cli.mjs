@@ -1,5 +1,7 @@
 import {prepareTeamNotifications,notificationView} from './team-notifications.mjs';
-import {projectContext,projectWorkContext} from './project-work.mjs';
+import {projectContext,projectWorkContext,resolveProject} from './project-work.mjs';
+import {readProjectAsset,recoverDriveAsset} from './project-assets.mjs';
+import {AppConnectors} from './app-connectors.mjs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
@@ -19,6 +21,12 @@ async function main() {
   const app = await StudioLifecycle.open({ directory });
   if (command === 'seed') return seedLifecycle(app);
   if(command==='project-context'){const state=await app.snapshot();return operation?projectWorkContext(state,key,operation):projectContext(state,key);}
+  if(command==='project-resolve')return resolveProject(await app.snapshot(),key);
+  if(command==='project-asset'){const {bytes,...result}=await readProjectAsset(app,key,operation,actionId);return result;}
+  if(command==='recover-drive-asset'){
+    const context=projectContext(await app.snapshot(),key),connector=new AppConnectors({cwd:process.cwd(),accountLinks:{google_drive:process.env.STUDIO_DRIVE_ACCOUNT_LINK}});
+    try{await connector.connect();return await recoverDriveAsset(app,{project_id:key,asset_id:operation,version_id:actionId,expected_sha256:prospectId,context_sha256:context.context_sha256},{connector,email:process.env.STUDIO_DRIVE_ACCOUNT_EMAIL});}finally{await connector.close();}
+  }
   if(command==='notifications')return notificationView(await app.snapshot());
   if(command==='prepare-notifications')return prepareTeamNotifications(app);
   if (command === 'status') return app.dashboard();
@@ -48,7 +56,7 @@ async function main() {
   const bridge = new LifecycleBridge(app, process.env.STUDIO_LIFECYCLE_SESSION);
   if (command === 'prepare') return bridge.prepare(key, operation, actionId, prospectId);
   if (command === 'settle') { check(/^[a-zA-Z0-9_-]{1,100}$/.test(key ?? ''), 'Invalid receipt key'); return bridge.settle(key, await readJson(join(app.directory, 'receipts', `${key}.json`))); }
-  throw Error('Use init, init-production, import-research, discover-home-100, release, seed, status, project-context, notifications, prepare-notifications, event, assess, serve, service, prepare, settle, ops-next, ops-settle, ops-ack, pause, backup or restore');
+  throw Error('Use init, init-production, import-research, discover-home-100, release, seed, status, project-resolve, project-context, project-asset, recover-drive-asset, notifications, prepare-notifications, event, assess, serve, service, prepare, settle, ops-next, ops-settle, ops-ack, pause, backup or restore');
 }
 try { const result = await main(); if (result !== undefined) console.log(JSON.stringify(result)); }
 catch (error) { console.error(error.message); process.exitCode = 1; }

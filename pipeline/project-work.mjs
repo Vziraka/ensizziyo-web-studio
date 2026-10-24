@@ -11,9 +11,18 @@ const routes={
 };
 function directionContext(state,r){
   const assets=Object.values(state.asset_index??{}),relevant=assets.filter(a=>a.scope==='studio'||a.project_id===r.id);
-  const approved=relevant.filter(a=>a.baseline_version).map(a=>({asset_id:a.id,name:a.name,kind:a.kind,scope:a.scope,project_id:a.project_id??null,version_id:a.baseline_version,...a.versions[a.baseline_version],approved_by:a.baseline_approved_by??null,approval_event:a.baseline_approval_event??null,agreement_events:a.baseline_agreement_events??[],dispute:a.dispute??null,retrieval:'Reference only; file contents and permissions have not been retrieved by this interface'}));
+  const versions=relevant.map(a=>({asset_id:a.id,name:a.name,kind:a.kind,scope:a.scope,project_id:a.project_id??null,baseline_version:a.baseline_version??null,dispute:a.dispute??null,versions:Object.values(a.versions).map(v=>({...v,status:a.baseline_version===v.id?'Internal approved baseline':'Unapproved version',approval_event:a.baseline_version===v.id?a.baseline_approval_event??null:null,client_acceptance:'Not established by asset registration or internal approval'}))}));
+  const approved=relevant.filter(a=>a.baseline_version).map(a=>({asset_id:a.id,name:a.name,kind:a.kind,scope:a.scope,project_id:a.project_id??null,version_id:a.baseline_version,...a.versions[a.baseline_version],approved_by:a.baseline_approved_by??null,approval_event:a.baseline_approval_event??null,agreement_events:a.baseline_agreement_events??[],dispute:a.dispute??null,retrieval:a.versions[a.baseline_version].verified_original?'Verified local original; use the authenticated project-asset route or local CLI to recheck bytes':'Reference only; file contents and permissions have not been retrieved by this interface'}));
   const preferences=assets.flatMap(a=>(a.feedback??[]).filter(f=>f.scope==='studio'||f.project_id===r.id).map(f=>({...f,asset_id:a.id,asset_name:a.name,reference:a.versions[f.version_id]?.reference??null,source_version_is_baseline:a.baseline_version===f.version_id,baseline_version:a.baseline_version??null,dispute:a.dispute??null,interpretation:'Exact operator direction; does not approve this version, resolve a dispute or infer a studio-wide rule'})));
-  return {approved_assets:approved,preferences};
+  return {approved_assets:approved,assets:versions,preferences};
+}
+export function resolveProject(state,name){
+  check(text(name,250),'Supply the exact company name');
+  const normalized=value=>value.normalize('NFKC').trim().replace(/\s+/g,' ').toLowerCase();
+  const matches=Object.values(state.prospects).filter(r=>normalized(r.name)===normalized(name));
+  check(matches.length,'No exact company match; clarify the name before creating a workspace');
+  check(matches.length===1,'Ambiguous company match; clarify the existing project ID');
+  const r=matches[0];return {project_id:r.id,company_id:r.company_id??null,name:r.name,revision:state.revision,context:projectContext(state,r.id)};
 }
 export function projectContext(state,project,{kind='project',request=null}={}){
   check(Object.hasOwn(state.prospects,project),'Unknown project');const r=state.prospects[project];check(kind==='project'||Object.hasOwn(routes,kind),'Unsupported project workflow');

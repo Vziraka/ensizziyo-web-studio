@@ -45,6 +45,9 @@ test('hosted friend creates an inert existing-client workspace with readback and
  assert.equal((await make()(request('/api/event',{method:'POST',headers,body}))).status,200);assert.equal((await (await make()(request('/api/event',{method:'POST',headers,body}))).json()).duplicate,true);
  const after=await read();assert.equal(after.prospects['hosted-client'].workspace.created_by,'friend');assert.equal(after.daily.new_researched,before.daily.new_researched);assert.deepEqual(after.actions,before.actions);assert.equal(after.supply.ready,before.supply.ready);
  const context=await make()(request('/api/project-context/hosted-client',{headers}));assert.equal(context.status,200);assert.equal((await context.json()).source.company.origin,'workspace');
+ const lookup='/api/project-resolve?name='+encodeURIComponent(' studio test   PRIOR client ');assert.equal((await make()(request(lookup))).status,401);
+ const resolved=await make()(request(lookup,{headers}));assert.equal(resolved.status,200);const packet=await resolved.json();assert.equal(packet.project_id,'hosted-client');assert.equal(packet.context.source.company.origin,'workspace');
+ assert.equal((await make()(request('/api/project-resolve?name=missing',{headers}))).status,400);
 });
 test('stateless owner/friend sessions share actual lifecycle records with CSRF, replay, conflict and lost-response protection',async()=>{
  const raw=rawStore(),make=()=>createHostedDesk({env,storeFactory:()=>raw,now:()=>new Date(at)}),sessions=new Map();

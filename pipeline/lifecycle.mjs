@@ -320,7 +320,7 @@ export class StudioLifecycle {
         check(['owner','friend'].includes(actor),'An existing project needs a signed operator');
         check(Object.keys(data).every(k=>['name','purpose','controlled'].includes(k))&&text(data.name,250)&&text(data.purpose,1600),'Supply only the company name, project purpose and workspace mode');
         check(typeof data.controlled==='boolean'&&data.controlled===(this.config.mode==='controlled')&&(!data.controlled||/^STUDIO TEST\s/i.test(data.name.trim())),'Fictional workspaces need a STUDIO TEST name; real clients belong in a separate production workspace');
-        const normalized=value=>value.trim().replace(/\s+/g,' ').toLowerCase(),companyId='workspace-'+hash(normalized(data.name)).slice(0,24);
+        const normalized=value=>value.normalize('NFKC').trim().replace(/\s+/g,' ').toLowerCase(),companyId='workspace-'+hash(normalized(data.name)).slice(0,24);
         check(assetKey(event.prospect_id)&&event.prospect_id!=='studio-assets'&&!r&&!Object.values(state.prospects).some(x=>x.company_id===companyId||normalized(x.name)===normalized(data.name)),'This company/project already exists or uses a reserved ID; use its existing context');
         r=state.prospects[event.prospect_id]={id:event.prospect_id,company_id:companyId,name:data.name.trim(),category:'Existing project',origin:'workspace',idea:data.purpose.trim(),controlled:data.controlled,stage:'Workspace only',cold_paused:true,contact:{verified:false},workspace:{purpose:data.purpose.trim(),created_by:actor,created_at:event.at},
           attempts:[],calls:{},transcripts:{},proposals:{},approved_calls:{},payments:[],invoices:[],materials:[],tasks:[],revisions:[],tickets:[]};

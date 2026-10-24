@@ -2,7 +2,7 @@
 
 Confirmed website interest creates one **website concepts** work item. Qualified discovery and preview review create an **internal scope** item; exact operator scope/price approval creates a **client proposal** item. Either signed operator can prepare output. The assigned operator follows the existing claim/handoff. Existing interested projects can create the same eligible work item from **Clients & support**, without importing or rewriting old records.
 
-These are persistent preparation tasks and review records. No background author, model call, Drive download, PDF generation, client acceptance or delivery is implied. Use the named existing `company-design-concepts` or `evz-proposals` workflow with an authenticated supported tool. Client-facing proposal work requires an exact approved quote; an internal scope review does not provide that approval.
+These are persistent preparation tasks and review records. No background author, model call, PDF generation, client acceptance or delivery is implied. Explicit original recovery uses the separate [bounded local workflow](ASSET-RECOVERY.md). Use the named existing `company-design-concepts` or `evz-proposals` workflow with an authenticated supported tool. Client-facing proposal work requires an exact approved quote; an internal scope review does not provide that approval.
 
 ## Website interest from a reply
 
@@ -14,7 +14,7 @@ A changed verified reply supersedes the old review and holds unfinished concepts
 
 ## Read context and record output
 
-Open **Clients & support → project → Project preparation → work item → Load current context & output form**. The packet contains company identity, discovery, the latest three conversations, human-reviewed claims, private notes, approved asset baselines, exact scoped feedback and refinement requests. Unapproved versions stay outside approved assets. Feedback retains its source version, current baseline and dispute status; explicit studio feedback is included across projects, project feedback remains scoped. File references are references: permissions, contents, newest-file correctness and actual retrieval remain unverified here.
+Open **Clients & support → project → Project preparation → work item → Load current context & output form**. The packet contains company identity, discovery, the latest three conversations, human-reviewed claims, private notes, approved asset baselines, all registered versions, exact scoped feedback and refinement requests. Unapproved versions stay outside approved assets. Feedback retains its source version, current baseline and dispute status; explicit studio feedback is included across projects, project feedback remains scoped. A version without `verified_original` remains reference-only. That metadata binds a recovered local copy; byte reads still verify its hash and do not establish current Drive access, newest-file correctness or client approval.
 
 The private packet is available through authenticated `GET /api/project-context/<project>` or `GET /api/project-context/<project>/<work-id>` on both local and hosted desks. The hosted prefix is `/desk`. The existing CLI also reads it:
 
@@ -37,4 +37,4 @@ Before quote/agreement, request one focused unpaid refinement from the exact pre
 
 Run `node --test project-work.test.mjs hosted-desk.test.mjs` from `pipeline`, then `npm run check` and the full serial suite when changing lifecycle behavior. The fictional tests exercise actual lifecycle persistence, local HTTP, hosted authorization boundary, stale sources, scoped baselines/preferences, exact quote approval, undo, immutable versions, stops and exception reuse. Browser rehearsal must load a packet, record a fictional indexed output, request a selected-direction refinement, verify saved state and inspect narrow layout. No real file, client or model is needed for that rehearsal.
 
-Automatic execution through connected authoring tools, business Drive recovery, feedback interpretation/application and external client delivery remain open integration work. These routes provide attributable read/write handoffs for that work; they do not establish a completed autonomous proposal service.
+Automatic execution through connected authoring tools, feedback interpretation/application and external client delivery remain open integration work. [Existing-original recovery](ASSET-RECOVERY.md) now has an actual local business Drive proof and fresh authenticated process read/write proof in a private candidate. Hosted original access and production migration remain open; this does not establish a completed autonomous proposal service.

@@ -5,7 +5,7 @@ import {assessmentView,approveAssessment,runAssessment,pauseAssessment,assessmen
 import {projectSourceBodies,retainedSource} from './retained-sources.mjs';
 import {deskSnapshotPage} from './desk-snapshot.mjs';
 import {prepareTeamNotifications,notificationView} from './team-notifications.mjs';
-import {projectContext,projectWorkContext} from './project-work.mjs';
+import {projectContext,projectWorkContext,resolveProject} from './project-work.mjs';
 import {readFile} from 'node:fs/promises';import {join} from 'node:path';import {fileURLToPath} from 'node:url';import {createHmac,randomBytes,timingSafeEqual} from 'node:crypto';
 import {StudioLifecycle,initialConfig,check} from './lifecycle.mjs';import {ConditionalLifecycleStore} from './lifecycle-store.mjs';import {createOperatorAuth} from './operators.mjs';import {fixtureProspect} from './lifecycle-fixtures.mjs';import {lifecycleAssets} from './lifecycle-assets.mjs';import {renderFollowUpPreview} from './follow-up-template.mjs';import {callingSession,saveInformationDraft} from './call-desk-actions.mjs';
 import {audioRequest,saveCallAudio,readCallAudio,reconcileCallAudio,blobAudioStore} from './call-audio.mjs';
@@ -66,6 +66,7 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    if(post&&path==='/api/logout')return json(200,{signed_out:true},{'Set-Cookie':settings.auth.cookie('',{secure:true,clear:true})});
    let app,raw;try{raw=await storeFactory(env.EVZ_OPERATIONS_BLOB_NAMESPACE);app=await openApp(raw,now);}catch{return json(503,{error:'Private shared storage is unavailable; no execution was started'});}
    if(request.method==='GET'&&/^\/api\/project-context\/[a-zA-Z0-9_-]{1,100}(?:\/[a-zA-Z0-9_-]{1,100})?$/.test(path)){const [,,,project,workId]=path.split('/'),snapshot=await app.snapshot();return json(200,workId?projectWorkContext(snapshot,project,workId):projectContext(snapshot,project));}
+   if(request.method==='GET'&&path==='/api/project-resolve')return json(200,resolveProject(await app.snapshot(),url.searchParams.get('name')));
    if(request.method==='GET'&&/^\/retained-source\/[a-zA-Z0-9_-]{1,100}\/[a-f0-9]{64}$/.test(path)){const [,,project,sha]=path.split('/');return json(200,retainedSource(await app.snapshot(),project,sha,url.searchParams.get('url'),url.searchParams.get('at')));}
    if(request.method==='GET'&&path==='/api/gateway-proof')return json(200,await gatewayProofView(app,env));
    if(request.method==='GET'&&path==='/api/call-transcription')return json(200,await callTranscriptionView(app,env));
