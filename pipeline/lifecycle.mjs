@@ -25,7 +25,7 @@ const money = value => Number.isSafeInteger(value) && value > 0 && value <= 100_
 const services = ['website', 'systems', 'ai', 'marketing'];
 const coldOutcomes = ['no_answer', 'busy', 'voicemail'];
 const connectedOutcomes = ['discovery', 'requested_info', 'callback', 'not_interested', 'do_not_contact', 'wrong_contact', 'uncertain'];
-const assetEvents = ['asset_registered', 'asset_version_registered', 'asset_version_selected', 'asset_version_disputed'];
+const assetEvents = ['asset_registered', 'asset_version_registered', 'asset_version_selected', 'asset_version_disputed', 'asset_feedback_added'];
 const assetKey = value => key(value) && value !== '__proto__';
 function validateAssetReference(value) {
   check(text(value, 600) && value === value.trim(), 'Add a private file reference, not copied file content');
@@ -238,6 +238,15 @@ export class StudioLifecycle {
             check(!Object.values(asset.versions).some(v => v.reference === data.reference), 'Each version needs its own immutable file reference');
             asset.versions[data.version_id] = { id: data.version_id, label: data.version_label.trim(), reference: data.reference,
               registered_by: actor, registered_at: event.at };
+          } else if (event.type === 'asset_feedback_added') {
+            check(Object.hasOwn(asset.versions,data.version_id), 'Choose a registered asset version for the feedback');
+            check(text(data.feedback,2000), 'Retain the operator feedback within 2000 characters');
+            const scope=data.scope??'project',projectId=data.project_id??asset.project_id;
+            check(scope==='project'||scope==='studio', 'Choose project feedback or an explicit studio-wide direction');
+            if(scope==='project')check(key(projectId)&&Object.hasOwn(state.prospects,projectId)&&(!asset.project_id||asset.project_id===projectId), 'Choose the existing project that owns this feedback');
+            else check(data.project_id===undefined||data.project_id===null, 'Studio-wide feedback cannot name a project');
+            asset.feedback??=[];
+            asset.feedback.push({id:eid,version_id:data.version_id,feedback:data.feedback,scope,...(scope==='project'?{project_id:projectId}:{}),actor,at:event.at});
           } else if (event.type === 'asset_version_disputed') {
             check(!asset.dispute, 'A disagreement is already open; select a version to resolve it');
             check(asset.baseline_version && Object.hasOwn(asset.versions, data.version_id), 'Choose a registered version to dispute against an approved baseline');

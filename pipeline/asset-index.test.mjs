@@ -20,6 +20,25 @@ function assetEvent(app, id, type, data, actor = 'owner') {
   return app.apply({ id, prospect_id: 'studio-assets', type, at, data }, { actor });
 }
 
+test('version feedback retains exact operator directions and scope without changing the approved baseline',async t=>{
+  const app=await setup(t);
+  await assetEvent(app,'feedback-asset','asset_registered',{asset_id:'project-design',scope:'project',project_id:'juniper',name:'Mockup directions',kind:'mockup',version_id:'v1',version_label:'v1',reference:'drive:synthetic-mockup-file-0001'});
+  await assetEvent(app,'feedback-baseline','asset_version_selected',{asset_id:'project-design',version_id:'v1'});
+  const event={id:'feedback-one',prospect_id:'studio-assets',type:'asset_feedback_added',at,data:{asset_id:'project-design',version_id:'v1',feedback:'Keep this typography. Make the enquiry link clearer.'}};
+  await app.apply(event,{actor:'friend'});
+  let state=await app.snapshot(),asset=state.asset_index['project-design'];
+  assert.equal(asset.baseline_version,'v1');assert.deepEqual(asset.feedback,[{id:'feedback-one',version_id:'v1',feedback:event.data.feedback,scope:'project',project_id:'juniper',actor:'friend',at}]);
+  assert.equal((await app.apply(event,{actor:'friend'})).duplicate,true);
+  await assetEvent(app,'studio-feedback','asset_feedback_added',{asset_id:'project-design',version_id:'v1',feedback:'Always explore distinctive typography.',scope:'studio'},'owner');
+  state=await app.snapshot();assert.equal(state.asset_index['project-design'].feedback[1].scope,'studio');assert.equal(state.asset_index['project-design'].feedback[1].actor,'owner');assert.equal(state.asset_index['project-design'].baseline_version,'v1');
+  await assert.rejects(assetEvent(app,'unknown-feedback-version','asset_feedback_added',{asset_id:'project-design',version_id:'v2',feedback:'Wrong source.'}),/registered asset version/);
+  await assert.rejects(assetEvent(app,'unknown-feedback-project','asset_feedback_added',{asset_id:'project-design',version_id:'v1',feedback:'Wrong project.',project_id:'unknown'}),/existing project/);
+  await assert.rejects(assetEvent(app,'ambiguous-studio-feedback','asset_feedback_added',{asset_id:'project-design',version_id:'v1',feedback:'Ambiguous scope.',scope:'studio',project_id:'juniper'}),/cannot name a project/);
+  await assert.rejects(assetEvent(app,'empty-feedback','asset_feedback_added',{asset_id:'project-design',version_id:'v1',feedback:''}),/within 2000/);
+  await assert.rejects(app.apply({...event,id:'stale-feedback'},{actor:'friend',expectedRevision:state.revision-1}),/Record changed/);
+  const restarted=await StudioLifecycle.open({directory:app.directory,now:()=>new Date(at)});assert.deepEqual((await restarted.snapshot()).asset_index['project-design'].feedback,state.asset_index['project-design'].feedback);
+});
+
 test('either operator can approve an uncontested baseline and prior choices do not become objections', async t => {
   const app = await setup(t);
   await assetEvent(app, 'studio-brand', 'asset_registered', {

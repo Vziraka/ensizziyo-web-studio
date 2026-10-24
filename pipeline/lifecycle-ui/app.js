@@ -1,6 +1,6 @@
 import { renderCallDesk } from '/call-desk.js';
 import { centsFromDollars } from '/money.js';
-let state, csrf, operatorAuthRequired = false, view = 'today', selected = 'juniper', lane = 'all', dirty = false, refreshAfter = 0;
+let state, csrf, operatorAuthRequired = false, view = 'today', selected = 'juniper', lane = 'all', assetProject = '', dirty = false, refreshAfter = 0;
 const content = document.querySelector('#content'), message = document.querySelector('#message');
 const titles = { today: ['Your calling desk', 'Your next conversation.', 'Prepared leads, clear next steps and your notes in one place.'], reviews: ['Evidence → operator decision', 'Review calls and replies.', 'Connected calls and verified replies wait for an operator decision.'], clients: ['From scope to support', 'Deliver what you agreed.', 'Track materials, payment evidence, delivery checks and open requests.'], exceptions: ['Bounded recovery', 'Handle the exceptions.', 'Held work stays visible while unrelated records continue.'], launch: ['Before the first real contact', 'Approve a working system.', 'These gates stay closed until their evidence and your final approval are recorded.'] };
 Object.assign(titles,{businesses:['Your business directory','Businesses, with context.','Research, professional contacts, social profiles and saved conversations.'],emails:['After the call','Follow-ups at a glance.','Each performed call owns one message. Held work shows what is missing.'],meetings:['Your conversations','Meetings and next steps.','Booked conversations and invitations awaiting calendar verification.']});
@@ -77,6 +77,15 @@ function renderAssets() {
   const form = el('form'); form.append(el('h3', 'Add an asset reference'));
   const scope = inputField(form, 'Asset scope', 'scope', 'studio', 'text', [{ value: 'studio', label: 'Studio-wide' }, { value: 'project', label: 'Project' }]);
   const projects = Object.values(state.prospects).sort((a, b) => a.name.localeCompare(b.name));
+  const context=el('section');context.append(el('h3','Continue a project'));
+  const contextProject=inputField(context,'Project context','asset_project',assetProject,'text',[{value:'',label:'All studio and project assets'},...projects.map(r=>({value:r.id,label:r.name}))]);
+  const assetCards=[],feedbackRows=[];
+  const relevantFeedback=Object.values(state.asset_index??{}).flatMap(asset=>(asset.feedback??[]).map(f=>({asset,feedback:f})));
+  context.append(el('p','Recorded directions retain their exact source version and operator. Feedback does not approve a changed file or resolve a disagreement; review it alongside the current baseline.','muted'));
+  for(const {asset,feedback:f} of relevantFeedback){const row=el('section');row.append(el('p',`${asset.name} · ${asset.versions[f.version_id]?.label??f.version_id} · ${f.scope==='studio'?'Studio-wide direction':state.prospects[f.project_id]?.name??'Project'} · ${f.actor} · ${new Date(f.at).toLocaleDateString()}`,'muted'),el('blockquote',f.feedback,'quote'),el('p',asset.versions[f.version_id]?.reference??'Source reference unavailable','muted'));context.append(row);feedbackRows.push({row,feedback:f});}
+  const emptyFeedback=el('p','No retained feedback for this context yet.','muted');context.append(emptyFeedback);node.append(context);
+  const updateContext=()=>{for(const {card,asset} of assetCards)card.hidden=Boolean(assetProject&&asset.scope!=='studio'&&asset.project_id!==assetProject);for(const {row,feedback:f} of feedbackRows)row.hidden=Boolean(assetProject&&f.scope!=='studio'&&f.project_id!==assetProject);emptyFeedback.hidden=feedbackRows.some(({row})=>!row.hidden);};
+  contextProject.onchange=()=>{assetProject=contextProject.value;updateContext();};
   const project = inputField(form, 'Project', 'project_id', '', 'text', [{ value: '', label: 'Choose a project' }, ...projects.map(r => ({ value: r.id, label: `${r.name} · ${r.stage}` }))]);
   project.parentElement.hidden = scope.value !== 'project';
   scope.addEventListener('change', () => { project.parentElement.hidden = scope.value !== 'project'; });
@@ -98,6 +107,7 @@ function renderAssets() {
   if (!index.length) node.append(el('p', 'No asset references yet. Add a studio file or link an asset to any existing project record.', 'empty'));
   for (const asset of index.sort((a, b) => a.name.localeCompare(b.name))) {
     const card = panel(asset.name);
+    assetCards.push({card,asset});
     const projectName = asset.project_id ? state.prospects[asset.project_id]?.name ?? 'Project record unavailable' : 'Studio-wide';
     card.append(pill(asset.kind), pill(projectName));
     const baseline = asset.versions[asset.baseline_version];
@@ -128,6 +138,15 @@ function renderAssets() {
       }
       card.append(row);
     }
+    const feedbackForm=el('form');feedbackForm.append(el('h4','Save design feedback'));
+    const feedbackVersion=inputField(feedbackForm,`Feedback version · ${asset.name}`,'version_id',asset.baseline_version??Object.keys(asset.versions).at(-1),'text',Object.values(asset.versions).map(v=>({value:v.id,label:v.label})));
+    const feedbackScope=inputField(feedbackForm,`Feedback applies to · ${asset.name}`,'feedback_scope','project','text',[{value:'project',label:'This project'},{value:'studio',label:'Explicit studio-wide direction'}]);
+    const feedbackProject=inputField(feedbackForm,`Feedback project · ${asset.name}`,'feedback_project',asset.project_id??assetProject,'text',[{value:'',label:'Choose a project'},...projects.filter(r=>!asset.project_id||r.id===asset.project_id).map(r=>({value:r.id,label:r.name}))]);
+    feedbackScope.onchange=()=>{feedbackProject.parentElement.hidden=feedbackScope.value==='studio';};
+    const feedbackText=inputField(feedbackForm,`Operator feedback · ${asset.name}`,'feedback','','textarea');feedbackText.maxLength=2000;
+    const saveFeedback=el('button','Save feedback');saveFeedback.type='submit';feedbackForm.append(saveFeedback);
+    feedbackForm.onsubmit=async event=>{event.preventDefault();saveFeedback.disabled=true;try{await saveAssetEvent('asset_feedback_added',{asset_id:asset.id,version_id:feedbackVersion.value,feedback:feedbackText.value,scope:feedbackScope.value,...(feedbackScope.value==='project'?{project_id:feedbackProject.value}:{})});}catch(error){tell(error.message,true);}finally{saveFeedback.disabled=false;}};
+    card.append(feedbackForm);
     const addVersion = el('form'); addVersion.append(el('h4', 'Register a new version'));
     const label = inputField(addVersion, 'Version label', 'version_label');
     const refKind = inputField(addVersion, 'Reference type', 'reference_kind', 'drive', 'text', [{ value: 'drive', label: 'Google Drive file ID' }, { value: 'path', label: 'Relative private path' }]);
@@ -140,7 +159,7 @@ function renderAssets() {
     });
     card.append(addVersion); node.append(card);
   }
-  content.append(node);
+  updateContext();content.append(node);
 }
 function inputField(form, label, name, value = '', type = 'text', options) {
   const wrap = el('label', label); let input;
