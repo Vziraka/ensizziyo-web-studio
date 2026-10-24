@@ -1,5 +1,7 @@
 # Controlled research proof
 
+[Shared manual call records](SHARED-MANUAL-RECORDS.md) is a separately disabled, exactly bound production-shaped source capability. It reuses the existing call/callback/stop and ownership reducer with signed event replay; all execution remains disabled. The original inert note-only capability below is unchanged.
+
 [Disabled persistent hosted authoring](PROJECT-AUTHORING.md#disabled-hosted-authoring-storage-and-caller) connects the signed existing continuation caller to immutable bounded Node-authoring resources and complete G1 workspace packages. Run `node --test hosted-authoring.test.mjs`; the flag remains unset. Missing/corrupt required dependencies hold complete hosted backup; incomplete attempts need [explicit evidence reconciliation](PROJECT-AUTHORING.md#explicit-incomplete-attempt-recovery), which never makes a partial export usable. D2, production, actual remote/cost and computer-off acceptance stay closed/unverified.
 
 [Disabled Gmail incoming synchronization](GOOGLE-INCOMING-MAIL.md) connects signed owner/friend calls to existing registered conversations, durable history/cursor dedup, source-bound reply review, cold stops and held notifications. Run `node --test pipeline/google-incoming-mail.test.mjs pipeline/google-oauth.test.mjs` from repository root for local substituted HTTP/handler/OAuth checks. OAuth connection alone starts no reading; production/D2 and schedules remain closed.

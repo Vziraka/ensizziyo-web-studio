@@ -212,6 +212,7 @@ function inputField(form, label, name, value = '', type = 'text', options) {
   form.append(wrap); return input;
 }
 function eventForm(r, title, type, fields, fixed = {}, submitLabel = 'Save reviewed decision') {
+  if(state.shared_workspace&&!state.shared_workspace.allowed_edits.includes(type))return el('p','Saved context · editing unavailable in this workspace','muted');
   const form = el('form'); form.append(el('h3', title));
   const controls = fields.map(f => ({ name: f[1], node: inputField(form, ...f) }));
   const submit = el('button', submitLabel, 'primary'); submit.type = 'submit'; form.append(submit);
@@ -428,6 +429,7 @@ function nextForm(r, node) {
   if (['Hold', 'Stopped'].includes(r.stage)) node.append(el('p', r.restriction ? `Contact restriction: ${r.restriction}. Older positive notes cannot restart outreach.` : r.next_check, 'notice'));
 }
 function detail(r) {
+  if(state.shared_workspace){const node=panel(r.name);node.append(el('p',`${r.stage} · saved record · execution disabled`),eventForm(r,'Private business note','note_added',[['Private note','note',r.note??'','textarea']],{},'Save private note'));return node;}
   if(r.origin==='workspace'){
     const node=panel(r.name);node.append(pill('Project workspace · no outreach'),el('p',r.workspace.purpose),el('p',`Created by ${r.workspace.created_by}. Private references and notes do not establish a design selection, approved quote, client acceptance or contact permission.`,'notice'));
     const packet=el('div');if(loadedWorkspaceContext?.id===r.id&&loadedWorkspaceContext.revision===state.revision)packet.append(el('pre',JSON.stringify(loadedWorkspaceContext.data,null,2)));node.append(button('Load private project context',async()=>{try{const response=await fetch(deskPath(`/api/project-context/${r.id}`)),data=await response.json();if(!response.ok)throw Error(data.error);loadedWorkspaceContext={id:r.id,revision:state.revision,data};packet.replaceChildren(el('pre',JSON.stringify(data,null,2)));}catch(error){tell(error.message,true);}}),packet,eventForm(r,'Private project note','note_added',[['Project note','note',r.note??'','textarea']],{},'Save project note'));return node;
@@ -466,9 +468,10 @@ function render() {
   attentionNav.setAttribute('aria-label', attentionCount ? `Needs attention, ${attentionCount} open items` : 'Needs attention');
   document.querySelector('#mode-banner').textContent = state.controls.mode === 'controlled' ? 'Controlled operations proof · Fictional businesses, simulated calls and payments. Approved test emails go only to owner-controlled inboxes.' : state.controls.calls_paused ? 'Production workspace · Saved research, verification calls and client work. Contact remains paused until final owner release.' : state.controls.outreach_paused ? 'Calling enabled · You place and log calls. Booking requires verified business Calendar setup and your approval of the guest and time. Commercial email remains paused.' : 'Production workspace · Live calls and email operate within the approved campaign rules. Review due work and exceptions before contacting.';
   const discovery=state.discovery_batches?.find(b=>!['Complete','Stopped','Held'].includes(b.status));
-  if(state.shared_workspace)document.querySelector('#mode-banner').textContent='Shared workspace · Execution disabled. Read saved records and edit private notes. Imported actions, approvals and monitoring are history; external effects require reconciliation. Hosted authoring and backup are unavailable.';
+  if(state.shared_workspace)document.querySelector('#mode-banner').textContent=state.shared_workspace.capability==='shared-manual-records-v1'?'Shared manual records · Execution disabled. Attest completed human calls, record callbacks, hand off ownership, add notes and stop local future work. This does not authorize placing calls or sending email. External suppression is unverified.':'Shared workspace · Execution disabled. Read saved records and edit private notes. Imported actions, approvals and monitoring are history; external effects require reconciliation. Hosted authoring and backup are unavailable.';
   document.querySelector('#research-status').textContent = discovery ? `Discovery ${discovery.status.toLowerCase()} · ${discovery.reviewed}/25 checked` : `${state.controls.research_paused ? 'Research paused' : 'Research enabled'}${state.research_runtime ? ` · ${state.research_runtime.status}${state.research_runtime.counts ? ` · ${state.research_runtime.counts.Complete} reviewed` : ''}` : ''}`;
   document.querySelector('#outreach-status').textContent = state.controls.calls_paused ? 'Outreach paused' : state.controls.outreach_paused ? 'Calls only · email paused' : 'Outreach enabled';
+  if(state.shared_workspace){for(const button of document.querySelectorAll('nav button'))button.hidden=!['today','businesses','emails','clients','exceptions'].includes(button.dataset.view);document.querySelector('.aside-foot').hidden=true;if(!['today','businesses','emails','clients','exceptions'].includes(view))view='businesses';}
   content.replaceChildren(); const title = titles[view]; document.querySelector('#view-kicker').textContent = title[0]; document.querySelector('#view-title').textContent = title[1]; document.querySelector('#view-description').textContent = title[2];
   document.querySelector('#updated').textContent = `Saved revision ${state.revision} · ${new Date(state.updated_at).toLocaleTimeString()}`;
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === view));

@@ -1,5 +1,6 @@
 import {replySuggestion,replyDraftContent,replyDraftCurrent,validReplySource} from './reply-content.mjs';
 import {applyInertNote,inertReconciliation} from './inert-shared-workspace.mjs';
+import {applyManualRecord,manualRecordEvents} from './shared-manual-records.mjs';
 import {prepareNotificationsInState,notificationView} from './team-notifications.mjs';
 import {openingView,selectOpening} from './opening-policy.mjs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -150,6 +151,7 @@ function prepareCallFollowUp(state,record,call,config,at,reviewed=false){
 }
 function storeCallFollowUp(state,record,call,config,at,content,eventId,createdAt=at,emailReviewed=false){
   const issues=[];
+  if(config.shared_capability==='shared-manual-records-v1')issues.push('Manual recording only; provider execution and email sending are disabled');
   if(record.proposals[call.call_id]?.review?.provenance?.provider==='netlify-gateway'&&!emailReviewed)issues.push('Review selected transcript facts and approve the exact email revision before sending');
   if(content.focus==='undecided')issues.push('A specific, reviewed service focus is needed before preparing a relevant follow-up');
   if(record.restriction||record.reply)issues.push('Contact stopped or a reply needs owner review');
@@ -183,7 +185,7 @@ export class StudioLifecycle {
   static async fromStore({store,now}){
     const app=new StudioLifecycle(null,now);app.store=store;app.config=await store.config();
     check(app.config.schema_version===1&&['controlled','production'].includes(app.config.mode)&&key(app.config.run_id)&&app.config.timezone==='America/New_York','Invalid shared lifecycle configuration');
-    if(store.inertBinding){await store.envelope();return app;}
+    if(store.inertBinding||store.manualBinding){await store.envelope();return app;}
     check(app.config.mode==='controlled'&&app.config.outreach_enabled===false&&app.config.connector_writes_enabled===false&&app.config.research_enabled===false&&app.config.transcript_ai.enabled===false,'Shared preview accepts execution-disabled fictional work only');
     const state=await app.snapshot();check(state.run_id===app.config.run_id&&state.mode===app.config.mode&&Object.values(state.prospects).every(r=>r.controlled===true),'Shared preview cannot load production records');return app;
   }
@@ -232,6 +234,7 @@ export class StudioLifecycle {
     check(key(event?.id) && key(event.prospect_id) && text(event.type, 80) && date(event.at), 'Event needs stable IDs and an explicit timestamp');
     check(Date.parse(event.at) <= +this.now() + 60_000, 'An event cannot claim a future action');
     if(this.store?.inertBinding)return this.change(state=>applyInertNote(state,event,actor,expectedRevision,this.now()),{eventId:event.id,eventFingerprint:hash({event,actor}),inertNote:{event,actor,revision:expectedRevision}});
+    if(this.store?.manualBinding)return this.change(state=>applyManualRecord(state,event,actor,expectedRevision,this.now(),this.config),{eventId:event.id,eventFingerprint:hash({event,actor}),manualRecord:{event,actor,revision:expectedRevision}});
     if (event.type === 'call_logged' && this.config.mode === 'production') {
       const { requireCallRelease } = await import('./production.mjs'); requireCallRelease(this.config);
       check(this.config.operations.allowlist.includes(event.prospect_id), 'Call is outside the approved queue');
@@ -239,7 +242,10 @@ export class StudioLifecycle {
     const validateMachineDraft=event.type==='transcript_added'&&(event.data?.transcription_draft_sha256||event.data?.transcription_policy_sha256)?(event.data.transcription_policy_sha256?(await import('./full-call-transcription.mjs')).validateFullCallDraft:(await import('./call-transcription.mjs')).validateTranscriptionDraft):null;
     const validateHostedAssessment=event.type==='transcript_assessed'&&event.data?.assessment_attempt_id?(await import('./hosted-assessment.mjs')).validateHostedAssessment:null;
     const eventFingerprint=hash({event,actor});
-    return this.change(state => {
+    return this.change(state=>this.reduceEvent(state,event,{actor,expectedRevision,validateMachineDraft,validateHostedAssessment}),{eventId:event.id,eventFingerprint});
+  }
+  // Shared manual recording reuses this reducer without the production call-execution release.
+  reduceEvent(state,event,{actor,expectedRevision,validateMachineDraft=null,validateHostedAssessment=null,manualRecording=false}) {
       const fingerprint = hash({ event, actor });
       if (state.events[event.id]) { check(state.events[event.id].fingerprint === fingerprint, 'Event ID conflicts with saved evidence'); return { duplicate: true, revision: state.revision }; }
       check(expectedRevision === undefined || expectedRevision === state.revision, 'Record changed; refresh before approving');
@@ -395,7 +401,7 @@ export class StudioLifecycle {
             check(data.focus===undefined||['ai','systems','website','marketing','undecided'].includes(data.focus),'Choose a supported call focus');
             if (data.desk) {
               check(data.desk === true && (data.intent === undefined || data.outcome === 'connected' && ['discovery','requested_info'].includes(data.intent)), 'Choose the interested next step');
-              r.call_undo = {call_id:data.call_id,event_id:eid,record:Object.fromEntries(['stage','cold_paused','callback_at','callback_due_at','next_check','suppression','note','follow_ups','project_work'].map(k=>[k,structuredClone(r[k]??null)])),actions:structuredClone(Object.fromEntries(Object.entries(state.actions).filter(([,a])=>a.prospect_id===r.id)))};
+              if(!manualRecording)r.call_undo = {call_id:data.call_id,event_id:eid,record:Object.fromEntries(['stage','cold_paused','callback_at','callback_due_at','next_check','suppression','note','follow_ups','project_work'].map(k=>[k,structuredClone(r[k]??null)])),actions:structuredClone(Object.fromEntries(Object.entries(state.actions).filter(([,a])=>a.prospect_id===r.id)))};
             }
             check(data.simulated === r.controlled, 'Simulated and actual calls cannot be mixed');
             check(date(data.performed_at) && Date.parse(data.performed_at) <= Date.parse(event.at) && (!r.attempts.length || Date.parse(data.performed_at) >= Date.parse(r.attempts.at(-1).at)), 'Call time must be performed, ordered and dated');
@@ -408,7 +414,7 @@ export class StudioLifecycle {
               r.attempts.push({ id: data.call_id, channel: 'call', at: data.performed_at, simulated: data.simulated, connected: ![...coldOutcomes, 'wrong_contact'].includes(data.outcome) });
             }
             const opening=openingView(r);
-            r.calls[data.call_id] = { ...data, purpose, actor, event_id: eid,opening_context:opening?{status:opening.status,assessment_sha256:opening.assessment_sha256,selected:opening.selected,selected_by:opening.selected_by}:null };
+            r.calls[data.call_id] = { ...data, purpose, actor, event_id: eid,...(manualRecording?{attestation:{kind:'operator-reported-completed-call',provider_verified:false,execution:'disabled'}}:{}),opening_context:opening?{status:opening.status,assessment_sha256:opening.assessment_sha256,selected:opening.selected,selected_by:opening.selected_by}:null };
             for (const a of Object.values(state.actions)) if (a.prospect_id === r.id && ['call_task', 'callback_task'].includes(a.type)) {
               if (a.status === 'Queued') a.status = 'Cancelled';
               else if (a.provider_task) a.cancel_requested = true;
@@ -701,22 +707,22 @@ export class StudioLifecycle {
           default: throw Error('Unsupported lifecycle event');
         }
       }
-      if(r?.calls)syncProjectWork(state,r,event,actor);
-      prepareNotificationsInState(state,this.now(),{origin:event.id,includeDigest:false});
-      const cycle = state.operations?.cycle;
+      if(!manualRecording&&r?.calls)syncProjectWork(state,r,event,actor);
+      if(!manualRecording)prepareNotificationsInState(state,this.now(),{origin:event.id,includeDigest:false});
+      const cycle = manualRecording?null:state.operations?.cycle;
       if (cycle && !cycle.completed_at) {
         cycle.completed_records = (cycle.completed_records ?? []).filter(id => id !== r.id);
         cycle.completed_bookings = [];
       }
       r.updated_at = event.at; state.events[eid] = { fingerprint, actor, ...event }; state.revision++;
       return { prospect_id: r.id, stage: r.stage, revision: state.revision };
-    },{eventId:event.id,eventFingerprint});
   }
   async dashboard() {
     const {discoverySummary,discoveryCampaignSummary,discoveryDailySummary}=await import('./discovery-batches.mjs');
     this.config = await this.loadConfig();
     const state = await this.snapshot(), today = businessDate(this.now());
     if(this.store?.inertBinding)state.shared_workspace={capability:'inert-shared-v1',workspace_id:this.store.inertBinding.scope.workspace_id,manifest_sha256:this.store.inertBinding.manifest_sha256,allowed_edits:['note_added'],reconciliation:inertReconciliation(state),unsupported:['hosted-authoring-sidecars','hosted-backup','provider-execution']};
+    if(this.store?.manualBinding)state.shared_workspace={capability:'shared-manual-records-v1',workspace_id:this.store.manualBinding.scope.workspace_id,manifest_sha256:this.store.manualBinding.manifest_sha256,allowed_edits:manualRecordEvents,reconciliation:inertReconciliation(state),execution:'disabled',external_suppression:'unverified',unsupported:['hosted-authoring-sidecars','hosted-backup','provider-execution']};
     let supplementalReviews = null, supplementalHold;
     if(!this.store)try {
       const ledger = JSON.parse(await readFile(join(this.directory, 'supplemental-reviews.json'), 'utf8'));
