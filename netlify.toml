@@ -7,7 +7,7 @@ ignore = "if [ \"$CONTEXT\" != production ] || [ -z \"$CACHED_COMMIT_REF\" ] || 
 NODE_VERSION = "24"
 
 [functions]
-directory = "netlify/functions"
+directory = "pipeline/netlify-functions"
 node_bundler = "esbuild"
 included_files = ["pipeline/lifecycle-ui/**", "pipeline/follow-up-template.mjs", "pipeline/business-types.mjs"]
 
