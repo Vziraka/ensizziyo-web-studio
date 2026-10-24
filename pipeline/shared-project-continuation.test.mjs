@@ -106,3 +106,33 @@ test('another exact-bound workspace cannot inspect or mutate this workspace job,
  for(const actor of ['owner','friend']){const client=await (await import('./hosted-authoring-client.mjs')).connectSharedAuthoring({origin,key:f.env[actor==='owner'?'EVZ_OPERATIONS_OWNER_KEY':'EVZ_OPERATIONS_FRIEND_KEY'],fetcher});await assert.rejects(client.inspect(first.id),/Unknown current/);await assert.rejects(client.download(first.id,'context.json'),/Unknown registered/);await assert.rejects(client.complete(first.id,{}),/Unknown current/);}
  assert.equal((await f.app.snapshot()).prospects['shared-proof'].project_work['website-concepts'].execution.id,first.id);assert.equal((await store.snapshot()).prospects['shared-proof'].project_work['website-concepts'].execution,undefined);
 });
+
+
+async function advancingSharedClient(f){
+ let time=Date.parse((await f.app.snapshot()).updated_at),lost=false;const now=()=>new Date(++time);
+ f.app.now=now;f.storage.hook=async()=>{time+=17;};
+ const handler=(await import('./hosted-desk.mjs')).createHostedDesk({env:f.env,storeFactory:()=>f.storage.raw,now});
+ const fetcher=async(url,options)=>{const response=await handler(new Request(url,options));if(lost&&new URL(url).pathname.endsWith('/reconcile')&&response.ok){lost=false;throw Error('Advancing-clock reconcile response lost');}return response;};
+ const client=await (await import('./hosted-authoring-client.mjs')).connectSharedAuthoring({origin,key:f.env.EVZ_OPERATIONS_OWNER_KEY,fetcher});
+ return {client,now,loseResponse:()=>{lost=true;},time:()=>time};
+}
+
+test('advancing shared reconciliation keeps one transaction timestamp across evidence persistence and exact lost-response retries',async t=>{
+ for(const loseResponse of [false,true]){
+ const f=await fixture(t),a=await advancingSharedClient(f),job=await a.client.begin(name,'website-concepts'),observed=await a.client.recovery(job.id);assert.ok(observed.files.some(file=>file.published?.chunks.some(c=>c.disposition==='available')),'Nonempty actual context evidence is retained');
+ const input={snapshot:observed.snapshot,reason:'Retain exact evidence under a moving storage clock.',disposition:'close-publication'},before=await f.app.snapshot(),timeBefore=a.time();if(loseResponse){a.loseResponse();await assert.rejects(a.client.reconcile(job.id,input),/response lost/);}else assert.equal((await a.client.reconcile(job.id,input)).status,'Reconciled');
+ const saved=await f.app.snapshot(),closed=saved.prospects['shared-proof'].project_work['website-concepts'].execution;assert.equal(closed.status,'Reconciled');assert.equal(closed.recovery.at,saved.updated_at);assert.ok(a.time()>Date.parse(closed.recovery.at));assert.ok(a.time()>timeBefore);assert.equal(saved.revision,before.revision+1);
+ assert.deepEqual(await a.client.reconcile(job.id,input),closed);assert.deepEqual(await f.app.snapshot(),saved);await assert.rejects(a.client.reconcile(job.id,{...input,reason:'Changed retry'}),/retry differs/);assert.deepEqual(await f.app.snapshot(),saved);
+ }
+});
+
+test('advancing shared reconciliation still rejects genuine snapshot and evidence races',async t=>{
+ for(const race of ['snapshot','evidence']){
+  const f=await fixture(t),a=await advancingSharedClient(f),job=await a.client.begin(name,'website-concepts'),observed=await a.client.recovery(job.id),before=await f.app.snapshot();let raced=false;
+  const prior=f.storage.hook;f.storage.hook=async(key,bytes)=>{await prior(key,bytes);if(raced||!key.includes('/recovery-')||!key.endsWith('/manifest'))return;raced=true;
+   if(race==='snapshot')await f.app.apply(event('moving-clock-race','note_added',{note:'Concurrent legitimate source change.'}),{actor:'friend',expectedRevision:before.revision});
+   else await blobAuthoringStore(f.storage.raw).reserve(job.id,'input.json',(await import('./hosted-authoring.mjs')).authoringManifest(Buffer.from('new exact candidate evidence')));
+  };
+  await assert.rejects(a.client.reconcile(job.id,{snapshot:observed.snapshot,reason:'Reject '+race+' race despite time progression.',disposition:'close-publication'}),race==='snapshot'?/snapshot changed before closure/:/shared state|observation changed/);assert.equal(raced,true);const after=await f.app.snapshot();assert.equal(after.prospects['shared-proof'].project_work['website-concepts'].execution.status,'Claimed');assert.equal(after.revision,before.revision+(race==='snapshot'?1:0));assert.deepEqual(after.operations,before.operations);
+ }
+});

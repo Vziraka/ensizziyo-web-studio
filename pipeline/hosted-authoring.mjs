@@ -77,7 +77,8 @@ async function reconcile(app,input,actor){
  const result={...job,status:'Reconciled',recovery};await validateAuthoringRecovery(result,async(name)=>observed.bytes.get(name));
  // Content-addressed evidence may survive a failed CAS. It grants no authority until the state commit.
  for(const [name,bytes] of observed.bytes)await app.authoringStore.put(job.id,name,bytes);
- return app.change(s=>{check(hash(s)===hash(observed.state),'Recovery snapshot changed before closure; inspect again');const current=registered(s,job.id);check(hash(current)===hash(job),'Authoring ownership changed');Object.assign(current,result);s.revision++;s.updated_at=app.now().toISOString();return current;},{projectReconcile:{job,result,snapshot:input.snapshot,actor}});
+ // Evidence persistence can advance the clock; closure keeps the captured transaction timestamp.
+ return app.change(s=>{check(hash(s)===hash(observed.state),'Recovery snapshot changed before closure; inspect again');const current=registered(s,job.id);check(hash(current)===hash(job),'Authoring ownership changed');Object.assign(current,result);s.revision++;s.updated_at=recovery.at;return current;},{projectReconcile:{job,result,snapshot:input.snapshot,actor}});
 }
 function writable(state,id,name,actor){
  check(uploadOK(name),'Upload only submitted source, registered runtime or actual raster pages');const input=locate(state,id),work=state.prospects[input.project_id].project_work[input.work_id],packet=projectWorkContext(state,input.project_id,input.work_id);
