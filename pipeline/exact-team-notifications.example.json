@@ -1,0 +1,21 @@
+{
+  "google_team_notifications": {
+    "enabled": false,
+    "capability": "fictional-exact-team-v1",
+    "run_id": "studio-lifecycle-controlled",
+    "revision": "review-example-1",
+    "policy_id": "unapproved-fictional-trial",
+    "grant_id": "unconfigured-future-owner-grant",
+    "account_email": "business@example.invalid",
+    "from": "hello@example.invalid",
+    "approval_mode": "each-message",
+    "kinds": ["attention", "digest"],
+    "recipients": {"owner": "owner@example.invalid", "friend": "friend@example.invalid"},
+    "signature": "EVZ Digital team · Internal operations notification",
+    "starts_at": "2026-10-26T13:00:00Z",
+    "expires_at": "2026-10-27T13:00:00Z",
+    "daily_limit": 5,
+    "sender_daily_limit": 20,
+    "max_messages": 8
+  }
+}

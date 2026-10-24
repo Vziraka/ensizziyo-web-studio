@@ -3,18 +3,21 @@ import {replyDraftCurrent,validReplySource} from './reply-content.mjs';
 import {projectWorkContext} from './project-work.mjs';
 import {readProjectAsset,projectAssetVersion} from './project-assets.mjs';
 import {composeExactMail,googleHostedTransport,mailLimits,byteHash,mailMessageId} from './google-hosted-transport.mjs';
+import {teamNotificationBoundary,notificationPolicy,currentNotificationPolicy,notificationPackageInState,notificationBudget} from './exact-team-notifications.mjs';
 
 const actorCheck=actor=>check(['owner','friend'].includes(actor),'Exact email needs a signed operator');
 const key=v=>typeof v==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(v)&&v!=='__proto__';
 const bump=(s,app)=>{s.revision++;s.updated_at=app.now().toISOString();};
-function capability(app,config,env){
+function capability(app,config,env,internal=false){
+ if(internal){teamNotificationBoundary(app,config);check(env.EVZ_OPERATIONS_GOOGLE_TEAM_NOTIFICATIONS==='fictional-exact-team-v1','Exact internal notification delivery is disabled');return notificationPolicy(config);}
  check(!app.store?.inertBinding&&config.shared_capability!=='inert-shared-v1','D2 notes-only authority rejects email execution');
  const c=config.google_exact_mail;
  check(env.EVZ_OPERATIONS_GOOGLE_EXACT_MAIL==='fictional-exact-mail-v1'&&c?.enabled===true&&c.capability==='fictional-exact-mail-v1'&&config.mode==='controlled','Hosted exact email is disabled; production source capability remains unavailable');
  check(c.run_id===config.run_id&&key(c.grant_id)&&c.account_email===config.sender.account_email&&c.from==='hello@evzdigital.studio'&&c.from===config.sender.email&&Number.isInteger(c.daily_limit)&&c.daily_limit>0&&c.daily_limit<=20,'Exact workspace, business owner, sender and bounded allowance binding required');
  return c;
 }
-function packageInState(state,config,input,actor){
+function packageInState(state,config,input,actor,now){
+ if(input.kind==='notification')return notificationPackageInState(state,config,input,actor,now);
  actorCheck(actor);check(key(input.project_id)&&['reply','project'].includes(input.kind),'Choose a current held reply or project email');
  const r=state.prospects[input.project_id];check(r&&!r.restriction&&!['Stopped','Hold','Closed'].includes(r.stage)&&r.contact?.verified===true,'Current verified active contact required');
  check(!r.follow_up_owner||r.follow_up_owner===actor,'Claim or hand off this conversation first');
@@ -49,8 +52,9 @@ function packageInState(state,config,input,actor){
  const p={schema_version:1,project_id:r.id,kind:input.kind,draft_id:draft.id??draft.approval_event,...mail,attachments,...(c&&input.kind==='reply'?{thread_id:c.thread_id,in_reply_to:c.message_header_id,references:refs}:{}),reply_source:reply,owner:r.follow_up_owner??null,contact_sha256:hash(r.contact),quote_sha256:r.quote?hash(r.quote):null,signature_sha256:hash(mail.body),operator_names_sha256:hash(config.sender.operator_names),source:context};
  return {...p,sha256:hash(p)};
 }
-export async function exactMailPackage(app,input,actor){return packageInState(await app.snapshot(),await app.loadConfig(),input,actor);}
+export async function exactMailPackage(app,input,actor){check(['reply','project'].includes(input.kind),'Use the separate internal notification review caller');return packageInState(await app.snapshot(),await app.loadConfig(),input,actor);}
 export async function approveExactMail(app,input,actor){
+ check(['reply','project'].includes(input.kind),'Use the separate internal notification approval caller');
  const config=await app.loadConfig();check(!app.store?.inertBinding,'D2 notes-only authority rejects email approvals');
  return app.change(s=>{
   check(input.revision===s.revision&&key(input.event_id)&&input.approved===true&&input.facts_checked===true,'Review and explicitly approve the exact recipient, complete body/signature and PDF bytes');
@@ -63,51 +67,57 @@ export async function approveExactMail(app,input,actor){
   bump(s,app);return {action_id:id,package_sha256:p.sha256,status:'Approved; transport disabled until separately bound'};
  });
 }
-function current(s,c,a){
+function current(s,c,a,now){
  check(a?.type==='email'&&a.payload?.exact_mail===true,'Choose an existing approved exact-email action');
  check(['Queued','Pending'].includes(a.status),'Exact action was cancelled, stopped or already settled; reconcile only');
  const approval=s.events[a.payload.approval_event];check(approval?.actor===a.assigned_to&&approval.data.package_sha256===a.payload.package_sha256,'Exact signed send approval missing');
- const p=packageInState(s,c,a.payload.selector,a.assigned_to);check(p.sha256===a.payload.package_sha256,'Source, stop, assignment, content or attachment changed since exact send approval');
- check(!Object.values(s.actions).some(other=>other.id!==a.id&&other.prospect_id===a.prospect_id&&other.type==='email'&&['Queued','Pending','Uncertain'].includes(other.status)),'Another email authority is pending for this conversation; reconcile first');return p;
+ check(!a.payload.internal_notification||approval.type==='exact_team_notification_approved','Exact signed internal message approval required');
+ const p=packageInState(s,c,a.payload.selector,a.assigned_to,now);check(p.sha256===a.payload.package_sha256,'Source, stop, assignment, content or attachment changed since exact send approval');
+ check(a.payload.internal_notification||!Object.values(s.actions).some(other=>other.id!==a.id&&other.prospect_id===a.prospect_id&&other.type==='email'&&['Queued','Pending','Uncertain'].includes(other.status)),'Another email authority is pending for this conversation; reconcile first');return p;
 }
 function expectedFor(a,q){check(typeof q.raw_base64url==='string','Reserved MIME was not materialized; held without resend');const raw=Buffer.from(q.raw_base64url,'base64url');check(byteHash(raw)===q.mime_sha256,'Reserved exact MIME integrity changed');return {raw,message_id:q.rfc_message_id,thread_id:a.payload.package.thread_id??q.provider_thread_id??null};}
 export async function dispatchExactMail(app,input,{actor,env=process.env,transport=null,getAccessToken,fetcher}={}){
  actorCheck(actor);check(key(input.action_id),'Choose exact saved send action');
- const config=await app.loadConfig(),c=capability(app,config,env),s=await app.snapshot(),a=s.actions[input.action_id];
+ check(!app.store?.inertBinding,'D2 notes-only authority rejects email execution');
+ const config=await app.loadConfig(),s=await app.snapshot(),a=s.actions[input.action_id],internal=a?.payload?.internal_notification===true,c=capability(app,config,env,internal);
  check(a?.assigned_to===actor,'Only the signed approved assignee may dispatch this message');
  const prior=s.operations?.requests?.[a.id+'-intent'];if(prior)return {action_id:a.id,status:prior.status,reason:'Intent already reserved; reconcile only, never dispatch again'};
- const p=current(s,config,a),at=app.now().toISOString(),logical=a.id+'-intent';
+ const p=current(s,config,a,app.now()),logical=a.id+'-intent';let at=app.now().toISOString();
  await app.change(state=>{
-  check(!state.operations?.requests?.[logical],'Intent already reserved; reconciliation only');current(state,config,state.actions[a.id]);
-  const today=businessDate(app.now()),requests=Object.values(state.operations?.requests??{}),legacy=Object.values(state.prospects).filter(r=>r.information_draft?.approved_at&&businessDate(r.information_draft.approved_at)===today).length;
-  check(legacy+requests.filter(q=>['intent','send'].includes(q.operation)&&q.prepared_at&&businessDate(q.prepared_at)===today).length<c.daily_limit,'Daily combined sender reservation exhausted');
+  const reservationNow=app.now();if(internal)at=reservationNow.toISOString();
+  check(!state.operations?.requests?.[logical],'Intent already reserved; reconciliation only');current(state,config,state.actions[a.id],reservationNow);
+  const today=businessDate(reservationNow),requests=Object.values(state.operations?.requests??{}),legacy=Object.values(state.prospects).filter(r=>r.information_draft?.approved_at&&businessDate(r.information_draft.approved_at)===today).length;
+  if(internal)notificationBudget(state,currentNotificationPolicy(state,config,reservationNow),reservationNow);
+  check(legacy+requests.filter(q=>['intent','send'].includes(q.operation)&&q.prepared_at&&businessDate(q.prepared_at)===today).length<(internal?c.sender_daily_limit:c.daily_limit),'Daily combined sender reservation exhausted');
   const o=state.operations??={};o.requests??={};o.email??={};
   // One durable intent is the authority across dispatch, response loss and background redelivery.
-  o.requests[logical]={logical,operation:'intent',transport:'google-exact-mail-v1',status:'Reserved',prepared_at:at,package_sha256:p.sha256,binding_sha256:hash(c),rfc_message_id:mailMessageId(a.id)};
+  o.requests[logical]={logical,operation:'intent',transport:'google-exact-mail-v1',status:'Reserved',prepared_at:at,package_sha256:p.sha256,binding_sha256:hash(c),rfc_message_id:mailMessageId(a.id),...(internal?{internal_notification:true,policy_id:c.policy_id}:{} )};
   o.email[a.id]={prospect_id:a.prospect_id,status:'Reserved',package_sha256:p.sha256};state.actions[a.id].status='Pending';bump(state,app);
- });
+  if(internal)state.team_notifications.messages[p.notification_id].delivery={status:'Reserved; delivery held',action_id:a.id};
+ },internal?{configFingerprint:hash(config)}:undefined);
  const provider=transport??googleHostedTransport({getAccessToken,fetcher,account:c.account_email,grantId:c.grant_id});
  try{
   const bytes=[];for(const part of p.attachments)bytes.push((await readProjectAsset(app,p.project_id,part.asset_id,part.version_id)).bytes);
   const composed=composeExactMail(p,a.id,at,bytes);
-  await app.change(state=>{current(state,config,state.actions[a.id]);const q=state.operations.requests[logical];check(q.status==='Reserved'&&!q.raw_base64url,'MIME already materialized; never retry');q.mime_sha256=byteHash(composed.raw);q.raw_base64url=composed.raw.toString('base64url');bump(state,app);});
-  await provider.preflight();const fresh=await provider.freshSource(p);const latest=await app.loadConfig();capability(app,latest,env);check(hash(latest.google_exact_mail)===hash(c),'Google execution binding changed');
-  await app.change(state=>{current(state,latest,state.actions[a.id]);const q=state.operations.requests[logical];check(q.status==='Reserved','Dispatch already claimed; never retry');q.status='Uncertain';q.dispatch_started_at=app.now().toISOString();q.fresh_source=fresh;state.operations.email[a.id].status='Uncertain';bump(state,app);});
+  await app.change(state=>{current(state,config,state.actions[a.id],app.now());const q=state.operations.requests[logical];check(q.status==='Reserved'&&!q.raw_base64url,'MIME already materialized; never retry');q.mime_sha256=byteHash(composed.raw);q.raw_base64url=composed.raw.toString('base64url');bump(state,app);},internal?{configFingerprint:hash(config)}:undefined);
+  await provider.preflight();const fresh=internal?{notification_source_sha256:p.source_sha256}:await provider.freshSource(p);const latest=await app.loadConfig();const latestBinding=capability(app,latest,env,internal);check(hash(latestBinding)===hash(c),'Google execution binding changed');
+  await app.change(state=>{const dispatchNow=app.now();current(state,latest,state.actions[a.id],dispatchNow);const q=state.operations.requests[logical];check(q.status==='Reserved','Dispatch already claimed; never retry');check(!internal||businessDate(q.prepared_at)===businessDate(dispatchNow),'Sender reservation date changed; held without dispatch');q.status='Uncertain';q.dispatch_started_at=dispatchNow.toISOString();q.fresh_source=fresh;state.operations.email[a.id].status='Uncertain';if(internal)state.team_notifications.messages[p.notification_id].delivery={status:'Uncertain; dispatch claimed, no resend permission',action_id:a.id};bump(state,app);},internal?{configFingerprint:hash(latest)}:undefined);
   const sent=await provider.send(composed);
   await app.change(state=>{const q=state.operations.requests[logical];q.provider_message_id=sent.id;q.provider_thread_id=sent.thread_id;bump(state,app);});
   return await reconcileExactMail(app,{action_id:a.id},{actor,env,transport:provider});
  }catch(error){
-  await app.change(state=>{const q=state.operations.requests[logical];if(q.status!=='Verified'){q.status=q.dispatch_started_at?'Uncertain':'Held';q.hold='Provider/source check or response failed; no automatic resend. Reconcile the reserved intent.';state.actions[a.id].status='Uncertain';state.operations.email[a.id].status=q.status;bump(state,app);}});
+  await app.change(state=>{const q=state.operations.requests[logical];if(q.status!=='Verified'){q.status=q.dispatch_started_at?'Uncertain':'Held';q.hold='Provider/source check or response failed; no automatic resend. Reconcile the reserved intent.';state.actions[a.id].status='Uncertain';state.operations.email[a.id].status=q.status;if(internal){state.actions[a.id].hold=q.hold;state.team_notifications.messages[p.notification_id].delivery={status:q.status+'; no resend permission',action_id:a.id};}bump(state,app);}});
   return {action_id:a.id,status:(await app.snapshot()).operations.requests[logical].status,reason:error.message};
  }
 }
 export async function reconcileExactMail(app,input,{actor,env=process.env,transport=null,getAccessToken,fetcher}={}){
- actorCheck(actor);const config=await app.loadConfig(),c=capability(app,config,env),state=await app.snapshot(),a=state.actions[input.action_id],q=state.operations?.requests?.[input.action_id+'-intent'];
+ check(!app.store?.inertBinding,'D2 notes-only authority rejects email execution');
+ actorCheck(actor);const config=await app.loadConfig(),state=await app.snapshot(),a=state.actions[input.action_id],internal=a?.payload?.internal_notification===true,c=capability(app,config,env,internal),q=state.operations?.requests?.[input.action_id+'-intent'];
  check(a?.payload?.exact_mail&&q?.transport==='google-exact-mail-v1','Existing exact intent required');check(a.assigned_to===actor,'Signed approved assignee required');
  if(q.status==='Verified')return {action_id:a.id,status:q.status,receipt:q.receipt};
  check(q.binding_sha256===hash(c),'Reconcile under the same owner grant/workspace binding');
  const provider=transport??googleHostedTransport({getAccessToken,fetcher,account:c.account_email,grantId:c.grant_id});
  try{await provider.preflight();const receipt=await provider.reconcileSent(expectedFor(a,q),q.provider_message_id??null);
-  return await app.change(s=>{const saved=s.operations.requests[a.id+'-intent'];check(saved.package_sha256===q.package_sha256&&saved.raw_base64url===q.raw_base64url,'Reserved exact MIME changed');saved.status='Verified';saved.receipt=receipt;saved.verified_at=app.now().toISOString();s.actions[a.id].status='Verified';s.actions[a.id].delivery={...receipt,at:saved.verified_at};s.operations.email[a.id]={...s.operations.email[a.id],status:'Verified',receipt};bump(s,app);return {action_id:a.id,status:'Verified',receipt};});
- }catch(error){await app.change(s=>{const saved=s.operations.requests[a.id+'-intent'];if(saved.status!=='Verified'){saved.status='Uncertain';saved.hold='No unique complete exact Sent readback; no resend permission';s.operations.email[a.id].status='Uncertain';bump(s,app);}});return {action_id:a.id,status:'Uncertain',reason:error.message};}
+  return await app.change(s=>{const saved=s.operations.requests[a.id+'-intent'];check(saved.package_sha256===q.package_sha256&&saved.raw_base64url===q.raw_base64url,'Reserved exact MIME changed');saved.status='Verified';saved.receipt=receipt;saved.verified_at=app.now().toISOString();s.actions[a.id].status='Verified';s.actions[a.id].delivery={...receipt,at:saved.verified_at};s.operations.email[a.id]={...s.operations.email[a.id],status:'Verified',receipt};if(internal){delete saved.hold;delete s.actions[a.id].hold;const m=s.team_notifications.messages[a.payload.package.notification_id];m.delivery={status:'Sender verified; inbox delivery unverified',action_id:a.id,receipt};}bump(s,app);return {action_id:a.id,status:'Verified',receipt};});
+ }catch(error){await app.change(s=>{const saved=s.operations.requests[a.id+'-intent'];if(saved.status!=='Verified'){saved.status='Uncertain';saved.hold='No unique complete exact Sent readback; no resend permission';s.operations.email[a.id].status='Uncertain';if(internal){s.actions[a.id].hold=saved.hold;s.team_notifications.messages[a.payload.package.notification_id].delivery={status:'Uncertain; no resend permission',action_id:a.id};}bump(s,app);}});return {action_id:a.id,status:'Uncertain',reason:error.message};}
 }

@@ -2,7 +2,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {businessDate,dailyNewProspectCount,hash} from './lifecycle.mjs';
 
 const role=r=>r?.follow_up_owner==='friend'?'friend':'owner';
-function sources(state,now){
+export function notificationSources(state,now){
  const items=[];
  for(const r of Object.values(state.prospects)){
   const add=(id,kind,summary)=>items.push({id,kind,role:role(r),project_id:r.id,summary});
@@ -11,7 +11,7 @@ function sources(state,now){
   if(r.information_draft?.status==='Uncertain'||r.information_draft?.status==='Sending'&&+now-Date.parse(r.information_draft.approved_at)>120_000)add(`information:${r.id}:${r.information_draft.id??hash(r.information_draft)}`,'problem',`${r.name}: an information email needs delivery reconciliation. Do not resend.`);
   for(const ticket of r.tickets??[])if(ticket.status==='Open'&&ticket.priority==='urgent')add(`support:${r.id}:${ticket.id}`,'problem',`${r.name}: an urgent support request needs review in the private desk.`);
  }
- for(const a of Object.values(state.actions))if(['Uncertain','Held'].includes(a.status))items.push({id:`action:${a.id}:${a.status}`,kind:'problem',role:role(state.prospects[a.prospect_id]),project_id:a.prospect_id,summary:'A provider action needs reconciliation in the private desk. Do not repeat an uncertain operation.'});
+ for(const a of Object.values(state.actions))if(!a.payload?.internal_notification&&['Uncertain','Held'].includes(a.status))items.push({id:`action:${a.id}:${a.status}`,kind:'problem',role:role(state.prospects[a.prospect_id]),project_id:a.prospect_id,summary:'A provider action needs reconciliation in the private desk. Do not repeat an uncertain operation.'});
  for(const e of state.exceptions??[]){const project=state.prospects[e.prospect_id??e.id];items.push({id:`exception:${e.id}:${hash(e.reason??'')}`,kind:'problem',role:role(project),project_id:project?.id??null,summary:'A saved exception requires an operator decision. Open Needs attention in the private desk.'});}
  for(const [id,reason] of Object.entries(state.operations?.holds??{}))items.push({id:`hold:${id}:${hash(reason)}`,kind:'problem',role:'owner',summary:'A connected operation is held. Review its retained evidence in the private desk.'});
  if(state.runtime?.last_error)items.push({id:`runtime:${hash(state.runtime.last_error)}`,kind:'problem',role:'owner',summary:'The local operations service reports a problem. Review its private status and retained logs.'});
@@ -30,7 +30,7 @@ function digest(state,now,items){
 }
 // Preparation has no external effects. A missing channel never masquerades as delivery.
 export function prepareNotificationsInState(state,now,{origin=now.toISOString(),includeDigest=true}={}){
- const items=sources(state,now),time=includeDigest?digestTime(now):null;
+ const items=notificationSources(state,now),time=includeDigest?digestTime(now):null;
  if(!state.team_notifications&&!items.length&&!time)return false;
  const before=JSON.stringify(state.team_notifications??null),n=state.team_notifications??={messages:{},active:{}},active={};let full=false;
  const add=message=>{if(n.messages[message.id])return n.messages[message.id];if(Object.keys(n.messages).length>=500){full=true;return null;}return n.messages[message.id]={...message,status:'Prepared; delivery held',prepared_at:now.toISOString(),delivery_hold:'Notification recipients and external transport are not verified or enabled'};};
@@ -44,7 +44,7 @@ export function prepareNotificationsInState(state,now,{origin=now.toISOString(),
  return JSON.stringify(n)!==before;
 }
 export async function prepareTeamNotifications(app){return app.change(state=>{const changed=prepareNotificationsInState(state,app.now());if(changed){state.revision++;state.updated_at=app.now().toISOString();}return notificationView(state);});}
-export function notificationView(state){const n=state.team_notifications;return {delivery_enabled:false,channel_status:'External delivery not configured or verified',hold:n?.hold??null,messages:Object.values(n?.messages??{}).slice(-40).reverse(),pending:Object.values(n?.messages??{}).filter(m=>m.status==='Prepared; delivery held').length};}
+export function notificationView(state){const n=state.team_notifications;return {delivery_enabled:false,channel_status:'External delivery not configured or verified',hold:n?.hold??null,messages:Object.values(n?.messages??{}).slice(-40).reverse().map(m=>m.delivery?{...m,status:m.delivery.status,delivery_hold:'Read the exact caller intent/receipt. Sender readback does not establish inbox delivery.'}:m),pending:Object.values(n?.messages??{}).filter(m=>m.status==='Prepared; delivery held'&&!m.delivery).length};}
 export async function runNotificationPreparation(app,{signal}={}){
  while(!signal?.aborted){try{await prepareTeamNotifications(app);}catch{if(signal?.aborted)break;console.error('Notification preparation unavailable; no delivery was attempted');}try{await delay(60_000,undefined,{signal});}catch{break;}}
 }

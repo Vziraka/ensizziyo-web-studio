@@ -14,6 +14,7 @@ import {readFile} from 'node:fs/promises';import {join} from 'node:path';import 
 import {StudioLifecycle,initialConfig,check} from './lifecycle.mjs';import {ConditionalLifecycleStore} from './lifecycle-store.mjs';import {createOperatorAuth} from './operators.mjs';import {fixtureProspect} from './lifecycle-fixtures.mjs';import {lifecycleAssets} from './lifecycle-assets.mjs';import {renderFollowUpPreview} from './follow-up-template.mjs';import {callingSession,saveInformationDraft} from './call-desk-actions.mjs';
 import {audioRequest,saveCallAudio,readCallAudio,reconcileCallAudio,blobAudioStore} from './call-audio.mjs';
 import {exactMailPackage,approveExactMail,dispatchExactMail,reconcileExactMail} from './exact-mail.mjs';
+import {teamNotificationBoundary,notificationPolicy,authorizeNotificationPolicy,exactNotificationPackage,approveExactNotification} from './exact-team-notifications.mjs';
 import {createGoogleOAuth,googleOAuthPath,googleOAuthCallbackHTML,googleOAuthCallbackJS} from './google-oauth.mjs';
 import {readDriveOriginalStep} from './google-drive-originals.mjs';
 import {driveOAuthProfile,driveOAuthPath,driveOAuthCallbackHTML,driveOAuthCallbackJS} from './google-oauth.mjs';
@@ -200,6 +201,20 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    if(post&&path==='/api/team-notifications/prepare')return json(200,await prepareTeamNotifications(app));
    if(post&&path==='/api/calling-session')return json(200,await callingSession(app,await inputBody(request)));
    if(post&&path==='/api/information-draft')return json(200,await saveInformationDraft(app,await inputBody(request),actor));
+   if(post&&path.startsWith('/api/exact-team-notifications/')){
+    check(env.EVZ_OPERATIONS_GOOGLE_TEAM_NOTIFICATIONS==='fictional-exact-team-v1','Exact internal notification delivery is disabled');
+    teamNotificationBoundary(app,await app.loadConfig());const input=await inputBody(request),options={...googleMailOptions,actor,env};
+    if(path==='/api/exact-team-notifications/policy'){const policy=notificationPolicy(await app.loadConfig());return json(200,{policy,sha256:hash(policy),approval_required:'Signed owner policy authorization and separate exact message approval'});}
+    if(path==='/api/exact-team-notifications/authorize-policy')return json(200,await authorizeNotificationPolicy(app,input,actor));
+    if(path==='/api/exact-team-notifications/package')return json(200,await exactNotificationPackage(app,input,actor));
+    if(path==='/api/exact-team-notifications/approve')return json(200,await approveExactNotification(app,input,actor));
+    if(['/api/exact-team-notifications/dispatch','/api/exact-team-notifications/reconcile'].includes(path)){
+     check((await app.snapshot()).actions[input.action_id]?.payload?.internal_notification===true,'Choose an exact saved internal notification action');
+     if(!options.getAccessToken&&env.EVZ_OPERATIONS_GOOGLE_OAUTH==='owner-code-v1')options.getAccessToken=createGoogleOAuth({...googleOAuthOptions,env,now:()=>+now(),grantId:app.config.google_team_notifications?.grant_id}).getAccessToken;
+     return json(200,await (path.endsWith('/dispatch')?dispatchExactMail:reconcileExactMail)(app,input,options));
+    }
+    return json(405,{error:'Use the supported exact internal notification operation'});
+   }
    if(post&&path.startsWith('/api/exact-mail/')){
     check(env.EVZ_OPERATIONS_GOOGLE_EXACT_MAIL==='fictional-exact-mail-v1','Hosted exact email is disabled');
     const input=await inputBody(request),options={...googleMailOptions,actor,env};
