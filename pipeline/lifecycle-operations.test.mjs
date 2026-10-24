@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { StudioLifecycle, initialConfig } from './lifecycle.mjs';
+import { StudioLifecycle, initialConfig, hash } from './lifecycle.mjs';
 import { fixtureProspect } from './lifecycle-fixtures.mjs';
 import { ControlledOperations } from './lifecycle-operations.mjs';
 import { maintainOperations } from './lifecycle-maintenance.mjs';
@@ -100,7 +100,7 @@ test('a verified reply cancels future actions; injected text and later positive 
   const replyProvider = r => r.operation === 'thread' ? thread(bound, true) : p.respond(r);
   await drive(s.ops, replyProvider);
   let state = await s.app.snapshot(); assert.equal(state.prospects.maple.stage, 'Reply review'); assert.equal(state.actions['maple-call-email'].status, 'Cancelled'); assert.equal(p.calls.some(r => r.operation === 'draft'), false);
-  await s.app.apply({ id: 'review-test-reply', type: 'reply_reviewed', prospect_id: 'maple', at, data: { source_id: 'reply-id', outcome: 'hold', note: 'Test acknowledgement only; owner chooses the next question' } });
+  await s.app.apply({ id: 'review-test-reply', type: 'reply_reviewed', prospect_id: 'maple', at, data: { source_id: 'reply-id', reply_sha256: hash(state.prospects.maple.reply), outcome: 'hold', note: 'Test acknowledgement only; owner chooses the next question' } });
   state = await s.app.snapshot(); assert.equal(state.prospects.maple.reply_review.outcome, 'hold'); assert.match(state.prospects.maple.next_check, /next question/);
   await s.app.apply({ id: 'owner-stop', type: 'contact_stopped', prospect_id: 'maple', at, data: { reason: 'do_not_contact' } });
   s.advance(301_000); await drive(new ControlledOperations(s.app, 'reply-poll-two'), replyProvider);

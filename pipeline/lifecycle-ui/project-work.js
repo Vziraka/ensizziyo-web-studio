@@ -7,6 +7,7 @@ export function preparationPanel(r,state,{el,button,eventForm,tell}){
   if(!work.length)node.append(eventForm(r,'Prepare from the existing confirmed project context','project_preparation_requested',[],{},'Create the eligible preparation handoff'));
   for(const item of work){
     const section=el('details');section.append(el('summary',`${item.kind.replaceAll('-',' ')}${item.request?.round?` round ${item.request.round}`:''} · ${item.status} · requested by ${item.requested_by}`));
+    if(item.hold)section.append(el('p',item.hold,'notice'));
     if(item.result)section.append(el('p',item.result.reference??item.result.internal_review,'source'),el('p',`Prepared by ${item.prepared_by}; awaiting human asset review. No send or client acceptance recorded.`,'muted'));
     const loaded=el('div');
     section.append(button('Load current context & output form',async()=>{try{
@@ -29,7 +30,7 @@ export function preparationPanel(r,state,{el,button,eventForm,tell}){
       loaded.append(eventForm(r,'Record preparation for review','project_work_recorded',fields,fixed,'Save internal review'));
     }catch(error){tell(error.message,true);}}),loaded);node.append(section);
   }
-  const last=work.filter(w=>['website-concepts','website-refinement'].includes(w.kind)&&w.result).at(-1);
+  const last=work.filter(w=>['website-concepts','website-refinement'].includes(w.kind)&&w.status==='Review'&&w.result).at(-1);
   if(last&&!r.quote&&!r.agreement&&!work.some(w=>w.kind==='website-refinement'&&!w.result)){
     const used=(r.pre_sale_refinements??[]).length,exceptions=(r.unpaid_refinement_exceptions??[]).filter(e=>!e.used_by);
     node.append(el('p',used?'The included unpaid refinement is used. Agree scope and price, or explicitly approve one additional unpaid round.':'One focused unpaid refinement is included before agreeing scope and price. Paid project revision rounds are separate.','notice'));

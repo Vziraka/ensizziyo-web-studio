@@ -13,7 +13,55 @@ const event=(id,type,data={},prospect_id='project')=>({id,prospect_id,type,at,da
 const apply=(app,id,type,data={},actor='owner')=>app.apply(event(id,type,data),{actor});
 const asset=(app,id,project='project',kind='mockup')=>app.apply(event(`asset-${id}`,'asset_registered',{asset_id:id,scope:'project',project_id:project,kind,name:id,version_id:'v1',version_label:'v1',reference:`private-path:${project}/${id}-v1.pdf`},'studio-assets'),{actor:'friend'});
 const interest=app=>apply(app,'interest','call_logged',{call_id:'call',outcome:'connected',desk:true,intent:'discovery',focus:'website',performed_at:at,simulated:true,note:'Owner requested a simpler booking route.'});
+const reply=async(app,id='reply',data={})=>apply(app,`received-${id}`,'reply_received',{source_id:id,thread_id:'thread',kind:'reply',...data},'provider');
+const review=async(app,id='review',data={},actor='friend')=>{const r=(await app.snapshot()).prospects.project;return apply(app,id,'reply_reviewed',{source_id:r.reply.source_id,reply_sha256:hash(r.reply),focus:'website',outcome:'discovery',...data},actor);};
 async function record(app,work='website-concepts',id='concepts',extra={}){const packet=projectWorkContext(await app.snapshot(),'project',work);return apply(app,`output-${work}`,'project_work_recorded',{work_id:work,context_sha256:packet.context_sha256,asset_id:id,version_id:'v1',direction_count:5,export_reviewed:true,...extra},'friend');}
+
+test('no-answer website call then exact signed website reply interest queues one concepts handoff',async t=>{
+ const app=await setup(t);await apply(app,'no-answer','call_logged',{call_id:'no-answer',outcome:'no_answer',desk:true,focus:'website',performed_at:at,simulated:true});await reply(app);
+ const before=await app.snapshot();assert.equal(before.prospects.project.project_work,undefined);
+ await review(app);const state=await app.snapshot(),r=state.prospects.project,work=r.project_work?.['website-concepts'];assert.ok(work,'website reply interest must create concepts without another discovery event');assert.equal(work.status,'Ready');assert.equal(work.requested_by,'friend');assert.equal(work.request.reply_sha256,hash(r.reply));assert.equal(work.request.review_event,'review');assert.equal(r.reply_review.actor,'friend');assert.equal(r.reply_review.review_event,'review');assert.deepEqual(state.actions,before.actions);
+ const packet=projectWorkContext(state,'project','website-concepts');assert.equal(packet.source.reply_source.sha256,hash(r.reply));assert.equal(packet.source.reply_source.thread_id,'thread');assert.equal(packet.source.reply_review.focus,'website');
+ await review(app);await apply(app,'prepare-again','project_preparation_requested');assert.equal(Object.keys((await app.snapshot()).prospects.project.project_work).length,1);
+});
+
+test('reply approval requires current identity, source hash, focus and signed actor; legacy review cannot infer interest',async t=>{
+ const app=await setup(t);await reply(app);const before=await app.snapshot();
+ for(const data of [{source_id:'other'}, {reply_sha256:hash('old reply')}, {reply_sha256:undefined}, {focus:undefined}, {focus:'website,systems'}])await assert.rejects(review(app,`invalid-${Object.keys(data)[0]}-${String(Object.values(data)[0]).replaceAll(',','-')}`,data),/exact current reply|Choose the service/);
+ await assert.rejects(review(app,'unsigned',{},'worker'),/requires owner review/);assert.deepEqual(await app.snapshot(),before);
+ await app.change(s=>{const r=s.prospects.project;r.stage='Discovery';r.reply_review={source_id:'reply',outcome:'discovery',actor:'owner',at};});
+ await assert.rejects(apply(app,'legacy-prepare','project_preparation_requested'),/Confirm a website focus/);assert.equal((await app.snapshot()).prospects.project.project_work,undefined);
+ await review(app,'legacy-explicit-review');const current=(await app.snapshot()).prospects.project;assert.equal(current.project_work['website-concepts'].status,'Ready');assert.deepEqual(current.reply_review_history[0],{source_id:'reply',outcome:'discovery',actor:'owner',at,superseded_by:'legacy-explicit-review'});
+});
+
+test('unconfirmed/nonwebsite focus, busy callback, declined, DNC and wrong-contact replies never create concepts',async t=>{
+ for(const [index,data] of [{focus:'unspecified'}, {focus:'systems'}, {focus:'ai'}, {focus:'marketing'}, {outcome:'hold',note:'Busy; callback requested.'}, {outcome:'decline'}, {outcome:'do_not_contact'}, {outcome:'hold',note:'Wrong contact.'}].entries()){
+  const app=await setup(t);await reply(app);await review(app,`negative-${index}`,data);const r=(await app.snapshot()).prospects.project;assert.equal(r.project_work,undefined);if(data.focus==='unspecified')assert.match(r.next_check,/which service/);
+ }
+});
+
+test('unconfirmed focus can be clarified against the same reply or the existing qualified discovery route',async t=>{
+ const app=await setup(t);await reply(app);await review(app,'unknown',{focus:'unspecified'});await review(app,'clarified',{},'owner');assert.equal((await app.snapshot()).prospects.project.project_work['website-concepts'].status,'Ready');
+ const legacy=await setup(t);await reply(legacy);await review(legacy,'unknown',{focus:'unspecified'});await apply(legacy,'qualified','discovery_confirmed',{goal:'Simpler enquiries',decision_maker:'Owner',serious_interest:true,paid_fit_discussed:true,service:'website',main_flow:'Request details',preview_screens:2});assert.equal((await legacy.snapshot()).prospects.project.project_work['website-concepts'].status,'Ready');
+});
+
+test('changed replies hold stale preparation and source approval; fresh review reuses one item without changing approved assets',async t=>{
+ const app=await setup(t);await reply(app);await review(app);await asset(app,'concepts');await app.apply(event('baseline','asset_version_selected',{asset_id:'concepts',version_id:'v1'},'studio-assets'),{actor:'owner'});await record(app);
+ const old=await app.snapshot(),oldReview=event('review','reply_reviewed',structuredClone(old.events.review.data)),oldPacket=projectWorkContext(old,'project','website-concepts');
+ await reply(app,'reply-revised',{source_id:'reply',thread_id:'changed-thread'});let state=await app.snapshot(),r=state.prospects.project;assert.equal(r.reply_review,undefined);assert.equal(r.reply_review_history[0].review_event,'review');assert.equal(r.project_work['website-concepts'].status,'Held');assert.ok(r.project_work['website-concepts'].result);assert.deepEqual(state.asset_index,old.asset_index);
+ await assert.rejects(apply(app,'old-hash','reply_reviewed',oldReview.data),/exact current reply/);assert.equal((await app.apply(oldReview,{actor:'friend'})).duplicate,true);assert.equal((await app.snapshot()).prospects.project.reply_review,undefined);
+ await assert.rejects(apply(app,'old-output','project_work_recorded',{work_id:'website-concepts',context_sha256:oldPacket.context_sha256}),/unfinished preparation/);
+ await review(app,'review-systems',{focus:'systems'});assert.equal((await app.snapshot()).prospects.project.project_work['website-concepts'].status,'Held');
+ await assert.rejects(apply(app,'stale-refinement','concept_refinement_requested',{asset_id:'concepts',version_id:'v1',selected_direction:'3',feedback:'Keep this direction.'}),/exact prepared/);
+ await reply(app,'website-again');await review(app,'review-again',{},'owner');r=(await app.snapshot()).prospects.project;assert.equal(Object.keys(r.project_work).length,1);assert.equal(r.project_work['website-concepts'].status,'Ready');assert.equal(r.project_work['website-concepts'].result,undefined);assert.equal(r.project_work['website-concepts'].history[0].result.asset_id,'concepts');assert.equal(r.project_work['website-concepts'].request.review_event,'review-again');assert.deepEqual((await app.snapshot()).asset_index,old.asset_index);
+ await apply(app,'systems-discovery','discovery_confirmed',{goal:'Simplify internal work',decision_maker:'Owner',serious_interest:true,paid_fit_discussed:true,service:'systems',main_flow:'Internal request',preview_screens:1});await apply(app,'reprepare','project_preparation_requested');assert.equal((await app.snapshot()).prospects.project.project_work['website-concepts'].status,'Held');
+});
+
+test('concurrent exact reply reviews and preparation retries retain a single concepts item',async t=>{
+ const app=await setup(t);await reply(app);const revision=(await app.snapshot()).revision,r=(await app.snapshot()).prospects.project,data={source_id:r.reply.source_id,reply_sha256:hash(r.reply),focus:'website',outcome:'requested_info'};
+ const results=await Promise.allSettled(['owner','friend'].map(actor=>app.apply(event(`concurrent-${actor}`,'reply_reviewed',data),{actor,expectedRevision:revision})));assert.equal(results.filter(r=>r.status==='fulfilled').length,1);assert.match(results.find(r=>r.status==='rejected').reason.message,/changed/);
+ await Promise.all(['a','b'].map(id=>apply(app,`prepare-${id}`,'project_preparation_requested')));assert.equal(Object.keys((await app.snapshot()).prospects.project.project_work).length,1);
+});
 test('confirmed website interest queues one attributed handoff; undo removes it and unrelated outcomes do not queue',async t=>{
  const app=await setup(t);await interest(app);let state=await app.snapshot();assert.equal(state.prospects.project.project_work['website-concepts'].assigned_to,'owner');assert.equal(state.prospects.project.project_work['website-concepts'].status,'Ready');
  assert.equal((await interest(app)).duplicate,true);assert.equal(Object.keys((await app.snapshot()).prospects.project.project_work).length,1);

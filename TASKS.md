@@ -2,6 +2,8 @@
 
 ## Shared operations desk redesign — October 23, 2026
 
+- [x] Fix reply-interest preparation (acceptance audit F1): signed exact-reply service focus creates one idempotent website-concepts Ready item after website interest, including an unanswered-call → interested-reply path. Unknown/legacy focus asks for explicit clarification; changed replies/service hold stale preparation while preserving prior output and asset baselines. Local signed desktop/narrow UI and owner/friend hosted-handler boundary tests pass. This is preparation only; actual PDF/email authoring and end-to-end redesign acceptance remain open. [Reply contract](pipeline/PROJECT-WORK.md#website-interest-from-a-reply).
+
 - [x] Add the smallest disabled hosted notification clock candidate, reusing mutation-time alerts and weekday 9am Eastern preparation/CAS. Default builds emit no schedule or storage-capable entry; the future published-context candidate is separately gated and fictional-only. Handler/build tests cover timing/DST, auth/context, concurrency/uncertain writes, routing, stops, privacy and bounds. External recipients/transport, actual scheduler/credit evidence and computer-off delivery remain unfulfilled. [Clock contract](pipeline/TEAM-NOTIFICATIONS.md#disabled-hosted-clock-candidate).
 
 The 49-decision interview and four-phase acceptance criteria live in the owner's private redesign brief. The first local increment is in [draft PR #123](https://github.com/Vziraka/ensizziyo-web-studio/pull/123) on `codex/operations-desk-redesign`; the primary checkout and installed runtime are preserved.

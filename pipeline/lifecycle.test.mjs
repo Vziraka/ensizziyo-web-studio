@@ -187,7 +187,7 @@ test('verified replies create an attention item and save attributed drafts again
   let state = await s.app.snapshot();
   assert.deepEqual(state.prospects['fictional-bakery'].reply_drafts.at(-1), { source_id: 'verified-reply-1', body: 'Thanks for the details. I would be glad to discuss the next step.', at, actor: 'friend' });
   assert.equal(state.events['reply-draft'].actor, 'friend');
-  await s.event('reply_reviewed', { source_id: 'verified-reply-1', outcome: 'hold', note: 'Wait for a human follow-up.' }, 'reply-decision', undefined, 'friend');
+  await s.event('reply_reviewed', { source_id: 'verified-reply-1', reply_sha256: hash(state.prospects['fictional-bakery'].reply), outcome: 'hold', note: 'Wait for a human follow-up.' }, 'reply-decision', undefined, 'friend');
   state = await s.app.snapshot();
   assert.equal(state.prospects['fictional-bakery'].stage, 'Hold');
   assert.equal((await s.app.dashboard()).reply_alerts.length, 0);

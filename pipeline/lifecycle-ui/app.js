@@ -331,10 +331,13 @@ function nextForm(r, node) {
       ['Proposed reply (saved only; not sent)', 'body', latestDraft?.body ?? '', 'textarea']
     ], { source_id: r.reply.source_id }, latestDraft ? 'Save revised reply draft' : 'Save reply draft'));
   }
-  if (r.stage === 'Reply review') node.append(eventForm(r, 'Review the verified reply', 'reply_reviewed', [
-    ['Next action', 'outcome', 'hold', 'text', ['discovery', 'requested_info', 'hold', 'decline', 'do_not_contact']],
-    ['Your reply review note', 'note', '', 'textarea']
-  ], { source_id: r.reply.source_id }, 'Confirm reply outcome'));
+  if (r.stage === 'Reply review'||r.reply&&['Discovery','Information requested'].includes(r.stage)&&r.reply_review&&(!r.reply_review.focus||r.reply_review.focus==='unspecified'||r.reply_review.reply_sha256!==r.reply_sha256)) {
+    if(r.stage!=='Reply review')node.append(el('p','Confirm which service the business wants before preparing project work.','notice'));
+    node.append(eventForm(r, 'Review the verified reply', 'reply_reviewed', [
+    ['Next action', 'outcome', r.stage==='Reply review'?'hold':r.reply_review.outcome, 'text', ['discovery', 'requested_info', 'hold', 'decline', 'do_not_contact']],
+    ['Service confirmed in this reply', 'focus', 'unspecified', 'text', [{value:'unspecified',label:'Not confirmed — ask which service'}, {value:'website',label:'Website'}, {value:'systems',label:'Systems'}, {value:'ai',label:'AI'}, {value:'marketing',label:'Marketing'}]],
+    ['Your reply review note', 'note', r.stage==='Reply review'?'':r.reply_review.note??'', 'textarea']
+  ], { source_id: r.reply.source_id, reply_sha256:r.reply_sha256 }, 'Confirm reply outcome'));}
   if (['Discovery', 'Information requested'].includes(r.stage)) node.append(eventForm(r, 'Confirm qualified discovery', 'discovery_confirmed', [
     ['Owner’s goal', 'goal', r.controlled ? 'Make preorder pickup details clear' : '', 'textarea'], ['Decision-maker', 'decision_maker', r.controlled ? 'Fictional owner' : ''],
     ['Serious interest confirmed in conversation', 'serious_interest', false, 'checkbox'], ['We discussed whether a paid project could fit', 'paid_fit_discussed', false, 'checkbox'],

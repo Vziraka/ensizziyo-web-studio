@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {createNotificationClock,notificationClockEntry} from './notification-clock.mjs';
-import {StudioLifecycle,initialConfig} from './lifecycle.mjs';import {ConditionalLifecycleStore} from './lifecycle-store.mjs';import {fixtureProspect} from './lifecycle-fixtures.mjs';
+import {StudioLifecycle,initialConfig,hash} from './lifecycle.mjs';import {ConditionalLifecycleStore} from './lifecycle-store.mjs';import {fixtureProspect} from './lifecycle-fixtures.mjs';
 
 const before='2026-10-26T12:59:00Z',env={EVZ_NOTIFICATION_CLOCK_ENABLED:'fictional-preparation-only',EVZ_NOTIFICATION_CLOCK_SITE_ID:'fictional-site',DEPLOY_ID:'fictional-deploy',EVZ_OPERATIONS_BLOB_NAMESPACE:'evz-redesign-proof-clock-12345678'},context={site:{id:'fictional-site'},deploy:{id:'fictional-deploy',context:'production',published:true}};
 const request=(body={next_run:'2026-10-26T13:01:00Z'})=>new Request('https://clock.example.invalid/',{method:'POST',body:typeof body==='string'?body:JSON.stringify(body)});
@@ -45,7 +45,7 @@ test('immediate lifecycle preparation and hosted ticks preserve routing, handoff
  await app.apply(event('claim','call_claimed',{}),{actor:'friend'});await app.apply(event('reply','reply_received',{source_id:'thread',kind:'reply',body:'PRIVATE REPLY',note:'PRIVATE NOTES'}),{actor:'provider'});
  let state=await app.snapshot();assert.equal(Object.values(state.team_notifications.messages)[0].recipient_role,'friend');const actions=structuredClone(state.actions);
  await app.apply(event('handoff','follow_up_handed_off',{to:'owner'}),{actor:'friend'});await clock()(request(),context);state=await app.snapshot();let messages=Object.values(state.team_notifications.messages);assert.equal(messages.filter(m=>m.kind==='attention'&&m.status==='Prepared; delivery held')[0].recipient_role,'owner');assert.ok(messages.some(m=>m.status==='Resolved or reassigned before delivery'));assert.doesNotMatch(JSON.stringify(messages),/PRIVATE REPLY|PRIVATE NOTES/);assert.deepEqual(state.actions,actions);
- await app.apply(event('review','reply_reviewed',{source_id:'thread',outcome:'hold',note:'Review later'}),{actor:'friend'});await clock()(request(),context);assert.equal(Object.values((await app.snapshot()).team_notifications.messages).filter(m=>m.kind==='attention'&&m.status==='Prepared; delivery held').length,0);
+ await app.apply(event('review','reply_reviewed',{source_id:'thread',reply_sha256:hash(state.prospects['clock-project'].reply),outcome:'hold',note:'Review later'}),{actor:'friend'});await clock()(request(),context);assert.equal(Object.values((await app.snapshot()).team_notifications.messages).filter(m=>m.kind==='attention'&&m.status==='Prepared; delivery held').length,0);
 });
 test('an uncommitted uncertain tick recovers, and ageing/resolved/recurring provider problems retain default-owner routing',async()=>{
  const {clock,app,raw}=await setup(),before=await app.snapshot();raw.failBefore=true;assert.equal((await clock()(request(),context)).status,503);assert.deepEqual(await app.snapshot(),before);assert.equal((await clock()(request(),context)).status,200);assert.equal(Object.keys((await app.snapshot()).team_notifications.messages).length,2);
