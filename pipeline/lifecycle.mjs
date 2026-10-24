@@ -13,7 +13,7 @@ import { callSupply } from './call-desk.mjs';
 import { ownerContactView, ownerContactSummary, contactEvidenceView } from './owner-contacts.mjs';
 import { providerContactView, providerContactSummary } from './provider-contacts.mjs';
 import {applyProjectWork,syncProjectWork} from './project-work.mjs';
-import {scopedDesignPreferences} from './design-preferences.mjs';
+import {scopedDesignPreferences,feedbackScope} from './design-preferences.mjs';
 import {businessType} from './business-types.mjs';
 import {composeFollowUp,followUpOutcomes,followUpSetupIssues} from './follow-up-template.mjs';
 
@@ -269,12 +269,11 @@ export class StudioLifecycle {
           } else if (event.type === 'asset_feedback_added') {
             check(Object.hasOwn(asset.versions,data.version_id), 'Choose a registered asset version for the feedback');
             check(text(data.feedback,2000), 'Retain the operator feedback within 2000 characters');
-            const scope=data.scope??'project',projectId=data.project_id??asset.project_id;
-            check(scope==='project'||scope==='studio', 'Choose project feedback or an explicit studio-wide direction');
-            if(scope==='project')check(key(projectId)&&Object.hasOwn(state.prospects,projectId)&&(!asset.project_id||asset.project_id===projectId), 'Choose the existing project that owns this feedback');
-            else check(data.project_id===undefined||data.project_id===null, 'Studio-wide feedback cannot name a project');
+            const selection=data.scope??'auto',resolved=feedbackScope(data.feedback,selection),{scope}=resolved,projectId=data.project_id??asset.project_id;
+            if(scope==='project'||selection==='auto'&&projectId!=null)check(key(projectId)&&Object.hasOwn(state.prospects,projectId)&&(!asset.project_id||asset.project_id===projectId), 'Choose the existing project that owns this feedback');
+            if(selection==='studio')check(data.project_id===undefined||data.project_id===null, 'Studio-wide feedback cannot name a project');
             asset.feedback??=[];
-            asset.feedback.push({id:eid,version_id:data.version_id,feedback:data.feedback,scope,...(scope==='project'?{project_id:projectId}:{}),actor,at:event.at,baseline_at_feedback:asset.baseline_version??null,approval_at_feedback:asset.baseline_approval_event??null});
+            asset.feedback.push({id:eid,version_id:data.version_id,feedback:data.feedback,...resolved,...(scope==='project'?{project_id:projectId}:{}),...(projectId?{source_project_id:projectId}:{}),actor,at:event.at,baseline_at_feedback:asset.baseline_version??null,approval_at_feedback:asset.baseline_approval_event??null});
           } else if (event.type === 'asset_version_disputed') {
             check(!asset.dispute, 'A disagreement is already open; select a version to resolve it');
             check(asset.baseline_version && Object.hasOwn(asset.versions, data.version_id), 'Choose a registered version to dispute against an approved baseline');

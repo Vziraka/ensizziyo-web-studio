@@ -8,6 +8,21 @@ function rawStore(){let data,version=0;const audio=new Map();return {writes:0,lo
 const cookie=response=>response.headers.get('set-cookie')?.split(';',1)[0];
 const request=(path,{method='GET',headers={},body}={})=>new Request(origin+'/desk'+path,{method,headers,...(body===undefined?{}:{body:JSON.stringify(body)})});
 
+test('signed hosted feedback resolves automatic standards across projects and preserves explicit scope with stale-write protection',async()=>{
+ for(const actor of ['owner','friend']){
+  const raw=rawStore(),make=()=>createHostedDesk({env,storeFactory:()=>raw,now:()=>new Date(at)}),boot=await make()(request('/api/bootstrap')),csrf=(await boot.json()).csrf,initial=cookie(boot),login=await make()(request('/api/login',{method:'POST',headers:{cookie:initial,'content-type':'application/json','x-studio-token':csrf,origin},body:{key:env[actor==='owner'?'EVZ_OPERATIONS_OWNER_KEY':'EVZ_OPERATIONS_FRIEND_KEY']}})),headers={cookie:initial+'; '+cookie(login),'content-type':'application/json','x-studio-token':csrf,origin};
+  const read=async()=> (await(await make()(request('/api/state',{headers}))).json()),post=body=>make()(request('/api/event',{method:'POST',headers,body}));await read();
+  const send=async(id,type,data,prospect_id='studio-assets')=>{const state=await read(),response=await post({revision:state.revision,event:{id,prospect_id,type,at,data}});assert.equal(response.status,200,JSON.stringify(await response.json()));};
+  await send('other','workspace_project_created',{name:'STUDIO TEST Other project',purpose:'Scope test',controlled:true},'other');await send('asset','asset_registered',{asset_id:'source',scope:'project',project_id:'shared-proof',kind:'mockup',name:'Source',version_id:'v1',version_label:'v1',reference:'private-path:fixture/v1.pdf'});
+  const stale=(await read()).revision;
+  await send('standard','asset_feedback_added',{asset_id:'source',version_id:'v1',feedback:'Always use "Syne" for heading font.'});
+  assert.equal((await post({revision:stale,event:{id:'stale',prospect_id:'studio-assets',type:'asset_feedback_added',at,data:{asset_id:'source',version_id:'v1',feedback:'Never use "Arial" for body font.'}}})).status,400);
+  await send('local','asset_feedback_added',{asset_id:'source',version_id:'v1',feedback:'Never use "Arial" for body font.',scope:'project'});await send('normal','asset_feedback_added',{asset_id:'source',version_id:'v1',feedback:'Use "Outfit" for body font.',scope:'auto'});
+  const response=await make()(request('/api/project-context/other',{headers}));assert.equal(response.status,200);const packet=await response.json();assert.deepEqual(packet.source.preferences.map(f=>[f.id,f.scope,f.actor]),[['standard','studio',actor]]);assert.equal(packet.source.preferences[0].source_project_id,'shared-proof');assert.match(packet.source.preferences[0].scope_reason,/Always\/Never/);assert.equal(packet.source.design_preferences.active[0].value,'Syne');
+  const state=await read();assert.equal(state.asset_index.source.feedback[1].scope_selection,'project');assert.equal(state.asset_index.source.feedback[2].scope,'project');assert.equal(state.asset_index.source.baseline_version,null);assert.equal(state.controls.connector_writes_enabled,false);
+ }
+});
+
 test('hosted public handlers expose source-bound reply suggestions and require exact signed human approval with no execution',async()=>{
  for(const actor of ['owner','friend']){
   const raw=rawStore(),make=()=>createHostedDesk({env,storeFactory:()=>raw,now:()=>new Date(at)}),boot=await make()(request('/api/bootstrap')),csrf=(await boot.json()).csrf,initial=cookie(boot),login=await make()(request('/api/login',{method:'POST',headers:{cookie:initial,'content-type':'application/json','x-studio-token':csrf,origin},body:{key:env[actor==='owner'?'EVZ_OPERATIONS_OWNER_KEY':'EVZ_OPERATIONS_FRIEND_KEY']}})),headers={cookie:initial+'; '+cookie(login),'content-type':'application/json','x-studio-token':csrf,origin};

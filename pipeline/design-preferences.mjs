@@ -9,6 +9,11 @@ function interpret(feedback){
  return {target,value:target==='page_background'?value.toUpperCase():value,mode:match[1]?.toLowerCase()==='never'?'never':'use',certainty:match[1]?.toLowerCase()==='maybe'?'tentative':'explicit'};
 }
 const incompatible=(a,b)=>a.mode==='use'&&b.mode==='use'?a.value!==b.value:a.mode!==b.mode&&a.value===b.value;
+export function feedbackScope(feedback,selection='auto'){
+ check(['auto','project','studio'].includes(selection),'Choose automatic, project or studio feedback scope');
+ const standard=interpret(feedback)&&/^(Always|Never) /i.test(feedback.trim());
+ return {scope:selection==='auto'?(standard?'studio':'project'):selection,scope_selection:selection,scope_reason:selection==='auto'?(standard?'Supported whole-sentence Always/Never operator direction establishes a shared standard':'Current-project default; no supported unqualified Always/Never standard'):'Operator explicitly selected '+selection+' scope'};
+}
 export function scopedDesignPreferences(state,project){
  const eventOrder=new Map(Object.keys(state.events).map((id,i)=>[id,i]));
  const preferences=Object.values(state.asset_index??{}).flatMap(a=>(a.feedback??[]).filter(f=>f.scope==='studio'||f.project_id===project).map(f=>({...f,asset_id:a.id,asset_name:a.name,reference:a.versions[f.version_id]?.reference??null,source_version_is_baseline:a.baseline_version===f.version_id,baseline_version:a.baseline_version??null,dispute:a.dispute??null,interpretation:'Quoted feedback; machine interpretation is limited to the separate design_preferences plan'})));
@@ -53,6 +58,6 @@ export function applyDesignPreferences(source,packet,baseline=null){
  }
  const review=plan.feedback.filter(f=>['tentative','stale'].includes(f.status));
  check(!review.length||Array.isArray(source.preference_review)&&review.every(f=>source.preference_review.some(r=>r.feedback_id===f.id&&['defer','applied by author','preserved baseline'].includes(r.decision)&&typeof r.notes==='string'&&r.notes.trim()&&r.notes.length<=1000)),'Review each tentative/stale feedback item explicitly; no inferred approval or silent application');
- applied.preference_application={method:plan.method,plan_sha256:hash(plan),applied:plan.active.map(r=>({evidence_id:r.evidence_id,target:r.target,mode:r.mode,value:r.value})),preserved_conflicts:plan.conflicts,baseline:baseline?{asset_id:baseline.asset_id,version_id:baseline.version_id,source_sha256:baseline.source_sha256,comparison:'Exact pages except explicit supported property changes'}:null,author_review:source.preference_review??[],limits:'Typography/background rules only. Meaning, role classification, visual quality and external original fidelity require author/reviewer inspection. No automatic shared standard, model training or unattended authoring.'};
+ applied.preference_application={method:plan.method,plan_sha256:hash(plan),applied:plan.active.map(r=>({evidence_id:r.evidence_id,target:r.target,mode:r.mode,value:r.value,scope:r.scope})),preserved_conflicts:plan.conflicts,baseline:baseline?{asset_id:baseline.asset_id,version_id:baseline.version_id,source_sha256:baseline.source_sha256,comparison:'Exact pages except explicit supported property changes'}:null,author_review:source.preference_review??[],limits:'Typography/background rules only. Meaning, role classification, visual quality and external original fidelity require author/reviewer inspection. Shared scope uses only supported unqualified Always/Never wording or explicit operator scope. No model training or unattended authoring.'};
  return applied;
 }
