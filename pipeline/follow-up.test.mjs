@@ -21,6 +21,38 @@ test('blank postal address is omitted from the preview while commercial setup st
 async function setup(t,{operatorNames}={}){const directory=await mkdtemp(join(tmpdir(),'evz-followup-'));t.after(()=>rm(directory,{recursive:true,force:true}));const config=structuredClone(initialConfig);if(operatorNames)config.sender.operator_names=operatorNames;config.follow_up.enabled=true;const app=await StudioLifecycle.initialize({directory,config,now:()=>new Date(at)});await app.apply(fixtureProspect('sample',at));return app;}
 const call=(outcome='no_answer',extra={})=>({id:'call-one',prospect_id:'sample',type:'call_logged',at,data:{call_id:'call-one',performed_at:at,outcome,simulated:true,desk:true,note:'Explore AI enquiry handling. Private internal note: do not quote this.',...extra}});
 
+test('a reviewed connected call keeps transcript, private notes and an unsent evidence-bound email revision separate',async t=>{
+ const app=await setup(t);await app.apply(call('connected',{intent:'requested_info',focus:'ai'}));
+ const original=structuredClone((await app.snapshot()).prospects.sample.follow_ups['call-one']);
+ await app.apply({id:'transcript-one',prospect_id:'sample',type:'transcript_added',at,data:{call_id:'call-one',text:'Customer: Please send a website example. Our contact page is hard to find.',permission_confirmed:true}});
+ let state=await app.snapshot(),r=state.prospects.sample;
+ const proposal={schema_version:1,transcript_sha256:r.transcripts['call-one'].sha256,outcome:'requested_info',summary:'Customer requested a website example.',claims:[{claim:'You mentioned that your contact page is hard to find.',quote:'Our contact page is hard to find.'}],unknowns:['Project scope and budget'],callback_at:null};
+ await app.apply({id:'assessment-one',prospect_id:'sample',type:'transcript_assessed',at,data:{call_id:'call-one',proposal,review:{verdict:'Accepted',proposal_sha256:hash(proposal),independent:true}}},{actor:'controlled-fixture'});
+ state=await app.snapshot();r=state.prospects.sample;
+ const revision={id:'draft-one',prospect_id:'sample',type:'follow_up_draft_saved',at,data:{call_id:'call-one',focus:'website',note_sha256:hash(r.calls['call-one'].note),proposal_sha256:r.proposals['call-one'].sha256,claim_indexes:[0],customer_context:'You mentioned that your contact page is hard to find.',reviewed:true}};
+ for(const [patch,message] of [[{reviewed:false},/Review the customer wording/],[{focus:'undecided'},/relevant service focus/],[{proposal_sha256:hash('stale')},/exact current transcript/],[{claim_indexes:[99]},/Select supported/],[{claim_indexes:[0,0]},/Select supported/],[{customer_context:'<script>unsafe</script>'},/plain-text/]])await assert.rejects(app.apply({...revision,id:'invalid-draft',data:{...revision.data,...patch}}),message);
+ await app.apply(revision,{actor:'friend'});state=await app.snapshot();r=state.prospects.sample;
+ assert.deepEqual(r.follow_ups['call-one'],original);assert.equal(Object.values(state.actions).filter(a=>a.type==='email').length,1);
+ const draft=r.follow_up_drafts[0];assert.equal(draft.status,'Draft');assert.equal(draft.actor,'friend');assert.equal(draft.content.focus,'website');assert.match(draft.content.body,/contact page is hard to find/);assert.doesNotMatch(draft.content.text,/Private internal note/);assert.match(draft.content.demo_url,/homekind-motion/);assert.equal(draft.transcript_sha256,proposal.transcript_sha256);assert.equal(draft.source_follow_up_sha256,hash(original));
+ assert.equal((await app.apply(revision,{actor:'friend'})).duplicate,true);assert.equal((await app.snapshot()).prospects.sample.follow_up_drafts.length,1);
+ await assert.rejects(app.apply({id:'replace-transcript',prospect_id:'sample',type:'transcript_added',at,data:{call_id:'call-one',text:'A different transcript cannot replace the reviewed source.',permission_confirmed:true}}),/Supply one permitted transcript/);
+ await app.change(s=>{s.prospects.sample.transcripts['call-one'].sha256=hash('changed transcript source');});
+ await assert.rejects(app.apply({...revision,id:'changed-transcript-draft'}),/exact current transcript/);
+ await app.change(s=>{s.prospects.sample.transcripts['call-one'].sha256=proposal.transcript_sha256;});
+ await app.apply({id:'note-change',prospect_id:'sample',type:'call_note_updated',at,data:{call_id:'call-one',note:'Website example; keep internal pricing private.'}});
+ await assert.rejects(app.apply({...revision,id:'stale-draft'}),/notes changed/);
+ const reopened=await StudioLifecycle.open({directory:app.directory,now:()=>new Date(at)});assert.deepEqual((await reopened.snapshot()).prospects.sample.follow_up_drafts[0],draft);
+ // An already handed-off or delivered email cannot be changed by preparing a later draft.
+ await app.change(s=>{s.actions[original.action_id].status='Verified';s.prospects.sample.follow_ups['call-one'].status='Sent';s.operations??={};s.operations.requests??={};s.operations.requests[`${original.action_id}-intent`]={status:'Done',content_sha256:hash(original.content)};});
+ state=await app.snapshot();const bound=structuredClone(state.prospects.sample.follow_ups['call-one']),intent=structuredClone(state.operations.requests[`${original.action_id}-intent`]);
+ await app.apply({...revision,id:'draft-after-delivery',data:{...revision.data,note_sha256:hash(state.prospects.sample.calls['call-one'].note)}});
+ state=await app.snapshot();assert.deepEqual(state.prospects.sample.follow_ups['call-one'],bound);assert.deepEqual(state.operations.requests[`${original.action_id}-intent`],intent);assert.equal(Object.values(state.actions).filter(a=>a.type==='email').length,1);
+ await app.apply({id:'reply-after-review',prospect_id:'sample',type:'reply_received',at,data:{source_id:'reply-after-review',kind:'reply'}},{actor:'provider'});
+ await assert.rejects(app.apply({...revision,id:'draft-after-reply',data:{...revision.data,note_sha256:hash(state.prospects.sample.calls['call-one'].note)}}),/replies need their own review/);
+ await app.apply({id:'stop-after-review',prospect_id:'sample',type:'contact_stopped',at,data:{reason:'do_not_contact'}});
+ await assert.rejects(app.apply({...revision,id:'draft-after-stop'}),/Restriction cannot be cleared/);
+});
+
 test('saving an unanswered attempt prepares exactly one follow-up across replay, note correction and restart',async t=>{
  const app=await setup(t),event=call('voicemail');await app.apply(event);const first=await app.snapshot(),entry=first.prospects.sample.follow_ups['call-one'];
  assert.equal(entry.status,'Prepared');assert.match(entry.content.body,/I tried calling/);assert.doesNotMatch(entry.content.body,/Thanks for speaking|Private internal note/);assert.equal(entry.content.focus,'ai');

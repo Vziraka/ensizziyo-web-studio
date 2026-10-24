@@ -50,7 +50,7 @@ export async function assessTranscript(app, prospectId, callId, { invoke = invok
   let record, transcript;
   await app.change(state => {
     record = state.prospects[prospectId]; transcript = record?.transcripts[callId];
-    check(transcript && record.stage === 'Connected review' && !record.restriction, 'A connected, unreviewed transcript is required');
+    check(transcript && (record.stage === 'Connected review' || record.approved_calls[callId]) && !record.restriction, 'A saved connected-call transcript is required');
     check(!Object.values(state.ai_attempts).some(a => a.status === 'Running' && (a.child_pid && alive(a.child_pid) || a.controller_pid && alive(a.controller_pid))), 'Another subscription worker is active');
     for (const a of Object.values(state.ai_attempts)) if (a.status === 'Running') { a.status = 'Interrupted'; a.child_pid = null; a.error = 'Stopped process confirmed; retained transcript/result may be resumed'; }
   });
@@ -71,7 +71,8 @@ export async function assessTranscript(app, prospectId, callId, { invoke = invok
     check(allowance?.authenticated_subscription === true && allowance?.buckets?.length && allowance.buckets.every(b => b.remaining_percent > ai.reserve_percent), 'Preserve website/client subscription reserve; allowance unavailable or too low');
     const id = randomUUID(), today = businessDate(app.now());
     await app.change(state => {
-      check(state.prospects[prospectId].stage === 'Connected review' && !state.prospects[prospectId].restriction, 'Call changed before dispatch');
+      const current=state.prospects[prospectId];
+      check((current.stage === 'Connected review' || current.approved_calls[callId]) && !current.restriction && current.transcripts[callId]?.sha256===transcript.sha256, 'Call changed before dispatch');
       const consumed = Object.values(state.ai_attempts).filter(a => a.date === today).length;
       const jobCalls = Object.values(state.ai_attempts).filter(a => a.transcript_sha256 === transcript.sha256 && a.prospect_id === prospectId && a.call_id === callId).length;
       check(consumed < ai.daily_calls && jobCalls < 4, 'Durable daily/job call allowance reached; hold and continue other work');

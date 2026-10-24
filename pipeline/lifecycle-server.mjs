@@ -58,8 +58,8 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
         return json(200, { signed_out: true }, { 'Set-Cookie': operatorAuth.cookie('', { secure: Boolean(req.socket.encrypted), clear: true }) });
       }
       if (req.method === 'GET' && url.pathname === '/api/state') return json(200, { ...await app.dashboard(), build:await version, csrf, workers: [...work.keys()], current_operator: operator, operator_auth_enabled: Boolean(operatorAuth) });
-      if(req.method==='GET'&&/^\/follow-up\/[a-zA-Z0-9_-]{1,100}\/[a-zA-Z0-9_-]{1,100}$/.test(url.pathname)){
-        const [, ,prospectId,callId]=url.pathname.split('/'),record=(await app.snapshot()).prospects[prospectId],entry=record?.follow_ups?.[callId];check(entry?.content,'Unknown saved follow-up');
+      if(req.method==='GET'&&/^\/follow-up(?:-draft)?\/[a-zA-Z0-9_-]{1,100}\/[a-zA-Z0-9_-]{1,100}$/.test(url.pathname)){
+        const [, route,prospectId,entryId]=url.pathname.split('/'),record=(await app.snapshot()).prospects[prospectId],entry=route==='follow-up-draft'?record?.follow_up_drafts?.find(draft=>draft.id===entryId):record?.follow_ups?.[entryId];check(entry?.content,'Unknown saved follow-up');
         res.writeHead(200,{...headers,'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});res.end(renderFollowUpPreview(entry));return;
       }
       if (req.method === 'GET' && /^\/proposal\/[a-zA-Z0-9_-]{1,100}$/.test(url.pathname)) {

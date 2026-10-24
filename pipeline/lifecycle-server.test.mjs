@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { StudioLifecycle, hash } from './lifecycle.mjs';
 import { serveLifecycle } from './lifecycle-server.mjs';
 import { createOperatorAuth } from './operators.mjs';
+import {composeFollowUp} from './follow-up-template.mjs';
 
 const at='2026-10-19T15:00:00.000Z';
 const ownerKey='o'.repeat(43),friendKey='f'.repeat(43),secret='s'.repeat(43);
@@ -27,6 +28,9 @@ test('the existing operations desk requires individual operator sessions and att
   assert.equal(login.status,200);const authCookie=cookieFrom(login);assert.match(login.headers.get('set-cookie'),/HttpOnly/);assert.match(login.headers.get('set-cookie'),/SameSite=Strict/);cookies.set(actor,`${studioCookie}; ${authCookie}`);
   const state=await fetch(`${base}/api/state`,{headers:{cookie:cookies.get(actor)}});assert.equal((await state.json()).current_operator,actor);
  }
+ await app.change(state=>{const record=state.prospects['fictional-business'];record.follow_up_drafts=[{id:'fictional-revision',status:'Draft',content:composeFollowUp(record,{outcome:'connected',focus:'website',customer_context:'You asked for a clearer contact page.'})}];});
+ assert.equal((await fetch(`${base}/follow-up-draft/fictional-business/fictional-revision`,{headers:{cookie:studioCookie}})).status,401);
+ const revisionPreview=await fetch(`${base}/follow-up-draft/fictional-business/fictional-revision`,{headers:{cookie:cookies.get('friend')}});assert.equal(revisionPreview.status,200);const previewHtml=await revisionPreview.text();assert.match(previewHtml,/Draft · this page sends nothing/);assert.match(previewHtml,/You asked for a clearer contact page/);assert.doesNotMatch(previewHtml,/Shared fictional workspace note/);
  const friendState=await (await fetch(`${base}/api/state`,{headers:{cookie:cookies.get('friend')}})).json();
  const event={id:'friend-note',prospect_id:'fictional-business',type:'note_added',at,data:{note:'Shared fictional workspace note.'}};
  const saved=await fetch(`${base}/api/event`,{method:'POST',headers:{cookie:cookies.get('friend'),'content-type':'application/json','x-studio-token':csrf},body:JSON.stringify({revision:friendState.revision,event})});

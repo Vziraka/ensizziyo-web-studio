@@ -408,19 +408,32 @@ export class StudioLifecycle {
             owner(actor); check(['decline', 'do_not_contact'].includes(data.reason), 'Record the explicit stop reason');
             r.restriction = data.reason; r.stage = 'Stopped'; pauseCold(state, r, eid, data.reason); break;
           case 'transcript_added':
-            owner(actor); check(r.stage === 'Connected review' && r.calls[data.call_id]?.outcome === 'connected', 'Transcript must match a connected call');
+            owner(actor); check(r.calls[data.call_id]?.outcome === 'connected' && (r.stage === 'Connected review' || r.approved_calls[data.call_id]), 'Transcript must match a connected call');
             check(!r.transcripts[data.call_id] && text(data.text, 60_000) && data.permission_confirmed === true, 'Supply one permitted transcript; recording consent is separate');
             check(!/-----BEGIN [A-Z ]*PRIVATE KEY|\b(?:sk-|ghp_|github_pat_)[A-Za-z0-9_-]{20,}|\b(?:password|api[_ -]?key|authorization)\s*[:=]\s*\S+/i.test(data.text), 'Redact credentials before saving or analyzing a transcript');
-            r.transcripts[data.call_id] = { text: data.text, sha256: hash(data.text), added_at: event.at, call_id: data.call_id };
+            r.transcripts[data.call_id] = { text: data.text, sha256: hash(data.text), added_at: event.at, call_id: data.call_id, actor, source: 'Operator-supplied transcript; audio capture not verified' };
             request(state, r, 'transcript_review', { call_id: data.call_id }, eid); break;
           case 'transcript_assessed': {
             check(actor === 'worker' || actor === 'controlled-fixture', 'Assessment must come from the restricted worker boundary');
-            const transcript = r.transcripts[data.call_id]; check(transcript && r.stage === 'Connected review' && !r.approved_calls[data.call_id], 'Call is no longer awaiting analysis');
+            const transcript = r.transcripts[data.call_id]; check(transcript && (r.stage === 'Connected review' || r.approved_calls[data.call_id]), 'Call is no longer awaiting analysis');
             validateTranscriptProposal(data.proposal, transcript);
             check(data.review?.verdict === 'Accepted' && data.review.proposal_sha256 === hash(data.proposal) && data.review.independent === true, 'Independent review must accept the exact proposal');
             r.proposals[data.call_id] = { ...data.proposal, sha256: hash(data.proposal), review: data.review };
             state.exceptions = state.exceptions.filter(x => x.id !== `transcript-${hash(`${r.id}:${data.call_id}`).slice(0, 24)}`);
             for (const a of Object.values(state.actions)) if (a.type === 'transcript_review' && a.prospect_id === r.id && a.payload.call_id === data.call_id) a.status = 'Verified';
+            break;
+          }
+          case 'follow_up_draft_saved': {
+            owner(actor); const call=r.calls[data.call_id],proposal=r.proposals[data.call_id],transcript=r.transcripts[data.call_id],reviewed=r.approved_calls[data.call_id];
+            check(this.config.follow_up?.enabled && call?.outcome==='connected' && ['discovery','requested_info'].includes(reviewed?.outcome) && !r.reply && !['Connected review','Verification review'].includes(r.stage), 'Review the connected conversation before preparing a draft; replies need their own review');
+            check(data.reviewed===true && ['ai','systems','website','marketing'].includes(data.focus), 'Review the customer wording and choose a relevant service focus');
+            check(data.note_sha256===hash(call.note??''), 'Call notes changed; review the current notes before saving a draft');
+            check(proposal && transcript && proposal.sha256===data.proposal_sha256 && proposal.transcript_sha256===transcript.sha256, 'Review the exact current transcript assessment');
+            check(Array.isArray(data.claim_indexes) && data.claim_indexes.length>0 && data.claim_indexes.length<=16 && new Set(data.claim_indexes).size===data.claim_indexes.length && data.claim_indexes.every(i=>Number.isInteger(i)&&i>=0&&i<proposal.claims.length), 'Select supported transcript facts for review');
+            check(text(data.customer_context,1600) && !/[<>]|{{|}}/.test(data.customer_context), 'Review a plain-text customer-facing summary within 1600 characters');
+            const content=composeFollowUp(r,{...call,focus:data.focus,customer_context:data.customer_context},this.config);
+            r.follow_up_drafts??=[];
+            r.follow_up_drafts.push({id:eid,call_id:data.call_id,at:event.at,actor,status:'Draft',content,sha256:hash(content),note_sha256:data.note_sha256,proposal_sha256:proposal.sha256,transcript_sha256:transcript.sha256,claim_indexes:[...data.claim_indexes],source_follow_up_sha256:r.follow_ups?.[data.call_id]?hash(r.follow_ups[data.call_id]):null});
             break;
           }
           case 'call_reviewed': {

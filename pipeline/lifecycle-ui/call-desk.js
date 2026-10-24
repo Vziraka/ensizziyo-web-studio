@@ -1,4 +1,4 @@
-import {composeFollowUp} from '/follow-up-template.mjs';
+import {composeFollowUp,followUpFocus} from '/follow-up-template.mjs';
 import {businessTypes,businessType,deskQueues,offers,carePlan,suggestedOffer} from '/business-types.mjs';
 let selected, lane='all', workView='team', lastSaved, showHistory=false,category='all',subtypes=[],searchTerm='';
 let detailTab='overview';
@@ -11,6 +11,7 @@ const callbackLabel=r=>`${r.callback_at?'Agreed callback':'Callback reminder'} �
 function field(parent,label,value='',type='text') {const wrap=el('label',label),n=el(type==='textarea'?'textarea':'input');n.setAttribute('aria-label',label);if(type!=='textarea')n.type=type;n.value=value;wrap.append(n);parent.append(wrap);return n;}
 function select(parent,label,options,value){const wrap=el('label',label),n=el('select');n.setAttribute('aria-label',label);for(const [v,t] of options){const o=el('option',t);o.value=v;n.append(o);}n.value=value;wrap.append(n);parent.append(wrap);return n;}
 function disclosure(title,child){const d=el('details');d.open=expanded.has(title);d.ontoggle=()=>{if(d.open)expanded.add(title);else expanded.delete(title);};d.append(el('summary',title));if(child)d.append(child);return d;}
+function dictateNotes(note,tell){return btn('Dictate my post-call notes',()=>{note.focus();const Recognition=window.SpeechRecognition??window.webkitSpeechRecognition;if(!Recognition){tell('With the notes box focused, press Windows + H to dictate your own summary. Review the text before saving.');return;}const speech=new Recognition();speech.lang='en-US';speech.interimResults=false;speech.onresult=e=>{note.value+=(note.value?' ':'')+e.results[0][0].transcript;note.dispatchEvent(new Event('input',{bubbles:true}));};speech.onerror=()=>tell('Dictation is unavailable. You can type or use Windows + H.',true);speech.start();});}
 export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty,allBusinesses=false}) {
   const records=state.supply.queue.map(a=>state.prospects[a.prospect_id]);
   const {commitments,matching:visible}=deskQueues(state,{category,subtypes,lane,history:showHistory,allBusinesses,assignment:workView,operator:state.current_operator});
@@ -111,7 +112,7 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty,
     if(callable){const form=el('form');form.onsubmit=e=>e.preventDefault();
       let draft=drafts.get(r.id);if(draft&&r.calls[draft.id]){drafts.delete(r.id);draft=null;}if(!draft){draft={id:crypto.randomUUID(),note:'',focus:'undecided',outcome:'',callback:'',callbackMode:'unspecified'};drafts.set(r.id,draft);}
       const note=field(form,'Call notes',draft.note,'textarea');note.maxLength=3000;
-      const dictate=btn('Dictate notes',()=>{note.focus();const Recognition=window.SpeechRecognition??window.webkitSpeechRecognition;if(!Recognition){tell('With the notes box focused, press Windows + H to dictate your own summary. Review the text before saving.');return;}const speech=new Recognition();speech.lang='en-US';speech.interimResults=false;speech.onresult=e=>{note.value+=(note.value?' ':'')+e.results[0][0].transcript;note.dispatchEvent(new Event('input',{bubbles:true}));};speech.onerror=()=>tell('Dictation is unavailable. You can type or use Windows + H.',true);speech.start();});
+      const dictate=dictateNotes(note,tell);
       form.append(dictate);
       const extra=el('div'),actions=el('div',undefined,'outcome-buttons');let busy=false;const draftCallId=draft.id;
       const focusChoice=select(form,'Service focus for this call',[['undecided','Still exploring'],['ai','AI / enquiry handling'],['systems','Business systems'],['website','Website'],['marketing','Marketing']],draft.focus);
@@ -138,7 +139,7 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty,
     if(r.meeting)card.append(el('p',`${r.meeting.current_status??'Verified'} meeting · ${when(r.meeting.start)}`,'notice'));
     if(r.restriction)card.append(el('p',`Contact stopped: ${r.restriction}. A history correction cannot silently restart outreach.`,'notice'));
     const history=el('div');
-    for(const c of Object.values(r.calls).reverse()){const f=el('form');f.onsubmit=e=>e.preventDefault();f.append(el('h4',`${c.outcome.replaceAll('_',' ')} · ${when(c.performed_at)}`));const n=field(f,'Edit saved call note',c.note??'','textarea');f.append(btn('Save note correction',()=>run(()=>event(r,'call_note_updated',{call_id:c.call_id,note:n.value}))));history.append(f);}
+    for(const c of Object.values(r.calls).reverse()){const f=el('form');f.onsubmit=e=>e.preventDefault();f.append(el('h4',`${c.outcome.replaceAll('_',' ')} · ${when(c.performed_at)}`),el('h3','Call notes'));const n=field(f,'Edit saved call note',c.note??'','textarea');n.maxLength=3000;f.append(dictateNotes(n,tell),el('p','Your private summary. Dictation captures your speech as text; it does not record both sides of the call. Review before saving.','muted'),btn('Save note correction',()=>run(()=>event(r,'call_note_updated',{call_id:c.call_id,note:n.value}))));if(c.outcome==='connected')savedCallWorkspace(f,r,c,state,{api,refresh,tell,event,run,noteInput:n});history.append(f);}
     const research=el('div');research.append(contactResearch);for(const section of [...card.querySelectorAll('details')])if(/Research,|Detailed research|Additional research/.test(section.querySelector('summary')?.textContent??''))research.append(section);
     card.querySelector('.detail-title')?.remove();if(!history.childElementCount)history.append(el('p','No calls saved for this business yet.','muted'));
     const social=socialPanel(r),overview=el('div');overview.append(...card.childNodes);const tabbar=el('div',undefined,'desk-tabs');tabbar.setAttribute('role','tablist');tabbar.setAttribute('aria-label','Business details');
@@ -157,6 +158,24 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty,
   }
   root.append(grid,background);
   const undo=state.prospects[lastSaved??selected];if(undo?.call_undo&&!undo.restriction&&!undo.meeting&&!undo.information_draft)root.prepend(btn(`Undo last outcome · ${undo.name}`,()=>run(async()=>{selected=undo.id;await event(undo,'call_undone',{call_id:undo.call_undo.call_id});lastSaved=undefined;tell('Outcome reversed; original event remains in history.');})));
+}
+function savedCallWorkspace(node,r,call,state,{api,refresh,tell,event,run,noteInput}){
+ const transcript=r.transcripts[call.call_id],proposal=r.proposals[call.call_id];
+ node.append(el('h3','Recording'),el('p','No call recording is attached. Both-side capture depends on the calling app and its supported recording route.','muted'),el('h3','Transcript'));
+ if(!transcript&&!r.restriction){const text=field(node,'Customer call transcript','','textarea'),permitted=field(node,'I have permission to use this transcript; recording consent is separate.','','checkbox');text.maxLength=60000;node.append(btn('Save call transcript',()=>run(async()=>{await event(r,'transcript_added',{call_id:call.call_id,text:text.value,permission_confirmed:permitted.checked});tell('Transcript saved separately from your private notes.');})),el('h3','Follow-up email'),el('p','Add and review the customer transcript before preparing a revision from its facts. The original saved follow-up is shown alongside this call.','muted'));return;}
+ if(transcript){const detail=disclosure(`Read transcript · ${call.call_id}`,el('p',transcript.text,'quote transcript'));node.append(el('p',transcript.source??'Operator-supplied transcript; audio capture not verified','muted'),detail);}
+ if(!proposal&&transcript&&!r.restriction){const analyze=btn('Request transcript evidence review',()=>run(async()=>{await api('/api/analyze',{prospect_id:r.id,call_id:call.call_id});tell('Analysis requested within the existing allowance; holds appear in Needs attention.');await refresh();}));analyze.disabled=!state.controls.ai_enabled||state.workers?.includes(`${r.id}:${call.call_id}`);node.append(analyze);if(!state.controls.ai_enabled)node.append(el('p','Subscription transcript analysis is disabled in this workspace. No model call was made.','muted'));}
+ node.append(el('h3','Follow-up email'));
+ if(proposal&&r.approved_calls[call.call_id]&&!r.restriction&&!r.reply){
+  node.append(el('p','Choose the customer facts supported by the transcript, then review the wording and service focus. Private notes can guide your choice but are never inserted. Saving creates a separate unsent draft; the original email and delivery history remain intact.','muted'));
+  const choices=proposal.claims.map((claim,index)=>{const input=field(node,claim.claim,'','checkbox');node.append(el('blockquote',claim.quote,'quote'));return {input,index,claim};});
+  const context=field(node,'Reviewed customer-facing wording','','textarea');context.maxLength=1600;
+  for(const choice of choices)choice.input.onchange=()=>{context.value=choices.filter(c=>c.input.checked).map(c=>c.claim.claim).join(' ');};
+  const focus=select(node,'Reviewed follow-up service focus',[['undecided','Choose a relevant focus'],['ai','AI / enquiry handling'],['systems','Business systems'],['website','Website'],['marketing','Marketing']],followUpFocus(call));
+  const reviewed=field(node,'I checked the selected quotes and customer wording; uncertain claims are excluded.','','checkbox');
+  node.append(btn('Save unsent follow-up revision',()=>run(async()=>{if(noteInput.value!==(call.note??''))throw Error('Save the edited call notes before preparing a revision.');const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(call.note??'')),noteHash=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');await event(r,'follow_up_draft_saved',{call_id:call.call_id,focus:focus.value,note_sha256:noteHash,proposal_sha256:proposal.sha256,claim_indexes:choices.filter(c=>c.input.checked).map(c=>c.index),customer_context:context.value,reviewed:reviewed.checked});tell('Follow-up revision saved for review. Nothing was sent or added to the send queue.');})));
+ }
+ for(const draft of [...(r.follow_up_drafts??[])].reverse().filter(d=>d.call_id===call.call_id)){const box=disclosure(`Unsent revision · ${when(draft.at)}`,el('p',draft.content.body,'email-copy')),preview=el('a','Open revision email preview ↗');preview.href=`/follow-up-draft/${r.id}/${draft.id}`;preview.target='_blank';preview.rel='noreferrer';box.append(el('p',`Draft · ${draft.actor} · ${when(draft.at)} · not queued or sent`,'notice'),el('strong',draft.content.subject),preview);node.append(box);}
 }
 function socialPanel(record){
  const panel=el('div');panel.append(el('h3','Social media'));const profile=record.research_profile;

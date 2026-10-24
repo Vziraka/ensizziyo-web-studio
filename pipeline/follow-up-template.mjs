@@ -37,7 +37,7 @@ export function composeFollowUp(record,call={},config={}){
   const trade=clean(record.business_type?.subtype),area=clean(record.area);
   const focused=focus!=='undecided';
   const context=focused?(trade?`For your ${trade==='HVAC'?'HVAC':trade.toLowerCase()} enquiries${area?` in ${area}`:''}, one option we could explore is ${topic.idea}.`:`One option we could explore is ${topic.idea}.`):'I would be glad to hear how your team handles customer enquiries and what you would most like to make easier. From there, I can share a relevant example.';
-  const paragraphs=[salutation,introduction,context,...(focused?[`I’ve included a short ${focus==='ai'?'voice assistant':'project'} example below. We would shape the right solution around your goals.`]:[])];
+  const paragraphs=[salutation,introduction,...(connected&&call.customer_context?[String(call.customer_context).trim()]:[]),context,...(focused?[`I’ve included a short ${focus==='ai'?'voice assistant':'project'} example below. We would shape the right solution around your goals.`]:[])];
   const demo_url=focused?new URL(topic.path,base).href:null,preview_image=focused&&topic.image?new URL(topic.image,base).href:null;
   const relevant_url=null;
   const booking_url=https(options.booking_url),postal_address=String(config.sender?.postal_address??'').trim();
