@@ -9,12 +9,12 @@ const allowed=(input,keys)=>check(input&&Object.keys(input).every(k=>keys.includ
 const key=value=>typeof value==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(value);
 const bump=(state,app)=>{state.revision++;state.updated_at=app.now().toISOString();};
 function fictional(app,state){check(app.config.mode==='controlled'&&!app.config.outreach_enabled&&!app.config.connector_writes_enabled&&!app.config.research_enabled&&Object.values(state.prospects).every(r=>r.controlled===true),'Recording rehearsal accepts an execution-disabled fictional workspace only');}
-function sourceFor(state,input){
+export function sourceFor(state,input,policy=callTranscriptionPolicy){
  const r=state.prospects[input.prospect_id],call=r?.calls[input.call_id],audio=r?.call_audio?.[input.audio_id];
  check(r?.controlled===true&&!r.restriction&&!r.reply&&call?.outcome==='connected'&&!call.undone&&!r.transcripts[input.call_id]&&(r.stage==='Connected review'||r.approved_calls[input.call_id]),'Choose an unrestricted saved fictional connected call without an existing transcript');
  check(audio?.status==='Stored'&&audio.kind==='call'&&audio.call_id===input.call_id&&!audio.partial&&audio.permission_confirmed===true,'Choose complete saved call audio, separate from private spoken notes');
  const seconds=(Date.parse(audio.ended_at)-Date.parse(audio.started_at))/1000;
- check(seconds>0&&seconds<=callTranscriptionPolicy.maximum_seconds&&audio.bytes<=callTranscriptionPolicy.maximum_bytes&&callTranscriptionPolicy.formats.includes(audio.mime),'Rehearsal needs one complete WAV/WebM/OGG call clip within sixty seconds and 200 KB; longer/MP4 clips remain manual');
+ check(seconds>0&&seconds<=policy.maximum_seconds&&audio.bytes>0&&audio.bytes<=policy.maximum_bytes&&policy.formats.includes(audio.mime),'Use one complete WAV/WebM/OGG call clip within the exact approved duration and byte caps; unsupported clips remain manual');
  check(Object.values(r.call_audio).filter(a=>a.call_id===input.call_id&&a.kind==='call').length===1,'Rehearsal covers one entire short call clip; do not silently omit other call segments');
  return {prospect_id:r.id,call_id:call.call_id,audio_id:audio.id,call_sha256:hash(call),audio_sha256:audio.sha256,audio_metadata_sha256:hash(audio),mime:audio.mime,bytes:audio.bytes,seconds};
 }

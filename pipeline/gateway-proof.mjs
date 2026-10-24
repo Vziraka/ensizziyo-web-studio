@@ -57,7 +57,8 @@ export async function configureGatewayProof(app,input,actor,{env=process.env,cat
  });
 }
 
-export async function makeGatewayClient(env=process.env,request){
+export async function makeGatewayClient(env=process.env,request,timeout=20000){
+ check(Number.isSafeInteger(timeout)&&timeout>0&&timeout<=720000,'Gateway timeout exceeds the background bound');
  check(gatewayCapability(env).ready,'Matching injected Gateway configuration is unavailable');const {GoogleGenAI}=await import('@google/genai');
  const send=request??fetch,origin=new URL(env.NETLIFY_AI_GATEWAY_URL).origin,basePath=new URL(env.GOOGLE_GEMINI_BASE_URL).pathname.replace(/\/$/,'');
  const paths=new Set(['countTokens','generateContent'].map(action=>`${basePath}/v1beta/models/${gatewayPolicy.model}:${action}`));
@@ -68,7 +69,7 @@ export async function makeGatewayClient(env=process.env,request){
   return send(input,{...options,redirect:'error'});
  };
  // Explicit validated binding prevents local Google/Vertex credentials or SDK defaults from escaping the Gateway.
- return new GoogleGenAI({apiKey:env.GEMINI_API_KEY,vertexai:false,httpOptions:{baseUrl:env.GOOGLE_GEMINI_BASE_URL,timeout:20000,retryOptions:{attempts:1},fetch:boundFetch}});
+ return new GoogleGenAI({apiKey:env.GEMINI_API_KEY,vertexai:false,httpOptions:{baseUrl:env.GOOGLE_GEMINI_BASE_URL,timeout,retryOptions:{attempts:1},fetch:boundFetch}});
 }
 function contentsFor(kind,proof){
  const shape='Return only JSON: {"pitch_supported":boolean,"opening_candidates":[{"id":string,"service":"website"|"systems"|"ai"|"marketing","customer_difficulty":string,"source_url":string,"source_sha256":string,"excerpt":string,"hypothesis":string,"owner_question":string,"opening":string}],"selected_opening_id":string|null,"selection_reason":string}. At most two alternatives. Copy exact source URL/hash/excerpt. Explain a supported specific customer step; improvements remain hypotheses. Do not infer visual defects or owner demand. Hold weak evidence with false, no candidates and null selection.';

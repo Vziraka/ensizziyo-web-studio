@@ -224,7 +224,7 @@ export class StudioLifecycle {
       const { requireCallRelease } = await import('./production.mjs'); requireCallRelease(this.config);
       check(this.config.operations.allowlist.includes(event.prospect_id), 'Call is outside the approved queue');
     }
-    const validateMachineDraft=event.type==='transcript_added'&&event.data?.transcription_draft_sha256?(await import('./call-transcription.mjs')).validateTranscriptionDraft:null;
+    const validateMachineDraft=event.type==='transcript_added'&&(event.data?.transcription_draft_sha256||event.data?.transcription_policy_sha256)?(event.data.transcription_policy_sha256?(await import('./full-call-transcription.mjs')).validateFullCallDraft:(await import('./call-transcription.mjs')).validateTranscriptionDraft):null;
     const eventFingerprint=hash({event,actor});
     return this.change(state => {
       const fingerprint = hash({ event, actor });

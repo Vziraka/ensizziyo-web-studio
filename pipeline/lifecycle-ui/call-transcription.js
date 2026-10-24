@@ -1,6 +1,8 @@
 import {deskPath} from './paths.js';
+import {renderFullCallTranscription} from './full-call-transcription.js';
 let cached,busy=false;
 export function renderCallTranscription(parent,r,call,state,{api,event,run,tell,refresh,clearDirty}){
+ renderFullCallTranscription(parent,r,call,state,{api,event,run,tell,refresh,clearDirty});
  if(!r.controlled||r.transcripts[call.call_id])return;
  const node=document.createElement('section'),el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;},button=(text,action)=>{const n=el('button',text);n.type='button';n.disabled=busy;n.onclick=action;return n;};parent.append(node);
  if(cached?.revision!==state.revision)cached=null;
