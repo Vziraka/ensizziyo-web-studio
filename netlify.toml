@@ -6,6 +6,11 @@ ignore = "if [ \"$CONTEXT\" != production ] || [ -z \"$CACHED_COMMIT_REF\" ] || 
 [build.environment]
 NODE_VERSION = "24"
 
+# The public feature flag is a source literal, not an authentication credential.
+# Omit only that false positive in Deploy Previews; all credential scanning stays enabled.
+[context.deploy-preview.environment]
+SECRETS_SCAN_OMIT_KEYS = "EVZ_OPERATIONS_DESK_ENABLED"
+
 [functions]
 directory = "pipeline/netlify-functions"
 node_bundler = "esbuild"
