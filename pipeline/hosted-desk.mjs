@@ -13,6 +13,8 @@ import {StudioLifecycle,initialConfig,check} from './lifecycle.mjs';import {Cond
 import {audioRequest,saveCallAudio,readCallAudio,reconcileCallAudio,blobAudioStore} from './call-audio.mjs';
 import {exactMailPackage,approveExactMail,dispatchExactMail,reconcileExactMail} from './exact-mail.mjs';
 import {createGoogleOAuth,googleOAuthPath,googleOAuthCallbackHTML,googleOAuthCallbackJS} from './google-oauth.mjs';
+import {readDriveOriginalStep} from './google-drive-originals.mjs';
+import {driveOAuthProfile,driveOAuthPath,driveOAuthCallbackHTML,driveOAuthCallbackJS} from './google-oauth.mjs';
 import {syncIncomingMail,incomingMailView} from './google-incoming-mail.mjs';
 
 const base='/desk',csrfCookie='evz_desk_csrf',maxBody=120_000;
@@ -50,20 +52,21 @@ export function projectDashboard(view){
  delete view.ai_attempts;delete view.transcript_assessment;delete view.gateway_proof;delete view.gateway_proof_reviews;delete view.call_transcription_rehearsal;delete view.full_call_transcription;return projectSourceBodies(view);
 }
 
-export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=()=>new Date(),assetDirectory=fileURLToPath(new URL('./lifecycle-ui/',import.meta.url)),readAsset=null,gatewayOptions={},googleMailOptions={},googleIncomingOptions={},googleOAuthOptions={},backgroundOnly=false}={}){
+export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=()=>new Date(),assetDirectory=fileURLToPath(new URL('./lifecycle-ui/',import.meta.url)),readAsset=null,gatewayOptions={},googleMailOptions={},googleIncomingOptions={},googleOAuthOptions={},googleDriveOptions={},backgroundOnly=false}={}){
  return async request=>{
   let settings;try{settings=configured(env,now);}catch{return json(503,{error:'Private desk is not configured'});}
   const url=new URL(request.url),path=url.pathname.slice(base.length)||'/';
   const workerPath=backgroundOnly===true?fullCallWorkerPath:backgroundOnly;
   if(workerPath&&(url.pathname!==workerPath||request.method!=='POST')||!workerPath&&[fullCallWorkerPath,assessmentWorkerPath].includes(url.pathname))return json(409,{error:'Use the protected background entry and read its durable receipt'});
-  const oauthLanding=request.method==='GET'&&url.pathname===googleOAuthPath+'/callback';
+  const driveOAuth=url.pathname.startsWith(driveOAuthPath+'/')||path==='/google-drive-oauth-callback.js',oauthPath=driveOAuth?driveOAuthPath:googleOAuthPath;
+  const oauthLanding=request.method==='GET'&&url.pathname===oauthPath+'/callback';
   const publicNavigation=request.method==='GET'&&(path==='/'||oauthLanding)&&request.headers.get('sec-fetch-mode')==='navigate'&&request.headers.get('sec-fetch-dest')==='document';
   if(url.origin!==settings.origin||url.pathname!==base&&!url.pathname.startsWith(base+'/')||request.headers.get('origin')&&request.headers.get('origin')!==settings.origin||!publicNavigation&&request.headers.get('sec-fetch-site')&&!['same-origin','none'].includes(request.headers.get('sec-fetch-site')))return json(403,{error:'Private desk origin is not permitted'});
   try{
-   if(oauthLanding||request.method==='GET'&&path==='/google-oauth-callback.js'){
-    createGoogleOAuth({...googleOAuthOptions,env,now:()=>+now()});
+   if(oauthLanding||request.method==='GET'&&['/google-oauth-callback.js','/google-drive-oauth-callback.js'].includes(path)){
+    createGoogleOAuth({...googleOAuthOptions,env,now:()=>+now(),...(driveOAuth?{profile:driveOAuthProfile}:{})});
     check(url.href.length<=8192,'Google callback exceeds bounds');
-    return new Response(oauthLanding?googleOAuthCallbackHTML:googleOAuthCallbackJS,{headers:{...headers,'Content-Type':oauthLanding?'text/html; charset=utf-8':'text/javascript; charset=utf-8'}});
+    return new Response(oauthLanding?(driveOAuth?driveOAuthCallbackHTML:googleOAuthCallbackHTML):(driveOAuth?driveOAuthCallbackJS:googleOAuthCallbackJS),{headers:{...headers,'Content-Type':oauthLanding?'text/html; charset=utf-8':'text/javascript; charset=utf-8'}});
    }
    if(request.method==='GET'&&lifecycleAssets.has(path)&&!['/preview/','/preview.js'].includes(path)){
     const [file,type]=lifecycleAssets.get(path);let body=readAsset?await readAsset(file):await readFile(join(assetDirectory,file));
@@ -80,14 +83,15 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    if(post&&path==='/api/login'){const input=await inputBody(request),actor=settings.auth.authenticate(input.key);return actor?json(200,{operator:actor},{'Set-Cookie':settings.auth.cookie(settings.auth.issue(actor),{secure:true})}):json(401,{error:'The operator key was not recognized'});}
    const actor=settings.auth.actorFromCookie(request.headers.get('cookie'));if(!actor)return json(401,{error:'Sign in with your individual operator key'});
    if(post&&path==='/api/logout')return json(200,{signed_out:true},{'Set-Cookie':settings.auth.cookie('',{secure:true,clear:true})});
-   if(path.startsWith('/api/google-oauth/')){
-    if(request.method==='GET'&&path==='/api/google-oauth/status'&&env.EVZ_OPERATIONS_GOOGLE_OAUTH!=='owner-code-v1')return json(200,{enabled:false,status:'Disabled',scopes:[]});
-    const oauth=createGoogleOAuth({...googleOAuthOptions,env,now:()=>+now()}),session=cookieValue(request.headers.get('cookie'),'evz_operator_session');
-    if(request.method==='GET'&&path==='/api/google-oauth/status')return json(200,await oauth.status());
+   if(path.startsWith('/api/google-oauth/')||path.startsWith('/api/google-drive-oauth/')){
+    const connectionPath=driveOAuth?'/api/google-drive-oauth':'/api/google-oauth',connectionEnabled=driveOAuth?env.EVZ_OPERATIONS_GOOGLE_DRIVE_OAUTH==='owner-drive-code-v1':env.EVZ_OPERATIONS_GOOGLE_OAUTH==='owner-code-v1';
+    if(request.method==='GET'&&path===connectionPath+'/status'&&!connectionEnabled)return json(200,{enabled:false,status:'Disabled',scopes:[]});
+    const oauth=createGoogleOAuth({...googleOAuthOptions,env,now:()=>+now(),...(driveOAuth?{profile:driveOAuthProfile}:{})}),session=cookieValue(request.headers.get('cookie'),'evz_operator_session');
+    if(request.method==='GET'&&path===connectionPath+'/status')return json(200,await oauth.status());
     check(actor==='owner','Only the signed owner can manage Google authorization');
-    if(post&&path==='/api/google-oauth/start'){await inputBody(request);return json(200,await oauth.start(actor,session));}
-    if(post&&path==='/api/google-oauth/callback')return json(200,await oauth.callback(actor,session,await inputBody(request)));
-    if(post&&path==='/api/google-oauth/disconnect'){await inputBody(request);return json(200,await oauth.disconnect(actor));}
+    if(post&&path===connectionPath+'/start'){await inputBody(request);return json(200,await oauth.start(actor,session));}
+    if(post&&path===connectionPath+'/callback')return json(200,await oauth.callback(actor,session,await inputBody(request)));
+    if(post&&path===connectionPath+'/disconnect'){await inputBody(request);return json(200,await oauth.disconnect(actor));}
     return json(405,{error:'Use the supported Google connection operation'});
    }
    if(settings.inertBinding){
@@ -96,12 +100,18 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    }
    if(path.startsWith('/api/project-original/')&&!settings.inertBinding&&env.EVZ_OPERATIONS_SHARED_ORIGINALS!=='fictional-chunks-v1')return json(503,{error:'Shared original transfer is not configured'});
    let app,raw;try{raw=await storeFactory(env.EVZ_OPERATIONS_BLOB_NAMESPACE);app=await openApp(raw,now,settings.inertBinding);}catch{return json(503,{error:'Private shared storage is unavailable; no execution was started'});}
-   const originalRoute=/^\/api\/project-original\/([a-zA-Z0-9_-]{1,100})\/([a-zA-Z0-9_-]{1,100})\/([a-zA-Z0-9_-]{1,100})(?:\/(reserve|complete|chunk)(?:\/([0-9]{1,2}))?)?$/.exec(path);
+   const originalRoute=/^\/api\/project-original\/([a-zA-Z0-9_-]{1,100})\/([a-zA-Z0-9_-]{1,100})\/([a-zA-Z0-9_-]{1,100})(?:\/(reserve|complete|chunk|drive-read)(?:\/([0-9]{1,2}))?)?$/.exec(path);
    if(originalRoute){
     check(settings.inertBinding&&request.method==='GET'||env.EVZ_OPERATIONS_SHARED_ORIGINALS==='fictional-chunks-v1','Shared original transfer is not configured');
     const [,project_id,asset_id,version_id,operation,index]=originalRoute,ids={project_id,asset_id,version_id},store=blobProjectOriginalStore(raw);
     if(request.method==='GET'&&!operation)return json(200,await sharedOriginalManifest(app,store,ids));
     if(request.method==='GET'&&operation==='chunk'&&index!==undefined){const result=await readSharedOriginalChunk(app,store,ids,Number(index));return new Response(result.bytes,{headers:{...headers,'Content-Type':'application/octet-stream','Content-Length':String(result.bytes.length),'Content-Disposition':'attachment; filename="original-chunk.bin"','X-Content-SHA256':result.sha256}});}
+    if(post&&operation==='drive-read'&&index===undefined){
+     const input=await inputBody(request),options={...googleDriveOptions,env,actor,now:()=>+now()};
+     check(env.EVZ_OPERATIONS_GOOGLE_DRIVE_ORIGINALS==='fictional-drive-read-v1','Hosted Drive original read is disabled');
+     if(!options.getAccessToken)options.getAccessToken=createGoogleOAuth({...googleOAuthOptions,env,now:()=>+now(),profile:driveOAuthProfile,grantId:app.config.google_drive_originals?.grant_id}).getAccessToken;
+     return json(200,await readDriveOriginalStep(app,store,ids,input,options));
+    }
     if(post&&operation==='reserve'&&index===undefined)return json(200,await reserveSharedOriginal(app,{...await inputBody(request),...ids},actor));
     if(post&&operation==='complete'&&index===undefined)return json(200,await completeSharedOriginal(app,store,{...ids,transfer_id:(await inputBody(request)).transfer_id},actor));
     if(post&&operation==='chunk'&&index!==undefined)return json(200,await uploadSharedOriginalChunk(app,store,{...ids,transfer_id:request.headers.get('x-studio-transfer')},Number(index),await originalChunkRequest(request)));

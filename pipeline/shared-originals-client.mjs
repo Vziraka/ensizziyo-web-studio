@@ -22,6 +22,9 @@ export async function connectSharedOriginals({origin,key:operatorKey,fetcher=fet
   operator:session.operator,
   async resolve(name){check(typeof name==='string'&&name.length<=250,'Supply the exact company name');return json('/api/project-resolve?name='+encodeURIComponent(name));},
   async context(project){check(key(project),'Choose an existing project');return json('/api/project-context/'+project);},
+  async readDriveOriginal(ids){
+   const context=await this.context(ids.project_id);return json(pathFor(ids)+'/drive-read',{method:'POST',body:{context_sha256:context.context_sha256}});
+  },
   async upload(ids,bytes,source){
    const path=pathFor(ids),manifest=originalManifest(bytes),context=await this.context(ids.project_id),transfer=await json(path+'/reserve',{method:'POST',body:{manifest,source,context_sha256:context.context_sha256}});
    for(let index=0;index<manifest.chunks.length;index++)await json(path+'/chunk/'+index,{method:'POST',binary:true,headers:{'x-studio-transfer':transfer.id},body:bytes.subarray(index*originalChunkSize,(index+1)*originalChunkSize)});

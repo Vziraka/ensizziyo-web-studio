@@ -32,6 +32,10 @@ export function blobProjectOriginalStore(store){
    const m=validateManifest(data);check(m.sha256===original.sha256&&m.bytes===original.bytes,'Shared original manifest differs from the verified version');return m;
   },
   async chunk(manifest,index){const m=validateManifest(manifest),length=chunkLength(m,index),saved=await stored(store,chunkKey(m,index));check(saved,'Original chunk is missing; keep this transfer incomplete');const bytes=Buffer.from(saved.data);check(bytes.length===length&&originalDigest(bytes)===m.chunks[index],'Original chunk integrity changed');return bytes;},
+  async stageChunk(original,index,bytes){
+   check(sha(original.sha256)&&Number.isSafeInteger(original.bytes)&&original.bytes>0&&original.bytes<=projectOriginalLimit&&Number.isInteger(index)&&index>=0&&index<Math.ceil(original.bytes/originalChunkSize)&&Buffer.isBuffer(bytes)&&bytes.length===Math.min(originalChunkSize,original.bytes-index*originalChunkSize),'Invalid bounded original candidate chunk');
+   const digest=originalDigest(bytes);await immutable(store,`project-originals/${original.sha256}/${index}-${digest}`,bytes);return digest;
+  },
   async putChunk(manifest,index,bytes){const m=validateManifest(manifest);check(Buffer.isBuffer(bytes)&&bytes.length===chunkLength(m,index)&&originalDigest(bytes)===m.chunks[index],'Original chunk differs from the exact reservation');await immutable(store,chunkKey(m,index),bytes);},
   async publish(manifest){const m=validateManifest(manifest);await immutable(store,manifestKey(m),Buffer.from(JSON.stringify(m)));},
   async put(bytes){const m=originalManifest(bytes);for(let index=0;index<m.chunks.length;index++)await this.putChunk(m,index,bytes.subarray(index*originalChunkSize,(index+1)*originalChunkSize));await this.publish(m);},
@@ -39,11 +43,11 @@ export function blobProjectOriginalStore(store){
  };
 }
 function target(state,input){return projectAssetVersion(state,input.project_id,input.asset_id,input.version_id);}
-function baseContext(state,input){const copy=structuredClone(state),version=target(copy,input);if(version.original_transfer?.had_original===false)delete version.verified_original;delete version.original_transfer;return projectContext(copy,input.project_id).context_sha256;}
+export function originalBaseContext(state,input){const copy=structuredClone(state),version=target(copy,input);if(version.original_transfer?.had_original===false)delete version.verified_original;delete version.original_transfer;return projectContext(copy,input.project_id).context_sha256;}
 function currentTransfer(state,input){
  const version=target(state,input),transfer=version.original_transfer;
  check(transfer&&transfer.id===input.transfer_id&&transfer.source.reference===version.reference,'Choose the exact registered original transfer');
- check(baseContext(state,input)===transfer.context_sha256,'Project context changed; refresh and reserve the exact transfer again');return {version,transfer};
+ check(originalBaseContext(state,input)===transfer.context_sha256,'Project context changed; refresh and reserve the exact transfer again');return {version,transfer};
 }
 export async function reserveSharedOriginal(app,input,actor){
  check(['owner','friend'].includes(actor),'Original transfer needs a signed operator');const manifest=validateManifest(input.manifest),source=input.source;
@@ -55,7 +59,7 @@ export async function reserveSharedOriginal(app,input,actor){
   check(!version.verified_original||version.verified_original.sha256===manifest.sha256&&version.verified_original.bytes===manifest.bytes,'This version already has different original bytes; register a new version');
   if(version.verified_original)check(hash(normalized)===hash(Object.fromEntries(Object.keys(normalized).map(k=>[k,version.verified_original[k]??null]))),'Retain the verified original source provenance');
   check(!prior||prior.id===id,'This version has a different reserved original; register a new version');
-  const context=baseContext(state,input);
+  const context=originalBaseContext(state,input);
   if(prior&&context===prior.context_sha256)return prior;
   check(projectContext(state,input.project_id).context_sha256===input.context_sha256,'Project context changed; reload before reserving');
   const transfer={id,manifest,source:normalized,had_original:prior?.had_original??Boolean(version.verified_original),context_sha256:context,reserved_by:actor,reserved_at:app.now().toISOString()};

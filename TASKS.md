@@ -2,6 +2,8 @@
 
 ## Shared operations desk redesign — October 23, 2026
 
+- [x] Add separately disabled exact registered Drive PDF reads through a distinct future owner read-only grant profile, existing signed original caller, bounded 1 MB ranges/CAS resume and D1 final hash authority. Both roles, realistic fictional HTTP/OAuth wiring, baseline/history and portable backup checks pass. No new consent, real provider/hosted proof, sharing, migration, scheduler or activation. [Contract and limits](pipeline/GOOGLE-DRIVE-ORIGINALS.md).
+
 - [x] Add separately disabled hosted Gmail incoming synchronization through existing registered conversations and `reply_received`: bounded first sync/history paging, atomic cursor/effects/dedup, capped404 recovery with visible gap hold, MIME/source provenance, cold stops and held operator notifications. Both signed roles and OAuth-to-reader local wire fixtures pass; real mailbox/hosted compatibility, recovery review, scheduling and computer-off acceptance remain open. [Caller and limits](pipeline/GOOGLE-INCOMING-MAIL.md).
 
 - [x] Add separately disabled owner-only hosted Google authorization-code grant and encrypted credential namespace: exact business/client/deployment/identity/scopes, one-use callback/PKCE, durable refresh claims, metadata-only shared status and local disconnect. Signed handler/both-operator exact-mail tests and intercepted local callback browser checks pass. Real client/consent/hosted callback/refresh/send and production/PC-off acceptance remain open. [Grant contract and future placeholder setup](pipeline/GOOGLE-OAUTH.md).
