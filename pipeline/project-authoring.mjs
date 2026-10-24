@@ -1,3 +1,4 @@
+import {supportsProjectAuthoring} from './shared-project-continuation.mjs';
 import {mkdir,lstat,realpath,readFile,writeFile,readdir} from 'node:fs/promises';
 import {join,isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -16,7 +17,7 @@ const text=(v,max=3000)=>typeof v==='string'&&v.trim()&&v.length<=max;
 const kinds=['website-concepts','website-refinement','client-proposal'];
 async function safeFile(path,max=4_000_000){const s=await lstat(path);check(s.isFile()&&!s.isSymbolicLink()&&s.size>0&&s.size<=max,'Unsafe or oversized authoring file');return readFile(path);}
 async function folder(app,id){
- if(app.authoringStore){check(app.store&&!app.store.inertBinding&&!app.store.manualBinding&&(app.config.mode==='controlled'||app.store.projectBinding&&app.config.shared_capability==='shared-project-continuation-v1')&&key(id),'Authoring storage requires fictional controlled work or an exact shared project binding');return null;}
+ if(app.authoringStore){check(app.store&&!app.store.inertBinding&&!app.store.manualBinding&&(app.config.mode==='controlled'||supportsProjectAuthoring(app))&&key(id),'Authoring storage requires fictional controlled work or an exact shared project binding');return null;}
  check(app.directory&&!app.store&&key(id),'Authoring needs the private local workspace');
  const root=join(app.directory,'project-authored');await mkdir(root,{recursive:true,mode:0o700});
  check(!(await lstat(root)).isSymbolicLink()&&await realpath(root)===join(await realpath(app.directory),'project-authored'),'Unsafe authoring root');
@@ -62,7 +63,7 @@ export async function claimAuthoring(app,input,actor='owner'){
 }
 async function immutableJSON(app,id,name,value){const bytes=Buffer.from(JSON.stringify(value,null,2));try{await writeAuthoringFile(app,id,name,bytes);}catch(e){if(e.code!=='EEXIST')throw e;check(sha(await readAuthoringFile(app,id,name,36_000_000))===sha(bytes),'Immutable authoring file differs; inspect the existing job');}}
 function getJob(state,input){check([input.project_id,input.work_id].every(key),'Choose the exact authoring job');const job=state.prospects[input.project_id]?.project_work?.[input.work_id]?.execution;check(job&&job.id===input.job_id,'Load the exact claimed authoring job');return job;}
-function validateAuthored(source,packet,job){
+export function validateAuthored(source,packet,job){
  check(source?.schema_version===1&&source.context_sha256===job.context_sha256&&source.kind===job.kind,'Authored source must bind the exact context and workflow');
  check(text(source.author,100)&&text(source.requirements_review,3000)&&text(source.visual_premise,3000)&&text(source.limitations,3000),'Retain author, requirements, design premise and material limitations');
  check(Array.isArray(source.questions)&&source.questions.length<=3&&source.questions.every(q=>text(q,300))&&(source.questions.length===0||source.judgment_option===true),'Ask at most three essential questions with a use-your-judgment option');
@@ -71,7 +72,7 @@ function validateAuthored(source,packet,job){
  if(job.kind==='website-refinement')check(source.selected_direction===packet.source.request.selected_direction&&source.previous_asset_id===packet.source.request.asset_id&&source.previous_version_id===packet.source.request.version_id&&source.feedback===packet.source.request.feedback&&source.preserves_direction===true,'Refine the exact selected direction, previous version and consolidated feedback');
  if(job.kind==='client-proposal')check(source.quote_sha256===packet.source.quote_sha256,'Proposal source must bind exact approved scope and price');
 }
-async function designSource(app,source,packet){
+export async function designSource(app,source,packet){
  let baseline=null;
  if(source.kind==='website-refinement'){
   const approved=packet.source.approved_assets.find(a=>a.asset_id===packet.source.request.asset_id);
@@ -115,6 +116,8 @@ export async function renderAuthoring(app,input,runtime,actor='owner'){
    const renderer=await readFile(fileURLToPath(new URL('./project-authoring-render.py',import.meta.url)));renderer_sha256=sha(renderer);script=join(path,'renderer.py');await writeAuthoringFile(app,job.id,'renderer.py',renderer);
   }
   await authoringChange(app,'renderer',input,actor,{job,renderer_sha256,renderer_lock_sha256,nodeRuntime});
+  current(await app.snapshot(),input,actor,job);
+  if(app.store?.projectBinding?.scope.capability==='shared-refinement-generation-v1')await (await import('./refinement-generation.mjs')).validateGenerationAuthoring(app,{type:'renderer',input,actor,details:{}});
   if(nodeRuntime){
    const {renderNodePDF}=await import('./project-authoring-node.mjs');
    const {files}=await renderNodePDF(source,packet,runtime,{source_sha256:hash(source)});

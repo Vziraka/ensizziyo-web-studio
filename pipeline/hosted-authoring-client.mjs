@@ -24,6 +24,12 @@ export async function connectSharedAuthoring(options={}){
   revise:(job_id,reason)=>command('revise',{job_id,reason}),
   recovery:job_id=>command('recovery',{job_id}),
   reconcile:(job_id,input)=>command('reconcile',{job_id,...input}),
+  generationStatus:job_id=>command('generation-status',{job_id}),
+  authorizeGeneration:input=>command('generation-authorize',input),
+  pauseGeneration:policy_sha256=>command('generation-pause',{policy_sha256}),
+  generate:(job_id,revision,policy_sha256)=>command('generate',{job_id,revision,policy_sha256}),
+  continueGeneratedRender:job_id=>command('generation-render',{job_id}),
+  registerRuntime:(job_id,runtime)=>upload(job_id,'runtime.json',Buffer.from(JSON.stringify(runtime,null,2))),
   async render(job_id,source,runtime){
    await upload(job_id,'input.json',Buffer.from(JSON.stringify(source,null,2)));await upload(job_id,'runtime.json',Buffer.from(JSON.stringify(runtime,null,2)));return command('render',{job_id});
   },

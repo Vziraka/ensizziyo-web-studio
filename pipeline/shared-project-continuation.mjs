@@ -6,27 +6,33 @@ import {blobAuthoringStore,attachHostedAuthoring} from './hosted-authoring.mjs';
 import {blobAudioStore} from './call-audio.mjs';
 import {applyAuthoringTransition,validateAuthoringTransition} from './project-authoring.mjs';
 import {validateAuthoringRecovery} from './authoring-recovery.mjs';
+import {refinementCapability,validateRefinementPolicy,applyGenerationTransition,validateGenerationTransition,reconcileGeneration,validateGenerationAuthoring} from './refinement-generation.mjs';
+
+export const supportsProjectAuthoring=app=>Boolean(app.store?.projectBinding&&['shared-project-continuation-v1',refinementCapability].includes(app.config.shared_capability));
 
 export const sharedProjectEvents=Object.freeze(['note_added','asset_feedback_added','asset_version_selected','asset_version_disputed','project_preparation_requested','concept_refinement_requested','unpaid_refinement_exception']);
 const fields={note_added:['note'],asset_feedback_added:['asset_id','version_id','feedback','scope','project_id'],asset_version_selected:['asset_id','version_id'],asset_version_disputed:['asset_id','version_id'],project_preparation_requested:[],concept_refinement_requested:['asset_id','version_id','selected_direction','feedback','exception_id'],unpaid_refinement_exception:['reason','approved','extra_rounds']};
 const key=v=>typeof v==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(v)&&!['__proto__','constructor','prototype'].includes(v);
 export function validateProjectBinding(b){
- check(b?.schema_version===1&&b.capability==='shared-project-continuation-v1'&&b.mode==='production'&&b.state_schema===1&&[b.workspace_id,b.run_id,b.site_id,b.deploy_id].every(key),'Invalid shared project binding');
+ const generation=b?.capability===refinementCapability;
+ check(b?.schema_version===1&&['shared-project-continuation-v1',refinementCapability].includes(b.capability)&&b.mode==='production'&&b.state_schema===1&&[b.workspace_id,b.run_id,b.site_id,b.deploy_id].every(key),'Invalid shared project binding');
  const origin=new URL(b.origin);check(origin.protocol==='https:'&&origin.origin===b.origin&&/^evz-project-shared-[a-z0-9-]{8,40}$/.test(b.namespace),'Invalid shared project origin or separate namespace');
- check(Object.keys(b).sort().join(',')==='capability,deploy_id,mode,namespace,origin,run_id,schema_version,site_id,state_schema,workspace_id','Unknown shared project binding fields');return b;
+ check(Object.keys(b).sort().join(',')===(generation?'capability,deploy_id,mode,namespace,origin,policy_sha256,run_id,schema_version,site_id,state_schema,workspace_id':'capability,deploy_id,mode,namespace,origin,run_id,schema_version,site_id,state_schema,workspace_id'),'Unknown shared project binding fields');if(generation)check(/^[a-f0-9]{64}$/.test(b.policy_sha256),'Exact refinement policy binding required');return b;
 }
 export function validateProjectEnvelope(data,binding){
  validateProjectBinding(binding.scope);const m=data.project_source;
  check(!data.inert_source&&!data.manual_source&&data?.schema_version===1&&data.config?.schema_version===1&&data.state?.schema_version===1,'Unknown shared project format');
  check(/^[a-f0-9]{64}$/.test(binding.manifest_sha256)&&m?.kind==='shared-project-source-v1'&&m.schema_version===1&&hash(m)===binding.manifest_sha256&&hash(m.binding)===hash(binding.scope),'Shared project manifest or deployment binding changed');
- check(hash(data.config)===m.config_sha256&&data.config.shared_capability==='shared-project-continuation-v1'&&data.config.mode==='production'&&data.config.run_id===binding.scope.run_id,'Shared project configuration changed');
+ check(hash(data.config)===m.config_sha256&&data.config.shared_capability===binding.scope.capability&&data.config.mode==='production'&&data.config.run_id===binding.scope.run_id,'Shared project configuration changed');
+ if(binding.scope.capability===refinementCapability){validateRefinementPolicy(data.config.refinement_generation);check(hash(data.config.refinement_generation)===binding.scope.policy_sha256,'Refinement policy changed');}
  check(data.state.mode==='production'&&data.state.run_id===binding.scope.run_id,'Shared project identity changed');
  for(const flag of ['research_enabled','outreach_enabled','connector_writes_enabled','calls_enabled'])check(data.config[flag]===false,'Shared project cannot enable external execution');
  check(data.config.runtime?.enabled===false&&data.config.operations?.enabled===false&&data.config.transcript_ai?.enabled===false&&data.config.release?.approved===false&&data.config.call_release?.approved===false,'Shared project release must remain revoked');
 }
-export async function prepareProjectWorkspace({backup,sourceConfig,scope}){
- validateProjectBinding(scope);const inertScope={...scope,capability:'inert-shared-v1',namespace:scope.namespace.replace('evz-project-shared-','evz-inert-shared-')};
+export async function prepareProjectWorkspace({backup,sourceConfig,scope,refinementPolicy}){
+ validateProjectBinding(scope);const inertScope={...scope,capability:'inert-shared-v1',namespace:scope.namespace.replace('evz-project-shared-','evz-inert-shared-')};delete inertScope.policy_sha256;
  const packet=await prepareInertWorkspace({backup,sourceConfig,scope:inertScope}),config={...packet.envelope.config,shared_capability:scope.capability};
+ if(scope.capability===refinementCapability){validateRefinementPolicy(refinementPolicy);check(hash(refinementPolicy)===scope.policy_sha256,'Prepare the exact unapproved refinement policy');config.refinement_generation=structuredClone(refinementPolicy);}
  const blockers=[];
  for(const [path,bytes] of packet.files){
   const author=/^project-authored\/(author-[a-f0-9]{32})\/(.+)$/.exec(path);if(!author)continue;
@@ -36,7 +42,7 @@ export async function prepareProjectWorkspace({backup,sourceConfig,scope}){
  check(!blockers.length,'Shared project installation held; preserve the complete original G1 package. Unsupported retained dependencies ('+blockers.length+'): '+blockers.slice(0,20).join(', '));
 
  const dependencies=[...packet.files].map(([path,bytes])=>({path,sha256:originalDigest(bytes),bytes:bytes.length,availability:'shared-immutable-dependency'}));
- const manifest={...packet.envelope.inert_source,kind:'shared-project-source-v1',binding:structuredClone(scope),config_sha256:hash(config),dependencies,allowed_events:[...sharedProjectEvents],unsupported:['provider-execution','automatic-migration','unattended-authoring']};
+ const manifest={...packet.envelope.inert_source,kind:'shared-project-source-v1',binding:structuredClone(scope),config_sha256:hash(config),dependencies,allowed_events:[...sharedProjectEvents],unsupported:scope.capability===refinementCapability?['general-provider-execution','automatic-migration','automatic-design-review','new-concept-exploration']:['provider-execution','automatic-migration','unattended-authoring']};
  const envelope={schema_version:1,config,state:packet.envelope.state,project_source:manifest},binding={scope:structuredClone(scope),manifest_sha256:hash(manifest)};
  validateProjectEnvelope(envelope,binding);return {envelope,binding,files:packet.files};
 }
@@ -72,9 +78,10 @@ export function applySharedProjectEvent(state,event,actor,revision,now,config){
 export async function validateProjectChange(before,after,options,raw){
  check(hash(before.config)===hash(after.config)&&hash(before.project_source)===hash(after.project_source),'Shared project configuration or binding changed');
  const expected=structuredClone(before.state),now=new Date(after.state.updated_at);
- check([options.projectRecord,options.projectAuthoring,options.projectReconcile].filter(Boolean).length===1,'Shared project storage requires one typed human or authoring transition');
+ check([options.projectRecord,options.projectAuthoring,options.projectReconcile,options.projectGeneration].filter(Boolean).length===1,'Shared project storage requires one typed human or authoring transition');
+ if(options.projectGeneration){check(before.project_source.binding.capability===refinementCapability,'Existing project capability rejects provider execution');const app={store:{projectBinding:{scope:before.project_source.binding,manifest_sha256:hash(before.project_source)}},config:before.config,now:()=>now,snapshot:async()=>structuredClone(before.state)};attachHostedAuthoring(app,raw);await validateGenerationTransition(app,options.projectGeneration);applyGenerationTransition(expected,options.projectGeneration,before.config,now);}
  if(options.projectRecord){const {event,actor,revision}=options.projectRecord;applySharedProjectEvent(expected,event,actor,revision,now,before.config);}
- if(options.projectAuthoring){const app={store:{projectBinding:{scope:before.project_source.binding}},config:before.config,snapshot:async()=>structuredClone(before.state)};attachHostedAuthoring(app,raw);await validateAuthoringTransition(app,options.projectAuthoring);applyAuthoringTransition(expected,options.projectAuthoring,before.config,now);}
+ if(options.projectAuthoring){const app={store:{projectBinding:{scope:before.project_source.binding,manifest_sha256:hash(before.project_source)}},config:before.config,now:()=>now,snapshot:async()=>structuredClone(before.state)};attachHostedAuthoring(app,raw);await validateGenerationAuthoring(app,options.projectAuthoring);await validateAuthoringTransition(app,options.projectAuthoring);applyAuthoringTransition(expected,options.projectAuthoring,before.config,now);}
  if(options.projectReconcile){
   const {job,result,snapshot,actor}=options.projectReconcile;
   const matches=[];function visit(w){for(const j of [...(w.authoring_history??[]),...(w.execution?[w.execution]:[])])if(j.id===job.id)matches.push(j);for(const prior of w.history??[])visit(prior);}
@@ -82,7 +89,7 @@ export async function validateProjectChange(before,after,options,raw){
   check(matches.length===1&&hash(matches[0])===hash(job)&&actor===job.actor&&['Claimed','Rendering','Rendered','Held'].includes(job.status),'Shared reconciliation job or actor changed');
   check(Object.keys(result.recovery??{}).sort().join(',')==='actor,at,disposition,execution,export_usable,files,observation,prior_status,reason,schema_version,snapshot','Unknown shared recovery fields');
   const evidence=await blobAuthoringStore(raw).evidence(job.id);check(snapshot===hash({state:before.state,job_id:job.id,files:evidence.files})&&hash(result)===hash({...job,status:'Reconciled',recovery:{...result.recovery,files:evidence.files}})&&result.recovery.snapshot===snapshot&&result.recovery.actor===actor&&result.recovery.prior_status===job.status&&result.recovery.at===after.state.updated_at,'Shared reconciliation observation changed');
-  await validateAuthoringRecovery(result,async name=>evidence.bytes.get(name));Object.assign(matches[0],result);expected.revision++;expected.updated_at=after.state.updated_at;
+  await validateAuthoringRecovery(result,async name=>evidence.bytes.get(name));Object.assign(matches[0],result);reconcileGeneration(expected,job,after.state.updated_at);expected.revision++;expected.updated_at=after.state.updated_at;
  }
  check(hash(expected)===hash(after.state),'Shared project edit changed protected records, budgets, approvals, history or execution evidence');
 }

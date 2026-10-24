@@ -1,4 +1,5 @@
 import {validateProjectBinding} from './shared-project-continuation.mjs';
+import {refinementCapability,refinementWorkerPath,generateRefinement,executeRefinement,verifyRefinementDispatch,refinementStatus,authorizeRefinement,pauseRefinement,continueRefinementRender} from './refinement-generation.mjs';
 import {blobProjectOriginalStore,reserveSharedOriginal,uploadSharedOriginalChunk,completeSharedOriginal,sharedOriginalManifest,readSharedOriginalChunk,originalChunkRequest,originalDigest} from './shared-project-originals.mjs';
 import {validateInertBinding} from './inert-shared-workspace.mjs';
 import {validateManualBinding} from './shared-manual-records.mjs';
@@ -32,7 +33,7 @@ const sign=(secret,payload)=>createHmac('sha256',secret).update('desk-csrf:'+pay
 function csrfValid(token,secret,now){try{const [payload,mac,extra]=token.split('.'),actual=Buffer.from(mac,'base64url'),expected=sign(secret,payload);if(extra!==undefined||actual.length!==expected.length||!timingSafeEqual(actual,expected))return false;const [expiry,nonce]=JSON.parse(Buffer.from(payload,'base64url'));return Number.isSafeInteger(expiry)&&expiry>+now&&typeof nonce==='string'&&nonce.length===32;}catch{return false;}}
 async function inputBody(request){const reader=request.body?.getReader();check(reader,'A JSON request body is required');let bytes=0;const chunks=[];for(;;){const {value,done}=await reader.read();if(done)break;bytes+=value.length;if(bytes>maxBody){await reader.cancel();throw Error('Request body exceeds the private desk limit');}chunks.push(Buffer.from(value));}try{return JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw Error('Supply valid JSON without credentials in unrelated fields');}}
 function configured(env,now){
- check(env.CONTEXT==='deploy-preview'&&['fictional-preview','inert-shared-v1','shared-manual-records-v1','shared-project-continuation-v1'].includes(env.EVZ_OPERATIONS_DESK_ENABLED),'Private desk is not configured');
+ check(env.CONTEXT==='deploy-preview'&&['fictional-preview','inert-shared-v1','shared-manual-records-v1','shared-project-continuation-v1',refinementCapability].includes(env.EVZ_OPERATIONS_DESK_ENABLED),'Private desk is not configured');
  const origin=new URL(env.EVZ_OPERATIONS_ORIGIN);check(origin.protocol==='https:'&&origin.origin===env.EVZ_OPERATIONS_ORIGIN,'Private desk is not configured');
  let inertBinding=null,manualBinding=null,projectBinding=null;
  if(env.EVZ_OPERATIONS_DESK_ENABLED==='inert-shared-v1'){
@@ -41,9 +42,10 @@ function configured(env,now){
  }else if(env.EVZ_OPERATIONS_DESK_ENABLED==='shared-manual-records-v1'){
   manualBinding=JSON.parse(env.EVZ_OPERATIONS_MANUAL_BINDING);validateManualBinding(manualBinding.scope);
   const b=manualBinding.scope;check(b.namespace===env.EVZ_OPERATIONS_BLOB_NAMESPACE&&b.origin===origin.origin&&b.site_id===env.SITE_ID&&b.deploy_id===env.DEPLOY_ID,'Manual desk binding does not match this deployment');
- }else if(env.EVZ_OPERATIONS_DESK_ENABLED==='shared-project-continuation-v1'){
+ }else if(['shared-project-continuation-v1',refinementCapability].includes(env.EVZ_OPERATIONS_DESK_ENABLED)){
   projectBinding=JSON.parse(env.EVZ_OPERATIONS_PROJECT_BINDING);validateProjectBinding(projectBinding.scope);
   const b=projectBinding.scope;check(b.namespace===env.EVZ_OPERATIONS_BLOB_NAMESPACE&&b.origin===origin.origin&&b.site_id===env.SITE_ID&&b.deploy_id===env.DEPLOY_ID,'Shared project binding does not match this deployment');
+  check(b.capability===env.EVZ_OPERATIONS_DESK_ENABLED,'Exact project capability must match deployment');
  }else check(/^evz-redesign-proof-[a-z0-9-]{8,44}$/.test(env.EVZ_OPERATIONS_BLOB_NAMESPACE??''),'Private desk is not configured');
  const auth=createOperatorAuth(env,{now:()=>+now()});check(auth,'Private desk is not configured');return {origin:origin.origin,auth,inertBinding,manualBinding,projectBinding};
 }
@@ -62,17 +64,21 @@ async function openApp(raw,now,inertBinding,manualBinding,projectBinding){
  return app;
 }
 export function projectDashboard(view){
+ for(const r of Object.values(view.prospects))for(const w of Object.values(r.project_work??{})){const a=view.ai_attempts?.['refine-'+w.execution?.id];if(a)w.generation={status:a.status,phase:Object.keys(a.phases).at(-1)??'reserved',reserved_microcredits:a.reserved_microcredits,next:w.execution.status==='Rendered'?'Needs actual raster and human semantic/design review':'Read the exact retained attempt; no automatic retry or repair'};}
  view.events=Object.fromEntries(Object.entries(view.events).map(([id,e])=>[id,{id,type:e.type,prospect_id:e.prospect_id,actor:e.actor,at:e.at}]));
  if(view.operations)view.operations={email:Object.fromEntries(Object.entries(view.operations.email??{}).map(([id,e])=>[id,{status:e.status,thread:Boolean(e.thread)}])),cycle:view.operations.cycle?{completed_cycles:view.operations.cycle.completed_cycles,completed_at:view.operations.cycle.completed_at}:null,maintenance:{backup_date:view.operations.maintenance?.backup_date}};
  delete view.ai_attempts;delete view.transcript_assessment;delete view.gateway_proof;delete view.gateway_proof_reviews;delete view.call_transcription_rehearsal;delete view.full_call_transcription;return projectSourceBodies(view);
 }
 
-export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=()=>new Date(),assetDirectory=fileURLToPath(new URL('./lifecycle-ui/',import.meta.url)),readAsset=null,gatewayOptions={},googleMailOptions={},googleIncomingOptions={},googleOAuthOptions={},googleDriveOptions={},googleCalendarOptions={},backgroundOnly=false}={}){
+export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=()=>new Date(),assetDirectory=fileURLToPath(new URL('./lifecycle-ui/',import.meta.url)),readAsset=null,gatewayOptions={},refinementOptions={},googleMailOptions={},googleIncomingOptions={},googleOAuthOptions={},googleDriveOptions={},googleCalendarOptions={},backgroundOnly=false}={}){
  return async request=>{
   let settings;try{settings=configured(env,now);}catch{return json(503,{error:'Private desk is not configured'});}
   const url=new URL(request.url),path=url.pathname.slice(base.length)||'/';
   const workerPath=backgroundOnly===true?fullCallWorkerPath:backgroundOnly;
-  if(workerPath&&(url.pathname!==workerPath||request.method!=='POST')||!workerPath&&[fullCallWorkerPath,assessmentWorkerPath].includes(url.pathname))return json(409,{error:'Use the protected background entry and read its durable receipt'});
+  if(workerPath&&(url.pathname!==workerPath||request.method!=='POST')||!workerPath&&[fullCallWorkerPath,assessmentWorkerPath,refinementWorkerPath].includes(url.pathname))return json(409,{error:'Use the protected background entry and read its durable receipt'});
+  if(workerPath===refinementWorkerPath){
+   try{check(settings.projectBinding?.scope.capability===refinementCapability&&url.origin===settings.origin,'Exact refinement deployment required');const token=request.headers.get('x-evz-refinement-capability');verifyRefinementDispatch(env,settings.projectBinding,token,now());const reference=await inputBody(request),raw=await storeFactory(env.EVZ_OPERATIONS_BLOB_NAMESPACE),app=await openApp(raw,now,null,null,settings.projectBinding);attachHostedAuthoring(app,raw);return json(200,await executeRefinement(app,reference,token,{...refinementOptions,env}));}catch{return json(409,{error:'Exact host refinement capability unavailable; inspect retained attempt'});}
+  }
   const calendarOAuth=url.pathname.startsWith(calendarOAuthPath+'/')||path==='/google-calendar-oauth-callback.js';
   const selectedProfile=calendarOAuth?{profile:calendarOAuthProfile}:{};
   const driveOAuth=url.pathname.startsWith(driveOAuthPath+'/')||path==='/google-drive-oauth-callback.js',oauthPath=driveOAuth?driveOAuthPath:calendarOAuth?calendarOAuthPath:googleOAuthPath;
@@ -125,6 +131,10 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    let app,raw;try{raw=await storeFactory(env.EVZ_OPERATIONS_BLOB_NAMESPACE);app=await openApp(raw,now,settings.inertBinding,settings.manualBinding,settings.projectBinding);}catch{return json(503,{error:'Private shared storage is unavailable; no execution was started'});}
    if(path.startsWith('/api/project-author/')){
     check((settings.projectBinding?env.EVZ_OPERATIONS_PROJECT_AUTHORING==='shared-project-node-v1':env.EVZ_OPERATIONS_PROJECT_AUTHORING==='fictional-node-v1')&&!settings.inertBinding&&!settings.manualBinding,'Hosted authoring is disabled');attachHostedAuthoring(app,raw);
+    if(post&&['generate','generation-status','generation-authorize','generation-pause','generation-render'].some(p=>path==='/api/project-author/'+p)){
+     const input=await inputBody(request),operation=path.split('/').at(-1),options={...refinementOptions,env};
+     return json(200,await (operation==='generate'?generateRefinement(app,input,actor,options):operation==='generation-status'?refinementStatus(app,input,actor):operation==='generation-authorize'?authorizeRefinement(app,input,actor,options):operation==='generation-pause'?pauseRefinement(app,input,actor):continueRefinementRender(app,input,actor)));
+    }
     const file=/^\/api\/project-author\/(author-[a-f0-9]{32})\/file\/([^/]+)(?:\/(reserve|complete|chunk)(?:\/([0-9]{1,2}))?)?$/.exec(path);
     const binary=result=>new Response(result.bytes,{headers:{...headers,'Content-Type':'application/octet-stream','Content-Length':String(result.bytes.length),'X-Content-SHA256':result.sha256,'Content-Disposition':'attachment; filename="authoring-chunk.bin"'}});
     if(file){const [,id,name,operation,index]=file;

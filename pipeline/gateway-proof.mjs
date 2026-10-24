@@ -22,9 +22,9 @@ export function gatewayCapability(env=process.env){
  const present=Boolean(env.NETLIFY_AI_GATEWAY_KEY&&env.NETLIFY_AI_GATEWAY_URL&&env.GEMINI_API_KEY&&env.GOOGLE_GEMINI_BASE_URL),matching=Boolean(present&&env.GEMINI_API_KEY===env.NETLIFY_AI_GATEWAY_KEY),conflict=Boolean(env.GOOGLE_API_KEY||env.GOOGLE_VERTEX_BASE_URL||env.GOOGLE_GENAI_USE_VERTEXAI==='true');
  return {ready:env.CONTEXT==='deploy-preview'&&present&&matching&&sameOrigin&&!conflict,runtime_credentials_present:present,provider_key_matches_gateway:matching,provider_origin_matches_gateway:sameOrigin,conflicting_google_configuration:conflict,limits:'Runtime booleans only; no credential values. Capability is not an inference, audio pass-through or quota proof.'};
 }
-export async function liveCatalog(request=fetch){
- const response=await request('https://api.netlify.com/api/v1/ai-gateway/providers/detailed',{signal:AbortSignal.timeout(5000)});check(response.ok,'Gateway model catalog unavailable');const body=await response.text();check(Buffer.byteLength(body)<=300_000,'Gateway model catalog exceeds inspection limit');const catalog=JSON.parse(body),price=catalog.providers?.gemini?.models?.[gatewayPolicy.model]?.pricing;
- check(price&&Number.isFinite(price.input)&&Number.isFinite(price.output)&&price.input>=0&&price.output>=0&&(!price.long_context||price.long_context.above_tokens>gatewayPolicy.maximum_input_tokens)&&price.input<=gatewayPolicy.maximum_catalog_input_usd_per_million&&price.output<=gatewayPolicy.maximum_catalog_output_usd_per_million,'Pinned Gateway model is missing or exceeds reviewed pricing');return {sha256:hash(catalog),pricing:price};
+export async function liveCatalog(request=fetch,policy=gatewayPolicy){
+ const response=await request('https://api.netlify.com/api/v1/ai-gateway/providers/detailed',{signal:AbortSignal.timeout(5000)});check(response.ok,'Gateway model catalog unavailable');const body=await response.text();check(Buffer.byteLength(body)<=300_000,'Gateway model catalog exceeds inspection limit');const catalog=JSON.parse(body),price=catalog.providers?.gemini?.models?.[policy.model]?.pricing;
+ check(price&&Number.isFinite(price.input)&&Number.isFinite(price.output)&&price.input>=0&&price.output>=0&&(!price.long_context||price.long_context.above_tokens>policy.maximum_input_tokens)&&price.input<=policy.maximum_catalog_input_usd_per_million&&price.output<=policy.maximum_catalog_output_usd_per_million,'Pinned Gateway model is missing or exceeds reviewed pricing');return {sha256:hash(catalog),pricing:price};
 }
 export async function gatewayProofView(app,env=process.env){
  const state=await app.snapshot();fictional(app,state);const proof=structuredClone(state.gateway_proof??null);
@@ -57,16 +57,23 @@ export async function configureGatewayProof(app,input,actor,{env=process.env,cat
  });
 }
 
-export async function makeGatewayClient(env=process.env,request,timeout=20000){
+export async function makeGatewayClient(env=process.env,request,timeout=20000,policy=gatewayPolicy){
+ check(typeof policy.model==='string'&&/^[a-zA-Z0-9.-]{1,100}$/.test(policy.model),'Choose one exact Gateway model');
  check(Number.isSafeInteger(timeout)&&timeout>0&&timeout<=720000,'Gateway timeout exceeds the background bound');
  check(gatewayCapability(env).ready,'Matching injected Gateway configuration is unavailable');const {GoogleGenAI}=await import('@google/genai');
  const send=request??fetch,origin=new URL(env.NETLIFY_AI_GATEWAY_URL).origin,basePath=new URL(env.GOOGLE_GEMINI_BASE_URL).pathname.replace(/\/$/,'');
- const paths=new Set(['countTokens','generateContent'].map(action=>`${basePath}/v1beta/models/${gatewayPolicy.model}:${action}`));
- const boundFetch=(input,options={})=>{
+ const paths=new Set(['countTokens','generateContent'].map(action=>`${basePath}/v1beta/models/${policy.model}:${action}`));
+ const boundFetch=async(input,options={})=>{
   const url=new URL(input instanceof Request?input.url:String(input));
   check(url.origin===origin&&paths.has(url.pathname)&&!url.search,'Only reviewed Gateway endpoints are permitted');
   check((options.method??(input instanceof Request?input.method:'GET'))==='POST','Only reviewed Gateway POST requests are permitted');
-  return send(input,{...options,redirect:'error'});
+  const response=await send(input,{...options,redirect:'error'});
+  if(!policy.maximum_output_bytes)return response;
+  // Explicit authored-source policy bounds HTTP decoding as well as retained model text.
+  const reader=response.body?.getReader(),chunks=[];let bytes=0;check(reader,'Gateway response body unavailable');
+  const maximum=url.pathname.endsWith(':countTokens')?16000:policy.maximum_output_bytes*6+64000;
+  for(;;){const {value,done}=await reader.read();if(done)break;bytes+=value.length;if(bytes>maximum){await reader.cancel();throw Error('Gateway response exceeds exact policy bytes');}chunks.push(value);}
+  return new Response(Buffer.concat(chunks),{status:response.status,statusText:response.statusText,headers:response.headers});
  };
  // Explicit validated binding prevents local Google/Vertex credentials or SDK defaults from escaping the Gateway.
  return new GoogleGenAI({apiKey:env.GEMINI_API_KEY,vertexai:false,httpOptions:{baseUrl:env.GOOGLE_GEMINI_BASE_URL,timeout,retryOptions:{attempts:1},fetch:boundFetch}});

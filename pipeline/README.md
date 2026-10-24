@@ -355,3 +355,5 @@ Ensizziyo owns accounts, runtime availability and business exceptions. Proposed 
 ### Disabled shared project continuation
 
 The [shared project contract](SHARED-PROJECT-CONTINUATION.md) documents the separate default-disabled binding, local verified-package preparation, signed authoring caller, existing feedback/current-context UI, typed whole-state validation and complete backup/restore. Focused verification: `node --test shared-project-continuation.test.mjs hosted-authoring.test.mjs shared-manual-records.test.mjs inert-shared-workspace.test.mjs`. No production configuration, provider execution or real migration is included.
+
+The separately disabled [bounded refinement source-generation candidate](REFINEMENT-GENERATION.md) uses a new exact capability and the same authoring/CAS/recovery authority. Old profiles retain provider denials. Generation stops at Rendered; actual raster and human semantic/design review remain required, and no real policy/model/allowance is approved.

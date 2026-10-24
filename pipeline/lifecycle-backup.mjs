@@ -1,3 +1,4 @@
+import {supportsProjectAuthoring} from './shared-project-continuation.mjs';
 import {lstat,realpath,open,mkdir,writeFile,link,unlink,rm} from 'node:fs/promises';
 import {join,dirname,resolve,isAbsolute} from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
@@ -102,7 +103,7 @@ async function localInventory(directory,state){
  read.external=readRegularExternal;return inventory(state,read);
 }
 export async function hostedBackupInventory(app,audioStore){
- check(app.authoringStore&&app.originalStore&&app.store&&!app.store.inertBinding&&!app.store.manualBinding&&(app.config.mode==='controlled'||app.store.projectBinding&&app.config.shared_capability==='shared-project-continuation-v1'),'Hosted project backup requires fictional controlled work or an exact shared project binding');
+ check(app.authoringStore&&app.originalStore&&app.store&&!app.store.inertBinding&&!app.store.manualBinding&&(app.config.mode==='controlled'||supportsProjectAuthoring(app)),'Hosted project backup requires fictional controlled work or an exact shared project binding');
  const state=await app.snapshot();
  // Incomplete transfers/attempts require reconciliation before claiming a complete hosted package.
  for(const work of workHistory(state))for(const job of [...(work.authoring_history??[]),...(work.execution?[work.execution]:[])])check(job.status==='Review'||job.status==='Reconciled'&&job.recovery,'Hosted backup held: reconcile unfinished authoring attempts before exporting complete dependencies');
