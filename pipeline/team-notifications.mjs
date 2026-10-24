@@ -6,7 +6,7 @@ function sources(state,now){
  const items=[];
  for(const r of Object.values(state.prospects)){
   const add=(id,kind,summary)=>items.push({id,kind,role:role(r),project_id:r.id,summary});
-  if(r.stage==='Reply review'&&r.reply?.kind==='reply')add(`reply:${r.id}:${r.reply.source_id}`,'reply',`${r.name}: a verified reply needs review. Read the original in the business mailbox; future cold follow-ups are paused.`);
+  if(r.stage==='Reply review'&&r.reply?.kind==='reply')add(`reply:${r.id}:${r.reply.source_id}:${hash(r.reply).slice(0,16)}`,'reply',`${r.name}: a verified reply needs review. Read the original in the business mailbox; future cold follow-ups are paused.`);
   if(r.meeting?.current_status==='Needs review')add(`meeting:${r.id}:${hash(r.meeting)}`,'meeting',`${r.name}: the meeting record needs review in the connected calendar.`);
   if(r.information_draft?.status==='Uncertain'||r.information_draft?.status==='Sending'&&+now-Date.parse(r.information_draft.approved_at)>120_000)add(`information:${r.id}:${r.information_draft.id??hash(r.information_draft)}`,'problem',`${r.name}: an information email needs delivery reconciliation. Do not resend.`);
   for(const ticket of r.tickets??[])if(ticket.status==='Open'&&ticket.priority==='urgent')add(`support:${r.id}:${ticket.id}`,'problem',`${r.name}: an urgent support request needs review in the private desk.`);

@@ -123,6 +123,13 @@ test('an exactly approved call revision reaches the existing native executor onc
 test('a reply observed in the provider read phase cancels a prepared next follow-up before native release',async t=>{
  const s=await setup(t,true,'no_answer',true),p=provider(s.config);await drive(s.app,p);s.advance();const next=s.app.now().toISOString();await s.app.apply({id:'second-call',prospect_id:'synthetic-cafe',type:'call_logged',at:next,data:{call_id:'second-call',outcome:'voicemail',performed_at:next,simulated:false,desk:true,focus:'ai',note:'Discuss AI enquiry handling.'}});assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['second-call'].status,'Prepared');p.addReply();s.advance();await drive(s.app,p,'reply-before-second-release');assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['second-call'].status,'Cancelled');
 });
+
+test('production reply body upgrades preserve earlier sources and same-cycle native stops without another send',async t=>{
+ const s=await setup(t,true,'no_answer',true),p=provider(s.config);await drive(s.app,p);const respond=p.respond;let body='Could you share website examples?';
+ p.respond=request=>{const result=respond(request);if(request.operation==='thread')for(const m of result.messages.filter(m=>m.id==='native-reply')){m.payload.mime_type='text/plain';m.payload.headers.push({name:'Message-ID',value:'<native-reply@example.invalid>'});m.payload.body={content:body};}return result;};
+ p.addReply();s.advance();await drive(s.app,p,'body-one');const first=(await s.app.snapshot()).prospects['synthetic-cafe'].reply;assert.equal(first.content.text,body);
+ body='What should a website quote include?';s.advance();await drive(s.app,p,'body-two');const r=(await s.app.snapshot()).prospects['synthetic-cafe'];assert.equal(r.reply.content.text,body);assert.ok(r.reply_history.some(old=>old.content?.source_sha256===first.content.source_sha256));assert.notEqual(r.reply.content.source_sha256,first.content.source_sha256);assert.equal(r.cold_paused,true);assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);
+});
 test('a stop after an uncertain native intent keeps delivery uncertain and reconciles a late sent receipt without resending',async t=>{
  const s=await setup(t,true,'voicemail',true),p=provider(s.config),ops=operationsFor(s.app,'before-lost-handoff');
  for(;;){const request=await ops.next();if(request.operation==='intent'){p.respond(request);break;}assert.ok(request.operation);await ops.settle(request.key,{structuredContent:p.respond(request)});}

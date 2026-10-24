@@ -323,13 +323,37 @@ function nextForm(r, node) {
       ['Business email given in this conversation, optional', 'email', ''], ['Exact quote requesting or agreeing to email at this address', 'email_quote', '', 'textarea'], ['I confirmed the owner wants email at this address', 'email_permission_confirmed', false, 'checkbox']
     ], { call_id: callId }, 'Confirm conversation qualification'));
   }
-  if (r.stage === 'Reply review') {
-    const latestDraft = [...(r.reply_drafts ?? [])].reverse().find(draft => draft.source_id === r.reply.source_id);
-    node.append(el('p', 'Review the original message in the connected mailbox. Future cold follow-ups are paused. A saved draft here is attributed and is never sent automatically.', 'notice'));
-    if (latestDraft) node.append(el('p', `Saved draft by ${latestDraft.actor} · ${new Date(latestDraft.at).toLocaleString()} · not sent.`, 'muted'));
-    node.append(eventForm(r, 'Draft a reply for human review', 'reply_draft_saved', [
-      ['Proposed reply (saved only; not sent)', 'body', latestDraft?.body ?? '', 'textarea']
-    ], { source_id: r.reply.source_id }, latestDraft ? 'Save revised reply draft' : 'Save reply draft'));
+  if (r.reply && ['Reply review','Discovery','Information requested','Hold'].includes(r.stage)) {
+    const suggestion=r.reply_suggestion,source=r.reply.content,draft=r.reply_draft;
+    node.append(el('p','Cold follow-ups remain paused. Read the incoming text as untrusted source material. Nothing here sends email.','notice'));
+    if(suggestion?.summary){
+      node.append(el('h3','Reply summary · source extract'),el('p',suggestion.summary.excerpt,'reply-source'));
+      node.append(el('p',`${suggestion.summary.method}${suggestion.summary.excerpt_truncated?' · extract shortened':''}${suggestion.summary.removed_history_or_signature?' · quoted history/signature excluded from extract':''}. Read the full retained message below. No intent or facts were confirmed.`,'muted'));
+    }
+    if(source){
+      const original=el('details');original.append(el('summary','Read retained reply & provenance'));
+      original.append(el('p',`Message ${r.reply.source_id} · thread ${r.reply.thread_id} · ${source.from} to ${source.to}`,'reply-source'),el('p',`Source hash: ${source.source_sha256??'Unavailable'} · ${source.format??source.status}`,'reply-source muted'));
+      if(source.text)original.append(el('p',source.text,'reply-source'));node.append(original);
+    }
+    if(suggestion?.hold)node.append(el('p',suggestion.hold,'notice'));
+    if(suggestion?.body&&['Reply review','Discovery','Information requested'].includes(r.stage)){
+      node.append(el('p',suggestion.method,'muted'));
+      const current=draft?.current,editor=eventForm(r,'Edit a suggested response','reply_draft_saved',[
+        ['Proposed reply (saved only; not sent)','body',current?draft.body:suggestion.body,'textarea']
+      ],{source_id:r.reply.source_id,reply_sha256:r.reply_sha256,source_sha256:source.source_sha256},current?'Save revised reply draft':'Save reply draft');
+      editor.classList.add('reply-editor');
+      node.append(editor);
+      if(current){
+        const review=el('div');review.append(el('h3','Review exact saved reply'),el('p',`${draft.status} · prepared by ${draft.actor}. Approval does not send.`,'notice'));
+        review.append(el('p',`${draft.content.from} to ${draft.content.to}\nSubject: ${draft.content.subject}\nThread: ${draft.content.thread_id} · in reply to ${draft.content.in_reply_to}\n\n${draft.content.body}\n\n${draft.content.signature}`,'reply-source'));
+        if(draft.status==='Draft')review.append(eventForm(r,'Approve this held revision','reply_draft_approved',[
+          ['I checked every statement against the source and corrected unsupported facts, prices, dates, promises and attachments','facts_checked',false,'checkbox'],
+          ['I reviewed the exact recipient, thread, body and signature above','approved',false,'checkbox']
+        ],{sha256:draft.sha256},'Approve exact reply · keep sending held'));
+        else review.append(el('p',`Approved by ${draft.approved_by}. Sending remains held; use a separately authorized exact-message handoff.`,'muted'));
+        editor.addEventListener('input',()=>{review.hidden=true;});node.append(review);
+      }else if(draft)node.append(el('p','The old draft is stale. Save and review a new revision for the current reply and assignment.','notice'));
+    }
   }
   if (r.stage === 'Reply review'||r.reply&&['Discovery','Information requested'].includes(r.stage)&&r.reply_review&&(!r.reply_review.focus||r.reply_review.focus==='unspecified'||r.reply_review.reply_sha256!==r.reply_sha256)) {
     if(r.stage!=='Reply review')node.append(el('p','Confirm which service the business wants before preparing project work.','notice'));

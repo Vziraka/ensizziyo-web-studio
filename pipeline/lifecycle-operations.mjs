@@ -1,3 +1,4 @@
+import {replyContent,retainReplyThread} from './reply-content.mjs';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { check, hash, businessDaysBetween } from './lifecycle.mjs';
@@ -57,7 +58,7 @@ export function controlledThread(thread, expected, now) {
   check(!uncertainIncoming.length, 'Unverified incoming message in the bound thread; hold this route for review');
   for (const reply of replies) check(identifier(reply.id) && Number(reply.internal_date) >= Number(original.internal_date) && Number(reply.internal_date) <= +now, 'Invalid reply chronology');
   // Bodies and quoted instructions never select tools or authorize actions. Every matching reply pauses cold contact.
-  return replies.map(m => ({ id: m.id, kind: header(m, 'Auto-Submitted') && header(m, 'Auto-Submitted').toLowerCase() !== 'no' ? 'out_of_office' : 'reply', at: new Date(Number(m.internal_date)).toISOString() }));
+  return replies.sort((a,b)=>Number(a.internal_date)-Number(b.internal_date)).map(m => ({ id: m.id, content:m.reply_content??replyContent(m,thread.id), kind: header(m, 'Auto-Submitted') && header(m, 'Auto-Submitted').toLowerCase() !== 'no' ? 'out_of_office' : 'reply', at: new Date(Number(m.internal_date)).toISOString() }));
 }
 
 export function verifiedContact(data, binding, owner, real = false) {
@@ -177,9 +178,9 @@ export class ControlledOperations {
           check(bound.from === c.calendar.owner_email && c.operations.recipients.includes(bound.to), 'Monitored thread is outside the owner-only scope');
           const raw = yield request(`${id}-${bound.thread_id}-thread`, 'thread', { thread_id: bound.thread_id, max_messages: 20 }); check(!raw.failed, 'Controlled thread read failed');
           for (const reply of controlledThread(raw, bound, now)) {
-            const effectId = `reply-${hash(`${id}:${reply.id}`).slice(0, 32)}`;
+            const effectId = `reply-${hash(`${id}:${reply.id}:${hash(reply.content)}`).slice(0, 32)}`;
             if (!o.effects[effectId]) retain(`${id}-${bound.thread_id}-thread`);
-            o.effects[effectId] ??= { event: { id: effectId, prospect_id: id, type: 'reply_received', at: reply.at, data: { source_id: reply.id, kind: reply.kind, thread_id: bound.thread_id } } };
+            o.effects[effectId] ??= { event: { id: effectId, prospect_id: id, type: 'reply_received', at: reply.at, data: { source_id: reply.id, kind: reply.kind, thread_id: bound.thread_id, content:reply.content } } };
             if (!o.replies.includes(reply.id)) o.replies.push(reply.id);
           }
           if (Object.values(o.effects).some(e => e.event.prospect_id === id && e.event.type === 'reply_received')) {
@@ -359,8 +360,8 @@ export class ControlledOperations {
           check(data.success === true && Array.isArray(data.data), 'Malformed contact-list receipt');
           data = { labels: data.data };
         }
-        // Gmail bodies are unnecessary for matching replies; keep only protocol headers in operating state.
-        r.result = r.operation === 'thread' ? { id: data.id, messages: data.messages?.map(m => ({ id: m.id, thread_id: m.thread_id, internal_date: m.internal_date, label_ids: m.label_ids, payload: { headers: m.payload?.headers } })) } : data;
+        // Retain bounded text/provenance, never executable HTML or attachment bytes.
+        r.result = r.operation === 'thread' ? retainReplyThread(data) : data;
         r.status = 'Done'; r.receipt_sha256 = hash(raw); r.finished_at = this.app.now().toISOString();
         if (state.operations.rate_limits) delete state.operations.rate_limits[r.operation];
         if (['apollo_profile', 'gmail_profile', 'calendar_profile'].includes(r.operation)) {

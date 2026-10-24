@@ -40,3 +40,6 @@ nav button{justify-content:flex-start;gap:12px}nav button>img{width:19px;height:
 @media(max-width:650px){.desk-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;overflow:visible}.desk-tabs button{font-size:14px;padding:12px 3px;white-space:normal;min-width:0;text-align:center}}
 
 audio{display:block;width:100%;max-width:100%;margin-block:12px}.audio-controls{margin-block:16px;padding-block:12px;border-block:1px solid #e5e5e5}#audio-active{position:sticky;top:0;z-index:20}#audio-active button{margin:6px}
+
+.reply-source { white-space: pre-wrap; overflow-wrap: anywhere; }
+.reply-editor textarea { min-height: 180px; }

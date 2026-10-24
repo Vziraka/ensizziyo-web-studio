@@ -1,4 +1,10 @@
 import { hash } from './lifecycle.mjs';
+import {replyContent} from './reply-content.mjs';
+
+export function fixtureReply(source_id='reply',thread_id='thread',from='owner@example.invalid',text='Could you share examples of website work?'){
+  const payload={mime_type:'text/plain',headers:[{name:'From',value:from},{name:'To',value:'hello@evzdigital.studio'},{name:'Subject',value:'Re: Website question'},{name:'Message-ID',value:`<${source_id}@example.invalid>`},{name:'In-Reply-To',value:'<original@example.invalid>'}],body:{content:text}};
+  return {source_id,thread_id,kind:'reply',content:replyContent({id:source_id,payload},thread_id)};
+}
 
 export const fixtureTranscript = 'Owner: I run Juniper Bakery, a fictional business for this controlled test. I sell weekly pastry boxes through Instagram. I would like a preorder page so customers can choose a box and request pickup. I am the owner and would like to discuss a paid project. I have not decided a budget or launch date.';
 export const fixtureProposal = { schema_version: 1, transcript_sha256: hash(fixtureTranscript), outcome: 'discovery', callback_at: null,

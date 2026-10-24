@@ -1,3 +1,4 @@
+import {fixtureReply} from './lifecycle-fixtures.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
@@ -178,14 +179,15 @@ test('no-answer releases one queued email; decline cancels it permanently and la
 });
 test('verified replies create an attention item and save attributed drafts against the exact reply', async t => {
   const s = await setup(t); await s.app.apply(prospect());
-  await s.app.apply({ id: 'reply-source-event', prospect_id: 'fictional-bakery', type: 'reply_received', at, data: { source_id: 'verified-reply-1', kind: 'reply', thread_id: 'fictional-thread' } }, { actor: 'provider' });
+  await s.app.apply({ id: 'reply-source-event', prospect_id: 'fictional-bakery', type: 'reply_received', at, data: fixtureReply('verified-reply-1','fictional-thread','fictional-bakery@example.invalid') }, { actor: 'provider' });
   const alert = (await s.app.dashboard()).reply_alerts.find(item => item.prospect_id === 'fictional-bakery');
   assert.ok(alert, 'a verified reply should appear in Needs attention');
   assert.match(alert.reason, /future cold follow-ups are paused/);
   await assert.rejects(s.event('reply_draft_saved', { source_id: 'stale-reply', body: 'A draft for the wrong reply.' }, 'stale-reply-draft', undefined, 'friend'), /exact current reply/);
-  await s.event('reply_draft_saved', { source_id: 'verified-reply-1', body: 'Thanks for the details. I would be glad to discuss the next step.' }, 'reply-draft', undefined, 'friend');
+  await s.event('reply_draft_saved', { source_id: 'verified-reply-1', reply_sha256:hash((await s.app.snapshot()).prospects['fictional-bakery'].reply), source_sha256:(await s.app.snapshot()).prospects['fictional-bakery'].reply.content.source_sha256, body: 'Thanks for the details. I would be glad to discuss the next step.' }, 'reply-draft', undefined, 'friend');
   let state = await s.app.snapshot();
-  assert.deepEqual(state.prospects['fictional-bakery'].reply_drafts.at(-1), { source_id: 'verified-reply-1', body: 'Thanks for the details. I would be glad to discuss the next step.', at, actor: 'friend' });
+  assert.equal(state.prospects['fictional-bakery'].reply_drafts.at(-1).actor,'friend');
+  assert.equal(state.prospects['fictional-bakery'].reply_draft.status,'Draft');
   assert.equal(state.events['reply-draft'].actor, 'friend');
   await s.event('reply_reviewed', { source_id: 'verified-reply-1', reply_sha256: hash(state.prospects['fictional-bakery'].reply), outcome: 'hold', note: 'Wait for a human follow-up.' }, 'reply-decision', undefined, 'friend');
   state = await s.app.snapshot();

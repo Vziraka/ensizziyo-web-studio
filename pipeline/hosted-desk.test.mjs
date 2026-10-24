@@ -1,4 +1,5 @@
 import {sourceContentHash} from './sources.mjs';
+import {fixtureReply} from './lifecycle-fixtures.mjs';
 import {readDeskSnapshot} from './lifecycle-ui/snapshot-read.js';
 import test from 'node:test';import assert from 'node:assert/strict';import {createHostedDesk} from './hosted-desk.mjs';
 import {StudioLifecycle} from './lifecycle.mjs';import {ConditionalLifecycleStore} from './lifecycle-store.mjs';
@@ -6,6 +7,23 @@ const origin='https://preview.example.invalid',at='2026-10-23T15:00:00.000Z',env
 function rawStore(){let data,version=0;const audio=new Map();return {writes:0,loseNext:false,async getWithMetadata(key,options){assert.equal(options.consistency,'strong');if(key.startsWith('audio/'))return audio.has(key)?{data:audio.get(key),etag:'"audio"'}:null;return data?{data:structuredClone(data),etag:`"${version}"`}:null;},async set(key,bytes,options){assert.equal(options.onlyIfNew,true);if(audio.has(key))return {modified:false};audio.set(key,Buffer.from(bytes));return {modified:true,etag:'"audio"'};},async setJSON(key,next,options){if(options.onlyIfNew&&data||options.onlyIfMatch!==undefined&&options.onlyIfMatch!==`"${version}"`)return {modified:false};data=structuredClone(next);version++;this.writes++;if(this.loseNext){this.loseNext=false;throw Error('Simulated lost mutation response');}return {modified:true,etag:`"${version}"`};}};}
 const cookie=response=>response.headers.get('set-cookie')?.split(';',1)[0];
 const request=(path,{method='GET',headers={},body}={})=>new Request(origin+'/desk'+path,{method,headers,...(body===undefined?{}:{body:JSON.stringify(body)})});
+
+test('hosted public handlers expose source-bound reply suggestions and require exact signed human approval with no execution',async()=>{
+ for(const actor of ['owner','friend']){
+  const raw=rawStore(),make=()=>createHostedDesk({env,storeFactory:()=>raw,now:()=>new Date(at)}),boot=await make()(request('/api/bootstrap')),csrf=(await boot.json()).csrf,initial=cookie(boot),login=await make()(request('/api/login',{method:'POST',headers:{cookie:initial,'content-type':'application/json','x-studio-token':csrf,origin},body:{key:env[actor==='owner'?'EVZ_OPERATIONS_OWNER_KEY':'EVZ_OPERATIONS_FRIEND_KEY']}})),headers={cookie:initial+'; '+cookie(login),'content-type':'application/json','x-studio-token':csrf,origin};
+  const read=async()=> (await(await make()(request('/api/state',{headers}))).json()),post=body=>make()(request('/api/event',{method:'POST',headers,body}));await read();
+  const app=await StudioLifecycle.fromStore({store:new ConditionalLifecycleStore(raw),now:()=>new Date(at)}),event=(id,type,data)=>({id,prospect_id:'shared-proof',type,at,data}),from=(await app.snapshot()).prospects['shared-proof'].contact.email;
+  await app.apply(event('incoming-content','reply_received',fixtureReply('reply','thread',from)),{actor:'provider'});
+  let state=await read(),r=state.prospects['shared-proof'];assert.match(r.reply_suggestion.body,/website page/);assert.equal(r.reply_suggestion.summary.method,'Extractive preview; no semantic model');
+  const save={revision:state.revision,event:event('save-reply','reply_draft_saved',{source_id:'reply',reply_sha256:r.reply_sha256,source_sha256:r.reply.content.source_sha256,body:r.reply_suggestion.body})};
+  assert.equal((await make()(request('/api/event',{method:'POST',headers:{...headers,'x-studio-token':'wrong'},body:save}))).status,403);assert.equal((await post(save)).status,200);
+  state=await read();r=state.prospects['shared-proof'];const approval={revision:state.revision,event:event('approve-reply','reply_draft_approved',{sha256:r.reply_draft.sha256,approved:true,facts_checked:true})};
+  assert.equal((await post({...approval,event:{...approval.event,data:{...approval.event.data,sha256:'0'.repeat(64)}}})).status,400);assert.equal((await post(approval)).status,200);assert.equal((await(await post(approval)).json()).duplicate,true);
+  state=await read();assert.equal(state.prospects['shared-proof'].reply_draft.approved_by,actor);assert.equal(state.prospects['shared-proof'].reply_draft.status,'Approved; sending held');assert.equal(state.controls.connector_writes_enabled,false);assert.equal(state.controls.outreach_paused,true);assert.equal(Object.values(state.actions).some(a=>a.type==='email'),false);
+  await app.apply(event('changed-content','reply_received',fixtureReply('reply','thread',from,'Please clarify the contact page.')),{actor:'provider'});state=await read();assert.equal(state.prospects['shared-proof'].reply_draft,null);assert.equal((await post({...approval,revision:state.revision,event:{...approval.event,id:'stale-reply-approval'}})).status,400);
+  assert.equal((await post({...save,revision:state.revision,event:{...save.event,id:'forged-source',type:'reply_received'}})).status,400);
+ }
+});
 
 test('hosted owner and friend review exact website replies into one concepts item with stale/retry/concurrency protection',async()=>{
  for(const actor of ['owner','friend']){

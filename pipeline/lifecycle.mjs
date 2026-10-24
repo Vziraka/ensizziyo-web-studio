@@ -1,3 +1,4 @@
+import {replySuggestion,replyDraftContent,replyDraftCurrent,validReplySource} from './reply-content.mjs';
 import {prepareNotificationsInState,notificationView} from './team-notifications.mjs';
 import {openingView,selectOpening} from './opening-policy.mjs';
 import { mkdir, readFile, writeFile, lstat } from 'node:fs/promises';
@@ -568,15 +569,33 @@ export class StudioLifecycle {
           case 'reply_received':
             check(actor === 'provider' || actor === 'controlled-fixture', 'Reply must be verified at the provider boundary');
             check(key(data.source_id) && ['reply', 'decline', 'do_not_contact', 'bounce', 'out_of_office'].includes(data.kind), 'A verified reply/event ID and kind are required');
-            r.reply = { ...data, at: event.at }; pauseCold(state, r, eid, data.kind);
+            pauseCold(state, r, eid, data.kind);
+            if(r.reply&&Date.parse(r.reply.at)>Date.parse(event.at))break;
+            if(r.reply){r.reply_history??=[];r.reply_history.push(r.reply);}
+            r.reply = { ...data, at: event.at };
+            if(data.content?.status==='Complete')check(validReplySource(r.reply),'Reply body/provenance differs from its exact source');
+            if(r.reply_draft){r.reply_draft_history??=[];r.reply_draft_history.push({...r.reply_draft,status:'Superseded'});delete r.reply_draft;}
+            r.reply_suggestion=replySuggestion(r);
             if(r.reply_review){r.reply_review_history??=[];r.reply_review_history.push({...r.reply_review,superseded_by:eid});delete r.reply_review;}
             if (r.restriction) { r.stage = 'Stopped'; break; }
             if (['decline', 'do_not_contact'].includes(data.kind)) { r.restriction = data.kind; r.stage = 'Stopped'; }
             else { r.stage = data.kind === 'reply' ? 'Reply review' : 'Hold'; r.next_check = data.kind === 'reply' ? 'Owner reviews reply and next action' : 'Verify contact/return date; never auto-resume from a bounce or auto-reply'; } break;
-          case 'reply_draft_saved':
-            owner(actor); check(r.stage === 'Reply review' && data.source_id === r.reply?.source_id, 'Draft must match the exact current reply');
-            check(text(data.body), 'Write a bounded reply draft for human review');
-            r.reply_drafts ??= []; r.reply_drafts.push({ source_id: data.source_id, body: data.body, at: event.at, actor }); break;
+          case 'reply_draft_saved': {
+            owner(actor);check(['owner','friend'].includes(actor),'A signed operator must prepare reply drafts');check(!r.restriction&&r.reply?.kind==='reply'&&['Reply review','Discovery','Information requested'].includes(r.stage)&&validReplySource(r.reply)&&data.source_id===r.reply.source_id&&data.reply_sha256===hash(r.reply)&&data.source_sha256===r.reply.content.source_sha256,'Draft must match the exact current reply with complete content');
+            check(!r.follow_up_owner||r.follow_up_owner===actor,'Claim or hand off this reply before editing its draft');
+            check(r.contact?.verified===true&&r.contact.email?.toLowerCase()===r.reply.content.from,'Reply recipient differs from the current verified contact');
+            check(text(data.body),'Write a bounded reply draft for human review');
+            const content=replyDraftContent(r,data.body,actor,this.config);
+            if(r.reply_draft){r.reply_draft_history??=[];r.reply_draft_history.push({...r.reply_draft,status:'Superseded'});}
+            r.reply_draft={source_id:data.source_id,source_sha256:data.source_sha256,reply_sha256:data.reply_sha256,body:content.body,content,sha256:hash(content),owner:r.follow_up_owner??null,at:event.at,actor,status:'Draft'};
+            r.reply_drafts??=[];r.reply_drafts.push(r.reply_draft);break;
+          }
+          case 'reply_draft_approved': {
+            owner(actor);check(['owner','friend'].includes(actor),'A signed operator must approve reply drafts');const draft=r.reply_draft;
+            check(!r.follow_up_owner||r.follow_up_owner===actor,'Claim or hand off this reply before approving');
+            check(['Reply review','Discovery','Information requested'].includes(r.stage)&&draft?.status==='Draft'&&replyDraftCurrent(r,draft)&&data.sha256===draft.sha256&&data.approved===true&&data.facts_checked===true,'Review the exact current reply draft, recipient and facts before approval');
+            draft.status='Approved; sending held';draft.approved_by=actor;draft.approved_at=event.at;draft.approval_event=eid;break;
+          }
           case 'email_delivered': {
             check(actor === 'provider' && data.simulated === r.controlled && key(data.message_id), 'Verified provider email identity required');
             const action = state.actions[data.action_id];
@@ -707,7 +726,7 @@ export class StudioLifecycle {
     const first = contacted.filter(r => businessDate(r.attempts.find(a => !a.simulated).at) === today).length;
     const supply = callSupply(state, this.now()), queue = supply.queue;
     state.reply_alerts = Object.values(state.prospects).filter(r => r.stage === 'Reply review').map(r => ({ id: `reply-review-${r.id}`, prospect_id: r.id, reason: `${r.name}: verified reply needs a human decision; future cold follow-ups are paused.` }));
-    return { ...state,team_notifications:undefined,notification_preparation:notificationView(state),follow_up_settings:{follow_up:{booking_url:this.config.follow_up?.booking_url},sender:{email:this.config.sender?.email,postal_address:this.config.sender?.postal_address,operator_names:this.config.sender?.operator_names}}, discovery_daily:discoveryDailySummary(state,this.now()), discovery_batches:Object.values(state.discovery_batches??{}).map(discoverySummary), discovery_campaigns:Object.values(state.discovery_campaigns??{}).map(c=>discoveryCampaignSummary(c,state)), discovery_enabled:this.config.discovery?.enabled===true, owner_contact_summary:ownerContactSummary(state,this.now()), provider_contact_summary:providerContactSummary(state,this.now()), supply, pending_bookings:Object.entries(this.config.operations?.bookings??{}).filter(([id])=>!state.operations?.bookings?.[id]?.verified).map(([id,b])=>({id,prospect_id:b.prospect_id,start:b.start,mode:b.mode,status:state.operations?.holds?.[id]??'Queued for calendar verification'})), supplemental_reviews: supplementalReviews, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, reply_sha256:r.reply?hash(r.reply):null, opening_view:openingView(r),owner_contact_view:ownerContactView(r,this.now()),contact_evidence:contactEvidenceView(r,this.now()), provider_contact_view:providerContactView(r,this.now()), quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode,follow_up_enabled:this.config.follow_up?.enabled===true, research_paused: researchPaused, research_priority: researchPriority, outreach_paused: !this.config.outreach_enabled, calls_paused: !this.config.outreach_enabled && !this.config.calls_enabled, priority: this.config.priority,
+    return { ...state,team_notifications:undefined,notification_preparation:notificationView(state),follow_up_settings:{follow_up:{booking_url:this.config.follow_up?.booking_url},sender:{email:this.config.sender?.email,postal_address:this.config.sender?.postal_address,operator_names:this.config.sender?.operator_names}}, discovery_daily:discoveryDailySummary(state,this.now()), discovery_batches:Object.values(state.discovery_batches??{}).map(discoverySummary), discovery_campaigns:Object.values(state.discovery_campaigns??{}).map(c=>discoveryCampaignSummary(c,state)), discovery_enabled:this.config.discovery?.enabled===true, owner_contact_summary:ownerContactSummary(state,this.now()), provider_contact_summary:providerContactSummary(state,this.now()), supply, pending_bookings:Object.entries(this.config.operations?.bookings??{}).filter(([id])=>!state.operations?.bookings?.[id]?.verified).map(([id,b])=>({id,prospect_id:b.prospect_id,start:b.start,mode:b.mode,status:state.operations?.holds?.[id]??'Queued for calendar verification'})), supplemental_reviews: supplementalReviews, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, reply_sha256:r.reply?hash(r.reply):null, reply_suggestion:replySuggestion(r),reply_draft:r.reply_draft?{...r.reply_draft,current:replyDraftCurrent(r,r.reply_draft)}:null, opening_view:openingView(r),owner_contact_view:ownerContactView(r,this.now()),contact_evidence:contactEvidenceView(r,this.now()), provider_contact_view:providerContactView(r,this.now()), quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode,follow_up_enabled:this.config.follow_up?.enabled===true, research_paused: researchPaused, research_priority: researchPriority, outreach_paused: !this.config.outreach_enabled, calls_paused: !this.config.outreach_enabled && !this.config.calls_enabled, priority: this.config.priority,
       runtime_enabled: this.config.runtime?.enabled === true, final_review: this.config.mode === 'production' ? { fingerprint: (await import('./production.mjs')).releaseFingerprint(this.config), gates: (await import('./production.mjs')).productionGates(this.config), approved: this.config.release?.approved === true, verified: this.config.verified_summary ?? [],
         calls: { fingerprint: (await import('./production.mjs')).callReleaseFingerprint(this.config), approved: this.config.call_release?.approved === true, evidence: this.config.call_readiness ?? {}, transcript_daily_calls: this.config.transcript_ai.daily_calls } } : null,
       ai_enabled: this.config.transcript_ai.enabled, connector_writes_enabled: this.config.connector_writes_enabled, readiness: this.config.readiness },

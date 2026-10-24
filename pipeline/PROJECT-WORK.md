@@ -6,6 +6,8 @@ These are persistent preparation tasks and review records. The [local authoring 
 
 ## Website interest from a reply
 
+[Source-bound reply preparation](REPLIES.md) supplies the retained text, extract, editable starter and separate held approval. It does not infer interest or service focus.
+
 In **Call & reply reviews**, either signed operator chooses the next action and **Service confirmed in this reply**. `discovery` or `requested_info` with `website` creates one Ready `website-concepts` item, including when the earlier website call was unanswered. The default is **Not confirmed — ask which service**. That choice creates no concepts item and keeps a focused service question/form available in Clients & support; clarify against the same reply or use the existing qualified discovery form. Systems, AI and marketing focus, hold (including busy/callback or wrong-contact), decline and do-not-contact decisions never imply website interest. Cold research or an ignored email cannot qualify this path.
 
 `reply_reviewed` now requires the current `source_id` and `reply_sha256` exposed in the authenticated dashboard, plus explicit `focus` for positive outcomes (`website`, `systems`, `ai`, `marketing` or `unspecified`). The saved review, task request and private context retain the exact reply identity/thread, source hash, signed actor and review event. Qualified discovery binds its service to that review. Workspace revision checks reject stale submissions; exact event retries return the saved receipt, and one stable work ID prevents concurrent duplicate items.

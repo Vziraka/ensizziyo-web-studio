@@ -322,11 +322,16 @@ export class ProductionOperations extends ControlledOperations {
           const raw = yield request(`${prospectId}-${e.thread.thread_id}-thread`, 'thread', { thread_id: e.thread.thread_id, max_messages: 20 });
           check(!raw.failed, 'Reply monitoring unavailable; hold contact');
           for (const reply of controlledThread(raw, e.thread, now)) {
-            const effectId = `reply-${hash(`${prospectId}:${reply.id}`).slice(0, 32)}`;
-            o.effects[effectId] ??= { event: { id: effectId, prospect_id: prospectId, type: 'reply_received', at: reply.at, data: { source_id: reply.id, kind: reply.kind, thread_id: e.thread.thread_id } } };
+            const effectId = `reply-${hash(`${prospectId}:${reply.id}:${hash(reply.content)}`).slice(0, 32)}`;
+            o.effects[effectId] ??= { event: { id: effectId, prospect_id: prospectId, type: 'reply_received', at: reply.at, data: { source_id: reply.id, kind: reply.kind, thread_id: e.thread.thread_id, content:reply.content } } };
             if (!o.replies.includes(reply.id)) { o.replies.push(reply.id); retain(`${prospectId}-${e.thread.thread_id}-thread`); }
             r.cold_paused = true;
-            r.reply={...reply,at:reply.at};
+            // Keep same-cycle send guards closed before the persisted reply effect is applied.
+            if(!r.reply||Date.parse(r.reply.at)<=Date.parse(reply.at)){
+              const incoming={source_id:reply.id,thread_id:e.thread.thread_id,kind:reply.kind,content:reply.content,at:reply.at};
+              if(r.reply&&hash(r.reply)!==hash(incoming)){r.reply_history??=[];r.reply_history.push(r.reply);}
+              r.reply=incoming;
+            }
           }
         }
         let binding = o.bindings[prospectId];
