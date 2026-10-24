@@ -6,7 +6,8 @@ import {writePortableLifecycleBackup} from './lifecycle-backup.mjs';
 
 // Interactive signed caller only: no model, rasterizer, background worker or automatic effect retry.
 export async function connectSharedAuthoring(options={}){
- const {operator,request,json}=await sharedDeskSession(options),base='/api/project-author/';
+ const session=await sharedDeskSession(options),{operator,request}=session,base='/api/project-author/';
+ const json=(path,options)=>session.json(path,options,4_500_000);
  const idOK=id=>check(typeof id==='string'&&/^author-[a-f0-9]{32}$/.test(id),'Choose an exact current authoring job');
  const path=(id,name)=>{idOK(id);check(/^[a-z0-9.-]{1,60}$/.test(name),'Choose a retained sidecar name');return base+id+'/file/'+name;};
  const command=(operation,input)=>json(base+operation,{method:'POST',body:input});

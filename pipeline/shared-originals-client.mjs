@@ -17,7 +17,7 @@ export async function sharedDeskSession({origin,key:operatorKey,fetcher=fetch}={
   const set=response.headers.get('set-cookie');if(set)cookie=[cookie,set.split(';')[0]].filter(Boolean).join('; ');
   if(!response.ok){let error;try{error=JSON.parse((await bounded(response,120_000)).toString()).error;}catch{}throw Error(error??'Authenticated shared original request failed');}return response;
  }
- const json=async(path,options)=>JSON.parse((await bounded(await request(path,options),4_500_000)).toString());
+ const json=async(path,options,limit=120_000)=>JSON.parse((await bounded(await request(path,options),limit)).toString());
  csrf=(await json('/api/bootstrap')).csrf;const session=await json('/api/login',{method:'POST',body:{key:operatorKey}});check(['owner','friend'].includes(session.operator),'Shared operator authentication failed');
  return {operator:session.operator,request,json};
 }
