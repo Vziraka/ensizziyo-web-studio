@@ -1,5 +1,7 @@
 # Source-bound reply review
 
+The separately disabled [hosted incoming reader](GOOGLE-INCOMING-MAIL.md) now supplies this same lifecycle from bounded registered Gmail threads and durable history progress. Both signed operators can call it manually; local HTTP/OAuth fixtures and the existing rendered review flow pass. This adds no intent inference, automatic reply, external notification delivery or production monitoring.
+
 The [disabled exact-message caller](GOOGLE-EXACT-MAIL.md) can now consume this existing held draft after a **separate explicit send approval**. Reply-content approval below still creates no send intent itself. Current References are retained alongside original provenance; prior sources remain unchanged. Fictional provider-boundary verification does not establish live delivery or computer-off monitoring.
 
 Acceptance audit **R33** has a bounded local/shared-handler implementation. The existing verified-thread monitor pauses cold work, retains bounded incoming text and prepares a source extract plus a conservative editable clarification starter. This is deterministic preparation. It does not establish semantic AI summary/response quality, live mailbox body compatibility, computer-off monitoring or conversational delivery.

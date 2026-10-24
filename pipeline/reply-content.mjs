@@ -4,7 +4,8 @@ import {operatorDisplayName,evzIdentity} from './follow-up-template.mjs';
 const hash=value=>createHash('sha256').update(typeof value==='string'?value:JSON.stringify(value)).digest('hex');
 const limit=24_000;
 const address=value=>{const matches=String(value??'').match(/[^\s<>\",;]+@[^\s<>\",;]+\.[^\s<>\",;]+/g)??[];return matches.length===1?matches[0].toLowerCase():'';};
-const header=(m,name)=>{const values=(m.payload?.headers??[]).filter(h=>h.name?.toLowerCase()===name.toLowerCase());if(values.length>1||values.some(h=>typeof h.value!=='string'||/[\r\n]/.test(h.value)))throw Error('Ambiguous message headers');return values[0]?.value??'';};
+export const replyHeader=(m,name)=>{const values=(m.payload?.headers??[]).filter(h=>h.name?.toLowerCase()===name.toLowerCase());if(values.length>1||values.some(h=>typeof h.value!=='string'||h.value.length>4000||/[\r\n]/.test(h.value.replace(/\r\n[ \t]+/g,' '))))throw Error('Ambiguous message headers');return (values[0]?.value??'').replace(/\r\n[ \t]+/g,' ');};
+const header=replyHeader;
 function htmlText(value){
   // Conservative text projection only. Never render incoming HTML or follow its links.
   if(/<!--|<!\[|&(?!(?:amp|lt|gt|quot|apos|nbsp|#39);)/i.test(value))throw Error('HTML needs original-message review');
@@ -18,12 +19,18 @@ function extract(payload){
     const mime=String(p.mime_type??p.mimeType??'').toLowerCase();
     if(mime.startsWith('multipart/')){if(!Array.isArray(p.parts)||!p.parts.length)throw Error('Missing MIME parts');for(const part of p.parts)visit(part,depth+1);return;}
     if(!['text/plain','text/html'].includes(mime))return;
+    const contentType=(p.headers??[]).filter(h=>h.name?.toLowerCase()==='content-type');
+    if(contentType.length>1)throw Error('Ambiguous content type');
+    const charset=/charset\s*=\s*"?([^";\s]+)/i.exec(contentType[0]?.value??'')?.[1]?.toLowerCase();
+    if(charset&&!['utf-8','utf8','us-ascii'].includes(charset))throw Error('Unsupported reply charset; review original message');
     const b=p.body??{};let text=b.content??p.content;
     if(b.content!==undefined&&p.content!==undefined&&b.content!==p.content)throw Error('Ambiguous reply text representations');
     if(b.attachment_id||b.attachmentId||p.truncated||b.truncated)throw Error('Reply body is partial or requires a separate attachment read');
     if(text===undefined&&typeof b.data==='string'){
       if(!/^[A-Za-z0-9_-]*={0,2}$/.test(b.data)||b.data.length>limit*2)throw Error('Invalid encoded body');
-      text=new TextDecoder('utf-8',{fatal:true}).decode(Buffer.from(b.data,'base64url'));
+      const bytes=Buffer.from(b.data,'base64url');if(bytes.toString('base64url')!==b.data.replace(/=+$/,''))throw Error('Noncanonical encoded body');
+      if(charset==='us-ascii'&&bytes.some(b=>b>127))throw Error('Invalid ASCII reply body');
+      text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);
     }
     if(typeof text!=='string'||!text.trim()||text.includes('\ufffd'))throw Error('Reply body is missing or unreadable');
     if(b.size!==undefined&&(!Number.isSafeInteger(b.size)||b.size!==Buffer.byteLength(text)))throw Error('Reply body size differs from complete source');

@@ -201,3 +201,20 @@ test('actual owner callback connects a shared grant used by both signed exact-ma
   assert.doesNotMatch(JSON.stringify(business.records.get('workspace')),/synthetic-access-token|synthetic-refresh-token|client_secret|code_verifier/);assert.equal(business.records.has('credential'),false);
  }
 });
+
+test('new encrypted OAuth grant wires into both signed incoming callers only after separate incoming capability',async()=>{
+ for(const actor of ['owner','friend']){
+  const f=fixture(),connected=await f.connect(),business=rawStore(),calls=[];
+  const fetcher=async(url,o)=>{
+   const u=new URL(url);calls.push(u.pathname);assert.equal(u.origin,'https://gmail.googleapis.com');assert.equal(o.method,'GET');assert.equal(o.headers.Authorization,'Bearer synthetic-access-token');
+   if(u.pathname.endsWith('/profile'))return Response.json({emailAddress:binding.account,historyId:'100'});
+   assert.ok(u.pathname.endsWith('/threads/thread'));const text='Could you share website examples?',part=(id,from,to,extra,labels,time)=>({id,threadId:'thread',labelIds:labels,internalDate:String(time),payload:{mimeType:'text/plain',headers:[{name:'From',value:from},{name:'To',value:to},{name:'Subject',value:id==='original'?'Website question':'Re: Website question'},{name:'Message-ID',value:`<${id}@example.invalid>`},...extra],body:{data:Buffer.from(text).toString('base64url'),size:Buffer.byteLength(text)}}});
+   return Response.json({id:'thread',messages:[part('original','hello@evzdigital.studio','project@example.invalid',[],['SENT'],f.time-10000),part('incoming','project@example.invalid','hello@evzdigital.studio',[{name:'In-Reply-To',value:'<original@example.invalid>'},{name:'Authentication-Results',value:'mx.google.com; dmarc=pass header.from=example.invalid'}],['INBOX'],f.time-1000)]});
+  };
+  const make=enabled=>createHostedDesk({env:{...env,...(enabled?{EVZ_OPERATIONS_GOOGLE_INCOMING_MAIL:'fictional-incoming-v1'}:{})},storeFactory:()=>business,now:()=>new Date(f.time),googleOAuthOptions:{storeFactory:()=>f.raw,fetcher:async()=>{throw Error('No refresh needed');}},googleIncomingOptions:{fetcher}}),handler=make(false),headers=await login(handler,actor);
+  await handler(request('/api/state',{headers}));const entry=business.records.get('workspace'),c=entry.data.config;c.sender={email:'hello@evzdigital.studio',account_email:binding.account};c.google_incoming_mail={enabled:true,capability:'fictional-incoming-v1',run_id:c.run_id,grant_id:connected.grant_id,account_email:binding.account};c.operations={threads:{project:{thread_id:'thread',original_id:'original',from:'hello@evzdigital.studio',to:'project@example.invalid',subject:'Website question'}}};business.records.set('workspace',entry);
+  const app=await StudioLifecycle.fromStore({store:new ConditionalLifecycleStore(business),now:()=>new Date(f.time)});await app.apply(fixtureProspect('project',new Date(f.time).toISOString()));
+  const input={method:'POST',headers,body:{}};assert.equal((await handler(request('/api/incoming-mail/sync',input))).status,400);assert.equal(calls.length,0);
+  const result=await make(true)(request('/api/incoming-mail/sync',input));assert.equal(result.status,200,await result.clone().text());assert.equal((await app.snapshot()).prospects.project.stage,'Reply review');assert.equal(calls.length,2);assert.doesNotMatch(JSON.stringify(business.records.get('workspace')),/synthetic-access-token|synthetic-refresh-token|client_secret|code_verifier/);
+ }
+});

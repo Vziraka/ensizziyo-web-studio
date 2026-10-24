@@ -2,6 +2,8 @@
 
 ## Shared operations desk redesign — October 23, 2026
 
+- [x] Add separately disabled hosted Gmail incoming synchronization through existing registered conversations and `reply_received`: bounded first sync/history paging, atomic cursor/effects/dedup, capped404 recovery with visible gap hold, MIME/source provenance, cold stops and held operator notifications. Both signed roles and OAuth-to-reader local wire fixtures pass; real mailbox/hosted compatibility, recovery review, scheduling and computer-off acceptance remain open. [Caller and limits](pipeline/GOOGLE-INCOMING-MAIL.md).
+
 - [x] Add separately disabled owner-only hosted Google authorization-code grant and encrypted credential namespace: exact business/client/deployment/identity/scopes, one-use callback/PKCE, durable refresh claims, metadata-only shared status and local disconnect. Signed handler/both-operator exact-mail tests and intercepted local callback browser checks pass. Real client/consent/hosted callback/refresh/send and production/PC-off acceptance remain open. [Grant contract and future placeholder setup](pipeline/GOOGLE-OAUTH.md).
 
 - [x] Add a disabled hosted Gmail exact-message transport and existing held-reply/PDF caller: separate signed exact send approval, stable lifecycle intent before provider effects, exact MIME/thread/PDF binding and complete Sent readback without automatic retry. Both-operator fictional caller/hosted-handler and response-loss tests pass. No owner OAuth, real send, production capability, scheduler or computer-off acceptance is implied. [Caller, limits and remaining source work](pipeline/GOOGLE-EXACT-MAIL.md).

@@ -1,5 +1,7 @@
 # Disabled hosted Gmail exact-message transport
 
+The separately disabled [incoming reader](GOOGLE-INCOMING-MAIL.md) now consumes these existing verified delivery/thread associations through bounded history sync and the existing reply/stop/review lifecycle. It adds no sending authority, grant scopes or scheduler; provider acceptance remains unverified.
+
 The separate [disabled owner OAuth source](GOOGLE-OAUTH.md) now supplies a new owner-only authorization-code grant, encrypted credentials and serialized server token provider. Its local tests cover the actual signed callback and both-operator transport wiring. Real client/consent/deployed callback/provider proof remains open; the earlier transport-only checkpoint below does not claim those occurred.
 
 The direct Google OAuth design now has a real Gmail REST transport and a reusable caller for the existing current reply draft and authored held PDF companion draft. `exact-mail.mjs` owns package review, explicit send approval, reservation, dispatch and reconciliation through the existing lifecycle `actions`, `events`, `operations.requests` and `operations.email`. It does not create another queue or sending authority. This is source and account-free integration evidence; no Google grant, provider request, deployed configuration or real send was made.

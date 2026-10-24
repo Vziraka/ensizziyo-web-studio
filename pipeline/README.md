@@ -1,5 +1,7 @@
 # Controlled research proof
 
+[Disabled Gmail incoming synchronization](GOOGLE-INCOMING-MAIL.md) connects signed owner/friend calls to existing registered conversations, durable history/cursor dedup, source-bound reply review, cold stops and held notifications. Run `node --test pipeline/google-incoming-mail.test.mjs pipeline/google-oauth.test.mjs` from repository root for local substituted HTTP/handler/OAuth checks. OAuth connection alone starts no reading; production/D2 and schedules remain closed.
+
 [Disabled owner Google grant](GOOGLE-OAUTH.md) adds owner-only authorization-code start/callback/local disconnect, encrypted separated credentials and serialized server-only tokens for the existing exact-mail caller. Run `node --test pipeline/google-oauth.test.mjs pipeline/exact-mail.test.mjs` from repository root for account-free signature/handler/provider-wire checks. All flags remain unset; no real client, consent, exchange, send, hosted callback or production activation occurred.
 
 [Disabled exact Gmail delivery](GOOGLE-EXACT-MAIL.md) connects current held replies and authored PDF companion packages to a separate signed send approval and the existing lifecycle intent ledger. Run `node --test pipeline/exact-mail.test.mjs` from the repository root for account-free actual-caller/provider-wire checks. No OAuth grant, provider request, production capability or scheduler is enabled.

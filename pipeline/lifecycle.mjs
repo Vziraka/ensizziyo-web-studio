@@ -98,7 +98,7 @@ function scheduleCallback(state, record, callbackAt, performedAt, eventId) {
   record.stage = 'Callback'; record.callback_at = exact; record.callback_due_at = due.toISOString();
   request(state, record, 'callback_task', { due_at: due.toISOString(), kind: 'callback', exact_time: Boolean(exact) }, eventId);
 }
-function pauseCold(state, record, eventId, reason) {
+export function pauseCold(state, record, eventId, reason) {
   record.cold_paused = true;
   for (const action of Object.values(state.actions)) if (action.prospect_id === record.id && ['email', 'call_task', 'callback_task'].includes(action.type)) {
     if (action.status === 'Queued') {
@@ -219,6 +219,7 @@ export class StudioLifecycle {
       release = await acquireLifecycleLock(this.directory);
       const state = await readJson(join(this.directory, 'lifecycle-state.json'));
       check(state.schema_version === 1, 'Unknown state version');
+      if(options?.configFingerprint)check(hash(await this.loadConfig())===options.configFingerprint,'Incoming configuration changed during read; no cursor or effects committed');
       const result = await fn(state);
       check(Buffer.byteLength(JSON.stringify(state)) <= 20_000_000, 'State size limit reached; archive closed records before proceeding');
       await saveJson(join(this.directory, 'lifecycle-state.json'), state);

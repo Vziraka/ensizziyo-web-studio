@@ -13,6 +13,7 @@ import {StudioLifecycle,initialConfig,check} from './lifecycle.mjs';import {Cond
 import {audioRequest,saveCallAudio,readCallAudio,reconcileCallAudio,blobAudioStore} from './call-audio.mjs';
 import {exactMailPackage,approveExactMail,dispatchExactMail,reconcileExactMail} from './exact-mail.mjs';
 import {createGoogleOAuth,googleOAuthPath,googleOAuthCallbackHTML,googleOAuthCallbackJS} from './google-oauth.mjs';
+import {syncIncomingMail,incomingMailView} from './google-incoming-mail.mjs';
 
 const base='/desk',csrfCookie='evz_desk_csrf',maxBody=120_000;
 const headers={'Cache-Control':'no-store','Netlify-CDN-Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; font-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"};
@@ -49,7 +50,7 @@ export function projectDashboard(view){
  delete view.ai_attempts;delete view.transcript_assessment;delete view.gateway_proof;delete view.gateway_proof_reviews;delete view.call_transcription_rehearsal;delete view.full_call_transcription;return projectSourceBodies(view);
 }
 
-export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=()=>new Date(),assetDirectory=fileURLToPath(new URL('./lifecycle-ui/',import.meta.url)),readAsset=null,gatewayOptions={},googleMailOptions={},googleOAuthOptions={},backgroundOnly=false}={}){
+export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=()=>new Date(),assetDirectory=fileURLToPath(new URL('./lifecycle-ui/',import.meta.url)),readAsset=null,gatewayOptions={},googleMailOptions={},googleIncomingOptions={},googleOAuthOptions={},backgroundOnly=false}={}){
  return async request=>{
   let settings;try{settings=configured(env,now);}catch{return json(503,{error:'Private desk is not configured'});}
   const url=new URL(request.url),path=url.pathname.slice(base.length)||'/';
@@ -114,6 +115,13 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    if(request.method==='GET'&&path==='/api/full-call-transcription')return json(200,await fullCallView(app,env));
    if(request.method==='GET'&&path==='/api/transcript-assessment')return json(200,await assessmentView(app,env));
    if(request.method==='GET'&&path==='/api/team-notifications')return json(200,notificationView(await app.snapshot()));
+   if(request.method==='GET'&&path==='/api/incoming-mail')return json(200,{enabled:env.EVZ_OPERATIONS_GOOGLE_INCOMING_MAIL==='fictional-incoming-v1',...incomingMailView(await app.snapshot())});
+   if(post&&path==='/api/incoming-mail/sync'){
+    await inputBody(request);const options={...googleIncomingOptions,actor,env};
+    check(env.EVZ_OPERATIONS_GOOGLE_INCOMING_MAIL==='fictional-incoming-v1','Hosted incoming synchronization is disabled');
+    if(!options.getAccessToken&&env.EVZ_OPERATIONS_GOOGLE_OAUTH==='owner-code-v1')options.getAccessToken=createGoogleOAuth({...googleOAuthOptions,env,now:()=>+now(),grantId:app.config.google_incoming_mail?.grant_id}).getAccessToken;
+    return json(200,await syncIncomingMail(app,options));
+   }
    if(request.method==='GET'&&path==='/api/state'){
     const asOf=url.searchParams.get('as_of')??now().toISOString(),age=+now()-Date.parse(asOf);
     check(Number.isFinite(age)&&age>=0&&age<=300_000,'Desk snapshot expired; refresh to load the current workspace');
