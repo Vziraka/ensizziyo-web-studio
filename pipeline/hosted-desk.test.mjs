@@ -1,9 +1,21 @@
 import {sourceContentHash} from './sources.mjs';
+import {readDeskSnapshot} from './lifecycle-ui/snapshot-read.js';
 import test from 'node:test';import assert from 'node:assert/strict';import {createHostedDesk} from './hosted-desk.mjs';
 const origin='https://preview.example.invalid',at='2026-10-23T15:00:00.000Z',env={CONTEXT:'deploy-preview',EVZ_OPERATIONS_DESK_ENABLED:'fictional-preview',EVZ_OPERATIONS_ORIGIN:origin,EVZ_OPERATIONS_BLOB_NAMESPACE:'evz-redesign-proof-synthetic-123',EVZ_OPERATIONS_OWNER_KEY:'o'.repeat(43),EVZ_OPERATIONS_FRIEND_KEY:'f'.repeat(43),EVZ_OPERATIONS_SESSION_SECRET:'s'.repeat(43)};
 function rawStore(){let data,version=0;const audio=new Map();return {writes:0,loseNext:false,async getWithMetadata(key,options){assert.equal(options.consistency,'strong');if(key.startsWith('audio/'))return audio.has(key)?{data:audio.get(key),etag:'"audio"'}:null;return data?{data:structuredClone(data),etag:`"${version}"`}:null;},async set(key,bytes,options){assert.equal(options.onlyIfNew,true);if(audio.has(key))return {modified:false};audio.set(key,Buffer.from(bytes));return {modified:true,etag:'"audio"'};},async setJSON(key,next,options){if(options.onlyIfNew&&data||options.onlyIfMatch!==undefined&&options.onlyIfMatch!==`"${version}"`)return {modified:false};data=structuredClone(next);version++;this.writes++;if(this.loseNext){this.loseNext=false;throw Error('Simulated lost mutation response');}return {modified:true,etag:`"${version}"`};}};}
 const cookie=response=>response.headers.get('set-cookie')?.split(';',1)[0];
 const request=(path,{method='GET',headers={},body}={})=>new Request(origin+'/desk'+path,{method,headers,...(body===undefined?{}:{body:JSON.stringify(body)})});
+
+test('hosted snapshot pages keep one clock, actor and revision; foreign, expired and changed reads fail closed',async()=>{
+ let time=Date.parse(at);const raw=rawStore(),make=()=>createHostedDesk({env,storeFactory:()=>raw,now:()=>new Date(time)}),boot=await make()(request('/api/bootstrap')),csrf=(await boot.json()).csrf,initial=cookie(boot),login=await make()(request('/api/login',{method:'POST',headers:{cookie:initial,'content-type':'application/json','x-studio-token':csrf,origin},body:{key:env.EVZ_OPERATIONS_OWNER_KEY}})),headers={cookie:initial+'; '+cookie(login)};
+ await make()(request('/api/state',{headers}));const envelope=await raw.getWithMetadata('workspace',{type:'json',consistency:'strong'});envelope.data.state.prospects['shared-proof'].note='Fictional retained note. '.repeat(50000);await raw.setJSON('workspace',envelope.data,{onlyIfMatch:envelope.etag});
+ const firstResponse=await make()(request('/api/state?part=0',{headers})),first=await firstResponse.clone().json();assert.equal(first.transport,'desk-snapshot-v1');assert.ok(first.total>1);
+ const view=await readDeskSnapshot(firstResponse,{path:'/desk/api/state',fetch:async path=>{time+=1000;return make()(request(path.slice('/desk'.length),{headers}));}});assert.equal(view.prospects['shared-proof'].note,envelope.data.state.prospects['shared-proof'].note);
+ const next=`/api/state?part=1&revision=${first.revision}&sha256=${first.sha256}&as_of=${encodeURIComponent(first.as_of)}`;
+ assert.equal((await make()(request(next))).status,401);assert.equal((await make()(request(next,{headers:{...headers,origin:'https://foreign.invalid'}}))).status,403);
+ const changed=await raw.getWithMetadata('workspace',{type:'json',consistency:'strong'});changed.data.state.revision++;await raw.setJSON('workspace',changed.data,{onlyIfMatch:changed.etag});assert.equal((await make()(request(next,{headers}))).status,409);
+ time+=301000;assert.equal((await make()(request(next,{headers}))).status,400);
+});
 test('hosted desk fails closed before touching storage when config is absent, incomplete or production',async()=>{
  for(const configured of [{},{...env,CONTEXT:'production'},{...env,EVZ_OPERATIONS_SESSION_SECRET:''},{...env,EVZ_OPERATIONS_BLOB_NAMESPACE:'production'}]){let touched=false;const handler=createHostedDesk({env:configured,storeFactory:()=>{touched=true;throw Error('Must not access');}});assert.equal((await handler(request('/api/state'))).status,503);assert.equal(touched,false);}
 });

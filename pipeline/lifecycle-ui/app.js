@@ -5,6 +5,7 @@ import { renderCallDesk } from './call-desk.js';
 import { centsFromDollars } from './money.js';
 import {deskPath} from './paths.js';
 import {createEventRequest} from './event-request.js';
+import {readDeskSnapshot} from './snapshot-read.js';
 import {audioBusy,stopAudioCapture} from './call-audio.js';
 let state, csrf, operatorAuthRequired = false, view = 'today', selected = 'juniper', lane = 'all', assetProject = '', dirty = false, refreshAfter = 0;
 let eventRequest,loadedWorkspaceContext;
@@ -64,7 +65,7 @@ async function refresh() {
   const response = await fetch(deskPath('/api/state'));
   if (response.status === 401 && operatorAuthRequired) { showOperatorLogin(); return; }
   if (!response.ok) throw Error('Private session unavailable. Reload the console.');
-  state = await response.json();
+  state = await readDeskSnapshot(response,{fetch:(...args)=>fetch(...args),path:deskPath('/api/state')});
   if (state.hosted_preview && !eventRequest) eventRequest = createEventRequest({fetch: (...args) => fetch(...args), storage: sessionStorage, csrf: () => csrf, actor: () => state?.current_operator, changed: showPendingEvent});
   showPendingEvent();
   document.querySelector('nav').hidden = false; document.querySelector('.aside-foot').hidden = false;

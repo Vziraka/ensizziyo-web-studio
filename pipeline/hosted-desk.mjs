@@ -3,6 +3,7 @@ import {callTranscriptionView,approveCallTranscription,runCallTranscription,paus
 import {fullCallView,approveFullCall,runFullCall,pauseFullCall,fullCallWorkerPath} from './full-call-transcription.mjs';
 import {assessmentView,approveAssessment,runAssessment,pauseAssessment,assessmentWorkerPath} from './hosted-assessment.mjs';
 import {projectSourceBodies,retainedSource} from './retained-sources.mjs';
+import {deskSnapshotPage} from './desk-snapshot.mjs';
 import {prepareTeamNotifications,notificationView} from './team-notifications.mjs';
 import {projectContext,projectWorkContext} from './project-work.mjs';
 import {readFile} from 'node:fs/promises';import {join} from 'node:path';import {fileURLToPath} from 'node:url';import {createHmac,randomBytes,timingSafeEqual} from 'node:crypto';
@@ -11,7 +12,7 @@ import {audioRequest,saveCallAudio,readCallAudio,reconcileCallAudio,blobAudioSto
 
 const base='/desk',csrfCookie='evz_desk_csrf',maxBody=120_000;
 const headers={'Cache-Control':'no-store','Netlify-CDN-Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; font-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"};
-const json=(status,data,extra={})=>new Response(JSON.stringify(data),{status,headers:{...headers,'Content-Type':'application/json; charset=utf-8',...extra}});
+const json=(status,data,extra={})=>{let body=JSON.stringify(data);if(Buffer.byteLength(body)>4_500_000){status=413;body=JSON.stringify({error:'Private response exceeds the bounded read limit; narrow the saved record.'});}return new Response(body,{status,headers:{...headers,'Content-Type':'application/json; charset=utf-8',...extra}});};
 const cookieValue=(header,name)=>String(header??'').split(';').map(s=>s.trim()).find(s=>s.startsWith(name+'='))?.slice(name.length+1);
 const sign=(secret,payload)=>createHmac('sha256',secret).update('desk-csrf:'+payload).digest();
 function csrfValid(token,secret,now){try{const [payload,mac,extra]=token.split('.'),actual=Buffer.from(mac,'base64url'),expected=sign(secret,payload);if(extra!==undefined||actual.length!==expected.length||!timingSafeEqual(actual,expected))return false;const [expiry,nonce]=JSON.parse(Buffer.from(payload,'base64url'));return Number.isSafeInteger(expiry)&&expiry>+now&&typeof nonce==='string'&&nonce.length===32;}catch{return false;}}
@@ -33,7 +34,7 @@ async function openApp(raw,now){
  if(!snapshot.events['import-shared-proof'])await app.apply(fixtureProspect('shared-proof',app.config.preview_seeded_at,'STUDIO TEST Shared project'));
  return app;
 }
-function projectDashboard(view){
+export function projectDashboard(view){
  view.events=Object.fromEntries(Object.entries(view.events).map(([id,e])=>[id,{id,type:e.type,prospect_id:e.prospect_id,actor:e.actor,at:e.at}]));
  if(view.operations)view.operations={email:Object.fromEntries(Object.entries(view.operations.email??{}).map(([id,e])=>[id,{status:e.status,thread:Boolean(e.thread)}])),cycle:view.operations.cycle?{completed_cycles:view.operations.cycle.completed_cycles,completed_at:view.operations.cycle.completed_at}:null,maintenance:{backup_date:view.operations.maintenance?.backup_date}};
  delete view.ai_attempts;delete view.transcript_assessment;delete view.gateway_proof;delete view.gateway_proof_reviews;delete view.call_transcription_rehearsal;delete view.full_call_transcription;return projectSourceBodies(view);
@@ -71,7 +72,12 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    if(request.method==='GET'&&path==='/api/full-call-transcription')return json(200,await fullCallView(app,env));
    if(request.method==='GET'&&path==='/api/transcript-assessment')return json(200,await assessmentView(app,env));
    if(request.method==='GET'&&path==='/api/team-notifications')return json(200,notificationView(await app.snapshot()));
-   if(request.method==='GET'&&path==='/api/state')return json(200,{...projectDashboard(await app.dashboard()),csrf,current_operator:actor,operator_auth_enabled:true,workers:[],hosted_preview:true});
+   if(request.method==='GET'&&path==='/api/state'){
+    const asOf=url.searchParams.get('as_of')??now().toISOString(),age=+now()-Date.parse(asOf);
+    check(Number.isFinite(age)&&age>=0&&age<=300_000,'Desk snapshot expired; refresh to load the current workspace');
+    app.now=()=>new Date(asOf);
+    return json(200,deskSnapshotPage({...projectDashboard(await app.dashboard()),csrf,current_operator:actor,operator_auth_enabled:true,workers:[],hosted_preview:true},url.searchParams));
+   }
    if(request.method==='GET'&&/^\/api\/events\/[a-zA-Z0-9_-]{1,100}$/.test(path)){const id=path.split('/').at(-1),state=await app.snapshot(),event=state.events[id];return json(200,{found:Boolean(event),id,...(event?{actor:event.actor,fingerprint:event.fingerprint,at:event.at}:{}),revision:state.revision});}
    if(request.method==='GET'&&/^\/follow-up(?:-draft|-history)?\/[a-zA-Z0-9_-]{1,100}\/[a-zA-Z0-9_-]{1,100}$/.test(path)){
     const [,route,id,key]=path.split('/'),r=(await app.snapshot()).prospects[id];let entry;if(route==='follow-up-draft')entry=r?.follow_up_drafts?.find(d=>d.id===key);else if(route==='follow-up-history'){if(Object.hasOwn(r?.follow_up_history??[],key))entry={...r.follow_up_history[key],status:'Superseded original; retained for history'};}else entry=r?.follow_ups?.[key];check(entry?.content,'Unknown saved follow-up');
