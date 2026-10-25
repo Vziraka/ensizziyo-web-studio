@@ -1,5 +1,7 @@
 # Disabled hosted business Google owner grant
 
+The separately disabled [shared internal dispatch profile](SHARED-INTERNAL-DISPATCH.md#separate-future-google-profile) adds a distinct published Gmail-only client/namespace/key binding. It cannot reuse or widen the profiles below; no actual consent/settings change occurred.
+
 The independently disabled [incoming synchronization caller](GOOGLE-INCOMING-MAIL.md) also consumes this exact grant through the server token provider. Connecting OAuth starts no reading; neither incoming scope nor the owner-only grant-management contract is broadened.
 
 `google-oauth.mjs` implements a **new** owner authorization-code/offline grant, encrypted credentials and the server-only `getAccessToken()` contract used by the existing exact-message Gmail transport. This is locally verified source on draft PR123. Independent `EVZ_OPERATIONS_GOOGLE_OAUTH=owner-code-v1` capability is **unset by default**. No real client, consent, Google profile read, exchange, refresh, revocation, send or hosted configuration was performed.

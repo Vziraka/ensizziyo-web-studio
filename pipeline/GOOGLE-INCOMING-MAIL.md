@@ -1,5 +1,7 @@
 # Disabled hosted Gmail incoming synchronization
 
+The separately disabled [shared standing dispatcher](SHARED-INTERNAL-DISPATCH.md) reuses this parser/reducer through a bounded host principal and typed whole-state CAS replay. The signed fictional caller below is unchanged; no shared capability obtains general incoming/provider permission.
+
 `google-incoming-mail.mjs` connects the existing business Gmail grant to `reply_received`, source-bound reply preparation, cold-contact stop and held team notification preparation. It reuses current project/contact/thread associations and the lifecycle reducer. There is no second queue, inferred positive interest, conversational send, Gmail draft, read-state modification, deletion or notification delivery.
 
 ## Supported caller and scope

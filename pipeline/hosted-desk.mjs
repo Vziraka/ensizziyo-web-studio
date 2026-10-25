@@ -1,3 +1,6 @@
+import {dispatchCapability,validateDispatchBinding,dispatchCommand,dispatchStatus,dispatchNotificationView} from './shared-internal-dispatch.mjs';
+import {enqueueInternalDispatch} from './internal-dispatch-host.mjs';
+import {dispatchOAuthProfile,dispatchOAuthPath,dispatchOAuthCallbackHTML,dispatchOAuthCallbackJS} from './google-oauth.mjs';
 import {researchCapability,researchWorkerPath,researchCommand,executeResearch,verifyResearchDispatch,researchRuntimeEnabled,researchProjection,researchStatusText} from './known-identity-research.mjs';
 import {validateProjectBinding} from './shared-project-continuation.mjs';
 import {refinementCapability,refinementWorkerPath,generateRefinement,executeRefinement,verifyRefinementDispatch,refinementStatus,authorizeRefinement,pauseRefinement,continueRefinementRender,refinementRuntimeEnabled,refinementPolicyProjection,refinementStatusText} from './refinement-generation.mjs';
@@ -34,10 +37,13 @@ const sign=(secret,payload)=>createHmac('sha256',secret).update('desk-csrf:'+pay
 function csrfValid(token,secret,now){try{const [payload,mac,extra]=token.split('.'),actual=Buffer.from(mac,'base64url'),expected=sign(secret,payload);if(extra!==undefined||actual.length!==expected.length||!timingSafeEqual(actual,expected))return false;const [expiry,nonce]=JSON.parse(Buffer.from(payload,'base64url'));return Number.isSafeInteger(expiry)&&expiry>+now&&typeof nonce==='string'&&nonce.length===32;}catch{return false;}}
 async function inputBody(request){const reader=request.body?.getReader();check(reader,'A JSON request body is required');let bytes=0;const chunks=[];for(;;){const {value,done}=await reader.read();if(done)break;bytes+=value.length;if(bytes>maxBody){await reader.cancel();throw Error('Request body exceeds the private desk limit');}chunks.push(Buffer.from(value));}try{return JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw Error('Supply valid JSON without credentials in unrelated fields');}}
 function configured(env,now){
- check(env.CONTEXT==='deploy-preview'&&['fictional-preview','inert-shared-v1','shared-manual-records-v1','shared-project-continuation-v1',refinementCapability,researchCapability].includes(env.EVZ_OPERATIONS_DESK_ENABLED),'Private desk is not configured');
+ check((env.CONTEXT==='production'&&env.EVZ_OPERATIONS_DESK_ENABLED===dispatchCapability||env.CONTEXT==='deploy-preview')&&[dispatchCapability,'fictional-preview','inert-shared-v1','shared-manual-records-v1','shared-project-continuation-v1',refinementCapability,researchCapability].includes(env.EVZ_OPERATIONS_DESK_ENABLED),'Private desk is not configured');
  const origin=new URL(env.EVZ_OPERATIONS_ORIGIN);check(origin.protocol==='https:'&&origin.origin===env.EVZ_OPERATIONS_ORIGIN,'Private desk is not configured');
- let inertBinding=null,manualBinding=null,projectBinding=null;
- if(env.EVZ_OPERATIONS_DESK_ENABLED==='inert-shared-v1'){
+ let inertBinding=null,manualBinding=null,projectBinding=null,dispatchBinding=null;
+ if(env.EVZ_OPERATIONS_DESK_ENABLED===dispatchCapability){
+  check(env.CONTEXT==='production','Standing dispatch has a distinct published deployment profile');
+  dispatchBinding=JSON.parse(env.EVZ_INTERNAL_DISPATCH_BINDING);validateDispatchBinding(dispatchBinding.scope);const b=dispatchBinding.scope;check(b.namespace===env.EVZ_OPERATIONS_BLOB_NAMESPACE&&b.origin===origin.origin&&b.site_id===env.SITE_ID&&b.deploy_id===env.DEPLOY_ID,'Exact dispatch deployment binding required');
+ }else if(env.EVZ_OPERATIONS_DESK_ENABLED==='inert-shared-v1'){
   inertBinding=JSON.parse(env.EVZ_OPERATIONS_INERT_BINDING);validateInertBinding(inertBinding.scope);
   const b=inertBinding.scope;check(b.namespace===env.EVZ_OPERATIONS_BLOB_NAMESPACE&&b.origin===origin.origin&&b.site_id===env.SITE_ID&&b.deploy_id===env.DEPLOY_ID,'Private desk binding does not match this deployment');
  }else if(env.EVZ_OPERATIONS_DESK_ENABLED==='shared-manual-records-v1'){
@@ -48,10 +54,11 @@ function configured(env,now){
   const b=projectBinding.scope;check(b.namespace===env.EVZ_OPERATIONS_BLOB_NAMESPACE&&b.origin===origin.origin&&b.site_id===env.SITE_ID&&b.deploy_id===env.DEPLOY_ID,'Shared project binding does not match this deployment');
   check(b.capability===env.EVZ_OPERATIONS_DESK_ENABLED,'Exact project capability must match deployment');
  }else check(/^evz-redesign-proof-[a-z0-9-]{8,44}$/.test(env.EVZ_OPERATIONS_BLOB_NAMESPACE??''),'Private desk is not configured');
- const auth=createOperatorAuth(env,{now:()=>+now()});check(auth,'Private desk is not configured');return {origin:origin.origin,auth,inertBinding,manualBinding,projectBinding};
+ const auth=createOperatorAuth(env,{now:()=>+now()});check(auth,'Private desk is not configured');return {origin:origin.origin,auth,inertBinding,manualBinding,projectBinding,dispatchBinding};
 }
 async function defaultStore(namespace){const {getStore}=await import('@netlify/blobs');return getStore({name:namespace,consistency:'strong'});}
-async function openApp(raw,now,inertBinding,manualBinding,projectBinding){
+async function openApp(raw,now,inertBinding,manualBinding,projectBinding,dispatchBinding){
+ if(dispatchBinding)return StudioLifecycle.fromStore({store:new ConditionalLifecycleStore(raw,{dispatchBinding}),now});
  if(projectBinding)return StudioLifecycle.fromStore({store:new ConditionalLifecycleStore(raw,{projectBinding}),now});
  if(manualBinding)return StudioLifecycle.fromStore({store:new ConditionalLifecycleStore(raw,{manualBinding}),now});
  if(inertBinding)return StudioLifecycle.fromStore({store:new ConditionalLifecycleStore(raw,{inertBinding}),now});
@@ -71,8 +78,8 @@ export function projectDashboard(view){
  delete view.ai_attempts;delete view.transcript_assessment;delete view.gateway_proof;delete view.gateway_proof_reviews;delete view.call_transcription_rehearsal;delete view.full_call_transcription;return projectSourceBodies(view);
 }
 
-export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=()=>new Date(),assetDirectory=fileURLToPath(new URL('./lifecycle-ui/',import.meta.url)),readAsset=null,gatewayOptions={},refinementOptions={},googleMailOptions={},googleIncomingOptions={},googleOAuthOptions={},googleDriveOptions={},googleCalendarOptions={},researchOptions={},backgroundOnly=false}={}){
- return async request=>{
+export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=()=>new Date(),assetDirectory=fileURLToPath(new URL('./lifecycle-ui/',import.meta.url)),readAsset=null,gatewayOptions={},refinementOptions={},googleMailOptions={},googleIncomingOptions={},googleOAuthOptions={},googleDriveOptions={},googleCalendarOptions={},researchOptions={},internalDispatchOptions={},backgroundOnly=false}={}){
+ return async(request,context)=>{
   let settings;try{settings=configured(env,now);}catch{return json(503,{error:'Private desk is not configured'});}
   const url=new URL(request.url),path=url.pathname.slice(base.length)||'/';
   const workerPath=backgroundOnly===true?fullCallWorkerPath:backgroundOnly;
@@ -84,17 +91,18 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    try{check(settings.projectBinding?.scope.capability===refinementCapability&&url.origin===settings.origin,'Exact refinement deployment required');const token=request.headers.get('x-evz-refinement-capability');verifyRefinementDispatch(env,settings.projectBinding,token,now());const reference=await inputBody(request),raw=await storeFactory(env.EVZ_OPERATIONS_BLOB_NAMESPACE),app=await openApp(raw,now,null,null,settings.projectBinding);attachHostedAuthoring(app,raw);return json(200,await executeRefinement(app,reference,token,{...refinementOptions,env}));}catch{return json(409,{error:'Exact host refinement capability unavailable; inspect retained attempt'});}
   }
   const calendarOAuth=url.pathname.startsWith(calendarOAuthPath+'/')||path==='/google-calendar-oauth-callback.js';
-  const selectedProfile=calendarOAuth?{profile:calendarOAuthProfile}:{};
-  const driveOAuth=url.pathname.startsWith(driveOAuthPath+'/')||path==='/google-drive-oauth-callback.js',oauthPath=driveOAuth?driveOAuthPath:calendarOAuth?calendarOAuthPath:googleOAuthPath;
+  const internalOAuth=url.pathname.startsWith(dispatchOAuthPath+'/')||path==='/internal-google-oauth-callback.js';
+  const selectedProfile=internalOAuth?{profile:dispatchOAuthProfile}:calendarOAuth?{profile:calendarOAuthProfile}:{};
+  const driveOAuth=url.pathname.startsWith(driveOAuthPath+'/')||path==='/google-drive-oauth-callback.js',oauthPath=internalOAuth?dispatchOAuthPath:driveOAuth?driveOAuthPath:calendarOAuth?calendarOAuthPath:googleOAuthPath;
   const oauthLanding=request.method==='GET'&&url.pathname===oauthPath+'/callback';
   const publicNavigation=request.method==='GET'&&(path==='/'||oauthLanding)&&request.headers.get('sec-fetch-mode')==='navigate'&&request.headers.get('sec-fetch-dest')==='document';
   if(url.origin!==settings.origin||url.pathname!==base&&!url.pathname.startsWith(base+'/')||request.headers.get('origin')&&request.headers.get('origin')!==settings.origin||!publicNavigation&&request.headers.get('sec-fetch-site')&&!['same-origin','none'].includes(request.headers.get('sec-fetch-site')))return json(403,{error:'Private desk origin is not permitted'});
   if((settings.inertBinding||settings.manualBinding||settings.projectBinding)&&(oauthLanding||/google(?:-drive|-calendar)?-oauth/.test(path)))return json(409,{error:'Shared records cannot authorize provider connections'});
   try{
-   if(oauthLanding||request.method==='GET'&&['/google-oauth-callback.js','/google-drive-oauth-callback.js','/google-calendar-oauth-callback.js'].includes(path)){
+   if(oauthLanding||request.method==='GET'&&['/google-oauth-callback.js','/google-drive-oauth-callback.js','/google-calendar-oauth-callback.js','/internal-google-oauth-callback.js'].includes(path)){
     createGoogleOAuth({...googleOAuthOptions,env,now:()=>+now(),...(driveOAuth?{profile:driveOAuthProfile}:selectedProfile)});
     check(url.href.length<=8192,'Google callback exceeds bounds');
-    return new Response(oauthLanding?(driveOAuth?driveOAuthCallbackHTML:calendarOAuth?calendarOAuthCallbackHTML:googleOAuthCallbackHTML):(driveOAuth?driveOAuthCallbackJS:calendarOAuth?calendarOAuthCallbackJS:googleOAuthCallbackJS),{headers:{...headers,'Content-Type':oauthLanding?'text/html; charset=utf-8':'text/javascript; charset=utf-8'}});
+    return new Response(oauthLanding?(internalOAuth?dispatchOAuthCallbackHTML:driveOAuth?driveOAuthCallbackHTML:calendarOAuth?calendarOAuthCallbackHTML:googleOAuthCallbackHTML):(internalOAuth?dispatchOAuthCallbackJS:driveOAuth?driveOAuthCallbackJS:calendarOAuth?calendarOAuthCallbackJS:googleOAuthCallbackJS),{headers:{...headers,'Content-Type':oauthLanding?'text/html; charset=utf-8':'text/javascript; charset=utf-8'}});
    }
    if(request.method==='GET'&&lifecycleAssets.has(path)&&!['/preview/','/preview.js'].includes(path)){
     const [file,type]=lifecycleAssets.get(path);let body=readAsset?await readAsset(file):await readFile(join(assetDirectory,file));
@@ -111,8 +119,8 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    if(post&&path==='/api/login'){const input=await inputBody(request),actor=settings.auth.authenticate(input.key);return actor?json(200,{operator:actor},{'Set-Cookie':settings.auth.cookie(settings.auth.issue(actor),{secure:true})}):json(401,{error:'The operator key was not recognized'});}
    const actor=settings.auth.actorFromCookie(request.headers.get('cookie'));if(!actor)return json(401,{error:'Sign in with your individual operator key'});
    if(post&&path==='/api/logout')return json(200,{signed_out:true},{'Set-Cookie':settings.auth.cookie('',{secure:true,clear:true})});
-   if(path.startsWith('/api/google-oauth/')||path.startsWith('/api/google-drive-oauth/')||path.startsWith('/api/google-calendar-oauth/')){
-    const connectionPath=driveOAuth?'/api/google-drive-oauth':calendarOAuth?'/api/google-calendar-oauth':'/api/google-oauth',connectionEnabled=driveOAuth?env.EVZ_OPERATIONS_GOOGLE_DRIVE_OAUTH==='owner-drive-code-v1':calendarOAuth?env.EVZ_OPERATIONS_GOOGLE_CALENDAR_OAUTH==='owner-calendar-code-v1':env.EVZ_OPERATIONS_GOOGLE_OAUTH==='owner-code-v1';
+   if(path.startsWith('/api/internal-google-oauth/')||path.startsWith('/api/google-oauth/')||path.startsWith('/api/google-drive-oauth/')||path.startsWith('/api/google-calendar-oauth/')){
+    const connectionPath=internalOAuth?'/api/internal-google-oauth':driveOAuth?'/api/google-drive-oauth':calendarOAuth?'/api/google-calendar-oauth':'/api/google-oauth',connectionEnabled=internalOAuth?env.EVZ_INTERNAL_GOOGLE_OAUTH==='owner-internal-gmail-code-v1':driveOAuth?env.EVZ_OPERATIONS_GOOGLE_DRIVE_OAUTH==='owner-drive-code-v1':calendarOAuth?env.EVZ_OPERATIONS_GOOGLE_CALENDAR_OAUTH==='owner-calendar-code-v1':env.EVZ_OPERATIONS_GOOGLE_OAUTH==='owner-code-v1';
     if(request.method==='GET'&&path===connectionPath+'/status'&&!connectionEnabled)return json(200,{enabled:false,status:'Disabled',scopes:[]});
     const oauth=createGoogleOAuth({...googleOAuthOptions,env,now:()=>+now(),...(driveOAuth?{profile:driveOAuthProfile}:selectedProfile)}),session=cookieValue(request.headers.get('cookie'),'evz_operator_session');
     if(request.method==='GET'&&path===connectionPath+'/status')return json(200,await oauth.status());
@@ -122,6 +130,7 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
     if(post&&path===connectionPath+'/disconnect'){await inputBody(request);return json(200,await oauth.disconnect(actor));}
     return json(405,{error:'Use the supported Google connection operation'});
    }
+   if(settings.dispatchBinding&&!((request.method==='GET'&&(path==='/api/state'||path==='/api/team-notifications'||/^\/api\/project-author\/backup(?:\/(?:state-chunk|chunk))?$/.test(path)))||/^\/api\/internal-dispatch\/(?:policy|status|authorize|pause|reconcile)$/.test(path)))return json(409,{error:'Exact standing internal dispatch only; all other execution and edits remain disabled'});
    if(settings.projectBinding?.scope.capability===researchCapability){
     if(!(request.method==='GET'&&(path==='/api/state'||/^\/api\/project-author\/backup(?:\/(?:state-chunk|chunk))?$/.test(path)))&&!path.startsWith('/api/known-research/'))return json(409,{error:'Exact known-identity candidate research only; trusted import, authoring, contact and sending remain held'});
    }
@@ -134,15 +143,15 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
     if(!reads&&!(post&&path==='/api/event'))return json(409,{error:settings.manualBinding?'Manual workspace supports saved reads and signed manual records only; execution, audio, authoring, transfer writes and hosted backup are disabled':'Inert workspace supports saved reads and signed private notes only; execution, authoring, transfer writes and hosted backup are disabled'});
    }
    if(path.startsWith('/api/project-original/')&&!settings.inertBinding&&!settings.manualBinding&&!settings.projectBinding&&env.EVZ_OPERATIONS_SHARED_ORIGINALS!=='fictional-chunks-v1')return json(503,{error:'Shared original transfer is not configured'});
-   if(path.startsWith('/api/project-author/')&&settings.projectBinding?.scope.capability!==researchCapability&&!(settings.projectBinding?env.EVZ_OPERATIONS_PROJECT_AUTHORING==='shared-project-node-v1':env.EVZ_OPERATIONS_PROJECT_AUTHORING==='fictional-node-v1'))return json(503,{error:'Hosted authoring is disabled'});
-   let app,raw;try{raw=await storeFactory(env.EVZ_OPERATIONS_BLOB_NAMESPACE);app=await openApp(raw,now,settings.inertBinding,settings.manualBinding,settings.projectBinding);}catch{return json(503,{error:'Private shared storage is unavailable; no execution was started'});}
+   if(path.startsWith('/api/project-author/')&&!settings.dispatchBinding&&settings.projectBinding?.scope.capability!==researchCapability&&!(settings.projectBinding?env.EVZ_OPERATIONS_PROJECT_AUTHORING==='shared-project-node-v1':env.EVZ_OPERATIONS_PROJECT_AUTHORING==='fictional-node-v1'))return json(503,{error:'Hosted authoring is disabled'});
+   let app,raw;try{raw=await storeFactory(env.EVZ_OPERATIONS_BLOB_NAMESPACE);app=await openApp(raw,now,settings.inertBinding,settings.manualBinding,settings.projectBinding,settings.dispatchBinding);}catch{return json(503,{error:'Private shared storage is unavailable; no execution was started'});}
    if(path.startsWith('/api/known-research/')){
     check(settings.projectBinding?.scope.capability===researchCapability,'Exact research capability required');
     if(post&&/^\/api\/known-research\/(register|status|run|authorize|pause|review|reconcile)$/.test(path))return json(200,await researchCommand(app,path.split('/').at(-1),await inputBody(request),actor,{...researchOptions,env}));
     return json(405,{error:'Use signed exact research candidate commands'});
    }
    if(path.startsWith('/api/project-author/')){
-    check((settings.projectBinding?.scope.capability===researchCapability|| (settings.projectBinding?env.EVZ_OPERATIONS_PROJECT_AUTHORING==='shared-project-node-v1':env.EVZ_OPERATIONS_PROJECT_AUTHORING==='fictional-node-v1'))&&!settings.inertBinding&&!settings.manualBinding,'Hosted authoring is disabled');attachHostedAuthoring(app,raw);
+    check((Boolean(settings.dispatchBinding)||settings.projectBinding?.scope.capability===researchCapability|| (settings.projectBinding?env.EVZ_OPERATIONS_PROJECT_AUTHORING==='shared-project-node-v1':env.EVZ_OPERATIONS_PROJECT_AUTHORING==='fictional-node-v1'))&&!settings.inertBinding&&!settings.manualBinding,'Hosted authoring is disabled');attachHostedAuthoring(app,raw);
     if(post&&['generate','generation-status','generation-authorize','generation-pause','generation-render'].some(p=>path==='/api/project-author/'+p)){
      const input=await inputBody(request),operation=path.split('/').at(-1),options={...refinementOptions,env};
      return json(200,await (operation==='generate'?generateRefinement(app,input,actor,options):operation==='generation-status'?refinementStatus(app,input,actor):operation==='generation-authorize'?authorizeRefinement(app,input,actor,options):operation==='generation-pause'?pauseRefinement(app,input,actor):continueRefinementRender(app,input,actor)));
@@ -188,7 +197,8 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    if(request.method==='GET'&&path==='/api/call-transcription')return json(200,await callTranscriptionView(app,env));
    if(request.method==='GET'&&path==='/api/full-call-transcription')return json(200,await fullCallView(app,env));
    if(request.method==='GET'&&path==='/api/transcript-assessment')return json(200,await assessmentView(app,env));
-   if(request.method==='GET'&&path==='/api/team-notifications')return json(200,notificationView(await app.snapshot()));
+   if(path.startsWith('/api/internal-dispatch/')){check(settings.dispatchBinding,'Exact standing dispatch profile required');const command=path.split('/').at(-1);check(request.method==='GET'&&['policy','status'].includes(command)||post&&!['policy','status'].includes(command),'Use exact standing control operation');const input=post?await inputBody(request):{},result=await dispatchCommand(app,command,input,actor,{runtime:env.EVZ_INTERNAL_DISPATCH_RUNTIME===dispatchCapability});if(command==='reconcile'&&input.action_id){const tick=result.ticks.find(t=>t.authorization_event===input.event_id);return json(202,{...result,dispatch:await enqueueInternalDispatch(app,tick,{...internalDispatchOptions,env,context})});}return json(200,result);}
+   if(request.method==='GET'&&path==='/api/team-notifications')return json(200,settings.dispatchBinding?dispatchNotificationView(await app.snapshot(),await app.loadConfig(),now(),env.EVZ_INTERNAL_DISPATCH_RUNTIME===dispatchCapability):notificationView(await app.snapshot()));
    if(request.method==='GET'&&path==='/api/incoming-mail')return json(200,{enabled:env.EVZ_OPERATIONS_GOOGLE_INCOMING_MAIL==='fictional-incoming-v1',...incomingMailView(await app.snapshot())});
    if(post&&path==='/api/incoming-mail/sync'){
     await inputBody(request);const options={...googleIncomingOptions,actor,env};
@@ -201,6 +211,7 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
     check(Number.isFinite(age)&&age>=0&&age<=300_000,'Desk snapshot expired; refresh to load the current workspace');
     app.now=()=>new Date(asOf);
     const dashboard=await app.dashboard();
+    if(settings.dispatchBinding){const standing=dispatchStatus(dashboard,app.config,now(),env.EVZ_INTERNAL_DISPATCH_RUNTIME===dispatchCapability);dashboard.shared_workspace={capability:dispatchCapability,workspace_id:settings.dispatchBinding.scope.workspace_id,allowed_edits:[],execution:standing.status,standing};dashboard.notification_preparation=dispatchNotificationView(dashboard,app.config,now(),env.EVZ_INTERNAL_DISPATCH_RUNTIME===dispatchCapability);}
     if(dashboard.shared_workspace?.research){dashboard.shared_workspace.research=researchProjection(settings.projectBinding,dashboard,now(),await researchRuntimeEnabled(env)?'Enabled':'Disabled');dashboard.shared_workspace.execution=researchStatusText(dashboard.shared_workspace.research);dashboard.known_research=dashboard.shared_workspace.candidates;}
     if(dashboard.shared_workspace?.generation){dashboard.shared_workspace.generation=refinementPolicyProjection(settings.projectBinding,dashboard,now());dashboard.shared_workspace.generation.runtime=await refinementRuntimeEnabled(env)?'Enabled':'Disabled';dashboard.shared_workspace.execution=refinementStatusText(dashboard.shared_workspace.generation);}
     return json(200,deskSnapshotPage({...projectDashboard(dashboard),csrf,current_operator:actor,operator_auth_enabled:true,workers:[],hosted_preview:true},url.searchParams));

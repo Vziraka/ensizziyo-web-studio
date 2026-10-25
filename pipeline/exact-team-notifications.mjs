@@ -39,6 +39,10 @@ export function notificationPackageInState(state,config,input,actor,now){
  check(Object.values(state.prospects).every(r=>r.controlled===true),'Fictional notification records only');
  check(['owner','friend'].includes(actor)&&key(input.notification_id),'Choose an existing notification as a signed operator');
  const c=currentNotificationPolicy(state,config,now),m=state.team_notifications?.messages?.[input.notification_id];
+ return notificationEnvelope(state,m,c,actor,now);
+}
+// Both approval modes share the same source, recipient-role and digest freshness checks.
+export function notificationEnvelope(state,m,c,actor,now){
  check(m&&m.recipient_role===actor,'Only the saved recipient role may approve or dispatch this notification');
  check(m.status==='Prepared; delivery held','Notification resolved, reassigned or already settled');
  check(Date.parse(m.due_at)<=+now,'Notification is not due');

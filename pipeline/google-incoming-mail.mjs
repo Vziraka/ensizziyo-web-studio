@@ -10,10 +10,13 @@ const address=v=>{const m=v.match(/[^\s<>\",;]+@[^\s<>\",;]+\.[^\s<>\",;]+/g)??[
 function capability(app,c,env){
  check(!app.store?.inertBinding&&c.shared_capability!=='inert-shared-v1','D2 notes-only authority rejects incoming synchronization');
  const g=c.google_incoming_mail;
- check(env.EVZ_OPERATIONS_GOOGLE_INCOMING_MAIL==='fictional-incoming-v1'&&c.mode==='controlled'&&g?.enabled===true&&g.capability==='fictional-incoming-v1','Hosted incoming synchronization is disabled; production capability is unavailable');
+ const shared=app.store?.dispatchBinding&&c.shared_capability==='shared-internal-dispatch-v1'&&env.EVZ_INTERNAL_DISPATCH_RUNTIME==='shared-internal-dispatch-v1';
+ check(shared&&g?.capability==='shared-registered-incoming-v1'||env.EVZ_OPERATIONS_GOOGLE_INCOMING_MAIL==='fictional-incoming-v1'&&c.mode==='controlled'&&g?.capability==='fictional-incoming-v1','Hosted incoming synchronization is disabled; production capability is unavailable');
+ check(g?.enabled===true,'Registered incoming synchronization is disabled');
  check(g.run_id===c.run_id&&key(g.grant_id)&&typeof g.account_email==='string'&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(g.account_email)&&g.account_email===c.sender.account_email&&c.sender.email==='hello@evzdigital.studio','Exact incoming workspace, business account and grant required');return g;
 }
-function routes(state,c){
+export function incomingRoutes(state,c){
+ const shared=c.shared_capability==='shared-internal-dispatch-v1';
  const all=[];
  for(const [project_id,b] of Object.entries(c.operations?.threads??{}))all.push({project_id,...b});
  for(const [id,e] of Object.entries(state.operations?.email??{})){
@@ -25,7 +28,7 @@ function routes(state,c){
  const result=[];
  for(const b of all){
   const r=state.prospects[b.project_id];
-  check(key(b.project_id)&&key(b.thread_id)&&key(b.original_id)&&r?.origin!=='workspace'&&r?.controlled===true&&r.contact?.verified===true&&r.contact.email.toLowerCase()===b.to?.toLowerCase()&&b.to.endsWith('@example.invalid')&&b.from===c.sender.email,'Registered incoming route/contact differs');
+  check(key(b.project_id)&&key(b.thread_id)&&key(b.original_id)&&r?.origin!=='workspace'&&(shared||r?.controlled===true)&&r.contact?.verified===true&&r.contact.email.toLowerCase()===b.to?.toLowerCase()&&(shared||b.to.endsWith('@example.invalid'))&&b.from===c.sender.email,'Registered incoming route/contact differs');
   const same=result.find(x=>x.thread_id===b.thread_id);
   check(!same||same.project_id===b.project_id&&same.to===b.to&&same.from===b.from,'Ambiguous registered thread association');
   if(!same)result.push({...b,contact_sha256:hash(r.contact)});
@@ -33,6 +36,7 @@ function routes(state,c){
  check(result.length>0&&result.length<=12,'Incoming sync requires 1–12 existing registered conversation threads');
  return result.sort((a,b)=>a.thread_id.localeCompare(b.thread_id));
 }
+const routes=incomingRoutes;
 function eventsForThread(thread,b,now){
  check(thread?.id===b.thread_id&&Array.isArray(thread.messages)&&thread.messages.length>0&&thread.messages.length<20&&!thread.nextPageToken,'Missing, truncated or oversized registered thread');
  const messages=thread.messages;
@@ -63,13 +67,13 @@ function eventsForThread(thread,b,now){
 export function incomingMailView(state){const s=state.operations?.gmail_incoming;return s?{status:s.status,cursor:s.cursor??null,phase:s.phase,checked_at:s.checked_at,hold:s.hold??null,resync_hold:s.resync_hold??null,registered_threads:s.routes.length,processed_sources:Object.keys(s.seen).length,page_pending:Boolean(s.page||s.pending),unrouted_additions:s.unrouted_additions??0,read_only:true}:{status:'Not started',read_only:true};}
 
 // One invocation reads one registered thread or one history page. No HTTP runs inside CAS.
-export async function syncIncomingMail(app,{actor,env=process.env,getAccessToken,fetcher}={}){
- check(['owner','friend'].includes(actor),'Incoming sync requires a signed operator');
+export async function syncIncomingMail(app,{actor,env=process.env,getAccessToken,fetcher,transport}={}){
+ check(['owner','friend'].includes(actor)||actor==='service:internal-dispatch'&&app.store?.dispatchBinding,'Incoming sync requires a signed operator');
  const c=await app.loadConfig(),g=capability(app,c,env),state=await app.snapshot(),saved=state.operations?.gmail_incoming,revision=state.revision;
  let registered;try{registered=routes(state,c);}catch(error){if(!saved)throw error;return registrationHold(app,revision,error.message);}
  const binding=hash({g,registered});
  if(saved&&saved.binding!==binding)return registrationHold(app,revision,'Incoming account/grant/contact/route registration changed; review the previous cursor before reinitialization');
- const provider=googleHostedTransport({getAccessToken,fetcher,account:g.account_email,grantId:g.grant_id});
+ const provider=transport??googleHostedTransport({getAccessToken,fetcher,account:g.account_email,grantId:g.grant_id});
  async function readThread(b,expected=[]){
   const thread=await provider.incomingThread(b.thread_id),known=state.prospects[b.project_id].reply;
   const ids=[...expected,...(known?.thread_id===b.thread_id?[known.source_id]:[])];

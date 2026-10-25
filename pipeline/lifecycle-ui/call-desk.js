@@ -103,7 +103,8 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty,
     else if(r.follow_up_owner&&!r.restriction)assignment.append(el('p',`Only ${ownerName} can log the next call or hand this work to you.`,'muted'));
     card.append(assignment);
     if(manual&&!r.restriction)card.append(btn('Record do-not-contact now',()=>run(async()=>{await event(r,'contact_stopped',{reason:'do_not_contact'});tell('Local future work stopped. External suppression is unverified; historical external effects remain held.');})));
-    if(shared){const privateNote=field(notesPanel,'Private business note',r.note??'','textarea');privateNote.maxLength=3000;notesPanel.append(btn('Save private note',()=>run(()=>event(r,'note_added',{note:privateNote.value}))));}
+    if(shared&&state.shared_workspace.allowed_edits.includes('note_added')){const privateNote=field(notesPanel,'Private business note',r.note??'','textarea');privateNote.maxLength=3000;notesPanel.append(btn('Save private note',()=>run(()=>event(r,'note_added',{note:privateNote.value}))));}
+    else if(shared)notesPanel.append(el('p',r.note||'Saved notes are read-only in this capability.','muted'));
 
     const selectedOpening=r.opening_view?.selected;
     if(selectedOpening){const proof=r.verification.packet.sources.find(source=>source.url===selectedOpening.source_url&&source.content_sha256===selectedOpening.source_sha256),line=el('p',`Observed step: ${selectedOpening.customer_difficulty} `,'source'),source=el('a',`Saved capture · ${proof?when(proof.fetched_at):'date unavailable'}`);source.href=deskPath(`/retained-source/${r.id}/${selectedOpening.source_sha256}?url=${encodeURIComponent(selectedOpening.source_url)}&at=${encodeURIComponent(proof?.fetched_at??'')}`);source.target='_blank';source.rel='noreferrer';line.append(source);card.append(line,el('p',`Source says: “${selectedOpening.excerpt}”`,'source'),el('p',`Possible improvement to validate: ${selectedOpening.hypothesis}`,'muted'));}

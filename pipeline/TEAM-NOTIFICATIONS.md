@@ -1,5 +1,7 @@
 # Internal alerts and weekday team summary
 
+The separately disabled [shared standing dispatcher](SHARED-INTERNAL-DISPATCH.md) composes these same source templates with registered incoming and a distinct finite owner policy. Existing preparation and each-message approval below keep their original gates.
+
 Verified attention events prepare private messages in **Needs attention → Owner alerts and team summary**. Replies go to the assigned operator, or the owner when unassigned. A verified reply includes meeting requests for human review in the original mailbox; the desk does not guess meeting intent from private text. Calendar records needing review, uncertain provider actions, urgent support and saved problems also prepare attention messages. Global problems go to the owner. Private reply bodies, call notes and raw error details are not copied into notification text.
 
 The same active source does not prepare repeatedly. Handoff resolves the old audience's unsent message and prepares one for the new responsible operator. Reviewing/resolving the source marks its pending message resolved before delivery. A later occurrence can prepare again. None of these states means a message was sent.

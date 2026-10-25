@@ -2,19 +2,32 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {businessDate,dailyNewProspectCount,hash} from './lifecycle.mjs';
 
 const role=r=>r?.follow_up_owner==='friend'?'friend':'owner';
+// Full approved template bytes are portable policy evidence, independent of build minification.
+export const notificationTemplates=Object.freeze({
+ reply:'{name}: a verified reply needs review. Read the original in the business mailbox; future cold follow-ups are paused.',
+ meeting:'{name}: the meeting record needs review in the connected calendar.',
+ information:'{name}: an information email needs delivery reconciliation. Do not resend.',
+ support:'{name}: an urgent support request needs review in the private desk.',
+ action:'A provider action needs reconciliation in the private desk. Do not repeat an uncertain operation.',
+ exception:'A saved exception requires an operator decision. Open Needs attention in the private desk.',
+ hold:'A connected operation is held. Review its retained evidence in the private desk.',
+ runtime:'The local operations service reports a problem. Review its private status and retained logs.',
+ digest:'EVZ Digital internal team summary · {day} · 9am America/New_York\nNew businesses prepared today: {new} /25 shared target.\nDue callbacks: {callbacks}. Other due call tasks: {calls}.\nInterested projects: {interested}. Verified replies awaiting review: {replies}. Attention items: {attention}.\nOpen the private desk for source evidence and assigned next steps. No prospect email or private call notes are included in this summary.'
+});
+const template=(name,values={})=>notificationTemplates[name].replace(/\{([a-z]+)\}/g,(_,key)=>String(values[key]));
 export function notificationSources(state,now){
  const items=[];
  for(const r of Object.values(state.prospects)){
   const add=(id,kind,summary)=>items.push({id,kind,role:role(r),project_id:r.id,summary});
-  if(r.stage==='Reply review'&&r.reply?.kind==='reply')add(`reply:${r.id}:${r.reply.source_id}:${hash(r.reply).slice(0,16)}`,'reply',`${r.name}: a verified reply needs review. Read the original in the business mailbox; future cold follow-ups are paused.`);
-  if(r.meeting?.current_status==='Needs review')add(`meeting:${r.id}:${hash(r.meeting)}`,'meeting',`${r.name}: the meeting record needs review in the connected calendar.`);
-  if(r.information_draft?.status==='Uncertain'||r.information_draft?.status==='Sending'&&+now-Date.parse(r.information_draft.approved_at)>120_000)add(`information:${r.id}:${r.information_draft.id??hash(r.information_draft)}`,'problem',`${r.name}: an information email needs delivery reconciliation. Do not resend.`);
-  for(const ticket of r.tickets??[])if(ticket.status==='Open'&&ticket.priority==='urgent')add(`support:${r.id}:${ticket.id}`,'problem',`${r.name}: an urgent support request needs review in the private desk.`);
+  if(r.stage==='Reply review'&&r.reply?.kind==='reply')add(`reply:${r.id}:${r.reply.source_id}:${hash(r.reply).slice(0,16)}`,'reply',template('reply',{name:r.name}));
+  if(r.meeting?.current_status==='Needs review')add(`meeting:${r.id}:${hash(r.meeting)}`,'meeting',template('meeting',{name:r.name}));
+  if(r.information_draft?.status==='Uncertain'||r.information_draft?.status==='Sending'&&+now-Date.parse(r.information_draft.approved_at)>120_000)add(`information:${r.id}:${r.information_draft.id??hash(r.information_draft)}`,'problem',template('information',{name:r.name}));
+  for(const ticket of r.tickets??[])if(ticket.status==='Open'&&ticket.priority==='urgent')add(`support:${r.id}:${ticket.id}`,'problem',template('support',{name:r.name}));
  }
- for(const a of Object.values(state.actions))if(!a.payload?.internal_notification&&['Uncertain','Held'].includes(a.status))items.push({id:`action:${a.id}:${a.status}`,kind:'problem',role:role(state.prospects[a.prospect_id]),project_id:a.prospect_id,summary:'A provider action needs reconciliation in the private desk. Do not repeat an uncertain operation.'});
- for(const e of state.exceptions??[]){const project=state.prospects[e.prospect_id??e.id];items.push({id:`exception:${e.id}:${hash(e.reason??'')}`,kind:'problem',role:role(project),project_id:project?.id??null,summary:'A saved exception requires an operator decision. Open Needs attention in the private desk.'});}
- for(const [id,reason] of Object.entries(state.operations?.holds??{}))items.push({id:`hold:${id}:${hash(reason)}`,kind:'problem',role:'owner',summary:'A connected operation is held. Review its retained evidence in the private desk.'});
- if(state.runtime?.last_error)items.push({id:`runtime:${hash(state.runtime.last_error)}`,kind:'problem',role:'owner',summary:'The local operations service reports a problem. Review its private status and retained logs.'});
+ for(const a of Object.values(state.actions))if(!a.payload?.internal_notification&&['Uncertain','Held'].includes(a.status))items.push({id:`action:${a.id}:${a.status}`,kind:'problem',role:role(state.prospects[a.prospect_id]),project_id:a.prospect_id,summary:template('action')});
+ for(const e of state.exceptions??[]){const project=state.prospects[e.prospect_id??e.id];items.push({id:`exception:${e.id}:${hash(e.reason??'')}`,kind:'problem',role:role(project),project_id:project?.id??null,summary:template('exception')});}
+ for(const [id,reason] of Object.entries(state.operations?.holds??{}))items.push({id:`hold:${id}:${hash(reason)}`,kind:'problem',role:'owner',summary:template('hold')});
+ if(state.runtime?.last_error)items.push({id:`runtime:${hash(state.runtime.last_error)}`,kind:'problem',role:'owner',summary:template('runtime')});
  return items;
 }
 export function digestTime(now){
@@ -26,7 +39,7 @@ export function digestTime(now){
 function digest(state,now,items){
  const due=Object.values(state.actions).filter(a=>['call_task','callback_task'].includes(a.type)&&['Queued','Verified'].includes(a.status)&&!a.cancel_requested&&Date.parse(a.payload?.due_at)<=+now&&state.prospects[a.prospect_id]&&!state.prospects[a.prospect_id].restriction);
  const interested=Object.values(state.prospects).filter(r=>!r.restriction&&['Discovery','Information requested','Preview','Proposal','Agreement'].includes(r.stage));
- return `EVZ Digital internal team summary · ${businessDate(now)} · 9am America/New_York\nNew businesses prepared today: ${dailyNewProspectCount(state,now)} /25 shared target.\nDue callbacks: ${due.filter(a=>a.type==='callback_task').length}. Other due call tasks: ${due.filter(a=>a.type==='call_task').length}.\nInterested projects: ${interested.length}. Verified replies awaiting review: ${items.filter(i=>i.kind==='reply').length}. Attention items: ${items.length}.\nOpen the private desk for source evidence and assigned next steps. No prospect email or private call notes are included in this summary.`;
+ return template('digest',{day:businessDate(now),new:dailyNewProspectCount(state,now),callbacks:due.filter(a=>a.type==='callback_task').length,calls:due.filter(a=>a.type==='call_task').length,interested:interested.length,replies:items.filter(i=>i.kind==='reply').length,attention:items.length});
 }
 // Preparation has no external effects. A missing channel never masquerades as delivery.
 export function prepareNotificationsInState(state,now,{origin=now.toISOString(),includeDigest=true}={}){

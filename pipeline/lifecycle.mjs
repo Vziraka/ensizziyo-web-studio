@@ -186,7 +186,7 @@ export class StudioLifecycle {
   static async fromStore({store,now}){
     const app=new StudioLifecycle(null,now);app.store=store;app.config=await store.config();
     check(app.config.schema_version===1&&['controlled','production'].includes(app.config.mode)&&key(app.config.run_id)&&app.config.timezone==='America/New_York','Invalid shared lifecycle configuration');
-    if(store.inertBinding||store.manualBinding||store.projectBinding){await store.envelope();return app;}
+    if(store.inertBinding||store.manualBinding||store.projectBinding||store.dispatchBinding){await store.envelope();return app;}
     check(app.config.mode==='controlled'&&app.config.outreach_enabled===false&&app.config.connector_writes_enabled===false&&app.config.research_enabled===false&&app.config.transcript_ai.enabled===false,'Shared preview accepts execution-disabled fictional work only');
     const state=await app.snapshot();check(state.run_id===app.config.run_id&&state.mode===app.config.mode&&Object.values(state.prospects).every(r=>r.controlled===true),'Shared preview cannot load production records');return app;
   }

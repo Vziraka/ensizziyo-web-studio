@@ -60,7 +60,7 @@ export function blobAuthoringStore(raw){
   async put(id,name,bytes){const m=authoringManifest(bytes);for(let i=0;i<m.chunks.length;i++)await this.putChunk(m,i,bytes.subarray(i*originalChunkSize,(i+1)*originalChunkSize));await this.publish(id,name,m);}
  };
 }
-export function attachHostedAuthoring(app,raw){check(!app.store?.inertBinding&&!app.store?.manualBinding&&(app.config.mode==='controlled'||supportsProjectAuthoring(app)||app.store?.projectBinding?.scope.capability==='shared-known-identity-research-v1'),'Hosted authoring requires the fictional controlled workspace or an exact shared project binding');app.authoringStore=blobAuthoringStore(raw);app.originalStore=blobProjectOriginalStore(raw);return app;}
+export function attachHostedAuthoring(app,raw){check(!app.store?.inertBinding&&!app.store?.manualBinding&&(app.config.mode==='controlled'||supportsProjectAuthoring(app)||app.store?.dispatchBinding||app.store?.projectBinding?.scope.capability==='shared-known-identity-research-v1'),'Hosted authoring requires the fictional controlled workspace or an exact shared project binding');app.authoringStore=blobAuthoringStore(raw);app.originalStore=blobProjectOriginalStore(raw);return app;}
 function locate(state,id){check(jobID(id),'Choose an exact authoring job');const results=Object.values(state.prospects).flatMap(r=>Object.values(r.project_work??{}).filter(w=>w.execution?.id===id).map(w=>({project_id:r.id,work_id:w.id,job_id:id,job:w.execution})));check(results.length===1,'Unknown current authoring job');return results[0];}
 export function registeredAuthoring(state,id){
  check(jobID(id),'Choose an exact authoring job');const found=[];

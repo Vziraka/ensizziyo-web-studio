@@ -34,6 +34,8 @@ export function hasProjectDependencies(state){return Object.values(state.asset_i
 
 // Resolve a closed allowlist from records, never recurse through the workspace.
 async function inventory(state,read,{restoring=false}={}){
+ const dispatch=state.operations?.internal_dispatch;check(!Object.values(dispatch?.ticks??{}).some(t=>['Reserved','Claimed'].includes(t.status)),'Complete G1 held: reconcile incomplete dispatch against its exact observed hash; never replay');
+ if(dispatch?.authorization)check(hash(dispatch.policy)===dispatch.authorization.data?.policy_sha256&&hash(state.events[dispatch.authorization.id])===hash(dispatch.authorization),'Standing policy/authorization bytes are incomplete');
  validateResearchEvidence(state,{complete:true});
  const files=new Map(),jobs=new Map();let total=0;
  const add=async(path,{max=fileLimit,optional=false,expected,size}={})=>{
@@ -105,7 +107,8 @@ async function localInventory(directory,state){
  read.external=readRegularExternal;return inventory(state,read);
 }
 export async function hostedBackupInventory(app,audioStore){
- check(app.authoringStore&&app.originalStore&&app.store&&!app.store.inertBinding&&!app.store.manualBinding&&(app.config.mode==='controlled'||supportsProjectAuthoring(app)||app.store.projectBinding?.scope.capability==='shared-known-identity-research-v1'),'Hosted project backup requires fictional controlled work or an exact shared project binding');
+ check(app.authoringStore&&app.originalStore&&app.store&&!app.store.inertBinding&&!app.store.manualBinding&&(app.config.mode==='controlled'||supportsProjectAuthoring(app)||app.store.dispatchBinding||app.store.projectBinding?.scope.capability==='shared-known-identity-research-v1'),'Hosted project backup requires fictional controlled work or an exact shared project binding');
+ const dispatch=(await app.snapshot()).operations?.internal_dispatch;check(!Object.values(dispatch?.ticks??{}).some(t=>['Reserved','Claimed'].includes(t.status)),'Hosted backup held: reconcile incomplete dispatch tick against its exact observed hash');
  const state=await app.snapshot();
  // Incomplete transfers/attempts require reconciliation before claiming a complete hosted package.
  for(const work of workHistory(state))for(const job of [...(work.authoring_history??[]),...(work.execution?[work.execution]:[])])check(job.status==='Review'||job.status==='Reconciled'&&job.recovery,'Hosted backup held: reconcile unfinished authoring attempts before exporting complete dependencies');
