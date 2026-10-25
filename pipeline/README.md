@@ -1,3 +1,5 @@
+October25: [Disabled shared operations originals](SHARED-OPERATIONS-ORIGINALS.md) composes exact Drive reads and inert original recovery on the existing dispatch authority. Run `node --test shared-operations-originals.test.mjs`; independent grants/runtime remain default-disabled and real activation/host/device/cost acceptance stays open.
+
 # Controlled research proof
 
 [Partial-original G1 recovery](GOOGLE-DRIVE-ORIGINALS.md#explicit-incomplete-original-recovery) uses the existing disabled signed D1/Drive caller to retain exact observed chunks and uncertainty as inert evidence. Unresolved backups and unsupported shared imports hold before writes. Run `node --test original-recovery.test.mjs lifecycle-backup.test.mjs shared-project-originals.test.mjs google-drive-originals.test.mjs` from `pipeline`, then the existing full checks. It adds no provider or shared Drive activation.

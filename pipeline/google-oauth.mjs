@@ -1,7 +1,8 @@
-import {isDispatchCapability,dispatchHasManual} from './shared-internal-dispatch.mjs';
+import {isDispatchCapability,dispatchHasManual,validateDispatchEnvelope} from './shared-internal-dispatch.mjs';
+import {operationsOriginalsCapability,hasOperationsOriginals} from './shared-operations-originals.mjs';
 import {createCipheriv,createDecipheriv,createHash,randomBytes} from 'node:crypto';
 import {OAuth2Client} from 'google-auth-library';
-import {check} from './lifecycle.mjs';
+import {check,hash} from './lifecycle.mjs';
 import {gmailScopes} from './google-hosted-transport.mjs';
 
 export const googleOAuthPath='/desk/api/google-oauth';
@@ -27,33 +28,37 @@ export function normalizedGoogleScopes(value,profile){
  check(scopes.length===expected.length&&expected.every(s=>scopes.includes(s)),profile===driveOAuthProfile?'Exact Google identity and Drive read-only scopes required':profile===calendarOAuthProfile?'Exact Google identity and Calendar scopes required':'Exact Google identity and Gmail scopes required');
  return [...expected];
 }
-function configuration(env,profile){
+function configuration(env,profile,dispatchApp){
  check(profile===undefined||profile===driveOAuthProfile||profile===calendarOAuthProfile||profile===dispatchOAuthProfile,'Unsupported Google grant profile');
- const drive=profile===driveOAuthProfile,calendar=profile===calendarOAuthProfile,dispatch=profile===dispatchOAuthProfile;
+ const drive=profile===driveOAuthProfile,calendar=profile===calendarOAuthProfile,dispatch=profile===dispatchOAuthProfile,sharedDrive=drive&&env.EVZ_OPERATIONS_DESK_ENABLED===operationsOriginalsCapability;
  const originalEnv=env;
  if(drive||calendar||dispatch){
-  check(dispatch?env.EVZ_INTERNAL_GOOGLE_OAUTH==='owner-internal-gmail-code-v1':calendar?env.EVZ_OPERATIONS_GOOGLE_CALENDAR_OAUTH==='owner-calendar-code-v1':env.EVZ_OPERATIONS_GOOGLE_DRIVE_OAUTH==='owner-drive-code-v1','Exact separate owner connection is disabled');
-  env={...env,EVZ_OPERATIONS_GOOGLE_OAUTH:'owner-code-v1',...Object.fromEntries(['OAUTH_BINDING','CREDENTIAL_NAMESPACE','CREDENTIAL_KEY_ID','CREDENTIAL_KEY','CLIENT_SECRET'].map(k=>['EVZ_GOOGLE_'+k,env[(dispatch?'EVZ_INTERNAL_GOOGLE_':calendar?'EVZ_CALENDAR_':'EVZ_DRIVE_')+k]]))};
+  check(dispatch?env.EVZ_INTERNAL_GOOGLE_OAUTH==='owner-internal-gmail-code-v1':calendar?env.EVZ_OPERATIONS_GOOGLE_CALENDAR_OAUTH==='owner-calendar-code-v1':env.EVZ_OPERATIONS_GOOGLE_DRIVE_OAUTH===(sharedDrive?'owner-shared-drive-code-v1':'owner-drive-code-v1'),'Exact separate owner connection is disabled');
+  env={...env,EVZ_OPERATIONS_GOOGLE_OAUTH:'owner-code-v1',...Object.fromEntries(['OAUTH_BINDING','CREDENTIAL_NAMESPACE','CREDENTIAL_KEY_ID','CREDENTIAL_KEY','CLIENT_SECRET'].map(k=>['EVZ_GOOGLE_'+k,env[(dispatch?'EVZ_INTERNAL_GOOGLE_':calendar?'EVZ_CALENDAR_':sharedDrive?'EVZ_OPERATIONS_DRIVE_':'EVZ_DRIVE_')+k]]))};
  }
  check(env.EVZ_OPERATIONS_GOOGLE_OAUTH==='owner-code-v1','Google owner connection is disabled');
  let binding;try{binding=JSON.parse(env.EVZ_GOOGLE_OAUTH_BINDING);}catch{throw unavailable();}
  const origin=new URL(binding.origin);
- check((dispatch?env.CONTEXT==='production'&&isDispatchCapability(env.EVZ_OPERATIONS_DESK_ENABLED):env.CONTEXT==='deploy-preview'&&env.EVZ_OPERATIONS_DESK_ENABLED==='fictional-preview')&&origin.protocol==='https:'&&origin.origin===binding.origin&&origin.origin===env.EVZ_OPERATIONS_ORIGIN&&binding.site_id===env.SITE_ID&&binding.deploy_id===env.DEPLOY_ID&&short(binding.site_id)&&short(binding.deploy_id)&&short(binding.tenant_id),'Exact Google deployment binding required');
+ check((sharedDrive?env.CONTEXT==='production'&&hasOperationsOriginals(dispatchApp??{}):dispatch?env.CONTEXT==='production'&&isDispatchCapability(env.EVZ_OPERATIONS_DESK_ENABLED):env.CONTEXT==='deploy-preview'&&env.EVZ_OPERATIONS_DESK_ENABLED==='fictional-preview')&&origin.protocol==='https:'&&origin.origin===binding.origin&&origin.origin===env.EVZ_OPERATIONS_ORIGIN&&binding.site_id===env.SITE_ID&&binding.deploy_id===env.DEPLOY_ID&&short(binding.site_id)&&short(binding.deploy_id)&&short(binding.tenant_id),'Exact Google deployment binding required');
+ let sharedBinding={};
+ if(sharedDrive){const actual=dispatchApp.store.dispatchBinding,b=actual.scope;sharedBinding={capability:operationsOriginalsCapability,workspace_id:b.workspace_id,run_id:b.run_id,namespace:b.namespace,dispatch_binding_sha256:hash(actual),source_policy_sha256:hash(dispatchApp.config.google_drive_originals)};check(Object.keys(binding).sort().join(',')===[...Object.keys(sharedBinding),'tenant_id','site_id','deploy_id','origin','redirect_uri','client_id','account','audience'].sort().join(',')&&dispatchApp.store.key==='workspace'&&!dispatchApp.store.projectBinding&&Object.entries(sharedBinding).every(([k,v])=>binding[k]===v)&&hash(JSON.parse(env.EVZ_INTERNAL_DISPATCH_BINDING??'null'))===hash(actual)&&b.site_id===binding.site_id&&b.deploy_id===binding.deploy_id&&b.origin===binding.origin&&b.namespace===env.EVZ_OPERATIONS_BLOB_NAMESPACE,'Exact live shared Drive workspace binding required');}
  if(dispatch)check(dispatchHasManual(env.EVZ_OPERATIONS_DESK_ENABLED)?binding.capability===env.EVZ_OPERATIONS_DESK_ENABLED:binding.capability===undefined||binding.capability===env.EVZ_OPERATIONS_DESK_ENABLED,'Exact internal Google capability binding required; never transplant prior grant authority');
  check(binding.redirect_uri===origin.origin+(dispatch?dispatchOAuthPath:drive?driveOAuthPath:calendar?calendarOAuthPath:googleOAuthPath)+'/callback'&&binding.account==='ensizziyo@evzdigital.studio'&&/^[A-Za-z0-9_-]{6,180}\.apps\.googleusercontent\.com$/.test(binding.client_id)&&['external-testing','internal'].includes(binding.audience),'Exact business Google client/account/redirect required');
  const namespace=env.EVZ_GOOGLE_CREDENTIAL_NAMESPACE,keyId=env.EVZ_GOOGLE_CREDENTIAL_KEY_ID,encoded=env.EVZ_GOOGLE_CREDENTIAL_KEY;
- check((dispatch?/^evz-internal-google-credentials-[a-z0-9-]{8,40}$/:drive?/^evz-drive-credentials-[a-z0-9-]{8,40}$/:calendar?/^evz-calendar-credentials-[a-z0-9-]{8,40}$/:/^evz-google-credentials-[a-z0-9-]{8,40}$/).test(namespace??'')&&namespace!==env.EVZ_OPERATIONS_BLOB_NAMESPACE&&short(keyId)&&typeof encoded==='string'&&/^[A-Za-z0-9_-]{43}$/.test(encoded),'Separate Google credential storage and key required');
+ check((sharedDrive?/^evz-operations-drive-credentials-[a-z0-9-]{8,40}$/:dispatch?/^evz-internal-google-credentials-[a-z0-9-]{8,40}$/:drive?/^evz-drive-credentials-[a-z0-9-]{8,40}$/:calendar?/^evz-calendar-credentials-[a-z0-9-]{8,40}$/:/^evz-google-credentials-[a-z0-9-]{8,40}$/).test(namespace??'')&&namespace!==env.EVZ_OPERATIONS_BLOB_NAMESPACE&&short(keyId)&&typeof encoded==='string'&&/^[A-Za-z0-9_-]{43}$/.test(encoded),'Separate Google credential storage and key required');
  const key=Buffer.from(encoded,'base64url');check(key.length===32&&key.toString('base64url')===encoded&&![env.EVZ_OPERATIONS_OWNER_KEY,env.EVZ_OPERATIONS_FRIEND_KEY,env.EVZ_OPERATIONS_SESSION_SECRET].includes(encoded)&&safeToken(env.EVZ_GOOGLE_CLIENT_SECRET),'Google secret configuration is unavailable');
  if(drive)check(namespace!==originalEnv.EVZ_GOOGLE_CREDENTIAL_NAMESPACE&&encoded!==originalEnv.EVZ_GOOGLE_CREDENTIAL_KEY,'Drive credentials must be independent of Gmail');
+ if(sharedDrive)check(['EVZ_GOOGLE_','EVZ_DRIVE_','EVZ_CALENDAR_','EVZ_INTERNAL_GOOGLE_'].every(prefix=>namespace!==originalEnv[prefix+'CREDENTIAL_NAMESPACE']&&encoded!==originalEnv[prefix+'CREDENTIAL_KEY']&&env.EVZ_GOOGLE_CLIENT_SECRET!==originalEnv[prefix+'CLIENT_SECRET']&&(!originalEnv[prefix+'OAUTH_BINDING']||JSON.parse(originalEnv[prefix+'OAUTH_BINDING']).client_id!==binding.client_id)),'Shared Drive needs independent namespace, AES key, secret and client');
  if(calendar)check([originalEnv.EVZ_GOOGLE_CREDENTIAL_NAMESPACE,originalEnv.EVZ_DRIVE_CREDENTIAL_NAMESPACE].every(v=>v!==namespace)&&[originalEnv.EVZ_GOOGLE_CREDENTIAL_KEY,originalEnv.EVZ_DRIVE_CREDENTIAL_KEY].every(v=>v!==encoded)&&[originalEnv.EVZ_GOOGLE_CLIENT_SECRET,originalEnv.EVZ_DRIVE_CLIENT_SECRET].every(v=>v!==env.EVZ_GOOGLE_CLIENT_SECRET)&&[originalEnv.EVZ_GOOGLE_OAUTH_BINDING,originalEnv.EVZ_DRIVE_OAUTH_BINDING].every(v=>!v||JSON.parse(v).client_id!==binding.client_id),'Calendar credentials and client must be independent of Gmail and Drive');
- if(dispatch)check(['EVZ_GOOGLE_','EVZ_DRIVE_','EVZ_CALENDAR_'].every(prefix=>namespace!==originalEnv[prefix+'CREDENTIAL_NAMESPACE']&&encoded!==originalEnv[prefix+'CREDENTIAL_KEY']&&env.EVZ_GOOGLE_CLIENT_SECRET!==originalEnv[prefix+'CLIENT_SECRET']&&(!originalEnv[prefix+'OAUTH_BINDING']||JSON.parse(originalEnv[prefix+'OAUTH_BINDING']).client_id!==binding.client_id)),'Standing internal OAuth needs its own namespace, key, secret and client; no silent grant reuse');
- return {binding:{...(drive||calendar||dispatch?{profile}:{}),...(dispatch&&dispatchHasManual(env.EVZ_OPERATIONS_DESK_ENABLED)?{capability:env.EVZ_OPERATIONS_DESK_ENABLED}:{}),tenant_id:binding.tenant_id,site_id:binding.site_id,deploy_id:binding.deploy_id,origin:binding.origin,redirect_uri:binding.redirect_uri,client_id:binding.client_id,account:binding.account,audience:binding.audience},namespace,keyId,key,secret:env.EVZ_GOOGLE_CLIENT_SECRET};
+ if(dispatch)check(['EVZ_GOOGLE_','EVZ_DRIVE_','EVZ_CALENDAR_',...(env.EVZ_OPERATIONS_DESK_ENABLED===operationsOriginalsCapability?['EVZ_OPERATIONS_DRIVE_']:[])].every(prefix=>namespace!==originalEnv[prefix+'CREDENTIAL_NAMESPACE']&&encoded!==originalEnv[prefix+'CREDENTIAL_KEY']&&env.EVZ_GOOGLE_CLIENT_SECRET!==originalEnv[prefix+'CLIENT_SECRET']&&(!originalEnv[prefix+'OAUTH_BINDING']||JSON.parse(originalEnv[prefix+'OAUTH_BINDING']).client_id!==binding.client_id)),'Standing internal OAuth needs its own namespace, key, secret and client; no silent grant reuse');
+ return {binding:{...(drive||calendar||dispatch?{profile}:{}),...sharedBinding,...(dispatch&&dispatchHasManual(env.EVZ_OPERATIONS_DESK_ENABLED)?{capability:env.EVZ_OPERATIONS_DESK_ENABLED}:{}),tenant_id:binding.tenant_id,site_id:binding.site_id,deploy_id:binding.deploy_id,origin:binding.origin,redirect_uri:binding.redirect_uri,client_id:binding.client_id,account:binding.account,audience:binding.audience},namespace,keyId,key,secret:env.EVZ_GOOGLE_CLIENT_SECRET,sharedDrive};
 }
 async function defaultStore(namespace){const {getStore}=await import('@netlify/blobs');return getStore({name:namespace,consistency:'strong'});}
 
 // A single bounded envelope is the grant authority. A claim is never retried or reclaimed.
-export function createGoogleOAuth({env=process.env,storeFactory=defaultStore,fetcher=fetch,now=()=>Date.now(),certificates,grantId,profile}={}){
- const c=configuration(env,profile),b=c.binding,scopes=scopesFor(profile);
+export function createGoogleOAuth({env=process.env,storeFactory=defaultStore,fetcher=fetch,now=()=>Date.now(),certificates,grantId,profile,dispatchApp}={}){
+ const c=configuration(env,profile,dispatchApp),b=c.binding,scopes=scopesFor(profile);
+ async function assertWorkspace(){if(!c.sharedDrive)return;const {data}=await dispatchApp.store.envelope();validateDispatchEnvelope(data,dispatchApp.store.dispatchBinding);check(hasOperationsOriginals(dispatchApp)&&hash(data.config)===hash(dispatchApp.config)&&hash(dispatchApp.store.dispatchBinding)===b.dispatch_binding_sha256&&hash(data.config.google_drive_originals)===b.source_policy_sha256&&hash(configuration(env,profile,dispatchApp).binding)===hash(b),'Live shared Drive source/configuration changed');}
  const aad=grant=>Buffer.from(JSON.stringify({v:1,namespace:c.namespace,key_id:c.keyId,binding:b,grant_id:grant}));
  function encrypt(data){
   const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',c.key,iv,{authTagLength:16});cipher.setAAD(aad(data.grant_id));
@@ -67,16 +72,16 @@ export function createGoogleOAuth({env=process.env,storeFactory=defaultStore,fet
   const data=JSON.parse(Buffer.concat([decipher.update(Buffer.from(envelope.ciphertext,'base64url')),decipher.final()]).toString('utf8'));
   check(data.grant_id===envelope.grant_id,'Google grant identity differs');return data;
  }
- async function read(){try{const raw=await storeFactory(c.namespace),entry=await raw.getWithMetadata('credential',{type:'json',consistency:'strong'});if(!entry)return {raw,data:null,etag:null};check(typeof entry.etag==='string'&&entry.etag,'Google credential version missing');return {raw,data:decrypt(entry.data),etag:entry.etag};}catch{throw unavailable();}}
+ async function read(){try{await assertWorkspace();const raw=await storeFactory(c.namespace);await assertWorkspace();const entry=await raw.getWithMetadata('credential',{type:'json',consistency:'strong'});await assertWorkspace();if(!entry)return {raw,data:null,etag:null};check(typeof entry.etag==='string'&&entry.etag,'Google credential version missing');return {raw,data:decrypt(entry.data),etag:entry.etag};}catch{throw unavailable();}}
  async function write(entry,data){
-  try{const result=await entry.raw.setJSON('credential',encrypt(data),entry.etag?{onlyIfMatch:entry.etag}:{onlyIfNew:true});check(result?.modified===true&&typeof result.etag==='string'&&result.etag,'Google credential claim unavailable');return {...entry,data,etag:result.etag};}catch{throw unavailable();}
+  try{await assertWorkspace();const result=await entry.raw.setJSON('credential',encrypt(data),entry.etag?{onlyIfMatch:entry.etag}:{onlyIfNew:true});await assertWorkspace();check(result?.modified===true&&typeof result.etag==='string'&&result.etag,'Google credential claim unavailable');return {...entry,data,etag:result.etag};}catch{throw unavailable();}
  }
  async function halt(entry){try{await write(entry,{grant_id:entry.data.grant_id,status:'Reauthorization required',at:now()});}catch{} }
  async function json(url,options={},max=100000){
-  let response;try{response=await fetcher(url,{...options,redirect:'error',signal:AbortSignal.timeout(15000)});}catch{throw unavailable();}
+  await assertWorkspace();let response;try{response=await fetcher(url,{...options,redirect:'error',signal:AbortSignal.timeout(15000)});await assertWorkspace();}catch{throw unavailable();}
   if(!response.ok){await response.body?.cancel();throw unavailable();}
   try{check(response.body,'Google response missing');const reader=response.body.getReader(),chunks=[];let size=0;
-   try{for(;;){const {done,value}=await reader.read();if(done)break;size+=value.length;check(size<=max,'Google response too large');chunks.push(Buffer.from(value));}}finally{await reader.cancel();}
+   try{for(;;){const {done,value}=await reader.read();await assertWorkspace();if(done)break;size+=value.length;check(size<=max,'Google response too large');chunks.push(Buffer.from(value));}}finally{await reader.cancel();}
    const data=JSON.parse(Buffer.concat(chunks).toString('utf8'));check(data&&typeof data==='object'&&!Array.isArray(data),'Google response invalid');return data;
   }catch{throw unavailable();}
  }
@@ -84,8 +89,8 @@ export function createGoogleOAuth({env=process.env,storeFactory=defaultStore,fet
  async function identity(token,nonce){
   check(safeToken(token),'Google identity token missing');
   const header=JSON.parse(Buffer.from(token.split('.')[0],'base64url').toString('utf8'));check(header.alg==='RS256'&&short(header.kid),'Google identity signing algorithm differs');
-  const certs=certificates?await certificates():await json('https://www.googleapis.com/oauth2/v1/certs',{},200000);
-  check(Object.keys(certs).length>0&&Object.keys(certs).length<=10&&Object.entries(certs).every(([kid,pem])=>short(kid)&&typeof pem==='string'&&pem.length<12000),'Google signing keys invalid');
+  await assertWorkspace();const certs=certificates?await certificates():await json('https://www.googleapis.com/oauth2/v1/certs',{},200000);
+  await assertWorkspace();check(Object.keys(certs).length>0&&Object.keys(certs).length<=10&&Object.entries(certs).every(([kid,pem])=>short(kid)&&typeof pem==='string'&&pem.length<12000),'Google signing keys invalid');
   const ticket=await new OAuth2Client().verifySignedJwtWithCertsAsync(token,certs,b.client_id,['accounts.google.com','https://accounts.google.com'],7200),p=ticket.getPayload();
   check(p?.aud===b.client_id&&(!p.azp||p.azp===b.client_id)&&['accounts.google.com','https://accounts.google.com'].includes(p.iss)&&Number.isInteger(p.exp)&&p.exp*1000>now()&&Number.isInteger(p.iat)&&p.iat*1000<=now()+60000&&p.iat*1000>=now()-600000&&p.nonce===nonce&&p.email_verified===true&&p.email===b.account&&p.hd==='evzdigital.studio'&&typeof p.sub==='string'&&/^[A-Za-z0-9_-]{1,255}$/.test(p.sub),'Google business identity verification failed');
   return p.sub;
@@ -117,7 +122,7 @@ export function createGoogleOAuth({env=process.env,storeFactory=defaultStore,fet
   async status(){try{return metadata((await read()).data);}catch{return {enabled:true,status:'Reauthorization required',account:b.account,scopes:[]};}},
   async start(actor,session){
    check(actor==='owner'&&typeof session==='string'&&session.length>50,'Only the signed owner can connect Google');
-   const state=opaque(),nonce=opaque(),verifier=opaque(),grant_id=opaque(),expires_at=now()+600000;
+   const state=opaque(),nonce=opaque(),verifier=opaque(),grant_id=c.sharedDrive?dispatchApp.config.google_drive_originals.grant_id:opaque(),expires_at=now()+600000;
    await write(await read(),{grant_id,status:'Authorizing',at:now(),pending:{state_sha256:digest(state),session_sha256:digest(session),nonce,verifier,expires_at}});
    const query=new URLSearchParams({client_id:b.client_id,redirect_uri:b.redirect_uri,response_type:'code',scope:['openid','email',...scopes.slice(2)].join(' '),state,nonce,code_challenge:digest(verifier),code_challenge_method:'S256',access_type:'offline',prompt:'consent',include_granted_scopes:'false',login_hint:b.account,hd:'evzdigital.studio'});
    return {authorization_url:'https://accounts.google.com/o/oauth2/v2/auth?'+query,expires_at};

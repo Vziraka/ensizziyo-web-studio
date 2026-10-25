@@ -69,3 +69,5 @@ The default Gmail grant above stays exact and unchanged. An explicitly selected 
 ## Separate future Calendar booking profile
 
 The explicitly selected `calendar-booking-v1` profile reuses this state machine with a new Calendar-only client/callback, independent credential namespace/key and exact OIDC + FreeBusy/owned-event/calendar-metadata-read-only scopes. Gmail defaults and Drive equality remain unchanged. [Calendar source and future consent contract](GOOGLE-CALENDAR.md) own the scope rationale, disabled placeholders and caller. No real consent or grant was configured.
+
+The exact default-disabled [shared operations originals successor](SHARED-OPERATIONS-ORIGINALS.md#separate-future-owner-drive-consent) has a live-dispatch-validated production-shaped Drive branch, separate credential prefix/namespace/key/client/secret and expanded canonical AAD. Earlier profile AAD and denials remain unchanged; no real grant or setup occurred.

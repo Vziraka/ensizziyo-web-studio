@@ -20,7 +20,7 @@ export function gatewayCapability(env=process.env,profile){
  let sameOrigin=false;
  try{const provider=new URL(env.GOOGLE_GEMINI_BASE_URL),gateway=new URL(env.NETLIFY_AI_GATEWAY_URL);sameOrigin=provider.protocol==='https:'&&gateway.protocol==='https:'&&provider.origin===gateway.origin&&![provider,gateway].some(u=>u.username||u.password||u.search||u.hash);}catch{}
  const present=Boolean(env.NETLIFY_AI_GATEWAY_KEY&&env.NETLIFY_AI_GATEWAY_URL&&env.GEMINI_API_KEY&&env.GOOGLE_GEMINI_BASE_URL),matching=Boolean(present&&env.GEMINI_API_KEY===env.NETLIFY_AI_GATEWAY_KEY),conflict=Boolean(env.GOOGLE_API_KEY||env.GOOGLE_VERTEX_BASE_URL||env.GOOGLE_GENAI_USE_VERTEXAI==='true');
- const context=profile==='shared-operations-refinement-v1'?env.CONTEXT==='production'&&env.EVZ_OPERATIONS_DESK_ENABLED===profile&&env.EVZ_REFINEMENT_GENERATION_ENABLED===profile&&env.EVZ_OPERATIONS_PROJECT_AUTHORING==='shared-operations-refinement-node-v1':env.CONTEXT==='deploy-preview';
+ const context=['shared-operations-refinement-v1','shared-operations-originals-v1'].includes(profile)?env.CONTEXT==='production'&&env.EVZ_OPERATIONS_DESK_ENABLED===profile&&env.EVZ_REFINEMENT_GENERATION_ENABLED===profile&&env.EVZ_OPERATIONS_PROJECT_AUTHORING===(profile==='shared-operations-originals-v1'?'shared-operations-originals-node-v1':'shared-operations-refinement-node-v1'):env.CONTEXT==='deploy-preview';
  return {ready:context&&present&&matching&&sameOrigin&&!conflict,runtime_credentials_present:present,provider_key_matches_gateway:matching,provider_origin_matches_gateway:sameOrigin,conflicting_google_configuration:conflict,limits:'Runtime booleans only; no credential values. Capability is not an inference, audio pass-through or quota proof.'};
 }
 export async function liveCatalog(request=fetch,policy=gatewayPolicy){
@@ -61,7 +61,7 @@ export async function configureGatewayProof(app,input,actor,{env=process.env,cat
 export async function makeGatewayClient(env=process.env,request,timeout=20000,policy=gatewayPolicy,profile){
  check(typeof policy.model==='string'&&/^[a-zA-Z0-9.-]{1,100}$/.test(policy.model),'Choose one exact Gateway model');
  check(Number.isSafeInteger(timeout)&&timeout>0&&timeout<=720000,'Gateway timeout exceeds the background bound');
- check((profile!=='shared-operations-refinement-v1'||policy.version==='shared-refinement-generation-v1')&&gatewayCapability(env,profile).ready,'Matching injected Gateway configuration is unavailable');const {GoogleGenAI}=await import('@google/genai');
+ check((!['shared-operations-refinement-v1','shared-operations-originals-v1'].includes(profile)||policy.version==='shared-refinement-generation-v1')&&gatewayCapability(env,profile).ready,'Matching injected Gateway configuration is unavailable');const {GoogleGenAI}=await import('@google/genai');
  const send=request??fetch,origin=new URL(env.NETLIFY_AI_GATEWAY_URL).origin,basePath=new URL(env.GOOGLE_GEMINI_BASE_URL).pathname.replace(/\/$/,'');
  const paths=new Set(['countTokens','generateContent'].map(action=>`${basePath}/v1beta/models/${policy.model}:${action}`));
  const boundFetch=async(input,options={})=>{

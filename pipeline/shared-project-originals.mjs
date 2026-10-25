@@ -48,6 +48,10 @@ export function blobProjectOriginalStore(store){
    const m=validateManifest(data);check(m.sha256===original.sha256&&m.bytes===original.bytes,'Shared original manifest differs from the verified version');return m;
   },
   async chunk(manifest,index){const m=validateManifest(manifest),length=chunkLength(m,index),saved=await stored(store,chunkKey(m,index));check(saved,'Original chunk is missing; keep this transfer incomplete');const bytes=Buffer.from(saved.data);check(bytes.length===length&&originalDigest(bytes)===m.chunks[index],'Original chunk integrity changed');return bytes;},
+  async candidate(original,index,digest){
+   check(sha(original.sha256)&&sha(digest)&&Number.isSafeInteger(original.bytes)&&original.bytes>0&&original.bytes<=projectOriginalLimit&&Number.isInteger(index)&&index>=0&&index<Math.ceil(original.bytes/originalChunkSize),'Choose an exact bounded original candidate');
+   const saved=await stored(store,`project-originals/${original.sha256}/${index}-${digest}`);check(saved,'Original chunk is missing; keep this transfer incomplete');const bytes=Buffer.from(saved.data);check(bytes.length===Math.min(originalChunkSize,original.bytes-index*originalChunkSize)&&originalDigest(bytes)===digest,'Original chunk integrity changed');return bytes;
+  },
   async stageChunk(original,index,bytes){
    check(sha(original.sha256)&&Number.isSafeInteger(original.bytes)&&original.bytes>0&&original.bytes<=projectOriginalLimit&&Number.isInteger(index)&&index>=0&&index<Math.ceil(original.bytes/originalChunkSize)&&Buffer.isBuffer(bytes)&&bytes.length===Math.min(originalChunkSize,original.bytes-index*originalChunkSize),'Invalid bounded original candidate chunk');
    const digest=originalDigest(bytes);await immutable(store,`project-originals/${original.sha256}/${index}-${digest}`,bytes);return digest;
@@ -85,13 +89,13 @@ export async function reserveSharedOriginal(app,input,actor){
  });
 }
 export async function uploadSharedOriginalChunk(app,store,input,index,bytes){const {transfer}=currentTransfer(await app.snapshot(),input);await store.putChunk(transfer.manifest,index,bytes);return {transfer_id:transfer.id,index,sha256:transfer.manifest.chunks[index]};}
-export async function completeSharedOriginal(app,store,input,actor){
+export async function completeSharedOriginal(app,store,input,actor,{assertCurrent=async()=>{}}={}){
  check(['owner','friend'].includes(actor),'Original transfer needs a signed operator');
- const state=await app.snapshot(),{version,transfer}=currentTransfer(state,input),m=transfer.manifest,chunks=[];
- for(let index=0;index<m.chunks.length;index++)chunks.push(await store.chunk(m,index));
+ await assertCurrent();const state=await app.snapshot(),{version,transfer}=currentTransfer(state,input),m=transfer.manifest,chunks=[];
+ for(let index=0;index<m.chunks.length;index++){await assertCurrent();chunks.push(await store.chunk(m,index));await assertCurrent();}
  const bytes=Buffer.concat(chunks);check(originalDigest(bytes)===m.sha256&&bytes.subarray(0,5).toString()==='%PDF-','Original whole-file hash or PDF type differs; keep this transfer incomplete');
  // Immutable files may survive a lost CAS race; only the shared version record grants retrieval.
- await store.publish(m);
+ await assertCurrent();await store.publish(m);await assertCurrent();
  if(version.verified_original){await app.change(current=>{currentTransfer(current,input);});return version.verified_original;}
  app.originalStore={...store,async put(candidate){check(candidate.equals(bytes),'Original bytes changed before publication');}};
  return archiveProjectAsset(app,{...input,context_sha256:projectContext(state,input.project_id).context_sha256,expected_sha256:m.sha256},bytes,transfer.source,actor);

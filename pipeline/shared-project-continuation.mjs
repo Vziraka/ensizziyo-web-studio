@@ -12,7 +12,7 @@ import {validateAuthoringRecovery} from './authoring-recovery.mjs';
 import {rejectPartialOriginalImport} from './original-recovery.mjs';
 import {refinementCapability,validateRefinementPolicy,applyGenerationTransition,validateGenerationTransition,reconcileGeneration,validateGenerationAuthoring,refinementPolicyProjection,refinementStatusText} from './refinement-generation.mjs';
 
-export const supportsProjectAuthoring=app=>Boolean(app.store?.projectBinding&&['shared-project-continuation-v1',refinementCapability].includes(app.config.shared_capability)||['shared-operations-authoring-v1','shared-operations-refinement-v1'].includes(app.store?.dispatchBinding?.scope.capability)&&app.config.shared_capability===app.store.dispatchBinding.scope.capability);
+export const supportsProjectAuthoring=app=>Boolean(app.store?.projectBinding&&['shared-project-continuation-v1',refinementCapability].includes(app.config.shared_capability)||['shared-operations-authoring-v1','shared-operations-refinement-v1','shared-operations-originals-v1'].includes(app.store?.dispatchBinding?.scope.capability)&&app.config.shared_capability===app.store.dispatchBinding.scope.capability);
 
 const fields={note_added:['note'],asset_feedback_added:['asset_id','version_id','feedback','scope','project_id'],asset_version_selected:['asset_id','version_id'],asset_version_disputed:['asset_id','version_id'],project_preparation_requested:[],concept_refinement_requested:['asset_id','version_id','selected_direction','feedback','exception_id'],unpaid_refinement_exception:['reason','approved','extra_rounds']};
 const key=v=>typeof v==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(v)&&!['__proto__','constructor','prototype'].includes(v);

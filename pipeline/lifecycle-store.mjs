@@ -1,12 +1,12 @@
 import {validateProjectEnvelope,validateProjectChange} from './shared-project-continuation.mjs';
-import {validateDispatchEnvelope,validateDispatchChange,validateDispatchOptions} from './shared-internal-dispatch.mjs';
+import {validateDispatchEnvelope,validateDispatchChange,validateDispatchOptions,operationsOriginalsCapability} from './shared-internal-dispatch.mjs';
 import {check,hash} from './lifecycle.mjs';
 import {validateInertEnvelope,validateInertChange} from './inert-shared-workspace.mjs';
 import {validateManualEnvelope,validateManualChange} from './shared-manual-records.mjs';
 
 // Callbacks must reserve local state only: a conflict never reruns a callback or an external effect.
 export class ConditionalLifecycleStore {
-  constructor(store,{key='workspace',maxBytes=20_000_000,inertBinding=null,manualBinding=null,projectBinding=null,dispatchBinding=null}={}){this.store=store;this.key=key;this.maxBytes=maxBytes;this.inertBinding=inertBinding;this.manualBinding=manualBinding;this.projectBinding=projectBinding;this.dispatchBinding=dispatchBinding;check([inertBinding,manualBinding,projectBinding,dispatchBinding].filter(Boolean).length<=1,'Choose one shared capability');}
+  constructor(store,{key='workspace',maxBytes=20_000_000,inertBinding=null,manualBinding=null,projectBinding=null,dispatchBinding=null,originalsEnvironment=null,now=()=>new Date()}={}){this.store=store;this.key=key;this.maxBytes=maxBytes;this.inertBinding=inertBinding;this.manualBinding=manualBinding;this.projectBinding=projectBinding;this.dispatchBinding=dispatchBinding;this.originalsEnvironment=originalsEnvironment;this.now=now;check([inertBinding,manualBinding,projectBinding,dispatchBinding].filter(Boolean).length<=1,'Choose one shared capability');check(dispatchBinding?.scope.capability!==operationsOriginalsCapability||key==='workspace','Shared originals require the actual workspace authority key');}
   async initialize(config,state){
     const data={schema_version:1,config,state};this.validate(data);
     const result=await this.store.setJSON(this.key,data,{onlyIfNew:true});
@@ -42,7 +42,8 @@ export class ConditionalLifecycleStore {
     if(this.inertBinding)validateInertChange(JSON.parse(before).state,data.state,options);
     if(this.manualBinding)validateManualChange(JSON.parse(before),data,options);
     if(this.projectBinding)await validateProjectChange(JSON.parse(before),data,options,this.store);
-    if(this.dispatchBinding)await validateDispatchChange(JSON.parse(before),data,options,this.store);
+    if(this.dispatchBinding)await validateDispatchChange(JSON.parse(before),data,options,this.store,{binding:this.dispatchBinding,env:this.originalsEnvironment,now:this.now});
+    if(options.projectOriginal)check(+this.now()<options.projectOriginal.http_deadline,'Original transition deadline expired before CAS');
     if(JSON.stringify(data)===before)return result;
     let modified,uncertain=false;
     try {const written=await this.store.setJSON(this.key,data,{onlyIfMatch:etag});check(typeof written?.modified==='boolean'&&(!written.modified||typeof written.etag==='string'&&written.etag.length>0),'Conditional write result is unavailable');modified=written.modified;}
