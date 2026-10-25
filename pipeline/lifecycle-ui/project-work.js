@@ -3,7 +3,7 @@ import {deskPath} from './paths.js';
 
 export function preparationPanel(r,state,tools){
   const {el,button,eventForm,tell}=tools;
-  const work=Object.values(r.project_work??{}),node=el('section'),recordsOnly=state.shared_workspace?.capability==='shared-operations-records-v1',interactive=state.shared_workspace?.capability==='shared-operations-authoring-v1';
+  const work=Object.values(r.project_work??{}),node=el('section'),recordsOnly=state.shared_workspace?.capability==='shared-operations-records-v1',interactive=['shared-operations-authoring-v1','shared-operations-refinement-v1'].includes(state.shared_workspace?.capability);
   node.append(el('h3','Project preparation'),el('p',interactive?'Review current context, supply authored source and registered resources, render the PDF, then inspect every actual raster page. Delivery remains held.':recordsOnly?'Save preparation and focused refinement requests against current context. Requests are queued; authoring and delivery are held in this workspace. Existing output and execution evidence remain history.':'Load current private context for the named workflow. A handoff is a task; file retrieval, authoring and client delivery need a supported authenticated tool.','muted'));
   if(r.restriction){node.append(el('p','Contact is stopped. Prior preparation stays in history; no new sales output is released.','notice'));if(!interactive)return node;}
   if(!r.restriction&&!work.length)node.append(eventForm(r,'Prepare from the existing confirmed project context','project_preparation_requested',[],{},'Create the eligible preparation handoff'));
@@ -11,7 +11,7 @@ export function preparationPanel(r,state,tools){
     const section=el('details');section.append(el('summary',`${item.kind.replaceAll('-',' ')}${item.request?.round?` round ${item.request.round}`:''} · ${recordsOnly&&item.status==='Ready'?'Queued; authoring held':item.status} · requested by ${item.requested_by}`));
     if(recordsOnly)section.append(el('p',`Assigned to ${item.assigned_to}. ${item.execution?`Retained execution: ${item.execution.status}; no retry or continuation is authorized here.`:'No authoring started by this request.'}`,'notice'));
     if(item.hold)section.append(el('p',item.hold,'notice'));
-    if(item.generation)section.append(el('p',`Source generation: ${item.generation.status}. ${item.generation.next}.`,'notice'));
+    if(item.generation)section.append(el('p',`Source generation: ${item.generation.status}. Output: ${item.execution?.status??'Not rendered'}. ${item.generation.next}.`,'notice'));
     if(item.result)section.append(el('p',item.result.reference??item.result.internal_review,'source'),el('p',`Prepared by ${item.prepared_by}; awaiting human asset review. No send or client acceptance recorded.`,'muted'));
     const loaded=el('div');
     const sharedAuthoring=recordsOnly||interactive||['shared-project-continuation-v1','shared-refinement-generation-v1'].includes(state.shared_workspace?.capability);

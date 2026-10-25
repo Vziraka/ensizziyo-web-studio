@@ -117,7 +117,7 @@ export async function renderAuthoring(app,input,runtime,actor='owner'){
   }
   await authoringChange(app,'renderer',input,actor,{job,renderer_sha256,renderer_lock_sha256,nodeRuntime});
   current(await app.snapshot(),input,actor,job);
-  if(app.store?.projectBinding?.scope.capability==='shared-refinement-generation-v1')await (await import('./refinement-generation.mjs')).validateGenerationAuthoring(app,{type:'renderer',input,actor,details:{}});
+  await (await import('./refinement-generation.mjs')).validateGenerationAuthoring(app,{type:'renderer',input,actor,details:{}});
   if(nodeRuntime){
    const {renderNodePDF}=await import('./project-authoring-node.mjs');
    const {files}=await renderNodePDF(source,packet,runtime,{source_sha256:hash(source)});

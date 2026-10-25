@@ -1,5 +1,7 @@
 # Controlled research proof
 
+[Disabled shared operations refinement](REFINEMENT-GENERATION.md#shared-operations-composition-contract--october-25) joins the existing bounded selected-source caller, signed Node authoring/recovery, manual/project records and internal dispatch on one actual dispatch CAS. Internal and generation policies, runtime gates and finite reservations stay independent. Run `node --test pipeline/shared-operations-refinement.test.mjs pipeline/refinement-generation.test.mjs pipeline/shared-operations-authoring.test.mjs` from the repository root, then the existing full pipeline/site checks. No real grant, model/amount approval or activation is included.
+
 [Disabled shared operations authoring](SHARED-OPERATIONS-AUTHORING.md) joins the existing signed interactive Node PDF and observed-evidence recovery caller to the same manual/project/internal dispatch authority. Exact unapproved profile plus a separate unset-by-default gate; all authored output and companion delivery remain held for review. Run `node --test pipeline/shared-operations-authoring.test.mjs pipeline/shared-manual-internal-dispatch.test.mjs` from the repository root.
 
 

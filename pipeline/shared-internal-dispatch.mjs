@@ -10,16 +10,19 @@ import {prepareNotificationsInState,digestTime,notificationTemplates,notificatio
 import {syncIncomingMail,incomingRoutes} from './google-incoming-mail.mjs';
 import {composeExactMail,byteHash,mailMessageId,verifySentRaw} from './google-hosted-transport.mjs';
 import {applyManualRecord,manualRecordEvents} from './shared-manual-records.mjs';
+import {operationsRefinementCapability,generationTransitionSchema,validateRefinementPolicy,validatePreparedRefinement,validateGenerationTransition,applyGenerationTransition} from './refinement-generation.mjs';
+export {operationsRefinementCapability} from './refinement-generation.mjs';
 
 export const dispatchCapability='shared-internal-dispatch-v1',dispatchPrincipal='service:internal-dispatch';
 export const manualDispatchCapability='shared-manual-internal-dispatch-v1';
 export const operationsRecordsCapability='shared-operations-records-v1';
 export const operationsAuthoringCapability='shared-operations-authoring-v1';
-export const dispatchHasProjects=value=>[operationsRecordsCapability,operationsAuthoringCapability].includes(value);
+export const dispatchHasProjects=value=>[operationsRecordsCapability,operationsAuthoringCapability,operationsRefinementCapability].includes(value);
+export const dispatchHasAuthoring=value=>[operationsAuthoringCapability,operationsRefinementCapability].includes(value);
 export const dispatchAuthoringSchema=Object.freeze({version:1,transitions:['claim','hold','rendering','renderer','revise','rendered','complete'],recovery:'observed-hash-close-publication-v1',transfers:'immutable-authoring-chunks-v1'});
-export const isDispatchCapability=value=>[dispatchCapability,manualDispatchCapability,operationsRecordsCapability,operationsAuthoringCapability].includes(value);
-export const dispatchHasManual=value=>[manualDispatchCapability,operationsRecordsCapability,operationsAuthoringCapability].includes(value);
-const sourceKind=capability=>capability===operationsAuthoringCapability?'shared-operations-authoring-source-v1':capability===operationsRecordsCapability?'shared-operations-records-source-v1':capability===manualDispatchCapability?'shared-manual-internal-dispatch-source-v1':'shared-internal-dispatch-source-v1';
+export const isDispatchCapability=value=>[dispatchCapability,manualDispatchCapability,operationsRecordsCapability,operationsAuthoringCapability,operationsRefinementCapability].includes(value);
+export const dispatchHasManual=value=>[manualDispatchCapability,operationsRecordsCapability,operationsAuthoringCapability,operationsRefinementCapability].includes(value);
+const sourceKind=capability=>capability===operationsRefinementCapability?'shared-operations-refinement-source-v1':capability===operationsAuthoringCapability?'shared-operations-authoring-source-v1':capability===operationsRecordsCapability?'shared-operations-records-source-v1':capability===manualDispatchCapability?'shared-manual-internal-dispatch-source-v1':'shared-internal-dispatch-source-v1';
 export const dispatchManualSchema=Object.freeze({version:1,events:manualRecordEvents});
 // Notes have exactly one typed path, including in the composed profile.
 export const dispatchProjectEvents=Object.freeze(sharedProjectEvents.filter(type=>type!=='note_added'));
@@ -39,11 +42,12 @@ export function validateDispatchBinding(b){
  const u=new URL(b.origin);check(u.protocol==='https:'&&u.origin===b.origin&&/^evz-project-shared-[a-z0-9-]{8,40}$/.test(b.namespace),'Exact shared namespace and HTTPS origin required');return b;
 }
 export function validateDispatchPolicy(p,{active=false}={}){
- fields(p,'schema_version,status,capability,policy_id,revision,binding,grant_id,account_email,from,approval_mode,kinds,recipients,role_mapping,versions,templates,signature,starts_at,expires_at,routes,limits,priority,host_allowance,host_reserve_percent,pause_rule'+(p?.capability===manualDispatchCapability?',manual_events':dispatchHasProjects(p?.capability)?',human_events'+(p.capability===operationsAuthoringCapability?',authoring':''):''));
+ fields(p,'schema_version,status,capability,policy_id,revision,binding,grant_id,account_email,from,approval_mode,kinds,recipients,role_mapping,versions,templates,signature,starts_at,expires_at,routes,limits,priority,host_allowance,host_reserve_percent,pause_rule'+(p?.capability===manualDispatchCapability?',manual_events':dispatchHasProjects(p?.capability)?',human_events'+(dispatchHasAuthoring(p.capability)?',authoring':'')+(p.capability===operationsRefinementCapability?',generation':''):''));
  check(p.schema_version===1&&p.status==='UNAPPROVED'&&isDispatchCapability(p.capability)&&key(p.policy_id)&&key(p.revision)&&p.approval_mode==='standing-internal-only'&&hash(p.kinds)===hash(['attention','digest'])&&hash(p.versions)===hash(dispatchVersions)&&hash(p.templates)===hash(notificationTemplates),'Exact unapproved standing internal policy/template required');
  if(p.capability===manualDispatchCapability)check(hash(p.manual_events)===hash(dispatchManualSchema),'Exact five-event manual schema required');
  if(dispatchHasProjects(p.capability))check(hash(p.human_events)===hash(dispatchHumanSchema),'Exact partitioned human record schema required');
- if(p.capability===operationsAuthoringCapability)check(hash(p.authoring)===hash(dispatchAuthoringSchema),'Exact interactive authoring/recovery schema required');
+ if(dispatchHasAuthoring(p.capability))check(hash(p.authoring)===hash(dispatchAuthoringSchema),'Exact interactive authoring/recovery schema required');
+ if(p.capability===operationsRefinementCapability){fields(p.generation,'policy_sha256,schema');check(sha(p.generation.policy_sha256)&&hash(p.generation.schema)===hash(generationTransitionSchema),'Exact separate generation policy/schema required');}
  fields(p.binding,'workspace_id,run_id,site_id,deploy_id,origin,namespace');
  check(hash(p.priority)===hash(['reconcile','incoming','reply','meeting','problem','digest'])&&p.host_reserve_percent===30&&p.pause_rule==='both-roles-pause-owner-new-policy-no-resume'&&p.signature==='EVZ Digital team · Internal operations notification','Review finite priority, reserve and pause rules');
  fields(p.recipients,'owner,friend');fields(p.role_mapping,'owner,friend');
@@ -64,29 +68,33 @@ export function validateDispatchEnvelope(data,binding){
  const p=validateDispatchPolicy(policy(data.config));check(p.capability===b.capability&&hash(p)===b.policy_sha256&&hash(p.binding)===hash(Object.fromEntries(['workspace_id','run_id','site_id','deploy_id','origin','namespace'].map(k=>[k,b[k]]))),'Dispatch policy/deployment binding changed');
  if(b.capability===manualDispatchCapability)check(hash(m.manual_events)===hash(dispatchManualSchema)&&hash(m.allowed_events)===hash(manualRecordEvents)&&data.config.follow_up?.enabled===true,'Exact manual manifest and held preview preparation required');
  if(dispatchHasProjects(b.capability))check(hash(m.human_events)===hash(dispatchHumanSchema)&&hash(m.allowed_events)===hash(dispatchRecordEvents)&&data.config.follow_up?.enabled===true,'Exact operations records manifest and held preview preparation required');
- if(b.capability===operationsAuthoringCapability)check(hash(m.authoring)===hash(dispatchAuthoringSchema),'Exact authoring manifest required');
+ if(dispatchHasAuthoring(b.capability))check(hash(m.authoring)===hash(dispatchAuthoringSchema),'Exact authoring manifest required');
+ if(b.capability===operationsRefinementCapability){validateRefinementPolicy(data.config.refinement_generation);check(hash(data.config.refinement_generation)===p.generation.policy_sha256&&hash(m.generation)===hash(p.generation),'Separate refinement policy/manifest changed');}
  for(const flag of ['research_enabled','outreach_enabled','connector_writes_enabled','calls_enabled'])check(data.config[flag]===false,'General execution remains disabled');
  check(data.config.runtime?.enabled===false&&data.config.operations?.enabled===false&&data.config.transcript_ai?.enabled===false&&data.config.release?.approved===false&&data.config.call_release?.approved===false,'General release remains revoked');
 }
-export async function prepareDispatchWorkspace({backup,sourceConfig,scope,dispatchPolicy,rebindObservation}){
+export async function prepareDispatchWorkspace({backup,sourceConfig,scope,dispatchPolicy,refinementPolicy,refinementRuntimes,rebindObservation}){
  validateDispatchBinding(scope);validateDispatchPolicy(dispatchPolicy);check(dispatchPolicy.capability===scope.capability&&hash(dispatchPolicy)===scope.policy_sha256,'Exact dispatch policy required');
  const baseScope={...scope,capability:'shared-project-continuation-v1'};delete baseScope.policy_sha256;
  const packet=await prepareProjectWorkspace({backup,sourceConfig,scope:baseScope}),config={...packet.envelope.config,shared_capability:scope.capability,internal_dispatch:structuredClone(dispatchPolicy)};
+ if(scope.capability===operationsRefinementCapability){validateRefinementPolicy(refinementPolicy);check(hash(refinementPolicy)===dispatchPolicy.generation.policy_sha256,'Prepare exact separate unapproved generation policy');config.refinement_generation=structuredClone(refinementPolicy);config.refinement_generation_runtimes=structuredClone(refinementRuntimes??{});}
+ else check(refinementPolicy===undefined&&refinementRuntimes===undefined,'Existing dispatch profiles reject generation preparation');
  if(dispatchHasManual(scope.capability))config.follow_up={...config.follow_up,enabled:true};
  config.sender={...config.sender,email:dispatchPolicy.from,account_email:dispatchPolicy.account_email};
  config.operations={...config.operations,threads:structuredClone(Object.fromEntries(dispatchPolicy.routes.map(({project_id,contact_sha256,...route})=>[project_id,route])))};
  config.google_incoming_mail={enabled:true,capability:'shared-registered-incoming-v1',run_id:scope.run_id,grant_id:dispatchPolicy.grant_id,account_email:dispatchPolicy.account_email};
- const manifest={...packet.envelope.project_source,kind:sourceKind(scope.capability),binding:structuredClone(scope),config_sha256:hash(config),allowed_events:dispatchHasProjects(scope.capability)?[...dispatchRecordEvents]:scope.capability===manualDispatchCapability?[...manualRecordEvents]:[],...(scope.capability===manualDispatchCapability?{manual_events:dispatchManualSchema}:dispatchHasProjects(scope.capability)?{human_events:dispatchHumanSchema}:{}),...(scope.capability===operationsAuthoringCapability?{authoring:dispatchAuthoringSchema}:{}),unsupported:['prospect-outreach','research',...(scope.capability===operationsAuthoringCapability?['unattended-authoring','automatic-design-review']:['authoring']),'audio','calendar','drive','automatic-migration']};
+ const manifest={...packet.envelope.project_source,kind:sourceKind(scope.capability),binding:structuredClone(scope),config_sha256:hash(config),allowed_events:dispatchHasProjects(scope.capability)?[...dispatchRecordEvents]:scope.capability===manualDispatchCapability?[...manualRecordEvents]:[],...(scope.capability===manualDispatchCapability?{manual_events:dispatchManualSchema}:dispatchHasProjects(scope.capability)?{human_events:dispatchHumanSchema}:{}),...(dispatchHasAuthoring(scope.capability)?{authoring:dispatchAuthoringSchema}:{}),...(scope.capability===operationsRefinementCapability?{generation:structuredClone(dispatchPolicy.generation)}:{}),unsupported:['prospect-outreach','research',...(dispatchHasAuthoring(scope.capability)?['unattended-authoring','automatic-design-review']:['authoring']),'audio','calendar','drive','automatic-migration']};
  const state=structuredClone(packet.envelope.state),prior=control(state);
  if(prior){check(prior.paused&&rebindObservation===hash(prior)&&!Object.values(prior.ticks).some(t=>['Reserved','Claimed'].includes(t.status))&&prior.policy.policy_id!==dispatchPolicy.policy_id,'Imported standing policy needs exact observed-hash recovery and a distinct new policy; never transplant authority');const history=state.operations.internal_dispatch_history??=[];check(history.length<10&&!history.some(d=>d.policy.policy_id===dispatchPolicy.policy_id),'Finite retained policy history; never reset a historical policy allowance');history.push(prior);}
  (state.operations??={}).internal_dispatch={policy:structuredClone(dispatchPolicy),authorization:null,ticks:{},observations:[],paused:true};
  manifest.original_source_state_sha256=manifest.source_state_sha256;manifest.source_state_sha256=hash(state);
  const envelope={schema_version:1,config,state,dispatch_source:manifest},binding={scope:structuredClone(scope),manifest_sha256:hash(manifest)};
- validateDispatchEnvelope(envelope,binding);return {envelope,binding,files:packet.files};
+ validateDispatchEnvelope(envelope,binding);if(scope.capability===operationsRefinementCapability)await validatePreparedRefinement(envelope,binding,packet.files);return {envelope,binding,files:packet.files};
 }
 export async function installDispatchWorkspace(store,packet,{commit=false}={}){
  const {envelope,binding,files}=packet;validateDispatchEnvelope(envelope,binding);check(hash(envelope.state)===envelope.dispatch_source.source_state_sha256,'Dispatch source changed');await validateBackupDependencies(envelope.state,files);
  check(hash([...files].map(([path,bytes])=>({path,sha256:originalDigest(bytes),bytes:bytes.length,availability:'shared-immutable-dependency'})))===hash(envelope.dispatch_source.dependencies),'Dispatch dependencies changed');
+ if(binding.scope.capability===operationsRefinementCapability)await validatePreparedRefinement(envelope,binding,files);
  if(!commit)return {dry_run:true,execution:'disabled',binding};
  check(hash(store.dispatchBinding)===hash(binding),'Exact import binding required');store.validate(envelope);check(!await store.store.getWithMetadata(store.key,{type:'json',consistency:'strong'}),'Shared destination exists; never overwrite or reseed');
  const originals=blobProjectOriginalStore(store.store),authored=blobAuthoringStore(store.store),audio=blobAudioStore(store.store);
@@ -198,19 +206,20 @@ export function applyDispatchProjectRecord(state,config,record,now){
  if(record.event.type==='concept_refinement_requested'&&!state.events[record.event.id]){const asset=state.asset_index?.[record.event.data?.asset_id];check(!asset?.baseline_version||asset.baseline_version===record.event.data.version_id,'Select and agree the current approved baseline before requesting its refinement; no unpaid round was consumed');}
  const result=applySharedProjectEvent(state,record.event,record.actor,record.revision,now,config);
  if(!result.duplicate)prepareNotificationsInState(state,now,{origin:'signed-project-record',includeDigest:false});
- return {...result,execution:config.shared_capability===operationsAuthoringCapability?'interactive authoring available; delivery held':'held; authoring unavailable'};
+ return {...result,execution:dispatchHasAuthoring(config.shared_capability)?'interactive authoring available; delivery held':'held; authoring unavailable'};
 }
 export function validateDispatchOptions(capability,options){
- const types=capability===operationsAuthoringCapability?['dispatchTransition','manualRecord','projectRecord','projectAuthoring','projectReconcile']:capability===operationsRecordsCapability?['dispatchTransition','manualRecord','projectRecord']:capability===manualDispatchCapability?['dispatchTransition','manualRecord']:['dispatchTransition'];
- check(types.filter(k=>Object.hasOwn(options,k)).length===1&&Object.keys(options).every(k=>[...types,'eventId','eventFingerprint','configFingerprint'].includes(k)),'Shared dispatch storage rejects untyped mutations');
+ const types=dispatchHasAuthoring(capability)?['dispatchTransition','manualRecord','projectRecord','projectAuthoring','projectReconcile',...(capability===operationsRefinementCapability?['projectGeneration']:[])]:capability===operationsRecordsCapability?['dispatchTransition','manualRecord','projectRecord']:capability===manualDispatchCapability?['dispatchTransition','manualRecord']:['dispatchTransition'];
+ check(types.filter(k=>Object.hasOwn(options,k)).length===1&&Object.keys(options).every(k=>[...types,'configFingerprint',...(options.manualRecord||options.projectRecord?['eventId','eventFingerprint']:[])].includes(k)),'Shared dispatch storage rejects untyped mutations');
 }
 export async function validateDispatchChange(before,after,options={},raw){
- const {dispatchTransition,manualRecord,projectRecord,projectAuthoring,projectReconcile}=options;validateDispatchOptions(before.config.shared_capability,options);
+ const {dispatchTransition,manualRecord,projectRecord,projectAuthoring,projectReconcile,projectGeneration}=options;validateDispatchOptions(before.config.shared_capability,options);
  check(hash(before.config)===hash(after.config)&&hash(before.dispatch_source)===hash(after.dispatch_source),'Shared dispatch rejects configuration changes');
  if(dispatchHasProjects(before.config.shared_capability)&&(manualRecord||projectRecord)){const record=manualRecord??projectRecord;check(options.eventId===record.event.id&&options.eventFingerprint===hash({event:record.event,actor:record.actor})&&options.configFingerprint===hash(before.config),'Exact human event receipt and configuration fingerprint required');}
  const expected=structuredClone(before.state);
  if(manualRecord)applyDispatchManualRecord(expected,before.config,manualRecord,new Date(manualRecord.at));
  else if(projectRecord)applyDispatchProjectRecord(expected,before.config,projectRecord,new Date(projectRecord.at));
+ else if(projectGeneration){const now=new Date(after.state.updated_at),app={store:{dispatchBinding:{scope:before.dispatch_source.binding,manifest_sha256:hash(before.dispatch_source)}},config:before.config,snapshot:async()=>structuredClone(before.state),now:()=>now};attachHostedAuthoring(app,raw);await validateGenerationTransition(app,projectGeneration);applyGenerationTransition(expected,projectGeneration,before.config,now);}
  else if(projectAuthoring||projectReconcile){
   const app={store:{dispatchBinding:{scope:before.dispatch_source.binding,manifest_sha256:hash(before.dispatch_source)}},config:before.config,snapshot:async()=>structuredClone(before.state),now:()=>new Date(after.state.updated_at)};
   if(projectAuthoring){
