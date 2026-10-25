@@ -28,8 +28,13 @@ export function publicAddress(address) {
 }
 
 // Pin the validated address into the actual TLS connection, retaining hostname/SNI verification.
+async function boundedDNS(name,resolveHost,signal){
+  if(!signal)return resolveHost(name);signal.throwIfAborted();let abort;
+  const cancelled=new Promise((_,reject)=>{abort=()=>reject(signal.reason);signal.addEventListener('abort',abort,{once:true});});
+  try{return await Promise.race([resolveHost(name),cancelled]);}finally{signal.removeEventListener('abort',abort);}
+}
 export async function publicHTTPSRequest(url, options={}, resolveHost=name=>lookup(name,{all:true}), connect=httpsRequest) {
-  const u=new URL(url),addresses=await resolveHost(u.hostname);
+  const u=new URL(url),addresses=await boundedDNS(u.hostname,resolveHost,options.signal);
   const publicTarget=address=>{if(!publicAddress(address))return false;if(isIP(address)!==6)return true;const [first,second]=address.split(':').map(v=>parseInt(v||'0',16));return !(first===0x2002||first===0x2001&&second<=0x1ff||first>=0x3ffe);};
   if(u.protocol!=='https:'||u.username||u.password||u.port||isIP(u.hostname)||!addresses.length||addresses.some(a=>!publicTarget(a.address)))throw Error('Non-public source address');
   return new Promise((resolve,reject)=>{
@@ -94,12 +99,13 @@ export async function collectPublicSources(job, { request = fetch, resolveHost =
   const sources = [], failures = [];
   for (const original of job.seed_urls) {
     try {
+      const pageTimeout=exactURLs?AbortSignal.timeout(20_000):null,pageSignal=pageTimeout?(signal?AbortSignal.any([signal,pageTimeout]):pageTimeout):null;
       let current = original, response;
       for (let redirect = 0; redirect <= 2; redirect++) {
-        const addresses = await resolveHost(new URL(current).hostname);
+        const addresses = await boundedDNS(new URL(current).hostname,resolveHost,pageSignal);
         if (!addresses.length || addresses.some(item => !publicAddress(item.address))) throw Error('Non-public source address');
         const timeout = AbortSignal.timeout(20_000);
-        response = await request(current, { redirect: 'manual', signal: signal ? AbortSignal.any([signal, timeout]) : timeout, headers: { Accept: 'text/html,text/plain' } });
+        response = await request(current, { redirect: 'manual', signal: pageSignal??(signal ? AbortSignal.any([signal, timeout]) : timeout), headers: { Accept: 'text/html,text/plain' } });
         if ([301, 302, 303, 307, 308].includes(response.status)) {
           await response.body?.cancel();
           const target = new URL(response.headers.get('location'), current);

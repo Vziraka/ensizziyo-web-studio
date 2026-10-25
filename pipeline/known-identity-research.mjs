@@ -36,7 +36,7 @@ export function validateResearchPolicy(p){
  for(const k of ['maximum_catalog_input_usd_per_million','maximum_catalog_output_usd_per_million'])check(Number.isFinite(p[k])&&p[k]>=0,'Finite nonnegative exact rate ceilings required');
  check(p.maximum_lifetime_requests<=p.jobs.length&&p.maximum_daily_requests<=p.maximum_lifetime_requests&&p.maximum_cycle_requests<=p.maximum_lifetime_requests&&p.maximum_count_attempts<=p.maximum_lifetime_requests&&p.maximum_generation_attempts<=p.maximum_lifetime_requests,'Finite count/generation/lifetime/day/cycle caps required');
  check(p.maximum_request_bytes<=600000&&p.maximum_output_bytes<=120000&&p.maximum_input_tokens<=65536&&p.maximum_output_tokens<=8192&&p.execution_ms<=600000&&p.maximum_microcredits>=p.reserved_microcredits_per_job,'Research exceeds bounded transfer/token/time limits');
- check(p.reserved_microcredits_per_job>=Math.ceil((2*p.maximum_input_tokens*p.maximum_catalog_input_usd_per_million+p.maximum_output_tokens*p.maximum_catalog_output_usd_per_million)*180),'Reserve conservative count plus generation before effects');
+ check(p.reserved_microcredits_per_job>=Math.ceil(((p.maximum_request_bytes+4096+p.maximum_input_tokens)*p.maximum_catalog_input_usd_per_million+p.maximum_output_tokens*p.maximum_catalog_output_usd_per_million)*180),'Reserve the whole bounded text count plus framing and generation before effects');
  check(text(p.cycle,80)&&Number.isFinite(Date.parse(p.expires_at)),'Finite cycle/expiry required');return p;
 }
 const attemptID=i=>'known-'+hash({batch_id:i.batch_id,candidate_id:i.candidate_id}).slice(0,32);
@@ -126,7 +126,7 @@ export function applyResearchTransition(s,t,config,now){
   check(a.status==='Captured'&&!a.request,'One exact model request only');const packet=packetFor(s,i,now);check(a.captures.failures.length===0&&a.captures.sources.length===f.identity.intake.urls.length&&a.captures.sources.every(src=>src.coverage==='full'&&!src.truncated),'Partial/inaccessible source coverage requires human hold');
   // Contact identity is checked above; prospective phone duplicates are held before model effects.
   check(!Object.values(s.prospects).some(r=>r.contact?.phone&&phoneDigits(r.contact.phone)===phoneDigits(packet.phone)),'Existing prospect phone duplicate; preserve restrictions/history');
-  a.packet=packet;a.request=researchRequest(packet,p);a.request_sha256=hash(a.request);a.schema=structuredClone(researchSchema);a.schema_sha256=hash(a.schema);check(Buffer.byteLength(JSON.stringify(a.request))<=p.maximum_request_bytes,'Request exceeds exact policy bytes');bump(s,now);return a;
+  a.packet=packet;a.request=researchRequest(packet,p);a.request_sha256=hash(a.request);a.schema=structuredClone(researchSchema);a.schema_sha256=hash(a.schema);check(Buffer.byteLength(JSON.stringify(a.request))<=p.maximum_request_bytes,'Request exceeds exact policy bytes');a.count_reserve_basis={text_utf8_bytes:Buffer.byteLength(JSON.stringify(a.request.contents)),maximum_text_token_bound:p.maximum_request_bytes+4096,framing_allowance:4096};check(a.count_reserve_basis.text_utf8_bytes+4096<=a.count_reserve_basis.maximum_text_token_bound,'Count input exceeds reserved text bound');bump(s,now);return a;
  }
  if(type==='count-returned'){check(a.status==='Running'&&a.request&&a.phases.count?.status==='Claimed'&&!a.phases.generation&&Number.isSafeInteger(d.tokens)&&d.tokens>0&&d.tokens<=p.maximum_input_tokens,'Count outcome changed/exceeds cap');a.phases.count={...a.phases.count,status:'Returned',tokens:d.tokens};a.status='Counted';bump(s,now);return a;}
  if(type==='returned'){
@@ -187,7 +187,7 @@ export function validateResearchEvidence(s,{complete=false}={}){
   const {c}=locate(s,a);check(c.research_attempt===a.id,'Retained research candidate link changed');
   if(complete)check(['Awaiting human source/semantic review','Human reviewed','Rejected','Held','Reconciled'].includes(a.status),'Complete G1 held: explicitly reconcile incomplete research phases first');
   if(a.captures){validateSnapshots(a.captures,{...a.source_request,id:'known-'+hash(a.spec).slice(0,25)});check(hash(a.captures)===a.capture_sha256,'Retained capture hash changed');}
-  if(a.request)check(hash(a.request)===a.request_sha256&&hash(a.schema)===a.schema_sha256,'Retained model request/schema changed');
+  if(a.request)check(hash(a.request)===a.request_sha256&&hash(a.schema)===a.schema_sha256&&hash(a.count_reserve_basis)===hash({text_utf8_bytes:Buffer.byteLength(JSON.stringify(a.request.contents)),maximum_text_token_bound:a.policy.maximum_request_bytes+4096,framing_allowance:4096}),'Retained model request/schema/count reserve basis changed');
   if(a.raw){check(hash(a.raw)===a.raw_sha256,'Retained raw output changed');if(!a.raw.truncated)check(a.raw.text_bytes===Buffer.byteLength(a.raw.text)&&a.raw.text_sha256===hash(a.raw.text),'Retained raw text hash changed');}
   if(a.proposal)check(hash(a.proposal)===hash(validateProposal(a.packet,JSON.parse(a.raw.text))),'Retained proposal differs from exact raw response');
  }
