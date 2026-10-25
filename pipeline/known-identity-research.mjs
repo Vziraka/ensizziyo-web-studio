@@ -1,4 +1,5 @@
 import {createHmac,timingSafeEqual} from 'node:crypto';
+import {lookup} from 'node:dns/promises';
 import {check,hash,businessDate} from './lifecycle.mjs';
 import {candidatePacket} from './candidate-packet.mjs';
 import {collectPublicSources,publicHTTPSRequest,validateJob,validateSnapshots} from './sources.mjs';
@@ -168,7 +169,9 @@ export async function executeResearch(app,reference,token,{env=process.env,catal
  try{
   uncertain=true;await step('capture-claim');await guard();
   const job={...a.source_request,id:'known-'+hash(a.spec).slice(0,25)};let captures;
-  try{captures=await collectPublicSources(job,{request:request??((url,options)=>publicHTTPSRequest(url,options,resolveHost)),resolveHost,now:app.now,signal,exactURLs:true});}
+  const resolveCurrent=async name=>{await guard();const addresses=await (resolveHost??(host=>lookup(host,{all:true})))(name);await guard();return addresses;};
+  const requestCurrent=async(url,options)=>{await guard();return request?request(url,options):publicHTTPSRequest(url,options,resolveCurrent);};
+  try{captures=await collectPublicSources(job,{request:requestCurrent,resolveHost:resolveCurrent,now:app.now,signal,exactURLs:true});}
   catch(error){if(error.code==='SOURCE_UNAVAILABLE'){await step('capture-failed',{failures:error.failures});return researchStatus(app,i,actor);}throw error;}
   a=await step('captured',{captures});uncertain=false;a=await step('request');
   const catalog=await liveCatalog(catalogRequest,p);check(catalog.sha256===p.catalog_sha256,'Catalog fingerprint changed');await guard();const client=clientFactory?await clientFactory(p):await makeGatewayClient(env,undefined,p.execution_ms,p);
