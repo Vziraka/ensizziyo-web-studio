@@ -159,6 +159,7 @@
         "hold"
       ],
       "confirmation": "state.operations.bookings.confirmation",
+      "confirmation_observation": "state.operations.bookings.confirmation_observation",
       "grant_profile": "calendar-booking-v1",
       "recovery": "exact-id-read-only-no-recreate"
     },

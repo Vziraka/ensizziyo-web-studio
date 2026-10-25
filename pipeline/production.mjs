@@ -196,7 +196,7 @@ export async function queueMeeting(app, input, {actor='owner',hostedCalendar=fal
       check(!Object.entries(bookings).some(([id,b])=>id!==key&&Date.parse(b.start)<Date.parse(input.end)+c.calendar.buffer_minutes*60000&&Date.parse(b.end)>Date.parse(input.start)-c.calendar.buffer_minutes*60000),'Another invitation already reserves this slot or buffer');
     }
     check(!bookings[key] || hash(bookings[key]) === hash(booking), 'An existing slot changed; preserve its reservation');
-    if(shared){const o=state.operations??={};o.bookings??={};o.bookings[key]??={confirmation:booking};}
+    if(shared){const o=state.operations??={};o.bookings??={};o.bookings[key]??={confirmation:booking,confirmation_observation:{type:'queue',at:now.toISOString(),grant:structuredClone(calendarRecord.grant),claim:{dispatch_claim:null,read_claim:null},requests:structuredClone(calendarRecord.observations)}};}
     else c.operations.bookings[key] ??= booking;
     if(hostedCalendar)state.events[booking.confirmation_event]??={id:booking.confirmation_event,type:'meeting_queued',prospect_id:r.id,actor,at:now.toISOString(),data:{booking_id:key,booking_sha256:hash(booking)}};
     if(path)await saveJson(path, c); app.config = c;
