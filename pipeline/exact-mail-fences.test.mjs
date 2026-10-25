@@ -195,7 +195,7 @@ async function scenario({pauseAt='none',mutation='none',sender='owner',other='fr
  const retry=await post('/api/exact-mail/dispatch',{action_id:id},sender);assert.equal(providerCalls.filter(c=>c.path==='messages/send').length,posts.length);
  const restarted=createHostedDesk(options),restartResponse=await restarted(new Request(origin+'/desk/api/exact-mail/dispatch',{method:'POST',headers:sessions[sender],body:JSON.stringify({action_id:id})}));await restartResponse.body.cancel();assert.equal(providerCalls.filter(c=>c.path==='messages/send').length,posts.length);
  assert.equal(JSON.stringify(after).includes(token.access_token),false);
- const result={...active,mutation,configuration_before:configHash,configuration_after:hash(await app.loadConfig()),action_id:id,dispatch:dispatched,mutation_response:raced,repeated_dispatch:retry,post_count:posts.length,post_after_saved_stop:posts.some(c=>c.restriction_at_request==='do_not_contact'&&c.stop_actor_at_request===other),token_calls:tokenCalls,protected_before:protectedBefore,protected_after:protectedState(after),configuration_unchanged:true,final_request:after.operations.requests[logical],final_action:after.actions[id],final_envelope:JSON.parse(entries.get('workspace').bytes)};
+ const result={...active,mutation,configuration_before:configHash,configuration_after:hash(await app.loadConfig()),action_id:id,dispatch:dispatched,mutation_response:raced,repeated_dispatch:retry,post_count:posts.length,post_after_saved_stop:posts.some(c=>c.restriction_at_request==='do_not_contact'&&c.stop_actor_at_request===other),token_calls:tokenCalls,protected_before:protectedBefore,protected_after:protectedState(after),configuration_unchanged:configHash===hash(await app.loadConfig()),final_request:after.operations.requests[logical],final_action:after.actions[id],final_envelope:JSON.parse(entries.get('workspace').bytes)};
  allCases.push(result);return result;
 }
 
@@ -207,7 +207,7 @@ for(const [sender,other] of [['owner','friend'],['friend','owner']])test('signed
 });
 test('fresh actor, approval, content, configuration, grant, runtime and whole-request ownership fence unstarted sends',async()=>{
  for(const [pauseAt,mutation] of [['reserve-ack','handoff'],['mime-ack','edit'],['source-headers','stop'],['source-chunk','approval'],['source-done','actor'],['source-cancel','config'],['claim-ack','claim'],['send-token','content-approval'],['send-token','complete-request'],['send-token','email'],['send-token','runtime'],['send-token','token-scope'],['send-token','token-expiry'],['send-token','token-account'],['send-token','token-grant'],['grant-current-send','grant'],['grant-metadata-send','stop'],['token-1','config']]){
-  const r=await scenario({pauseAt,mutation});assert.equal(r.post_count,0,pauseAt+'/'+mutation);assert.ok(r.final_request.raw_base64url||pauseAt==='reserve-ack');
+  const r=await scenario({pauseAt,mutation});assert.equal(r.post_count,0,pauseAt+'/'+mutation);assert.equal(r.configuration_unchanged,mutation!=='config');assert.ok(r.final_request.raw_base64url||pauseAt==='reserve-ack');
  }
 });
 test('the encompassing deadline includes token, source bodies and successful CAS acknowledgements',async()=>{
