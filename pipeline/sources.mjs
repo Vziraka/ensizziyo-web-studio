@@ -39,8 +39,9 @@ export async function publicHTTPSRequest(url, options={}, resolveHost=name=>look
   if(u.protocol!=='https:'||u.username||u.password||u.port||isIP(u.hostname)||!addresses.length||addresses.some(a=>!publicTarget(a.address)))throw Error('Non-public source address');
   return new Promise((resolve,reject)=>{
     const pinned=addresses[0],req=connect(u,{method:'GET',headers:options.headers,signal:options.signal,lookup:(_name,opts,done)=>done(null,opts?.all?[{address:pinned.address,family:isIP(pinned.address)}]:pinned.address,isIP(pinned.address))},res=>{
-      const headers=new Headers();for(const [k,v] of Object.entries(res.headers))if(v!==undefined)headers.set(k,Array.isArray(v)?v.join(', '):String(v));
-      resolve(new Response(Readable.toWeb(res),{status:res.statusCode,headers}));
+      try{const headers=new Headers();for(const [k,v] of Object.entries(res.headers))if(v!==undefined)headers.set(k,Array.isArray(v)?v.join(', '):String(v));
+        resolve(new Response([204,205,304].includes(res.statusCode)?null:Readable.toWeb(res),{status:res.statusCode,headers}));if([204,205,304].includes(res.statusCode))res.destroy();
+      }catch(error){res.destroy();reject(error);}
     });req.on('error',reject);req.end();
   });
 }
