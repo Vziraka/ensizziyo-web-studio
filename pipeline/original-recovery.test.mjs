@@ -237,6 +237,15 @@ test('legacy Drive target is resolved from exact current policy; obsolete polici
  }
 });
 
+test('studio-wide manual transfer observation rejects a different project before any chunk reads',async t=>{
+ const f=await fixture(t,{manual:true}),{fixtureProspect}=await import('./lifecycle-fixtures.mjs');
+ // Trusted fictional record import; the signed route under test cannot import prospects.
+ await f.app.apply(fixtureProspect('other-project',at),{actor:'controlled-fixture'});
+ await f.event('asset_registered',{asset_id:'studio-pdf',scope:'studio',kind:'template',name:'Fictional studio PDF',version_id:'v1',version_label:'v1',reference:f.source.reference},'owner');
+ const context=await f.owner.context('shared-proof'),transfer=await f.ownerSession.json('/api/project-original/shared-proof/studio-pdf/v1/reserve',{method:'POST',body:{context_sha256:context.context_sha256,manifest:originalManifest(f.bytes),source:{reference:f.source.reference,name:f.source.name,mime_type:'application/pdf',modified_time:at}}});let chunkReads=0;f.raw.onRead=key=>{if(key.startsWith('project-originals/'))chunkReads++;};
+ await assert.rejects(f.friend.recovery({project_id:'other-project',asset_id:'studio-pdf',version_id:'v1'},{kind:'manual',transfer_id:transfer.id}),/transfer.*target|target.*transfer/i);assert.equal(chunkReads,0);const proper=await f.friend.recovery({project_id:'shared-proof',asset_id:'studio-pdf',version_id:'v1'},{kind:'manual',transfer_id:transfer.id});assert.equal(proper.target.project_id,'shared-proof');
+});
+
 test('completed valid 30,591,178-byte fictional PDF keeps 31 exact ranges, fresh role readback and complete G1',async t=>{
  const bytes=validPDF(30_590_551);assert.equal(bytes.length,30_591_178);const f=await fixture(t,{bytes});
  for(let i=0;i<31;i++){const part=await f.owner.readDriveOriginal(ids);assert.equal(part.chunks_verified,i+1);assert.equal(part.status,'Ready');}

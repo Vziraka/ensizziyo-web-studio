@@ -103,7 +103,10 @@ function recoveryRecord(state,ids,input,resolveDriveTarget){
  check(['manual','drive'].includes(input.kind)&&sha(input.transfer_id),'Choose an exact manual or Drive receipt');
  const selected=originalRecoveryTarget(state,ids),version=target(state,ids),record=input.kind==='manual'?version.original_transfer:state.drive_original_reads?.[input.transfer_id];
  check(record?.id===input.transfer_id,'Choose the exact registered original recovery receipt');
- if(input.kind==='manual')check(record.source?.reference===selected.reference,'Original transfer reference changed');
+ if(input.kind==='manual'){
+  check(record.source?.reference===selected.reference,'Original transfer reference changed');
+  const {reference,...targetIds}=selected;check(record.id===hash({...targetIds,manifest:record.manifest,source:record.source}),'Original transfer target differs from its reserving project');
+ }
  else{
   const bound=record.recovery?.observation.target??record.target??resolveDriveTarget?.(state,ids,record);
   check(bound&&hash(bound)===hash(selected),'Drive receipt has no exact registered recovery target; keep backup held');

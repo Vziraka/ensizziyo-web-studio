@@ -10,7 +10,7 @@ export const originalEvidencePath=sha256=>{check(sha(sha256),'Invalid original e
 export const originalEvidencePattern=/^project-originals\/recovery-([a-f0-9]{64})\.bin$/;
 export function originalRecoveryTarget(state,ids){
  check(fields(ids,['project_id','asset_id','version_id'])&&Object.values(ids).length===3&&Object.values(ids).every(key),'Choose exact original recovery IDs');
- const version=projectAssetVersion(state,ids.project_id,ids.asset_id,ids.version_id);return {...ids,reference:version.reference};
+ const version=projectAssetVersion(state,ids.project_id,ids.asset_id,ids.version_id);return {project_id:ids.project_id,asset_id:ids.asset_id,version_id:ids.version_id,reference:version.reference};
 }
 export function originalEvidenceDeclaration(kind,record){
  check(['manual','drive'].includes(kind),'Choose manual or Drive original recovery');
