@@ -1,4 +1,6 @@
 import {researchCapability,validateResearchPolicy,validateResearchTransition,applyResearchTransition,researchProjection,researchStatusText} from './known-identity-research.mjs';
+import {sharedProjectEvents} from './shared-project-events.mjs';
+export {sharedProjectEvents} from './shared-project-events.mjs';
 import {check,hash,StudioLifecycle} from './lifecycle.mjs';
 import {prepareInertWorkspace,inertReconciliation} from './inert-shared-workspace.mjs';
 import {validateBackupDependencies,hostedBackupInventory} from './lifecycle-backup.mjs';
@@ -11,7 +13,6 @@ import {refinementCapability,validateRefinementPolicy,applyGenerationTransition,
 
 export const supportsProjectAuthoring=app=>Boolean(app.store?.projectBinding&&['shared-project-continuation-v1',refinementCapability].includes(app.config.shared_capability));
 
-export const sharedProjectEvents=Object.freeze(['note_added','asset_feedback_added','asset_version_selected','asset_version_disputed','project_preparation_requested','concept_refinement_requested','unpaid_refinement_exception']);
 const fields={note_added:['note'],asset_feedback_added:['asset_id','version_id','feedback','scope','project_id'],asset_version_selected:['asset_id','version_id'],asset_version_disputed:['asset_id','version_id'],project_preparation_requested:[],concept_refinement_requested:['asset_id','version_id','selected_direction','feedback','exception_id'],unpaid_refinement_exception:['reason','approved','extra_rounds']};
 const key=v=>typeof v==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(v)&&!['__proto__','constructor','prototype'].includes(v);
 export function validateProjectBinding(b){

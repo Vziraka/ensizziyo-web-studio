@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "status": "UNAPPROVED",
+  "capability": "shared-operations-records-v1",
+  "policy_id": "proposed-operations-records",
+  "revision": "unapproved-v1",
+  "binding": {
+    "workspace_id": "",
+    "run_id": "",
+    "site_id": "",
+    "deploy_id": "",
+    "origin": "",
+    "namespace": ""
+  },
+  "grant_id": "",
+  "account_email": "",
+  "from": "hello@evzdigital.studio",
+  "approval_mode": "standing-internal-only",
+  "kinds": [
+    "attention",
+    "digest"
+  ],
+  "recipients": {
+    "owner": "",
+    "friend": ""
+  },
+  "role_mapping": {
+    "owner": null,
+    "friend": null
+  },
+  "versions": {
+    "template": "existing-attention-digest-v1",
+    "privacy": "no-contact-or-private-notes-v1",
+    "signature": "internal-operations-v1"
+  },
+  "signature": "EVZ Digital team · Internal operations notification",
+  "starts_at": "",
+  "expires_at": "",
+  "routes": [],
+  "limits": {
+    "ticks_lifetime": null,
+    "ticks_day": null,
+    "poll_seconds": null,
+    "gets_tick": null,
+    "sends_tick": null,
+    "bytes_tick": null,
+    "milliseconds_tick": null,
+    "sends_day": null,
+    "sends_lifetime": null,
+    "attention_role_day": null,
+    "sender_day": 20
+  },
+  "priority": [
+    "reconcile",
+    "incoming",
+    "reply",
+    "meeting",
+    "problem",
+    "digest"
+  ],
+  "host_reserve_percent": 30,
+  "pause_rule": "both-roles-pause-owner-new-policy-no-resume",
+  "templates": {
+    "reply": "{name}: a verified reply needs review. Read the original in the business mailbox; future cold follow-ups are paused.",
+    "meeting": "{name}: the meeting record needs review in the connected calendar.",
+    "information": "{name}: an information email needs delivery reconciliation. Do not resend.",
+    "support": "{name}: an urgent support request needs review in the private desk.",
+    "action": "A provider action needs reconciliation in the private desk. Do not repeat an uncertain operation.",
+    "exception": "A saved exception requires an operator decision. Open Needs attention in the private desk.",
+    "hold": "A connected operation is held. Review its retained evidence in the private desk.",
+    "runtime": "The local operations service reports a problem. Review its private status and retained logs.",
+    "digest": "EVZ Digital internal team summary · {day} · 9am America/New_York\nNew businesses prepared today: {new} /25 shared target.\nDue callbacks: {callbacks}. Other due call tasks: {calls}.\nInterested projects: {interested}. Verified replies awaiting review: {replies}. Attention items: {attention}.\nOpen the private desk for source evidence and assigned next steps. No prospect email or private call notes are included in this summary."
+  },
+  "host_allowance": {
+    "available_ticks": null,
+    "observed_at": "",
+    "evidence_reference": ""
+  },
+  "human_events": {
+    "version": 1,
+    "manual": [
+      "note_added",
+      "call_logged",
+      "call_claimed",
+      "follow_up_handed_off",
+      "contact_stopped"
+    ],
+    "project": [
+      "asset_feedback_added",
+      "asset_version_selected",
+      "asset_version_disputed",
+      "project_preparation_requested",
+      "concept_refinement_requested",
+      "unpaid_refinement_exception"
+    ]
+  }
+}

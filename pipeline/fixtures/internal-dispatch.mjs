@@ -5,7 +5,7 @@ import {writeLifecycleBackup,writePortableLifecycleBackup,hostedBackupInventory}
 import {attachHostedAuthoring} from '../hosted-authoring.mjs';import {blobAudioStore} from '../call-audio.mjs';
 import {join} from 'node:path';
 import {ConditionalLifecycleStore} from '../lifecycle-store.mjs';
-import {dispatchCapability,manualDispatchCapability,dispatchManualSchema,dispatchVersions,prepareDispatchWorkspace,installDispatchWorkspace} from '../shared-internal-dispatch.mjs';
+import {dispatchCapability,manualDispatchCapability,operationsRecordsCapability,dispatchHumanSchema,dispatchManualSchema,dispatchVersions,prepareDispatchWorkspace,installDispatchWorkspace} from '../shared-internal-dispatch.mjs';
 import {createHostedDesk} from '../hosted-desk.mjs';
 import {createInternalDispatchClock,dispatchWorkerPath,dispatchReference,signDispatchReference} from '../internal-dispatch-host.mjs';
 import {createInternalDispatchBackground} from '../netlify-functions/internal-dispatch.mjs';
@@ -14,8 +14,8 @@ import {notificationTemplates} from '../team-notifications.mjs';
 import {gmailScopes} from '../google-hosted-transport.mjs';
 import {authoringManifest} from '../hosted-authoring.mjs';
 export const at='2026-10-26T13:07:00.000Z',account='ensizziyo@evzdigital.studio';
-export async function fixture(t,{authorize=true,limits={},sourceChange,completeDependencies=false,manual=false}={}){
- const capability=manual?manualDispatchCapability:dispatchCapability;
+export async function fixture(t,{authorize=true,limits={},sourceChange,completeDependencies=false,manual=false,records=false,projectVersions=false}={}){
+ const capability=records?operationsRecordsCapability:manual?manualDispatchCapability:dispatchCapability;manual=manual||records;
  const base=await projectFixture(t,{audio:manual&&completeDependencies});let source=base.sourceApp;
  if(manual&&completeDependencies){
   const client=await base.connect(),job=await client.begin(name,'website-concepts'),bytes=Buffer.from(JSON.stringify(authoredSource(job.context))),manifest=authoringManifest(bytes),session=await base.session('owner'),path=`/api/project-author/${job.id}/file/input.json`;
@@ -23,6 +23,12 @@ export async function fixture(t,{authorize=true,limits={},sourceChange,completeD
   const observed=await client.recovery(job.id);await client.reconcile(job.id,{snapshot:observed.snapshot,reason:'Fictional retained partial source; no process exit attestation.',disposition:'close-publication'});await client.revise(job.id,'Fictional corrected source after retained interruption.');
  }
  if(completeDependencies){const client=await base.connect(),job=await client.begin(name,'website-concepts');await client.render(job.id,authoredSource(job.context),await runtime());const receipt=JSON.parse(await client.download(job.id,'export.json')),rasters=await client.rasters(job.id,{pdf_sha256:receipt.pdf.sha256,rasterizer:'Test-only substituted PNG; existing PDF renderer/source/runtime dependencies are actual',pages:receipt.pages.map(()=>substitutedPNG)});await client.complete(job.id,review(receipt,rasters));source=base.app;attachHostedAuthoring(source,base.storage.raw);}
+ if(projectVersions){
+  const state=await source.snapshot(),prior=state.prospects['shared-proof'].project_work['website-concepts'].result,client=await base.connect();
+  await source.apply({id:'prior-refinement-request',prospect_id:'shared-proof',type:'concept_refinement_requested',at:source.now().toISOString(),data:{asset_id:prior.asset_id,version_id:prior.version_id,selected_direction:'d0',feedback:'Retain this exact first direction.'}},{actor:'owner',expectedRevision:state.revision});
+  const job=await client.begin(name,'website-refinement'),original=JSON.parse(await client.download(prior.asset_id,'authored.json')),next={...authoredSource(job.context),kind:'website-refinement',selected_direction:'d0',previous_asset_id:prior.asset_id,previous_version_id:prior.version_id,feedback:job.context.source.request.feedback,preserves_direction:true,pages:[original.pages[0]]};delete next.directions;
+  await client.render(job.id,next,await runtime());const receipt=JSON.parse(await client.download(job.id,'export.json')),rasters=await client.rasters(job.id,{pdf_sha256:receipt.pdf.sha256,rasterizer:'Test-only substituted PNG; no semantic claim',pages:receipt.pages.map(()=>substitutedPNG)});await client.complete(job.id,review(receipt,rasters));
+ }
 
  source.now=()=>new Date(at);if(manual&&!completeDependencies)await source.change(s=>{const r=s.prospects['shared-proof'];r.stage='Ready to contact';r.cold_paused=false;});if(sourceChange)await source.change(sourceChange);
  const state=await source.snapshot();
@@ -30,7 +36,7 @@ export async function fixture(t,{authorize=true,limits={},sourceChange,completeD
  if(manual&&completeDependencies){state.prospects['shared-proof'].stage='Ready to contact';state.prospects['shared-proof'].cold_paused=false;}
  const route={project_id:'shared-proof',thread_id:'thread',original_id:'original',from:'hello@evzdigital.studio',to:'shared-proof@example.invalid',subject:'Website question',contact_sha256:hash(state.prospects['shared-proof'].contact)};
  const binding={workspace_id:'fictional-studio',run_id:state.run_id,site_id:'fictional-site',deploy_id:'fictional-deploy',origin,namespace:'evz-project-shared-standing-fictional'},p={schema_version:1,status:'UNAPPROVED',capability,policy_id:'fictional-standing',revision:'review-1',binding,grant_id:'fictional-standing-grant',account_email:account,from:'hello@evzdigital.studio',approval_mode:'standing-internal-only',kinds:['attention','digest'],recipients:{owner:'owner@example.invalid',friend:'friend@example.invalid'},role_mapping:Object.fromEntries(['owner','friend'].map(role=>[role,{role,address:role+'@example.invalid',verified:true,verification_id:'fictional-'+role}])),versions:dispatchVersions,templates:notificationTemplates,signature:'EVZ Digital team · Internal operations notification',starts_at:'2026-10-24T00:00:00Z',expires_at:'2026-10-30T00:00:00Z',routes:[route],limits:{ticks_lifetime:10,ticks_day:8,poll_seconds:60,gets_tick:30,sends_tick:3,bytes_tick:4_000_000,milliseconds_tick:60000,sends_day:8,sends_lifetime:20,attention_role_day:3,sender_day:20,...limits},priority:['reconcile','incoming','reply','meeting','problem','digest'],host_allowance:{available_ticks:20,observed_at:at,evidence_reference:'fictional-measured-cycle-allowance-only'},host_reserve_percent:30,pause_rule:'both-roles-pause-owner-new-policy-no-resume'};
- if(manual)p.manual_events=dispatchManualSchema;
+ if(records)p.human_events=dispatchHumanSchema;else if(manual)p.manual_events=dispatchManualSchema;
  const scope={...binding,schema_version:1,capability,mode:'production',state_schema:1,policy_sha256:hash(p)},backup=join(base.directory,'standing-source.json');if(completeDependencies){const inv=await hostedBackupInventory(source,blobAudioStore(base.storage.raw));await writePortableLifecycleBackup(state,inv.files,backup,at);}else await writeLifecycleBackup(source.directory,state,backup,at);
  const packet=await prepareDispatchWorkspace({backup,sourceConfig:await source.loadConfig(),scope,dispatchPolicy:p}),storage=fictionalBlobs(),store=new ConditionalLifecycleStore(storage.raw,{dispatchBinding:packet.binding});await installDispatchWorkspace(store,packet,{commit:true});
  let clock=Date.parse(at);const now=()=>new Date(clock),env={...previewEnv,CONTEXT:'production',SITE_ID:scope.site_id,DEPLOY_ID:scope.deploy_id,EVZ_OPERATIONS_DESK_ENABLED:capability,EVZ_OPERATIONS_BLOB_NAMESPACE:scope.namespace,EVZ_INTERNAL_DISPATCH_BINDING:JSON.stringify(packet.binding),EVZ_INTERNAL_DISPATCH_RUNTIME:capability,EVZ_INTERNAL_DISPATCH_SECRET:'h'.repeat(43)},context={site:{id:scope.site_id},deploy:{id:scope.deploy_id,context:'production',published:true}};

@@ -1,7 +1,7 @@
 import {createHmac,timingSafeEqual} from 'node:crypto';
 import {check,hash,businessDate,StudioLifecycle} from './lifecycle.mjs';
 import {ConditionalLifecycleStore} from './lifecycle-store.mjs';
-import {manualDispatchCapability,isDispatchCapability,dispatchPrincipal,validateDispatchBinding,currentDispatch,dispatchTransition,nextStandingMessage,assertStandingPost} from './shared-internal-dispatch.mjs';
+import {dispatchHasManual,isDispatchCapability,dispatchPrincipal,validateDispatchBinding,currentDispatch,dispatchTransition,nextStandingMessage,assertStandingPost} from './shared-internal-dispatch.mjs';
 import {googleHostedTransport} from './google-hosted-transport.mjs';
 import {syncIncomingMail} from './google-incoming-mail.mjs';
 import {createGoogleOAuth,dispatchOAuthProfile} from './google-oauth.mjs';
@@ -102,6 +102,6 @@ export function createInternalDispatchWorker({env=process.env,storeFactory=defau
  return async(request,context)=>{try{const binding=dispatchHostBinding(env,context);check(request.method==='POST'&&new URL(request.url).origin===binding.scope.origin&&new URL(request.url).pathname===dispatchWorkerPath,'Protected background POST required');const ref=await body(request);verifyDispatchReference(env,binding,ref,request.headers.get('x-evz-internal-dispatch'),now());const app=await open(env,binding,storeFactory,now);return reply(200,await executeInternalDispatch(app,ref,{...options,env,context}));}catch{return reply(409,{held:true,readback_required:true,delivery:false});}};
 }
 export function internalDispatchClockEntry(env={}){
- if(env.CONTEXT!=='production'||!isDispatchCapability(env.EVZ_INTERNAL_DISPATCH_BUILD)||env.EVZ_INTERNAL_DISPATCH_BUILD===manualDispatchCapability&&env.EVZ_OPERATIONS_DESK_ENABLED!==manualDispatchCapability)return '// Generated: standing dispatch clock disabled.\nexport default async()=>Response.json({held:true},{status:503});\n';
+ if(env.CONTEXT!=='production'||!isDispatchCapability(env.EVZ_INTERNAL_DISPATCH_BUILD)||dispatchHasManual(env.EVZ_INTERNAL_DISPATCH_BUILD)&&env.EVZ_OPERATIONS_DESK_ENABLED!==env.EVZ_INTERNAL_DISPATCH_BUILD)return '// Generated: standing dispatch clock disabled.\nexport default async()=>Response.json({held:true},{status:503});\n';
  return "import {createInternalDispatchClock} from '../internal-dispatch-host.mjs';\nexport default (request,context)=>createInternalDispatchClock({env:{...process.env,CONTEXT:context.deploy?.context??'',SITE_ID:context.site?.id??'',DEPLOY_ID:context.deploy?.id??''}})(request,context);\nexport const config={schedule:'* * * * *'};\n";
 }

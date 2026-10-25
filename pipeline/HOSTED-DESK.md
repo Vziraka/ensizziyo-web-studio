@@ -1,5 +1,7 @@
 # Protected shared-desk preview
 
+[Shared operations records](SHARED-OPERATIONS-RECORDS.md) adds one separately disabled exact profile combining existing signed manual/project records and the internal dispatcher in one dispatchBinding/CAS. Project feedback and held preparation/refinement requests do not grant authoring. Original/context/registered output/G1 reads retain exact existing checks; old capabilities keep their boundaries.
+
 [Shared manual call records](SHARED-MANUAL-RECORDS.md) is a separately disabled, exactly bound production-shaped source capability. It reuses the existing call/callback/stop and ownership reducer with signed event replay; all execution remains disabled. The original inert note-only capability below is unchanged.
 
 The [separately disabled persistent authoring caller](PROJECT-AUTHORING.md#disabled-hosted-authoring-storage-and-caller) stores fictional Node authoring dependencies in immutable 1 MB Blobs chunks and reuses signed begin/render/inspect/raster-review/complete. Complete reviewed jobs export through verified G1 packages; unfinished attempts or absent/corrupt dependencies hold. `EVZ_OPERATIONS_PROJECT_AUTHORING` remains unset. D2 permissions, remote hosting/cost and computer-off acceptance are unchanged.

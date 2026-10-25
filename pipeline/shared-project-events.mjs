@@ -1,0 +1,1 @@
+export const sharedProjectEvents=Object.freeze(['note_added','asset_feedback_added','asset_version_selected','asset_version_disputed','project_preparation_requested','concept_refinement_requested','unpaid_refinement_exception']);

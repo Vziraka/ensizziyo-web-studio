@@ -2,7 +2,7 @@ import {applySharedProjectEvent,sharedProjectDashboard} from './shared-project-c
 import {replySuggestion,replyDraftContent,replyDraftCurrent,validReplySource} from './reply-content.mjs';
 import {applyInertNote,inertReconciliation} from './inert-shared-workspace.mjs';
 import {applyManualRecord,manualRecordEvents} from './shared-manual-records.mjs';
-import {applyDispatchManualRecord,manualDispatchCapability} from './shared-internal-dispatch.mjs';
+import {applyDispatchManualRecord,applyDispatchProjectRecord,dispatchHasManual,operationsRecordsCapability,dispatchProjectEvents} from './shared-internal-dispatch.mjs';
 import {prepareNotificationsInState,notificationView} from './team-notifications.mjs';
 import {openingView,selectOpening} from './opening-policy.mjs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -153,7 +153,7 @@ function prepareCallFollowUp(state,record,call,config,at,reviewed=false){
 }
 function storeCallFollowUp(state,record,call,config,at,content,eventId,createdAt=at,emailReviewed=false){
   const issues=[];
-  if(config.shared_capability==='shared-manual-records-v1'||config.shared_capability===manualDispatchCapability)issues.push('Manual recording only; provider execution and email sending are disabled');
+  if(config.shared_capability==='shared-manual-records-v1'||dispatchHasManual(config.shared_capability))issues.push('Manual recording only; provider execution and email sending are disabled');
   if(record.proposals[call.call_id]?.review?.provenance?.provider==='netlify-gateway'&&!emailReviewed)issues.push('Review selected transcript facts and approve the exact email revision before sending');
   if(content.focus==='undecided')issues.push('A specific, reviewed service focus is needed before preparing a relevant follow-up');
   if(record.restriction||record.reply)issues.push('Contact stopped or a reply needs owner review');
@@ -235,9 +235,10 @@ export class StudioLifecycle {
     this.config = await this.loadConfig();
     check(key(event?.id) && key(event.prospect_id) && text(event.type, 80) && date(event.at), 'Event needs stable IDs and an explicit timestamp');
     check(Date.parse(event.at) <= +this.now() + 60_000, 'An event cannot claim a future action');
-    if(this.store?.dispatchBinding?.scope.capability===manualDispatchCapability){
+    if(this.store?.dispatchBinding&&dispatchHasManual(this.store.dispatchBinding.scope.capability)){
       const config=this.config,record={event,actor,revision:expectedRevision};
-      return this.change(state=>{record.at=this.now().toISOString();return applyDispatchManualRecord(state,config,record,new Date(record.at));},{eventId:event.id,eventFingerprint:hash({event,actor}),configFingerprint:hash(config),manualRecord:record});
+      const project=config.shared_capability===operationsRecordsCapability&&dispatchProjectEvents.includes(event.type);
+      return this.change(state=>{record.at=this.now().toISOString();return (project?applyDispatchProjectRecord:applyDispatchManualRecord)(state,config,record,new Date(record.at));},{eventId:event.id,eventFingerprint:hash({event,actor}),configFingerprint:hash(config),[project?'projectRecord':'manualRecord']:record});
     }
     if(this.store?.projectBinding)return this.change(state=>applySharedProjectEvent(state,event,actor,expectedRevision,this.now(),this.config),{eventId:event.id,eventFingerprint:hash({event,actor}),projectRecord:{event,actor,revision:expectedRevision}});
     if(this.store?.inertBinding)return this.change(state=>applyInertNote(state,event,actor,expectedRevision,this.now()),{eventId:event.id,eventFingerprint:hash({event,actor}),inertNote:{event,actor,revision:expectedRevision}});
