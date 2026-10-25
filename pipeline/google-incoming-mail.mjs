@@ -19,7 +19,8 @@ function capability(app,c,env){
 export function incomingRoutes(state,c){
  const shared=isDispatchCapability(c.shared_capability);
  const all=[];
- for(const [project_id,b] of Object.entries(c.operations?.threads??{}))all.push({project_id,...b});
+ if(shared)all.push(...c.internal_dispatch.routes);
+ else for(const [project_id,b] of Object.entries(c.operations?.threads??{}))all.push({project_id,...b});
  for(const [id,e] of Object.entries(state.operations?.email??{})){
   const a=state.actions[id];if(!a||a.payload?.internal_notification===true)continue;
   if(e.thread)all.push({project_id:a.prospect_id,...e.thread});
@@ -38,6 +39,29 @@ export function incomingRoutes(state,c){
  return result.sort((a,b)=>a.thread_id.localeCompare(b.thread_id));
 }
 const routes=incomingRoutes;
+// Import keeps current sync progress exactly, or holds the whole installation before writes.
+export function validateIncomingImport(state,c){
+ const registered=routes(state,c),p=c.internal_dispatch,g=c.google_incoming_mail;
+ check(isDispatchCapability(c.shared_capability)&&hash(registered)===hash(p.routes),'Incoming routes must exactly match the reviewed immutable dispatch policy');
+ check(g?.enabled===true&&g.capability==='shared-registered-incoming-v1'&&g.run_id===c.run_id&&key(g.grant_id)&&g.grant_id===p.grant_id&&typeof g.account_email==='string'&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(g.account_email)&&g.account_email===p.account_email&&g.account_email===c.sender.account_email&&c.sender.email===p.from&&p.from==='hello@evzdigital.studio','Exact incoming account/grant scope required');
+ if(!Object.hasOwn(state.operations??{},'gmail_incoming'))return;
+ const n=state.operations.gmail_incoming,sha=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v),record=v=>v!==null&&typeof v==='object'&&!Array.isArray(v),token=v=>typeof v==='string'&&v.length>0&&v.length<=500;
+ check(record(n)&&Object.keys(n).every(k=>['binding','routes','seen','phase','index','status','checked_at','cursor','start','pending','page','pages','hold','resync_hold','unrouted_additions'].includes(k)),'Unsupported saved incoming scope; preserve and review the original state');
+ check(sha(n.binding)&&n.binding===hash({g,registered})&&Array.isArray(n.routes)&&hash(n.routes)===hash(registered),'Saved incoming account/grant/contact/routes scope differs; preserve the original cursor');
+ check(record(n.seen)&&Object.keys(n.seen).length<=1000&&Object.entries(n.seen).every(([id,source])=>sha(id)&&sha(source)),'Malformed saved incoming dedup scope');
+ check(['bootstrap','history'].includes(n.phase)&&Number.isSafeInteger(n.index)&&(n.phase==='bootstrap'?n.index>=0&&n.index<registered.length:n.index===registered.length),'Malformed saved incoming phase/index');
+ check(['Initial registered-thread sync','Registered threads read; history catch-up required','Expired history; bounded registered-thread resync','Held','History page retained; registered thread read required','History page saved; more pages required','Caught up','Caught up; expired-history review remains required'].includes(n.status)&&typeof n.checked_at==='string'&&Number.isFinite(Date.parse(n.checked_at))&&new Date(n.checked_at).toISOString()===n.checked_at,'Malformed saved incoming status/check time');
+ if(Object.hasOwn(n,'cursor'))check(historyId(n.cursor),'Malformed saved incoming cursor');
+ if(n.phase==='history')check(historyId(n.cursor)&&!Object.hasOwn(n,'start'),'Saved incoming history needs its original cursor');
+ else check((historyId(n.start)||!Object.hasOwn(n,'start')&&n.index===0&&!Object.hasOwn(n,'cursor'))&&!Object.hasOwn(n,'pending')&&!n.page&&(Object.hasOwn(n,'cursor')===Object.hasOwn(n,'resync_hold')),'Saved incoming bootstrap needs its original start scope');
+ const pages=n.pages??[];check((!Object.hasOwn(n,'pages')||Array.isArray(n.pages))&&pages.length<=20&&pages.every(token)&&new Set(pages).size===pages.length&&(n.page==null?pages.length===0:token(n.page)&&n.page===pages.at(-1)),'Malformed saved incoming history pages');
+ if(Object.hasOwn(n,'pending')){
+  const q=n.pending;check(n.phase==='history'&&record(q)&&Object.keys(q).sort().join(',')==='historyId,index,messages,nextPageToken,threads'&&Array.isArray(q.threads)&&q.threads.length>0&&q.threads.length<=registered.length&&new Set(q.threads).size===q.threads.length&&hash(q.threads)===hash(registered.filter(b=>q.threads.includes(b.thread_id)).map(b=>b.thread_id))&&Number.isSafeInteger(q.index)&&q.index>=0&&q.index<q.threads.length,'Malformed saved incoming pending threads');
+  check(Array.isArray(q.messages)&&q.messages.length>0&&q.messages.length<=100&&q.messages.every(m=>record(m)&&Object.keys(m).sort().join(',')==='id,threadId'&&key(m.id)&&q.threads.includes(m.threadId))&&q.threads.every(id=>q.messages.some(m=>m.threadId===id))&&historyId(q.historyId)&&BigInt(q.historyId)>=BigInt(n.cursor)&&(q.nextPageToken===null||token(q.nextPageToken)&&!pages.includes(q.nextPageToken)&&pages.length<20),'Malformed saved incoming pending page');
+ }
+ for(const field of ['hold','resync_hold'])if(Object.hasOwn(n,field))check(typeof n[field]==='string'&&n[field].length>0&&n[field].length<=24_000,'Malformed saved incoming hold');
+ if(Object.hasOwn(n,'unrouted_additions'))check(Number.isSafeInteger(n.unrouted_additions)&&n.unrouted_additions>=0,'Malformed saved incoming unrouted count');
+}
 function eventsForThread(thread,b,now){
  check(thread?.id===b.thread_id&&Array.isArray(thread.messages)&&thread.messages.length>0&&thread.messages.length<20&&!thread.nextPageToken,'Missing, truncated or oversized registered thread');
  const messages=thread.messages;

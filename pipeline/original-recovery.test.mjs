@@ -204,7 +204,7 @@ test('all existing import installers preflight partial original recovery before 
   for(const commit of [false,true]){await assert.rejects(install(store,packet,{commit}),/partial original recovery/);assert.equal(raw.entries.size,0,kind+' wrote before preflight');}
  }
  const {fixture:dispatchFixture}=await import('./fixtures/internal-dispatch.mjs'),df=await dispatchFixture(t,{authorize:false}),{prepareDispatchWorkspace,installDispatchWorkspace}=await import('./shared-internal-dispatch.mjs'),policy=structuredClone(df.app.config.internal_dispatch);
- policy.binding={...policy.binding,run_id:state.run_id,origin};const scope={...base,capability:policy.capability,namespace:policy.binding.namespace,policy_sha256:hash(policy)},packet=await prepareDispatchWorkspace({backup,sourceConfig,scope,dispatchPolicy:policy}),raw=memoryBlobs(),store=new ConditionalLifecycleStore(raw,{dispatchBinding:packet.binding});
+ policy.binding={...policy.binding,run_id:state.run_id,origin};policy.routes=policy.routes.map(route=>({...route,contact_sha256:hash(state.prospects[route.project_id].contact)}));const scope={...base,capability:policy.capability,namespace:policy.binding.namespace,policy_sha256:hash(policy)},packet=await prepareDispatchWorkspace({backup,sourceConfig,scope,dispatchPolicy:policy}),raw=memoryBlobs(),store=new ConditionalLifecycleStore(raw,{dispatchBinding:packet.binding});
  for(const commit of [false,true]){await assert.rejects(installDispatchWorkspace(store,packet,{commit}),/partial original recovery/);assert.equal(raw.entries.size,0);}
 });
 

@@ -12,7 +12,7 @@ import {blobAuthoringStore,attachHostedAuthoring} from './hosted-authoring.mjs';
 import {blobAudioStore} from './call-audio.mjs';
 import {notificationEnvelope} from './exact-team-notifications.mjs';
 import {prepareNotificationsInState,digestTime,notificationTemplates,notificationView} from './team-notifications.mjs';
-import {syncIncomingMail,incomingRoutes} from './google-incoming-mail.mjs';
+import {syncIncomingMail,incomingRoutes,validateIncomingImport} from './google-incoming-mail.mjs';
 import {composeExactMail,byteHash,mailMessageId,verifySentRaw} from './google-hosted-transport.mjs';
 import {applyManualRecord,manualRecordEvents} from './shared-manual-records.mjs';
 import {operationsRefinementCapability,generationTransitionSchema,validateRefinementPolicy,validatePreparedRefinement,validateGenerationTransition,applyGenerationTransition} from './refinement-generation.mjs';
@@ -102,12 +102,13 @@ export async function prepareDispatchWorkspace({backup,sourceConfig,scope,dispat
  const state=structuredClone(packet.envelope.state),prior=control(state);
  if(prior){check(prior.paused&&rebindObservation===hash(prior)&&!Object.values(prior.ticks).some(t=>['Reserved','Claimed'].includes(t.status))&&prior.policy.policy_id!==dispatchPolicy.policy_id,'Imported standing policy needs exact observed-hash recovery and a distinct new policy; never transplant authority');const history=state.operations.internal_dispatch_history??=[];check(history.length<10&&!history.some(d=>d.policy.policy_id===dispatchPolicy.policy_id),'Finite retained policy history; never reset a historical policy allowance');history.push(prior);}
  (state.operations??={}).internal_dispatch={policy:structuredClone(dispatchPolicy),authorization:null,ticks:{},observations:[],paused:true};
+ validateIncomingImport(state,config);
  manifest.original_source_state_sha256=manifest.source_state_sha256;manifest.source_state_sha256=hash(state);
  const envelope={schema_version:1,config,state,dispatch_source:manifest},binding={scope:structuredClone(scope),manifest_sha256:hash(manifest)};
  validateDispatchEnvelope(envelope,binding);check(Buffer.byteLength(JSON.stringify(envelope))<=20_000_000,'Prepared dispatch exceeds the existing 20 MB store');if(dispatchHasGeneration(scope.capability))await validatePreparedRefinement(envelope,binding,packet.files);return {envelope,binding,files:packet.files};
 }
 export async function installDispatchWorkspace(store,packet,{commit=false}={}){
- const {envelope,binding,files}=packet;validateDispatchEnvelope(envelope,binding);check(hash(envelope.state)===envelope.dispatch_source.source_state_sha256,'Dispatch source changed');await validateBackupDependencies(envelope.state,files);
+ const {envelope,binding,files}=packet;validateDispatchEnvelope(envelope,binding);check(hash(envelope.state)===envelope.dispatch_source.source_state_sha256,'Dispatch source changed');validateIncomingImport(envelope.state,envelope.config);await validateBackupDependencies(envelope.state,files);
  if(!dispatchHasOriginals(binding.scope.capability))rejectPartialOriginalImport(envelope.state,files);
  validateSharedProjectDependencies(files);
  check(Buffer.byteLength(JSON.stringify(envelope))<=20_000_000,'Shared dispatch workspace exceeds the existing 20 MB store');
