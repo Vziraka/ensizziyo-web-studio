@@ -1,4 +1,4 @@
-import {dispatchCapability,validateDispatchBinding,dispatchCommand,dispatchStatus,dispatchNotificationView} from './shared-internal-dispatch.mjs';
+import {dispatchCapability,manualDispatchCapability,isDispatchCapability,validateDispatchBinding,dispatchCommand,dispatchStatus,dispatchNotificationView} from './shared-internal-dispatch.mjs';
 import {enqueueInternalDispatch} from './internal-dispatch-host.mjs';
 import {dispatchOAuthProfile,dispatchOAuthPath,dispatchOAuthCallbackHTML,dispatchOAuthCallbackJS} from './google-oauth.mjs';
 import {researchCapability,researchWorkerPath,researchCommand,executeResearch,verifyResearchDispatch,researchRuntimeEnabled,researchProjection,researchStatusText} from './known-identity-research.mjs';
@@ -6,7 +6,7 @@ import {validateProjectBinding} from './shared-project-continuation.mjs';
 import {refinementCapability,refinementWorkerPath,generateRefinement,executeRefinement,verifyRefinementDispatch,refinementStatus,authorizeRefinement,pauseRefinement,continueRefinementRender,refinementRuntimeEnabled,refinementPolicyProjection,refinementStatusText} from './refinement-generation.mjs';
 import {blobProjectOriginalStore,reserveSharedOriginal,uploadSharedOriginalChunk,completeSharedOriginal,sharedOriginalManifest,readSharedOriginalChunk,originalChunkRequest,originalDigest} from './shared-project-originals.mjs';
 import {validateInertBinding} from './inert-shared-workspace.mjs';
-import {validateManualBinding} from './shared-manual-records.mjs';
+import {validateManualBinding,manualRecordEvents} from './shared-manual-records.mjs';
 import {gatewayProofView,configureGatewayProof,runGatewayProof,pauseGatewayProof,reviewGatewayProof} from './gateway-proof.mjs';
 import {callTranscriptionView,approveCallTranscription,runCallTranscription,pauseCallTranscription} from './call-transcription.mjs';
 import {fullCallView,approveFullCall,runFullCall,pauseFullCall,fullCallWorkerPath} from './full-call-transcription.mjs';
@@ -37,12 +37,12 @@ const sign=(secret,payload)=>createHmac('sha256',secret).update('desk-csrf:'+pay
 function csrfValid(token,secret,now){try{const [payload,mac,extra]=token.split('.'),actual=Buffer.from(mac,'base64url'),expected=sign(secret,payload);if(extra!==undefined||actual.length!==expected.length||!timingSafeEqual(actual,expected))return false;const [expiry,nonce]=JSON.parse(Buffer.from(payload,'base64url'));return Number.isSafeInteger(expiry)&&expiry>+now&&typeof nonce==='string'&&nonce.length===32;}catch{return false;}}
 async function inputBody(request){const reader=request.body?.getReader();check(reader,'A JSON request body is required');let bytes=0;const chunks=[];for(;;){const {value,done}=await reader.read();if(done)break;bytes+=value.length;if(bytes>maxBody){await reader.cancel();throw Error('Request body exceeds the private desk limit');}chunks.push(Buffer.from(value));}try{return JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw Error('Supply valid JSON without credentials in unrelated fields');}}
 function configured(env,now){
- check((env.CONTEXT==='production'&&env.EVZ_OPERATIONS_DESK_ENABLED===dispatchCapability||env.CONTEXT==='deploy-preview')&&[dispatchCapability,'fictional-preview','inert-shared-v1','shared-manual-records-v1','shared-project-continuation-v1',refinementCapability,researchCapability].includes(env.EVZ_OPERATIONS_DESK_ENABLED),'Private desk is not configured');
+ check((env.CONTEXT==='production'&&isDispatchCapability(env.EVZ_OPERATIONS_DESK_ENABLED)||env.CONTEXT==='deploy-preview')&&[dispatchCapability,manualDispatchCapability,'fictional-preview','inert-shared-v1','shared-manual-records-v1','shared-project-continuation-v1',refinementCapability,researchCapability].includes(env.EVZ_OPERATIONS_DESK_ENABLED),'Private desk is not configured');
  const origin=new URL(env.EVZ_OPERATIONS_ORIGIN);check(origin.protocol==='https:'&&origin.origin===env.EVZ_OPERATIONS_ORIGIN,'Private desk is not configured');
  let inertBinding=null,manualBinding=null,projectBinding=null,dispatchBinding=null;
- if(env.EVZ_OPERATIONS_DESK_ENABLED===dispatchCapability){
+ if(isDispatchCapability(env.EVZ_OPERATIONS_DESK_ENABLED)){
   check(env.CONTEXT==='production','Standing dispatch has a distinct published deployment profile');
-  dispatchBinding=JSON.parse(env.EVZ_INTERNAL_DISPATCH_BINDING);validateDispatchBinding(dispatchBinding.scope);const b=dispatchBinding.scope;check(b.namespace===env.EVZ_OPERATIONS_BLOB_NAMESPACE&&b.origin===origin.origin&&b.site_id===env.SITE_ID&&b.deploy_id===env.DEPLOY_ID,'Exact dispatch deployment binding required');
+  dispatchBinding=JSON.parse(env.EVZ_INTERNAL_DISPATCH_BINDING);validateDispatchBinding(dispatchBinding.scope);const b=dispatchBinding.scope;check(b.capability===env.EVZ_OPERATIONS_DESK_ENABLED&&b.namespace===env.EVZ_OPERATIONS_BLOB_NAMESPACE&&b.origin===origin.origin&&b.site_id===env.SITE_ID&&b.deploy_id===env.DEPLOY_ID,'Exact dispatch deployment binding required');
  }else if(env.EVZ_OPERATIONS_DESK_ENABLED==='inert-shared-v1'){
   inertBinding=JSON.parse(env.EVZ_OPERATIONS_INERT_BINDING);validateInertBinding(inertBinding.scope);
   const b=inertBinding.scope;check(b.namespace===env.EVZ_OPERATIONS_BLOB_NAMESPACE&&b.origin===origin.origin&&b.site_id===env.SITE_ID&&b.deploy_id===env.DEPLOY_ID,'Private desk binding does not match this deployment');
@@ -97,6 +97,7 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
   const oauthLanding=request.method==='GET'&&url.pathname===oauthPath+'/callback';
   const publicNavigation=request.method==='GET'&&(path==='/'||oauthLanding)&&request.headers.get('sec-fetch-mode')==='navigate'&&request.headers.get('sec-fetch-dest')==='document';
   if(url.origin!==settings.origin||url.pathname!==base&&!url.pathname.startsWith(base+'/')||request.headers.get('origin')&&request.headers.get('origin')!==settings.origin||!publicNavigation&&request.headers.get('sec-fetch-site')&&!['same-origin','none'].includes(request.headers.get('sec-fetch-site')))return json(403,{error:'Private desk origin is not permitted'});
+  if(settings.dispatchBinding&&!internalOAuth&&(oauthLanding||/google(?:-drive|-calendar)?-oauth/.test(path)))return json(409,{error:'Standing workspace permits only its exact internal Google profile'});
   if((settings.inertBinding||settings.manualBinding||settings.projectBinding)&&(oauthLanding||/google(?:-drive|-calendar)?-oauth/.test(path)))return json(409,{error:'Shared records cannot authorize provider connections'});
   try{
    if(oauthLanding||request.method==='GET'&&['/google-oauth-callback.js','/google-drive-oauth-callback.js','/google-calendar-oauth-callback.js','/internal-google-oauth-callback.js'].includes(path)){
@@ -130,7 +131,11 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
     if(post&&path===connectionPath+'/disconnect'){await inputBody(request);return json(200,await oauth.disconnect(actor));}
     return json(405,{error:'Use the supported Google connection operation'});
    }
-   if(settings.dispatchBinding&&!((request.method==='GET'&&(path==='/api/state'||path==='/api/team-notifications'||/^\/api\/project-author\/backup(?:\/(?:state-chunk|chunk))?$/.test(path)))||/^\/api\/internal-dispatch\/(?:policy|status|authorize|pause|reconcile)$/.test(path)))return json(409,{error:'Exact standing internal dispatch only; all other execution and edits remain disabled'});
+   if(settings.dispatchBinding){
+    const manual=settings.dispatchBinding.scope.capability===manualDispatchCapability;
+    const savedRead=request.method==='GET'&&(path==='/api/project-resolve'||/^\/api\/project-context\//.test(path)||/^\/api\/events\//.test(path)||/^\/retained-source\//.test(path)||/^\/follow-up(?:-draft|-history)?\//.test(path)||/^\/api\/project-original\//.test(path));
+    if(!((request.method==='GET'&&(path==='/api/state'||path==='/api/team-notifications'||/^\/api\/project-author\/backup(?:\/(?:state-chunk|chunk))?$/.test(path)))||/^\/api\/internal-dispatch\/(?:policy|status|authorize|pause|reconcile)$/.test(path)||manual&&(savedRead||post&&path==='/api/event')))return json(409,{error:'Exact standing internal dispatch only; all other execution and edits remain disabled'});
+   }
    if(settings.projectBinding?.scope.capability===researchCapability){
     if(!(request.method==='GET'&&(path==='/api/state'||/^\/api\/project-author\/backup(?:\/(?:state-chunk|chunk))?$/.test(path)))&&!path.startsWith('/api/known-research/'))return json(409,{error:'Exact known-identity candidate research only; trusted import, authoring, contact and sending remain held'});
    }
@@ -142,7 +147,7 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
     const reads=request.method==='GET'&&(path==='/api/state'||path==='/api/project-resolve'||/^\/api\/project-context\//.test(path)||/^\/api\/events\//.test(path)||/^\/retained-source\//.test(path)||/^\/follow-up(?:-draft|-history)?\//.test(path)||/^\/api\/project-original\//.test(path));
     if(!reads&&!(post&&path==='/api/event'))return json(409,{error:settings.manualBinding?'Manual workspace supports saved reads and signed manual records only; execution, audio, authoring, transfer writes and hosted backup are disabled':'Inert workspace supports saved reads and signed private notes only; execution, authoring, transfer writes and hosted backup are disabled'});
    }
-   if(path.startsWith('/api/project-original/')&&!settings.inertBinding&&!settings.manualBinding&&!settings.projectBinding&&env.EVZ_OPERATIONS_SHARED_ORIGINALS!=='fictional-chunks-v1')return json(503,{error:'Shared original transfer is not configured'});
+   if(path.startsWith('/api/project-original/')&&!settings.inertBinding&&!settings.manualBinding&&!settings.projectBinding&&!settings.dispatchBinding&&env.EVZ_OPERATIONS_SHARED_ORIGINALS!=='fictional-chunks-v1')return json(503,{error:'Shared original transfer is not configured'});
    if(path.startsWith('/api/project-author/')&&!settings.dispatchBinding&&settings.projectBinding?.scope.capability!==researchCapability&&!(settings.projectBinding?env.EVZ_OPERATIONS_PROJECT_AUTHORING==='shared-project-node-v1':env.EVZ_OPERATIONS_PROJECT_AUTHORING==='fictional-node-v1'))return json(503,{error:'Hosted authoring is disabled'});
    let app,raw;try{raw=await storeFactory(env.EVZ_OPERATIONS_BLOB_NAMESPACE);app=await openApp(raw,now,settings.inertBinding,settings.manualBinding,settings.projectBinding,settings.dispatchBinding);}catch{return json(503,{error:'Private shared storage is unavailable; no execution was started'});}
    if(path.startsWith('/api/known-research/')){
@@ -175,7 +180,7 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    }
    const originalRoute=/^\/api\/project-original\/([a-zA-Z0-9_-]{1,100})\/([a-zA-Z0-9_-]{1,100})\/([a-zA-Z0-9_-]{1,100})(?:\/(reserve|complete|chunk|drive-read)(?:\/([0-9]{1,2}))?)?$/.exec(path);
    if(originalRoute){
-    check(settings.projectBinding?request.method==='GET':(settings.inertBinding||settings.manualBinding)&&request.method==='GET'||env.EVZ_OPERATIONS_SHARED_ORIGINALS==='fictional-chunks-v1','Shared original transfer is not configured');
+    check(settings.projectBinding||settings.dispatchBinding?request.method==='GET':(settings.inertBinding||settings.manualBinding)&&request.method==='GET'||env.EVZ_OPERATIONS_SHARED_ORIGINALS==='fictional-chunks-v1','Shared original transfer is not configured');
     const [,project_id,asset_id,version_id,operation,index]=originalRoute,ids={project_id,asset_id,version_id},store=blobProjectOriginalStore(raw);
     if(request.method==='GET'&&!operation)return json(200,await sharedOriginalManifest(app,store,ids));
     if(request.method==='GET'&&operation==='chunk'&&index!==undefined){const result=await readSharedOriginalChunk(app,store,ids,Number(index));return new Response(result.bytes,{headers:{...headers,'Content-Type':'application/octet-stream','Content-Length':String(result.bytes.length),'Content-Disposition':'attachment; filename="original-chunk.bin"','X-Content-SHA256':result.sha256}});}
@@ -197,8 +202,8 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    if(request.method==='GET'&&path==='/api/call-transcription')return json(200,await callTranscriptionView(app,env));
    if(request.method==='GET'&&path==='/api/full-call-transcription')return json(200,await fullCallView(app,env));
    if(request.method==='GET'&&path==='/api/transcript-assessment')return json(200,await assessmentView(app,env));
-   if(path.startsWith('/api/internal-dispatch/')){check(settings.dispatchBinding,'Exact standing dispatch profile required');const command=path.split('/').at(-1);check(request.method==='GET'&&['policy','status'].includes(command)||post&&!['policy','status'].includes(command),'Use exact standing control operation');const input=post?await inputBody(request):{},result=await dispatchCommand(app,command,input,actor,{runtime:env.EVZ_INTERNAL_DISPATCH_RUNTIME===dispatchCapability});if(command==='reconcile'&&input.action_id){const tick=result.ticks.find(t=>t.authorization_event===input.event_id);return json(202,{...result,dispatch:await enqueueInternalDispatch(app,tick,{...internalDispatchOptions,env,context})});}return json(200,result);}
-   if(request.method==='GET'&&path==='/api/team-notifications')return json(200,settings.dispatchBinding?dispatchNotificationView(await app.snapshot(),await app.loadConfig(),now(),env.EVZ_INTERNAL_DISPATCH_RUNTIME===dispatchCapability):notificationView(await app.snapshot()));
+   if(path.startsWith('/api/internal-dispatch/')){check(settings.dispatchBinding,'Exact standing dispatch profile required');const command=path.split('/').at(-1);check(request.method==='GET'&&['policy','status'].includes(command)||post&&!['policy','status'].includes(command),'Use exact standing control operation');const input=post?await inputBody(request):{},result=await dispatchCommand(app,command,input,actor,{runtime:env.EVZ_INTERNAL_DISPATCH_RUNTIME===settings.dispatchBinding?.scope.capability});if(command==='reconcile'&&input.action_id){const tick=result.ticks.find(t=>t.authorization_event===input.event_id);return json(202,{...result,dispatch:await enqueueInternalDispatch(app,tick,{...internalDispatchOptions,env,context})});}return json(200,result);}
+   if(request.method==='GET'&&path==='/api/team-notifications')return json(200,settings.dispatchBinding?dispatchNotificationView(await app.snapshot(),await app.loadConfig(),now(),env.EVZ_INTERNAL_DISPATCH_RUNTIME===settings.dispatchBinding?.scope.capability):notificationView(await app.snapshot()));
    if(request.method==='GET'&&path==='/api/incoming-mail')return json(200,{enabled:env.EVZ_OPERATIONS_GOOGLE_INCOMING_MAIL==='fictional-incoming-v1',...incomingMailView(await app.snapshot())});
    if(post&&path==='/api/incoming-mail/sync'){
     await inputBody(request);const options={...googleIncomingOptions,actor,env};
@@ -211,7 +216,7 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
     check(Number.isFinite(age)&&age>=0&&age<=300_000,'Desk snapshot expired; refresh to load the current workspace');
     app.now=()=>new Date(asOf);
     const dashboard=await app.dashboard();
-    if(settings.dispatchBinding){const standing=dispatchStatus(dashboard,app.config,now(),env.EVZ_INTERNAL_DISPATCH_RUNTIME===dispatchCapability);dashboard.shared_workspace={capability:dispatchCapability,workspace_id:settings.dispatchBinding.scope.workspace_id,allowed_edits:[],execution:standing.status,standing};dashboard.notification_preparation=dispatchNotificationView(dashboard,app.config,now(),env.EVZ_INTERNAL_DISPATCH_RUNTIME===dispatchCapability);}
+    if(settings.dispatchBinding){const standing=dispatchStatus(dashboard,app.config,now(),env.EVZ_INTERNAL_DISPATCH_RUNTIME===settings.dispatchBinding?.scope.capability);dashboard.shared_workspace={capability:settings.dispatchBinding.scope.capability,workspace_id:settings.dispatchBinding.scope.workspace_id,allowed_edits:settings.dispatchBinding.scope.capability===manualDispatchCapability?manualRecordEvents:[],external_suppression:'unverified',execution:standing.status,standing};dashboard.notification_preparation=dispatchNotificationView(dashboard,app.config,now(),env.EVZ_INTERNAL_DISPATCH_RUNTIME===settings.dispatchBinding?.scope.capability);}
     if(dashboard.shared_workspace?.research){dashboard.shared_workspace.research=researchProjection(settings.projectBinding,dashboard,now(),await researchRuntimeEnabled(env)?'Enabled':'Disabled');dashboard.shared_workspace.execution=researchStatusText(dashboard.shared_workspace.research);dashboard.known_research=dashboard.shared_workspace.candidates;}
     if(dashboard.shared_workspace?.generation){dashboard.shared_workspace.generation=refinementPolicyProjection(settings.projectBinding,dashboard,now());dashboard.shared_workspace.generation.runtime=await refinementRuntimeEnabled(env)?'Enabled':'Disabled';dashboard.shared_workspace.execution=refinementStatusText(dashboard.shared_workspace.generation);}
     return json(200,deskSnapshotPage({...projectDashboard(dashboard),csrf,current_operator:actor,operator_auth_enabled:true,workers:[],hosted_preview:true},url.searchParams));

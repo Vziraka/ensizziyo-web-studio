@@ -1,7 +1,7 @@
 import {createHmac,timingSafeEqual} from 'node:crypto';
 import {check,hash,businessDate,StudioLifecycle} from './lifecycle.mjs';
 import {ConditionalLifecycleStore} from './lifecycle-store.mjs';
-import {dispatchCapability,dispatchPrincipal,validateDispatchBinding,currentDispatch,dispatchTransition,nextStandingMessage,assertStandingPost} from './shared-internal-dispatch.mjs';
+import {manualDispatchCapability,isDispatchCapability,dispatchPrincipal,validateDispatchBinding,currentDispatch,dispatchTransition,nextStandingMessage,assertStandingPost} from './shared-internal-dispatch.mjs';
 import {googleHostedTransport} from './google-hosted-transport.mjs';
 import {syncIncomingMail} from './google-incoming-mail.mjs';
 import {createGoogleOAuth,dispatchOAuthProfile} from './google-oauth.mjs';
@@ -10,10 +10,10 @@ export const dispatchWorkerPath='/desk/api/internal-dispatch-background';
 const reply=(status,data)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
 async function defaultStore(namespace){const {getStore}=await import('@netlify/blobs');return getStore({name:namespace,consistency:'strong'});}
 export function dispatchHostBinding(env,context){
- check(env.EVZ_INTERNAL_DISPATCH_RUNTIME===dispatchCapability&&env.EVZ_OPERATIONS_DESK_ENABLED===dispatchCapability&&env.CONTEXT==='production','Standing host runtime disabled');
+ check(isDispatchCapability(env.EVZ_OPERATIONS_DESK_ENABLED)&&env.EVZ_INTERNAL_DISPATCH_RUNTIME===env.EVZ_OPERATIONS_DESK_ENABLED&&env.CONTEXT==='production','Standing host runtime disabled');
  const b=JSON.parse(env.EVZ_INTERNAL_DISPATCH_BINDING);validateDispatchBinding(b.scope);
  check(context?.deploy?.context==='production'&&context.deploy.published===true&&context.site?.id===env.SITE_ID&&context.deploy.id===env.DEPLOY_ID,'Published trusted host context required');
- check(b.scope.site_id===env.SITE_ID&&b.scope.deploy_id===env.DEPLOY_ID&&b.scope.origin===env.EVZ_OPERATIONS_ORIGIN&&b.scope.namespace===env.EVZ_OPERATIONS_BLOB_NAMESPACE,'Exact current host deployment required');
+ check(b.scope.capability===env.EVZ_OPERATIONS_DESK_ENABLED&&b.scope.site_id===env.SITE_ID&&b.scope.deploy_id===env.DEPLOY_ID&&b.scope.origin===env.EVZ_OPERATIONS_ORIGIN&&b.scope.namespace===env.EVZ_OPERATIONS_BLOB_NAMESPACE,'Exact current host deployment required');
  check(typeof env.EVZ_INTERNAL_DISPATCH_SECRET==='string'&&/^[A-Za-z0-9_-]{43,100}$/.test(env.EVZ_INTERNAL_DISPATCH_SECRET)&&![env.EVZ_OPERATIONS_SESSION_SECRET,env.EVZ_REFINEMENT_DISPATCH_SECRET,env.EVZ_KNOWN_RESEARCH_DISPATCH_SECRET].includes(env.EVZ_INTERNAL_DISPATCH_SECRET),'Dedicated host dispatch MAC secret required');return b;
 }
 const mac=(secret,ref)=>createHmac('sha256',secret).update('evz-internal-dispatch-v1:'+JSON.stringify(ref)).digest();
@@ -60,7 +60,7 @@ export async function executeInternalDispatch(app,ref,{env,context,getAccessToke
  const boundedFetch=async(url,options={})=>{
   const u=new URL(url);check(['https://gmail.googleapis.com','https://oauth2.googleapis.com','https://www.googleapis.com'].includes(u.origin),'Unsupported host provider');const operation=u.origin==='https://gmail.googleapis.com'&&u.pathname.endsWith('/messages/send')?'POST':'GET';let action_id;
   if(operation==='POST'){const payload=JSON.parse(options.body),s=await app.snapshot(),matches=Object.entries(s.operations.requests).filter(([,q])=>q.standing_internal&&q.tick_id===ref.tick_id&&q.raw_base64url===payload.raw);check(Object.keys(payload).length===1&&matches.length===1,'Exact original internal MIME only');action_id=matches[0][0].slice(0,-7);}
-  const id=await reserve(operation,action_id);if(action_id)assertStandingPost(await app.snapshot(),await app.loadConfig(),ref.tick_id,action_id,app.now());let size=0,reader;
+  const id=await reserve(operation,action_id);if(action_id)assertStandingPost(await app.snapshot(),app.config,ref.tick_id,action_id,app.now());let size=0,reader;
   try{
    const response=await bounded(()=>fetcher(url,{...options,signal:controller.signal,redirect:'error'}));await guard();check(response.body,'Provider body unavailable');reader=response.body.getReader();const chunks=[];
    for(;;){const {done,value}=await bounded(()=>reader.read());await guard();if(done)break;size+=value.length;totalBytes+=value.length;check(totalBytes<=app.config.internal_dispatch.limits.bytes_tick,'Overall dispatch body byte ceiling exhausted');chunks.push(Buffer.from(value));}
@@ -102,6 +102,6 @@ export function createInternalDispatchWorker({env=process.env,storeFactory=defau
  return async(request,context)=>{try{const binding=dispatchHostBinding(env,context);check(request.method==='POST'&&new URL(request.url).origin===binding.scope.origin&&new URL(request.url).pathname===dispatchWorkerPath,'Protected background POST required');const ref=await body(request);verifyDispatchReference(env,binding,ref,request.headers.get('x-evz-internal-dispatch'),now());const app=await open(env,binding,storeFactory,now);return reply(200,await executeInternalDispatch(app,ref,{...options,env,context}));}catch{return reply(409,{held:true,readback_required:true,delivery:false});}};
 }
 export function internalDispatchClockEntry(env={}){
- if(env.CONTEXT!=='production'||env.EVZ_INTERNAL_DISPATCH_BUILD!==dispatchCapability)return '// Generated: standing dispatch clock disabled.\nexport default async()=>Response.json({held:true},{status:503});\n';
+ if(env.CONTEXT!=='production'||!isDispatchCapability(env.EVZ_INTERNAL_DISPATCH_BUILD)||env.EVZ_INTERNAL_DISPATCH_BUILD===manualDispatchCapability&&env.EVZ_OPERATIONS_DESK_ENABLED!==manualDispatchCapability)return '// Generated: standing dispatch clock disabled.\nexport default async()=>Response.json({held:true},{status:503});\n';
  return "import {createInternalDispatchClock} from '../internal-dispatch-host.mjs';\nexport default (request,context)=>createInternalDispatchClock({env:{...process.env,CONTEXT:context.deploy?.context??'',SITE_ID:context.site?.id??'',DEPLOY_ID:context.deploy?.id??''}})(request,context);\nexport const config={schedule:'* * * * *'};\n";
 }

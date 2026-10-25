@@ -2,6 +2,8 @@
 
 ## Shared operations desk redesign — October 23, 2026
 
+- [x] Add one exact default-disabled `shared-manual-internal-dispatch-v1` profile joining the five signed manual events to the existing internal dispatcher and single CAS authority. Local fictional signed cross-caller races, held previews, pending-save reload/actor recovery, both-role desktop/narrow UI, complete inert G1/rebind and minified bundles pass. Stop for parent source/visual review; no project/authoring/research/provider expansion or activation. [Bounded contract](pipeline/SHARED-MANUAL-DISPATCH.md).
+
 - [x] Add the separately disabled shared registered-inbox/standing internal attention and daily-summary dispatcher. Local fictional signed owner/friend, host-only bounded clock/background, current-source/await/CAS fences, finite combined caps, MIME uncertainty and full disabled G1 pass. Policy remains UNAPPROVED with actual recipients/grant/allowances blank and flags unset; real hosting/Google/inbox/devices/computer-off activation remains separate. [Contract](pipeline/SHARED-INTERNAL-DISPATCH.md).
 
 - [x] Exclude explicitly internal notification actions from both retained-thread and exact-receipt prospect incoming routes. Signed fictional owner/friend attention/digest delivery now preserves incoming registration before first sync and with a saved cursor, including later replies, strict malformed-prospect holds, concurrent/lost-response CAS and complete disabled project G1 recovery. Original MIME, intent, receipt and budgets remain unchanged. No schedule, standing authority, actual provider/recipient delivery or activation is added. [Incoming contract](pipeline/GOOGLE-INCOMING-MAIL.md).

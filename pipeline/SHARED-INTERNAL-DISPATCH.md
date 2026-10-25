@@ -1,5 +1,7 @@
 # Disabled shared internal dispatch
 
+The separate [manual/internal composition](SHARED-MANUAL-DISPATCH.md) adds five signed human events under its own exact profile and policy; this original internal-only profile remains human-read-only.
+
 This source capability joins one existing registered-inbox continuation and the existing responsible-role attention/weekday digest preparation to a finite standing **internal-only** owner policy. It uses the same `workspace` key, exact authoritative namespace, `ConditionalLifecycleStore`, lifecycle reducer, `actions`, `operations.requests`, `operations.email`, `operations.gmail_incoming` and `team_notifications`. There is no second operational queue or active copied workspace. Existing fictional, inert, manual, project, research and each-message notification capabilities retain their own gates.
 
 The [proposed policy](shared-internal-dispatch.example.json) is **UNAPPROVED**. Actual recipients, verified address mappings, Google grant, deployment, dates and allowances are blank. No flag, schedule, grant, settings, real state migration or production activation was changed. Tests fill these fields with fictional values only.

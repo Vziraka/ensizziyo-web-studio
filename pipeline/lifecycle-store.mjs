@@ -1,5 +1,5 @@
 import {validateProjectEnvelope,validateProjectChange} from './shared-project-continuation.mjs';
-import {validateDispatchEnvelope,validateDispatchChange} from './shared-internal-dispatch.mjs';
+import {validateDispatchEnvelope,validateDispatchChange,manualDispatchCapability} from './shared-internal-dispatch.mjs';
 import {check,hash} from './lifecycle.mjs';
 import {validateInertEnvelope,validateInertChange} from './inert-shared-workspace.mjs';
 import {validateManualEnvelope,validateManualChange} from './shared-manual-records.mjs';
@@ -37,7 +37,7 @@ export class ConditionalLifecycleStore {
     if(this.inertBinding)check(options.inertNote,'Inert storage rejects worker and provider mutations');
     if(this.manualBinding)check(options.manualRecord,'Manual storage rejects worker and provider mutations');
     if(this.projectBinding)check(options.projectResearch&&this.projectBinding.scope.capability==='shared-known-identity-research-v1'||options.projectRecord||options.projectAuthoring||options.projectReconcile||options.projectGeneration&&this.projectBinding.scope.capability==='shared-refinement-generation-v1','Shared project storage rejects untyped worker and provider mutations');
-    if(this.dispatchBinding)check(options.dispatchTransition,'Shared dispatch storage rejects untyped mutations');
+    if(this.dispatchBinding)check(this.dispatchBinding.scope.capability===manualDispatchCapability?['dispatchTransition','manualRecord'].filter(k=>Object.hasOwn(options,k)).length===1&&Object.keys(options).every(k=>['dispatchTransition','manualRecord','eventId','eventFingerprint','configFingerprint'].includes(k)):options.dispatchTransition&&!Object.hasOwn(options,'manualRecord'),'Shared dispatch storage rejects untyped mutations');
     const result=await fn(data.state,data.config);this.validate(data);
     if(this.inertBinding)validateInertChange(JSON.parse(before).state,data.state,options);
     if(this.manualBinding)validateManualChange(JSON.parse(before),data,options);

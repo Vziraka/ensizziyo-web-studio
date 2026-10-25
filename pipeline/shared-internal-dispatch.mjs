@@ -8,8 +8,13 @@ import {notificationEnvelope} from './exact-team-notifications.mjs';
 import {prepareNotificationsInState,digestTime,notificationTemplates,notificationView} from './team-notifications.mjs';
 import {syncIncomingMail,incomingRoutes} from './google-incoming-mail.mjs';
 import {composeExactMail,byteHash,mailMessageId,verifySentRaw} from './google-hosted-transport.mjs';
+import {applyManualRecord,manualRecordEvents} from './shared-manual-records.mjs';
 
 export const dispatchCapability='shared-internal-dispatch-v1',dispatchPrincipal='service:internal-dispatch';
+export const manualDispatchCapability='shared-manual-internal-dispatch-v1';
+export const isDispatchCapability=value=>value===dispatchCapability||value===manualDispatchCapability;
+const sourceKind=capability=>capability===manualDispatchCapability?'shared-manual-internal-dispatch-source-v1':'shared-internal-dispatch-source-v1';
+export const dispatchManualSchema=Object.freeze({version:1,events:manualRecordEvents});
 export const dispatchVersions=Object.freeze({template:'existing-attention-digest-v1',privacy:'no-contact-or-private-notes-v1',signature:'internal-operations-v1'});
 const key=v=>typeof v==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(v)&&!['__proto__','prototype','constructor'].includes(v);
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v),roles=['owner','friend'];
@@ -20,12 +25,13 @@ const control=s=>s.operations?.internal_dispatch;
 const policy=c=>c.internal_dispatch;
 export function validateDispatchBinding(b){
  fields(b,'schema_version,capability,workspace_id,run_id,mode,state_schema,site_id,deploy_id,origin,namespace,policy_sha256');
- check(b.schema_version===1&&b.capability===dispatchCapability&&b.mode==='production'&&b.state_schema===1&&[b.workspace_id,b.run_id,b.site_id,b.deploy_id].every(key)&&sha(b.policy_sha256),'Exact shared dispatch binding required');
+ check(b.schema_version===1&&isDispatchCapability(b.capability)&&b.mode==='production'&&b.state_schema===1&&[b.workspace_id,b.run_id,b.site_id,b.deploy_id].every(key)&&sha(b.policy_sha256),'Exact shared dispatch binding required');
  const u=new URL(b.origin);check(u.protocol==='https:'&&u.origin===b.origin&&/^evz-project-shared-[a-z0-9-]{8,40}$/.test(b.namespace),'Exact shared namespace and HTTPS origin required');return b;
 }
 export function validateDispatchPolicy(p,{active=false}={}){
- fields(p,'schema_version,status,capability,policy_id,revision,binding,grant_id,account_email,from,approval_mode,kinds,recipients,role_mapping,versions,templates,signature,starts_at,expires_at,routes,limits,priority,host_allowance,host_reserve_percent,pause_rule');
- check(p.schema_version===1&&p.status==='UNAPPROVED'&&p.capability===dispatchCapability&&key(p.policy_id)&&key(p.revision)&&p.approval_mode==='standing-internal-only'&&hash(p.kinds)===hash(['attention','digest'])&&hash(p.versions)===hash(dispatchVersions)&&hash(p.templates)===hash(notificationTemplates),'Exact unapproved standing internal policy/template required');
+ fields(p,'schema_version,status,capability,policy_id,revision,binding,grant_id,account_email,from,approval_mode,kinds,recipients,role_mapping,versions,templates,signature,starts_at,expires_at,routes,limits,priority,host_allowance,host_reserve_percent,pause_rule'+(p?.capability===manualDispatchCapability?',manual_events':''));
+ check(p.schema_version===1&&p.status==='UNAPPROVED'&&isDispatchCapability(p.capability)&&key(p.policy_id)&&key(p.revision)&&p.approval_mode==='standing-internal-only'&&hash(p.kinds)===hash(['attention','digest'])&&hash(p.versions)===hash(dispatchVersions)&&hash(p.templates)===hash(notificationTemplates),'Exact unapproved standing internal policy/template required');
+ if(p.capability===manualDispatchCapability)check(hash(p.manual_events)===hash(dispatchManualSchema),'Exact five-event manual schema required');
  fields(p.binding,'workspace_id,run_id,site_id,deploy_id,origin,namespace');
  check(hash(p.priority)===hash(['reconcile','incoming','reply','meeting','problem','digest'])&&p.host_reserve_percent===30&&p.pause_rule==='both-roles-pause-owner-new-policy-no-resume'&&p.signature==='EVZ Digital team · Internal operations notification','Review finite priority, reserve and pause rules');
  fields(p.recipients,'owner,friend');fields(p.role_mapping,'owner,friend');
@@ -41,20 +47,22 @@ export function validateDispatchPolicy(p,{active=false}={}){
 }
 export function validateDispatchEnvelope(data,binding){
  const b=validateDispatchBinding(binding.scope),m=data.dispatch_source;
- check(!data.inert_source&&!data.manual_source&&!data.project_source&&m?.kind==='shared-internal-dispatch-source-v1'&&hash(m)===binding.manifest_sha256&&hash(m.binding)===hash(b),'Exact shared dispatch source manifest required');
- check(hash(data.config)===m.config_sha256&&data.config.shared_capability===dispatchCapability&&data.config.mode==='production'&&data.config.run_id===b.run_id&&data.state.run_id===b.run_id&&data.state.mode==='production','Dispatch configuration/identity changed');
- const p=validateDispatchPolicy(policy(data.config));check(hash(p)===b.policy_sha256&&hash(p.binding)===hash(Object.fromEntries(['workspace_id','run_id','site_id','deploy_id','origin','namespace'].map(k=>[k,b[k]]))),'Dispatch policy/deployment binding changed');
+ check(!data.inert_source&&!data.manual_source&&!data.project_source&&m?.kind===sourceKind(b.capability)&&hash(m)===binding.manifest_sha256&&hash(m.binding)===hash(b),'Exact shared dispatch source manifest required');
+ check(hash(data.config)===m.config_sha256&&data.config.shared_capability===b.capability&&data.config.mode==='production'&&data.config.run_id===b.run_id&&data.state.run_id===b.run_id&&data.state.mode==='production','Dispatch configuration/identity changed');
+ const p=validateDispatchPolicy(policy(data.config));check(p.capability===b.capability&&hash(p)===b.policy_sha256&&hash(p.binding)===hash(Object.fromEntries(['workspace_id','run_id','site_id','deploy_id','origin','namespace'].map(k=>[k,b[k]]))),'Dispatch policy/deployment binding changed');
+ if(b.capability===manualDispatchCapability)check(hash(m.manual_events)===hash(dispatchManualSchema)&&hash(m.allowed_events)===hash(manualRecordEvents)&&data.config.follow_up?.enabled===true,'Exact manual manifest and held preview preparation required');
  for(const flag of ['research_enabled','outreach_enabled','connector_writes_enabled','calls_enabled'])check(data.config[flag]===false,'General execution remains disabled');
  check(data.config.runtime?.enabled===false&&data.config.operations?.enabled===false&&data.config.transcript_ai?.enabled===false&&data.config.release?.approved===false&&data.config.call_release?.approved===false,'General release remains revoked');
 }
 export async function prepareDispatchWorkspace({backup,sourceConfig,scope,dispatchPolicy,rebindObservation}){
- validateDispatchBinding(scope);validateDispatchPolicy(dispatchPolicy);check(hash(dispatchPolicy)===scope.policy_sha256,'Exact dispatch policy required');
+ validateDispatchBinding(scope);validateDispatchPolicy(dispatchPolicy);check(dispatchPolicy.capability===scope.capability&&hash(dispatchPolicy)===scope.policy_sha256,'Exact dispatch policy required');
  const baseScope={...scope,capability:'shared-project-continuation-v1'};delete baseScope.policy_sha256;
- const packet=await prepareProjectWorkspace({backup,sourceConfig,scope:baseScope}),config={...packet.envelope.config,shared_capability:dispatchCapability,internal_dispatch:structuredClone(dispatchPolicy)};
+ const packet=await prepareProjectWorkspace({backup,sourceConfig,scope:baseScope}),config={...packet.envelope.config,shared_capability:scope.capability,internal_dispatch:structuredClone(dispatchPolicy)};
+ if(scope.capability===manualDispatchCapability)config.follow_up={...config.follow_up,enabled:true};
  config.sender={...config.sender,email:dispatchPolicy.from,account_email:dispatchPolicy.account_email};
  config.operations={...config.operations,threads:structuredClone(Object.fromEntries(dispatchPolicy.routes.map(({project_id,contact_sha256,...route})=>[project_id,route])))};
  config.google_incoming_mail={enabled:true,capability:'shared-registered-incoming-v1',run_id:scope.run_id,grant_id:dispatchPolicy.grant_id,account_email:dispatchPolicy.account_email};
- const manifest={...packet.envelope.project_source,kind:'shared-internal-dispatch-source-v1',binding:structuredClone(scope),config_sha256:hash(config),allowed_events:[],unsupported:['prospect-outreach','research','authoring','audio','calendar','drive','automatic-migration']};
+ const manifest={...packet.envelope.project_source,kind:sourceKind(scope.capability),binding:structuredClone(scope),config_sha256:hash(config),allowed_events:scope.capability===manualDispatchCapability?[...manualRecordEvents]:[],...(scope.capability===manualDispatchCapability?{manual_events:dispatchManualSchema}:{}),unsupported:['prospect-outreach','research','authoring','audio','calendar','drive','automatic-migration']};
  const state=structuredClone(packet.envelope.state),prior=control(state);
  if(prior){check(prior.paused&&rebindObservation===hash(prior)&&!Object.values(prior.ticks).some(t=>['Reserved','Claimed'].includes(t.status))&&prior.policy.policy_id!==dispatchPolicy.policy_id,'Imported standing policy needs exact observed-hash recovery and a distinct new policy; never transplant authority');const history=state.operations.internal_dispatch_history??=[];check(history.length<10&&!history.some(d=>d.policy.policy_id===dispatchPolicy.policy_id),'Finite retained policy history; never reset a historical policy allowance');history.push(prior);}
  (state.operations??={}).internal_dispatch={policy:structuredClone(dispatchPolicy),authorization:null,ticks:{},observations:[],paused:true};
@@ -159,22 +167,33 @@ export async function applyDispatchTransition(state,config,tr,now){
   live(state,config,tr.tick_id,now);const t=d.ticks[tr.tick_id];check(!t.reconciliation&&!t.phases.incoming,'Only one incoming continuation per tick; no polling during recovery');
   const observations=structuredClone(tr.observations),app={config,store:{dispatchBinding:true},now:()=>now,loadConfig:async()=>config,snapshot:async()=>structuredClone(state),change:async fn=>fn(state)};
   const transport=Object.fromEntries(['incomingProfile','incomingHistory','incomingThread'].map(name=>[name,async(...args)=>{const o=observations.shift();check(o?.name===name&&hash(o.args)===hash(args),'Incoming replay request differs');if(o.error){const e=Error('Bounded incoming read unavailable');e.status=o.status;throw e;}return o.value;} ]));
-  check(Buffer.byteLength(JSON.stringify(tr.observations))<=p.limits.bytes_tick,'Incoming observation bytes exceed policy');await syncIncomingMail(app,{actor:dispatchPrincipal,env:{EVZ_INTERNAL_DISPATCH_RUNTIME:dispatchCapability},transport});check(!observations.length,'Unexpected incoming observations');t.phases.incoming={at:tr.at,observations:structuredClone(tr.observations),sha256:hash(tr.observations)};
+  check(Buffer.byteLength(JSON.stringify(tr.observations))<=p.limits.bytes_tick,'Incoming observation bytes exceed policy');await syncIncomingMail(app,{actor:dispatchPrincipal,env:{EVZ_INTERNAL_DISPATCH_RUNTIME:config.shared_capability},transport});check(!observations.length,'Unexpected incoming observations');t.phases.incoming={at:tr.at,observations:structuredClone(tr.observations),sha256:hash(tr.observations)};
  }else throw Error('Unsupported typed dispatch transition');
  if(tr.kind!=='incoming')bump(state,now);
 }
-export async function validateDispatchChange(before,after,{dispatchTransition}={}){
- check(dispatchTransition&&hash(before.config)===hash(after.config)&&hash(before.dispatch_source)===hash(after.dispatch_source),'Shared dispatch rejects untyped mutations/configuration changes');
- const expected=structuredClone(before.state);await applyDispatchTransition(expected,before.config,dispatchTransition,new Date(after.state.updated_at));check(hash(expected)===hash(after.state),'Shared dispatch transition changed protected records, policy, phases, budgets or dependencies');
+export function applyDispatchManualRecord(state,config,record,now){
+ fields(record,'event,actor,revision,at');
+ check(config.shared_capability===manualDispatchCapability&&record.at===now.toISOString(),'Exact composed manual transition required');
+ const result=applyManualRecord(state,record.event,record.actor,record.revision,now,config);
+ if(!result.duplicate)prepareNotificationsInState(state,now,{origin:'signed-manual-record',includeDigest:false});
+ return result;
+}
+export async function validateDispatchChange(before,after,options={}){
+ const {dispatchTransition,manualRecord}=options,manual=before.config.shared_capability===manualDispatchCapability;
+ check((manual?['dispatchTransition','manualRecord'].filter(k=>Object.hasOwn(options,k)).length===1&&Object.keys(options).every(k=>['dispatchTransition','manualRecord','eventId','eventFingerprint','configFingerprint'].includes(k)):dispatchTransition&&!Object.hasOwn(options,'manualRecord'))&&hash(before.config)===hash(after.config)&&hash(before.dispatch_source)===hash(after.dispatch_source),'Shared dispatch rejects untyped mutations/configuration changes');
+ const expected=structuredClone(before.state);
+ if(manualRecord)applyDispatchManualRecord(expected,before.config,manualRecord,new Date(manualRecord.at));
+ else await applyDispatchTransition(expected,before.config,dispatchTransition,new Date(after.state.updated_at));
+ check(hash(expected)===hash(after.state),'Shared dispatch transition changed protected records, policy, phases, budgets or dependencies');
 }
 export async function dispatchTransition(app,tr){
- const config=await app.loadConfig(),transition={...tr};check(app.store?.dispatchBinding&&config.shared_capability===dispatchCapability,'Exact shared dispatch store required');
+ const config=await app.loadConfig(),transition={...tr};check(app.store?.dispatchBinding&&app.store.dispatchBinding.scope.capability===config.shared_capability&&isDispatchCapability(config.shared_capability),'Exact shared dispatch store required');
  return app.change(async state=>{transition.at=app.now().toISOString();await applyDispatchTransition(state,config,transition,new Date(transition.at));return {revision:state.revision,tick_id:transition.tick_id,status:control(state)?.ticks?.[transition.tick_id]?.status};},{configFingerprint:hash(config),dispatchTransition:transition});
 }
 export function dispatchStatus(state,config,now,runtime=false){
  const p=policy(config),d=control(state),expired=+now>=Date.parse(p.expires_at);let status='Unapproved';if(d?.authorization)status=d.recovery?'Recovery required':d.paused?'Paused':expired?'Expired':+now<Date.parse(p.starts_at)?'Not started':!runtime?'Runtime paused':'Authorized';
  const ticks=Object.values(d?.ticks??{}).map(t=>({...t,phases:Object.fromEntries(Object.entries(t.phases).map(([name,value])=>[name,typeof value==='string'?value:{at:value.at,sha256:value.sha256,observation_count:value.observations.length}]))}));
- return {capability:dispatchCapability,status,runtime_enabled:runtime,expired,approval_mode:'Standing internal policy; each-message approval remains a separate capability',policy_sha256:hash(p),policy:p,paused_by:d?.pause?.actor??null,authorization_event:d?.authorization?.id??null,principal:dispatchPrincipal,limits:p?.limits,ticks,observed_sha256:d?hash(d):null,inbox_delivery:'Unverified',design_authority:'Owner and friend retain equal design authority and visibility; both may pause'};
+ return {capability:config.shared_capability,status,runtime_enabled:runtime,expired,approval_mode:'Standing internal policy; each-message approval remains a separate capability',policy_sha256:hash(p),policy:p,paused_by:d?.pause?.actor??null,authorization_event:d?.authorization?.id??null,principal:dispatchPrincipal,limits:p?.limits,ticks,observed_sha256:d?hash(d):null,inbox_delivery:'Unverified',design_authority:'Owner and friend retain equal design authority and visibility; both may pause'};
 }
 export function dispatchNotificationView(state,config,now,runtime=false){const standing=dispatchStatus(state,config,now,runtime),view=state.notification_preparation??notificationView(state);return {...view,channel_status:'Standing internal-only policy: '+standing.status,delivery_enabled:standing.status==='Authorized',messages:view.messages.map(m=>m.delivery?m:{...m,delivery_hold:'Prepared source; waiting for a current bounded standing-policy tick. Inbox delivery remains unverified.'})};}
 export async function dispatchCommand(app,command,input,actor,{runtime=false}={}){

@@ -1,3 +1,4 @@
+import {isDispatchCapability} from './shared-internal-dispatch.mjs';
 import {StudioLifecycle,check,hash,pauseCold} from './lifecycle.mjs';
 import {googleHostedTransport} from './google-hosted-transport.mjs';
 import {replyContent,replyHeader as header} from './reply-content.mjs';
@@ -10,13 +11,13 @@ const address=v=>{const m=v.match(/[^\s<>\",;]+@[^\s<>\",;]+\.[^\s<>\",;]+/g)??[
 function capability(app,c,env){
  check(!app.store?.inertBinding&&c.shared_capability!=='inert-shared-v1','D2 notes-only authority rejects incoming synchronization');
  const g=c.google_incoming_mail;
- const shared=app.store?.dispatchBinding&&c.shared_capability==='shared-internal-dispatch-v1'&&env.EVZ_INTERNAL_DISPATCH_RUNTIME==='shared-internal-dispatch-v1';
+ const shared=app.store?.dispatchBinding&&isDispatchCapability(c.shared_capability)&&env.EVZ_INTERNAL_DISPATCH_RUNTIME===c.shared_capability;
  check(shared&&g?.capability==='shared-registered-incoming-v1'||env.EVZ_OPERATIONS_GOOGLE_INCOMING_MAIL==='fictional-incoming-v1'&&c.mode==='controlled'&&g?.capability==='fictional-incoming-v1','Hosted incoming synchronization is disabled; production capability is unavailable');
  check(g?.enabled===true,'Registered incoming synchronization is disabled');
  check(g.run_id===c.run_id&&key(g.grant_id)&&typeof g.account_email==='string'&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(g.account_email)&&g.account_email===c.sender.account_email&&c.sender.email==='hello@evzdigital.studio','Exact incoming workspace, business account and grant required');return g;
 }
 export function incomingRoutes(state,c){
- const shared=c.shared_capability==='shared-internal-dispatch-v1';
+ const shared=isDispatchCapability(c.shared_capability);
  const all=[];
  for(const [project_id,b] of Object.entries(c.operations?.threads??{}))all.push({project_id,...b});
  for(const [id,e] of Object.entries(state.operations?.email??{})){

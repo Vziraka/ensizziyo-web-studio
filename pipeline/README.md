@@ -1,5 +1,7 @@
 # Controlled research proof
 
+[Disabled shared manual/internal composition](SHARED-MANUAL-DISPATCH.md) joins the five signed completed-human-call/ownership/note/stop events to the existing registered incoming and finite internal dispatcher on one exact CAS binding. All new prospect follow-ups stay held; default configuration emits no schedule or activation. Run `node --test pipeline/shared-manual-internal-dispatch.test.mjs` from the repository root.
+
 [Disabled hosted known-identity research](KNOWN-IDENTITY-RESEARCH.md): exact existing candidate/approved first-party source collector and one finite authored proposal; actual human source/semantic disposition keeps trusted import and calls held. No search/model activation or new allowance.
 
 
