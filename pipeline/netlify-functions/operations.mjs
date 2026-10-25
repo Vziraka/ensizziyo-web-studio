@@ -4,4 +4,4 @@ export default (request,context)=>createHostedDesk({env:{...process.env,CONTEXT:
  if(!Object.hasOwn(assets,file))throw Object.assign(Error('Bundled UI asset unavailable'),{code:'ENOENT'});
  return Buffer.from(assets[file],'base64');
 }})(request);
-export const config={path:['/desk','/desk/*'],excludedPath:['/desk/api/full-call-transcription/execute','/desk/api/transcript-assessment/execute','/desk/api/project-author/generate-execute']};
+export const config={path:['/desk','/desk/*'],excludedPath:['/desk/api/full-call-transcription/execute','/desk/api/transcript-assessment/execute','/desk/api/project-author/generate-execute','/desk/api/known-research/execute']};

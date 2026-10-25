@@ -3,3 +3,6 @@ export const lifecycleAssets = new Map([['/full-call-transcription.js',['full-ca
 lifecycleAssets.set('/transcript-assessment.js',['transcript-assessment.js','text/javascript']);
 lifecycleAssets.set('/snapshot-read.js',['snapshot-read.js','text/javascript']);
 for(const icon of ['house','building-2','mail','calendar-days','file-text','users','circle-alert','settings'])lifecycleAssets.set(`/assets/nav-${icon}.svg`,[`assets/nav-${icon}.svg`,'image/svg+xml']);
+
+lifecycleAssets.set('/known-research/',['known-research.html','text/html']);
+lifecycleAssets.set('/known-research.js',['known-research.js','text/javascript']);

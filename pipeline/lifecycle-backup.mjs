@@ -1,3 +1,4 @@
+import {validateResearchEvidence} from './known-identity-research.mjs';
 import {supportsProjectAuthoring} from './shared-project-continuation.mjs';
 import {lstat,realpath,open,mkdir,writeFile,link,unlink,rm} from 'node:fs/promises';
 import {join,dirname,resolve,isAbsolute} from 'node:path';
@@ -33,6 +34,7 @@ export function hasProjectDependencies(state){return Object.values(state.asset_i
 
 // Resolve a closed allowlist from records, never recurse through the workspace.
 async function inventory(state,read,{restoring=false}={}){
+ validateResearchEvidence(state,{complete:true});
  const files=new Map(),jobs=new Map();let total=0;
  const add=async(path,{max=fileLimit,optional=false,expected,size}={})=>{
   check(allowed(path),'Unsafe backup dependency path');let bytes=files.get(path);
@@ -103,7 +105,7 @@ async function localInventory(directory,state){
  read.external=readRegularExternal;return inventory(state,read);
 }
 export async function hostedBackupInventory(app,audioStore){
- check(app.authoringStore&&app.originalStore&&app.store&&!app.store.inertBinding&&!app.store.manualBinding&&(app.config.mode==='controlled'||supportsProjectAuthoring(app)),'Hosted project backup requires fictional controlled work or an exact shared project binding');
+ check(app.authoringStore&&app.originalStore&&app.store&&!app.store.inertBinding&&!app.store.manualBinding&&(app.config.mode==='controlled'||supportsProjectAuthoring(app)||app.store.projectBinding?.scope.capability==='shared-known-identity-research-v1'),'Hosted project backup requires fictional controlled work or an exact shared project binding');
  const state=await app.snapshot();
  // Incomplete transfers/attempts require reconciliation before claiming a complete hosted package.
  for(const work of workHistory(state))for(const job of [...(work.authoring_history??[]),...(work.execution?[work.execution]:[])])check(job.status==='Review'||job.status==='Reconciled'&&job.recovery,'Hosted backup held: reconcile unfinished authoring attempts before exporting complete dependencies');

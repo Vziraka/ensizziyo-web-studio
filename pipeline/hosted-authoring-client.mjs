@@ -41,6 +41,13 @@ export async function connectSharedAuthoring(options={}){
   async rasters(job_id,{pdf_sha256,rasterizer,pages}){check(Array.isArray(pages)&&pages.length>0&&pages.length<=16,'Supply every actual reviewed PDF raster');for(const [i,bytes] of pages.entries())await upload(job_id,`review-page-${i+1}.png`,bytes);return command('rasters',{job_id,pdf_sha256,rasterizer});},
   complete:(job_id,review)=>command('complete',{job_id,review}),
   async backup(output){
+   return downloadHostedBackup(session,output);
+  }
+ };
+}
+
+export async function downloadHostedBackup(session,output){
+ const {request}=session,base='/api/project-author/',json=(path,options)=>session.json(path,options,4_500_000);
    const wire=await json(base+'backup'),bundle={...wire};
    if(wire.body_manifest){const m=wire.body_manifest;check(m.format==='authoring-chunks-v1'&&m.bytes>0&&m.bytes<=20_000_000&&m.chunk_size===originalChunkSize&&m.chunks.length===Math.ceil(m.bytes/originalChunkSize),'Invalid state backup manifest');const chunks=[];for(let chunk=0;chunk<m.chunks.length;chunk++){const response=await request(base+`backup/state-chunk?snapshot=${hash(wire)}&chunk=${chunk}`),bytes=await boundedSharedResponse(response,originalChunkSize);check(bytes.length===Math.min(originalChunkSize,m.bytes-chunk*originalChunkSize)&&originalDigest(bytes)===m.chunks[chunk]&&response.headers.get('x-content-sha256')===m.chunks[chunk],'State backup chunk changed');chunks.push(bytes);}const bytes=Buffer.concat(chunks);check(originalDigest(bytes)===m.sha256,'State backup changed');bundle.body=bytes.toString('utf8');}
    check(bundle.schema_version===2&&typeof bundle.body==='string'&&hash(bundle.body)===bundle.sha256&&Array.isArray(bundle.files)&&bundle.files.length<=6000&&hash(bundle.files)===bundle.files_sha256,'Invalid hosted backup manifest');
@@ -51,6 +58,4 @@ export async function connectSharedAuthoring(options={}){
     const bytes=Buffer.concat(chunks);check(originalDigest(bytes)===entry.sha256,'Backup dependency changed');files.set(entry.path,bytes);
    }
    return writePortableLifecycleBackup(JSON.parse(bundle.body),files,output,bundle.created_at);
-  }
- };
 }

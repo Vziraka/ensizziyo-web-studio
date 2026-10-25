@@ -1,5 +1,8 @@
 # Controlled research proof
 
+[Disabled hosted known-identity research](KNOWN-IDENTITY-RESEARCH.md): exact existing candidate/approved first-party source collector and one finite authored proposal; actual human source/semantic disposition keeps trusted import and calls held. No search/model activation or new allowance.
+
+
 [Shared manual call records](SHARED-MANUAL-RECORDS.md) is a separately disabled, exactly bound production-shaped source capability. It reuses the existing call/callback/stop and ownership reducer with signed event replay; all execution remains disabled. The original inert note-only capability below is unchanged.
 
 [Disabled persistent hosted authoring](PROJECT-AUTHORING.md#disabled-hosted-authoring-storage-and-caller) connects the signed existing continuation caller to immutable bounded Node-authoring resources and complete G1 workspace packages. Run `node --test hosted-authoring.test.mjs`; the flag remains unset. Missing/corrupt required dependencies hold complete hosted backup; incomplete attempts need [explicit evidence reconciliation](PROJECT-AUTHORING.md#explicit-incomplete-attempt-recovery), which never makes a partial export usable. D2, production, actual remote/cost and computer-off acceptance stay closed/unverified.

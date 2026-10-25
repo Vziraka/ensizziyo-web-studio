@@ -1,0 +1,52 @@
+# Disabled hosted known-identity research
+
+October 24, 2026. This capability collects exact approved first-party HTTPS pages for an existing, explicitly supplied business candidate and saves one authored evidence/opening proposal for actual human source/semantic review. It creates no prospect, trusted import, call task or contact action. Autonomous seed discovery, actual quality and 25 defensible new businesses/day remain separate, unproved work.
+
+## Caller, ownership and provenance
+
+`shared-known-identity-research-v1` uses existing signed owner/friend sessions, project-source deployment binding and strong-read whole-state conditional storage. Typed `projectResearch` transitions independently replay the expected whole state. Other project mutations, authoring, provider connections, old Gateway jobs, trusted import, contact and sending routes remain rejected. Old inert/manual/project/refinement profiles retain their gates; a new runtime flag alone grants no authority.
+
+`prepareProjectWorkspace({backup,sourceConfig,scope,researchPolicy})` accepts an existing complete G1 package and exact research capability/policy hash. Existing `discovery_batches[batch_id].candidates` must contain `id,name,website,category,subtype` plus `research_intake`: `channel:'Referral'`, actual `source,note,supplied_at,assigned_to` and one to four approved `urls`. Manual intake retains its actual manual source/note as Referral and never fabricates Google Search. The existing pure `candidatePacket` now lives in `candidate-packet.mjs`; ordinary discovery retains Google Search and only this explicit caller passes retained intake separately. This source contract does not authorize real migration. No search, queue/framework, Windows worker, filesystem controller or connector credential is added.
+
+Both signed roles inspect all candidates and make human dispositions; only the assigned role registers/runs. Account spending authority is owner-only. `connectKnownResearch({origin,key,fetcher})` exposes same-origin signed CSRF commands:
+
+| Operation | Input/effect |
+| --- | --- |
+| register | Exact existing `{batch_id,candidate_id}`; signed policy-bound intake registration, no network. |
+| status | Exact IDs; current revision/candidate/attempt hash and retained source/request/schema/raw/proposal/grant. |
+| authorize | Owner only `{policy_sha256,remaining_credits,observed_at,auto_recharge_disabled:true}`; current catalog/rates and one nonresettable finite grant. |
+| run | IDs plus exact `revision,policy_sha256`; reserve maximum before effects, dispatch tiny authenticated background reference. Existing attempts are read without redispatch. |
+| pause | Exact policy hash; either signed role pauses without refund/resumption. |
+| review | Exact attempt/source/proposal human disposition and every observation/opening; import held. |
+| reconcile | IDs plus observed attempt `snapshot,reason`; close publication and retain evidence without process-exit/retry/refund claim. |
+| backup | Existing bounded authenticated G1 transfer/portable writer to a new output path. |
+
+## Unapproved policy and runtime
+
+The exported proposed policy stays UNAPPROVED, with no chosen real model or amount. A future reviewed binding must specify exact identity/intake/URL-source-request/prompt/schema hashes, model/catalog/rate ceilings, finite input/output tokens and request/output bytes, count/generation/lifetime/day/cycle/time/expiry, conservative included-credit reservation, hosting and prior-policy reserves. The signed owner grant binds policy and deployment, fresh balance/recharge-off evidence and at most fifteen-minute expiry. Minimum reserve is `ceil((2*maximumInputTokens*inputRate+maximumOutputTokens*outputRate)*180)` microcredits, including count plus generation. Observed balance is not an account-wide atomic reservation against unrelated site usage.
+
+Each candidate gets one lifetime attempt, one capture, at most one count/generation. Capture binds up to four URLs, two redirects, twenty seconds/page, 512,000 response bytes and 20,000 retained text characters/page; overall execution is at most ten minutes. The actual source-containing request/schema are saved/hashed before count/generation. Rejected/unknown outcomes retain reservations with no fallback, automatic repair, refund or lease-expiry retry.
+
+The profile requires its exact `EVZ_OPERATIONS_DESK_ENABLED`, `EVZ_OPERATIONS_PROJECT_BINDING`/namespace/site/deploy/origin, `EVZ_KNOWN_RESEARCH_ENABLED=shared-known-identity-research-v1`, matching existing injected Gateway settings and separate server-only `EVZ_KNOWN_RESEARCH_DISPATCH_SECRET`. No values are provided here. Dedicated `/desk/api/known-research/execute` background source accepts an HMAC-bound attempt/candidate/policy/deployment reference expiring within sixty seconds; the catchall excludes it. No interactive cookie is a scheduler credential. No scheduler exists. Exhausted Gateway4 and later transcript/refinement policies and historical balances are never reset/reused as allowance.
+
+## Source and semantic contract
+
+The real `collectPublicSources` uses HTTP/DNS substitutes only at external test boundaries. Its optional exact-approved-URL redirect restriction is enabled here; ordinary callers retain previous behavior. The narrow production request validates all DNS addresses, then pins the selected public address into the actual HTTPS connection, preserving hostname/SNI/certificate checks. Private/link-local/mapped/localhost/IP-literal/credential-bearing/cross-host targets fail. The narrow path conservatively excludes IPv6 transition/special-purpose ranges, including protocol assignments and documentation; it does not assume their routability. See the [IANA registry](https://www.iana.org/assignments/iana-ipv6-special-registry). Redirects must be exact approved URLs. No cookies, authentication, social/browser fallback, model-selected URLs or tools exist.
+
+Retain original extracted source text, original/final URL, HTTP method, full/partial coverage, fetch/check times, hash, truncation and errors. Blocked/JS-only/social, inaccessible, partial/truncated, missing phone/locality/identity or duplicate prospect/contact evidence holds before model effects. Intake date/request must remain current. Successful partial captures and failure reasons survive as evidence, never full reviewed sources.
+
+Existing candidatePacket/verificationData/openingAssessment enforce literal contracts. Every authored observation and published customer step equals an exact retained source excerpt and URL/hash. The opening quotes that step and asks its exact source-grounded neutral process question; hypotheses explicitly retain uncertainty. Existing visual-defect/dated-only/generic-opportunity/unsupported-opener guards remain. Text establishes no visual/mobile/functional inspection, owner goals, budget, internal tools, need or buying interest. These rejection guards are not semantic proof. The single author is explicitly not independent review; prior actual author/same-model-review failure remains unresolved. Substituted output success establishes integration only.
+
+## Saved human review and import hold
+
+Success remains on the existing candidate as **Awaiting human source/semantic review**. Linked ai_attempts retain captures/request/schema/raw model output/usage/catalog, extractive observations, derived selected opening and unknowns. Signed `/desk/known-research/`, linked from the desk, shows actual provenance, readable original sources/facts/hypotheses/unknowns and accurate grant/runtime state.
+
+Human review takes IDs, exact `snapshot,verdict,reason`, `inspected_sources:true,semantic_review:true,independent_model_review:false,import_authorized:false`, per-observation `{id,verdict,reason}` and `opening_reason`. Overall acceptance cannot retain rejected observations. Immutable signed disposition binds source/proposal hashes and actor/date. Either signed role can review after spending expiry without a model call, with current identity/assignment/stop/duplicate checks. Acceptance saves **Human reviewed**, rejection **Rejected**, both with **import held**. Existing independent subscription review, verification import and calls-only release are unchanged. Promoting this single authored output through the old import route would mislabel review authority, so this increment stops at its reviewable lifecycle candidate.
+
+## Failure, recovery and G1
+
+Each source/count/generation phase is conditionally claimed before effects. Strong reads/replay recheck identity/intake/assignment/request/prompt/schema, duplicate name/host/phone, stop/restriction/batch pause, grant pause/expiry, clock and execution deadline before effects/publication. Backward clock/stale caller/late results cannot publish bytes. Rejected raw output is retained when its one current result write remains authorized. After a fence, late bytes may be unavailable; durable phase evidence records incomplete work honestly. Unknown writes/background delivery/process exit never authorize replay.
+
+Reserved/Running/Captured/Counted/Returned/Uncertain attempts need explicit signed reconciliation before complete G1. Observed attempt hash fences closure, which does not attest process exit. Sources/policy/reservations/originals/raw/proposal/rejection/history are inline dependencies of existing checksummed state. G1 validates identity/policy/capture/request/schema/raw/proposal integrity plus existing asset/audio/authoring inventory. No hidden source sidecars exist. Unchanged 20 MB state and bounded response/chunk contracts apply; oversized work holds. Normal restoration preserves evidence with provider/runtime releases disabled, no retry/refund or inherited runtime grant.
+
+Verification: pipeline `node --test known-identity-research.test.mjs`, `npm run check`, `npm test`; root `node scripts/build-desk-assets.mjs` and `node --test scripts/*.test.mjs site/*.test.mjs`. New fictional signed owner/friend handlers and real pinned SDKs substitute only external HTTP/DNS. Private proof includes desktop/narrow original-source inspection/disposition/readback, exact hashes, normal/incomplete inert recovery and two source review passes. No real source/model/provider call, remote config/data, account/permission change, migration, contact, deploy or main merge occurred. Actual quality/current balance/hosting/cost/device/PC-off and sustained capacity remain unproved.

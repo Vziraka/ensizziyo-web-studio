@@ -43,3 +43,7 @@ audio{display:block;width:100%;max-width:100%;margin-block:12px}.audio-controls{
 
 .reply-source { white-space: pre-wrap; overflow-wrap: anywhere; }
 .reply-editor textarea { min-height: 180px; }
+
+.research-page{max-width:1000px;margin:24px auto;padding:16px}.research-page pre{white-space:pre-wrap;overflow-wrap:anywhere}.research-page label{display:block;margin:16px 0}.research-page textarea{display:block;width:100%;min-height:90px}.research-page details{margin:16px 0}
+.research-page select{width:100%;max-width:100%;min-width:0}.research-page{width:100%;min-width:0}.research-page h1,.research-page h2,.research-page p,.research-page label{overflow-wrap:anywhere}
+.research-page pre{font-size:14px;line-height:1.65}.research-page article{margin:18px 0;padding:16px;border:1px solid var(--line);border-radius:8px}.research-page input[type=checkbox]{width:22px;height:22px;min-height:22px;margin-right:10px;vertical-align:middle}.research-page button{min-height:44px;margin:6px 8px 6px 0;padding:10px;border:1px solid var(--line);border-radius:6px;background:#fff;font:inherit}.research-page button:focus-visible{outline:2px solid #244a8f;outline-offset:3px}
