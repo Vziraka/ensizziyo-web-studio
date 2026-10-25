@@ -25,12 +25,12 @@ function validPDF(padding=1_500_000){
  const xref=Buffer.byteLength(text);text+='xref\n0 6\n0000000000 65535 f \n'+offsets.slice(1).map(x=>String(x).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;return Buffer.from(text);
 }
 function memoryBlobs(){const entries=new Map();let version=0;return {entries,onRead:null,onWrite:null,async getWithMetadata(key,{type,consistency}){assert.equal(consistency,'strong');if(this.onRead)await this.onRead(key);const e=entries.get(key);return e?{data:type==='json'?JSON.parse(e.bytes):Buffer.from(e.bytes),etag:e.etag}:null;},async set(key,value,options={}){if(this.onWrite)await this.onWrite(key,value,options);const p=entries.get(key);if(options.onlyIfNew&&p||options.onlyIfMatch&&p?.etag!==options.onlyIfMatch)return {modified:false};const etag='"'+(++version)+'"';entries.set(key,{bytes:Buffer.from(value),etag});if(this.lose===key){this.lose=null;throw Error('Fictional lost acknowledgement');}return {modified:true,etag};},async setJSON(key,value,options){return this.set(key,JSON.stringify(value),options);}};}
-async function fixture(t,{bytes=validPDF(),manual=false,sdk=false,incoming=false}={}){
+async function fixture(t,{bytes=validPDF(),manual=false,sdk=false,incoming=false,reference}={}){
  const directory=await mkdtemp(join(tmpdir(),'evz-original-recovery-'));t.after(()=>rm(directory,{recursive:true,force:true}));
  const storage=sdk?(await import('./fixtures/hosted-authoring.mjs')).fictionalBlobs():null,raw=storage?.raw??memoryBlobs(),ranges=[],env={CONTEXT:'deploy-preview',SITE_ID:'fictional-site',DEPLOY_ID:'fictional-deploy',EVZ_OPERATIONS_DESK_ENABLED:'fictional-preview',EVZ_OPERATIONS_SHARED_ORIGINALS:'fictional-chunks-v1',EVZ_OPERATIONS_GOOGLE_DRIVE_ORIGINALS:'fictional-drive-read-v1',EVZ_OPERATIONS_PROJECT_AUTHORING:'fictional-node-v1',EVZ_OPERATIONS_ORIGIN:origin,EVZ_OPERATIONS_BLOB_NAMESPACE:'evz-redesign-proof-partial-g1-fictional',EVZ_OPERATIONS_OWNER_KEY:'o'.repeat(43),EVZ_OPERATIONS_FRIEND_KEY:'f'.repeat(43),EVZ_OPERATIONS_SESSION_SECRET:'s'.repeat(43),...(incoming?{EVZ_OPERATIONS_GOOGLE_INCOMING_MAIL:'fictional-incoming-v1'}:{})};
  if(storage)raw.entries=storage.entries;
  let clock=Date.parse(at),httpHook=null,tokenHook=null;
- const source={...ids,reference:manual?'private-path:fictional/partial.pdf':'drive:'+file,name:'Fictional partial G1.pdf',mime_type:'application/pdf',modified_time:at,drive_version:'42',bytes:bytes.length,sha256:originalDigest(bytes),etag:'"fictional-etag"'};
+ const source={...ids,reference:reference??(manual?'private-path:fictional/partial.pdf':'drive:'+file),name:'Fictional partial G1.pdf',mime_type:'application/pdf',modified_time:at,drive_version:'42',bytes:bytes.length,sha256:originalDigest(bytes),etag:'"fictional-etag"'};
  const token={profile:driveOAuthProfile,account:'ensizziyo@evzdigital.studio',grant_id:'fictional-drive-grant',scopes:driveOAuthScopes,access_token:'fictional-only-access-token',expires_at:clock+3_600_000};
  async function provider(url,options){
   const u=new URL(url);assert.equal(u.origin,'https://www.googleapis.com');assert.equal(options.method,'GET');assert.equal(options.redirect,'error');assert.equal(options.headers.Authorization,'Bearer fictional-only-access-token');if(httpHook){const substituted=await httpHook(u,options);if(substituted)return substituted;}
@@ -244,6 +244,12 @@ test('studio-wide manual transfer observation rejects a different project before
  await f.event('asset_registered',{asset_id:'studio-pdf',scope:'studio',kind:'template',name:'Fictional studio PDF',version_id:'v1',version_label:'v1',reference:f.source.reference},'owner');
  const context=await f.owner.context('shared-proof'),transfer=await f.ownerSession.json('/api/project-original/shared-proof/studio-pdf/v1/reserve',{method:'POST',body:{context_sha256:context.context_sha256,manifest:originalManifest(f.bytes),source:{reference:f.source.reference,name:f.source.name,mime_type:'application/pdf',modified_time:at}}});let chunkReads=0;f.raw.onRead=key=>{if(key.startsWith('project-originals/'))chunkReads++;};
  await assert.rejects(f.friend.recovery({project_id:'other-project',asset_id:'studio-pdf',version_id:'v1'},{kind:'manual',transfer_id:transfer.id}),/transfer.*target|target.*transfer/i);assert.equal(chunkReads,0);const proper=await f.friend.recovery({project_id:'shared-proof',asset_id:'studio-pdf',version_id:'v1'},{kind:'manual',transfer_id:transfer.id});assert.equal(proper.target.project_id,'shared-proof');
+});
+
+test('healthy completed manual original keeps G1 at the existing 600-character registered reference limit',async t=>{
+ const reference='private-path:'+'r'.repeat(600-'private-path:'.length),f=await fixture(t,{manual:true,bytes:validPDF(10),reference});
+ await f.owner.upload(ids,f.bytes,{reference,name:f.source.name,mime_type:'application/pdf',modified_time:at});const output=join(f.directory,'long-reference.json');await downloadHostedBackup(f.session,output);const saved=await readLifecycleBackup(output);assert.equal(saved.state.asset_index.pdf.versions.v1.reference.length,600);assert.deepEqual(saved.files.get(`project-originals/${f.source.sha256}.pdf`),f.bytes);
+ await StudioLifecycle.restore({input:output,destination:join(f.directory,'long-reference')});assert.deepEqual((await f.friend.download(ids)).bytes,f.bytes);
 });
 
 test('completed valid 30,591,178-byte fictional PDF keeps 31 exact ranges, fresh role readback and complete G1',async t=>{
