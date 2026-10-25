@@ -7,6 +7,7 @@ import {renderHostedAssessment} from './transcript-assessment.js';
 let selected, lane='all', workView='team', lastSaved, showHistory=false,category='all',subtypes=[],searchTerm='';
 let detailTab='overview',loadedWorkspaceContext;
 const drafts=new Map();
+const calendarPendingKey='evz-pending-calendar-confirmation';
 const expanded=new Set();
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const btn=(text,fn,cls='quiet')=>{const n=el('button',text,cls);n.type='button';n.onclick=fn;return n;};
@@ -17,7 +18,7 @@ function select(parent,label,options,value){const wrap=el('label',label),n=el('s
 function disclosure(title,child){const d=el('details');d.open=expanded.has(title);d.ontoggle=()=>{if(d.open)expanded.add(title);else expanded.delete(title);};d.append(el('summary',title));if(child)d.append(child);return d;}
 function dictateNotes(note,tell){return btn('Dictate my post-call notes',()=>{if(audioBusy()){tell('Stop call recording before dictating private post-call notes.',true);return;}note.focus();const Recognition=window.SpeechRecognition??window.webkitSpeechRecognition;if(!Recognition){tell('With the notes box focused, press Windows + H to dictate your own summary. Review the text before saving.');return;}const speech=new Recognition();speech.lang='en-US';speech.interimResults=false;speech.onresult=e=>{note.value+=(note.value?' ':'')+e.results[0][0].transcript;note.dispatchEvent(new Event('input',{bubbles:true}));};speech.onerror=()=>tell('Dictation is unavailable. You can type or use Windows + H.',true);speech.start();});}
 export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty,uploadAudio,allBusinesses=false}) {
-  const shared=Boolean(state.shared_workspace),manual=['shared-manual-records-v1','shared-manual-internal-dispatch-v1','shared-operations-records-v1','shared-operations-authoring-v1'].includes(state.shared_workspace?.capability);
+  const shared=Boolean(state.shared_workspace),manual=['shared-manual-records-v1','shared-manual-internal-dispatch-v1','shared-operations-records-v1','shared-operations-authoring-v1','shared-operations-calendar-v1'].includes(state.shared_workspace?.capability);
   const records=state.supply.queue.map(a=>state.prospects[a.prospect_id]);
   const {commitments,matching:visible}=deskQueues(state,{category,subtypes,lane,history:showHistory,allBusinesses,assignment:workView,operator:state.current_operator});
   if(!(selected===lastSaved&&state.prospects[selected])&&![...commitments,...visible].some(r=>r.id===selected))selected=visible[0]?.id??commitments[0]?.id;
@@ -28,6 +29,7 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty,
   const active=state.calling_session&&!state.calling_session.ended_at;
   if(!shared)top.append(btn(active?'End calling session':'Start calling session',()=>run(async()=>{const s=await api('/api/calling-session',{action:active?'end':'start'});clearDirty();await refresh();tell(active?`Session saved: ${s.summary.attempts} attempts · ${s.summary.conversations} conversations · ${s.summary.interested} interested · ${s.summary.bookings} bookings. Research continues according to your priority.`:'Calling session started.');})));
   root.append(top);
+  if(state.shared_workspace?.calendar)pendingCalendar(top,state,api,refresh,tell);
   const background=disclosure('Research progress and system details');background.className='desk-background';root.append(background);
   if(state.owner_contact_summary){const a=state.owner_contact_summary;background.append(el('p',`Owner contacts · Published direct business numbers: ${a.owner_direct} · Sourced identities: ${a.identified} · General business lines: ${a.general_business} · Unverified: ${a.unverified}. Website research readiness is separate from direct access to the owner.`,'notice'));}
   if(state.contact_research){const q=state.contact_research;background.append(el('p',`Contact research · ${q.reviewed}/${q.total} reviewed · ${q.fresh_checked} fresh lookups · ${q.held} held · ${q.status}`,'notice'));}
@@ -156,6 +158,7 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty,
       if(r.information_draft)card.append(el('p',`Information email: ${r.information_draft.status}${r.information_draft.error?' · '+r.information_draft.error:''}`,'notice'));
     }
     for(const b of state.pending_bookings??[])if(b.prospect_id===r.id)card.append(el('p',`${b.status} · ${when(b.start)}`,'notice'));
+    if(state.shared_workspace?.calendar)sharedCalendar(card,r,state,api,refresh,tell);
     if(r.meeting)card.append(el('p',`${r.meeting.current_status??'Verified'} meeting · ${when(r.meeting.start)}`,'notice'));
     if(r.restriction)card.append(el('p',`Contact stopped: ${r.restriction}. A history correction cannot silently restart outreach.`,'notice'));
     const history=el('div');
@@ -225,9 +228,33 @@ function researchPanel(state,api,refresh,tell,clearDirty){
 }
 async function booking(card,r,state,api,refresh,tell){
   card.querySelector('.desk-next')?.remove();const f=el('form',undefined,'desk-next');f.onsubmit=e=>e.preventDefault();f.append(el('h3','Book discovery · 20 minutes'),el('p','Weekdays 9–5 Eastern · 15-minute buffers. Availability is rechecked before an invitation is created.'));card.append(f);
-  const result=await api('/api/slots',{});if(!result.slots.length){f.append(el('p','No available slots in the next ten days.'));return;}
+  const shared=Boolean(state.shared_workspace?.calendar),result=await api(shared?'/api/calendar/availability':'/api/slots',{});if(!result.slots.length){f.append(el('p','No available slots in the next ten days.'));return;}
   const time=select(f,'Available time',result.slots.map(s=>[s.start,when(s.start)]),result.slots[0].start),mode=select(f,'Meeting type',[['video','Video call'],['phone','Phone call']],'video'),name=field(f,'Guest name',r.contact.name??''),email=field(f,'Guest email',r.contact.email??'','email'),agreed=field(f,'Guest confirmed name, email and time','','checkbox');
+  if(shared){
+    const title=field(f,'Exact invitation title',`EVZ Digital discovery · ${r.name}`),description=field(f,'Exact invitation description','','textarea'),location=field(f,'Exact invitation location','');title.maxLength=200;description.maxLength=1499;location.maxLength=300;
+    f.append(el('p','Review these exact words with the guest. Design choices and asset feedback do not approve an invitation. Reserving saves this confirmation; sending is a separate action.','notice'));
+    const reserve=btn('Reserve exact guest-confirmed invitation',async()=>{reserve.disabled=true;try{
+      if(!name.value.trim()||!agreed.checked)throw Error('Confirm the exact guest and dated slot');if(sessionStorage.getItem(calendarPendingKey))throw Error('Resolve the pending Calendar confirmation first');
+      const start=time.value,input={revision:state.revision,prospect_id:r.id,start,end:new Date(Date.parse(start)+1200000).toISOString(),timezone:'America/New_York',mode:mode.value,attendee_email:email.value,recipient_confirmed:true,slot_agreed:true,title:title.value,description:description.value,location:location.value};
+      sessionStorage.setItem(calendarPendingKey,JSON.stringify({actor:state.current_operator,input}));await api('/api/calendar/queue',input);sessionStorage.removeItem(calendarPendingKey);await refresh();tell('Exact invitation confirmation reserved. No invitation has been sent.');
+    }catch(error){if([400,409].includes(error.status))sessionStorage.removeItem(calendarPendingKey);tell(error.message,true);}finally{reserve.disabled=false;}},'primary');f.append(reserve);return;
+  }
   const send=btn(r.controlled?'Simulate invitation':'Approve and send invitation',async()=>{send.disabled=true;try{if(!name.value.trim())throw Error('Confirm the guest name');const start=time.value;const res=await api('/api/booking',{revision:state.revision,prospect_id:r.id,start,end:new Date(Date.parse(start)+1200000).toISOString(),mode:mode.value,attendee_email:email.value,recipient_confirmed:agreed.checked,slot_agreed:agreed.checked,title:`EVZ Digital discovery · ${r.name}`,description:`Discovery with ${name.value}. ${mode.value==='video'?'Video call':'Phone call'}. Discuss: ${r.idea}`});await refresh();tell(res.simulated?'Fictional invitation simulated; nothing sent.':'Invitation queued. The dashboard will show verified calendar readback.');}catch(e){tell(e.message,true);}finally{send.disabled=false;}},'primary');f.append(send);
+}
+function pendingCalendar(parent,state,api,refresh,tell){
+  let pending;try{pending=JSON.parse(sessionStorage.getItem(calendarPendingKey));}catch{}if(!pending?.input)return;
+  const fields=['prospect_id','attendee_email','start','end','timezone','mode','title','description','location'],saved=(state.calendar_bookings??[]).find(b=>b.confirmation.approved_by===pending.actor&&fields.every(k=>b.confirmation[k]===pending.input[k])&&pending.input.slot_agreed===true&&pending.input.recipient_confirmed===true);
+  if(saved){sessionStorage.removeItem(calendarPendingKey);return;}
+  const box=el('section',undefined,'notice');box.append(el('h3',`Pending Calendar confirmation · ${pending.actor}`),el('p',`${pending.input.attendee_email} · ${when(pending.input.start)} · ${pending.input.title}`),el('p','The exact input remains in this tab across reload. Check current reservations before retrying it. This pending input grants no invitation or replacement slot.'));
+  box.append(btn('Check saved Calendar confirmation',async()=>{try{await refresh();}catch(error){tell(error.message,true);}}));
+  const retry=btn('Retry exact Calendar confirmation',async()=>{try{if(pending.actor!==state.current_operator)throw Error('Sign in as the operator who confirmed this invitation');await api('/api/calendar/queue',pending.input);sessionStorage.removeItem(calendarPendingKey);await refresh();}catch(error){if([400,409].includes(error.status)){sessionStorage.removeItem(calendarPendingKey);await refresh();}tell(error.message,true);}});retry.disabled=pending.actor!==state.current_operator;box.append(retry);parent.append(box);
+}
+function sharedCalendar(parent,r,state,api,refresh,tell){
+  const calendar=state.shared_workspace.calendar,bookings=(state.calendar_bookings??[]).filter(b=>b.confirmation.prospect_id===r.id);
+  for(const b of bookings){const c=b.confirmation,box=el('section',undefined,'notice');box.append(el('h3','Exact discovery invitation'),el('p',`${c.approved_by} confirmed ${c.attendee_email} · ${when(c.start)}`),el('p',c.title),el('p',c.description),el('p',`Reservation ${b.reservation} · Intent ${b.request_status} · Event ${b.event_status} · Invitation delivery ${b.invitation_delivery} · Guest response ${b.guest_response}`));if(b.hold)box.append(el('p',b.hold));
+    if(calendar.runtime_enabled&&!r.restriction&&(!r.follow_up_owner||r.follow_up_owner===state.current_operator)&&c.approved_by===state.current_operator)box.append(btn(b.request_status==='Not dispatched'?'Send this exact invitation once':'Read the exact existing event',async()=>{try{const result=await api('/api/calendar/'+(b.request_status==='Not dispatched'?'dispatch':'reconcile'),{booking_id:b.id});await refresh();tell(`Calendar ${result.status}. Invitation delivery remains unverified; guest response is separate.`);}catch(error){tell(error.message,true);}}));parent.append(box);
+  }
+  if(!bookings.length&&['Discovery','Information requested'].includes(r.stage)&&!r.restriction&&(!r.follow_up_owner||r.follow_up_owner===state.current_operator)){const book=btn('Book discovery',async()=>{try{await booking(parent,r,state,api,refresh,tell);}catch(error){tell(error.message,true);}},'primary');book.disabled=!calendar.runtime_enabled;parent.append(book);}
 }
 function emailDraft(card,r,state,api,refresh,tell){
   card.querySelector('.desk-next')?.remove();const f=el('form',undefined,'desk-next');f.onsubmit=e=>e.preventDefault();const saved=r.information_draft;

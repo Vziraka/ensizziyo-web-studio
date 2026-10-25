@@ -3,7 +3,7 @@ import {deskPath} from './paths.js';
 
 export function preparationPanel(r,state,tools){
   const {el,button,eventForm,tell}=tools;
-  const work=Object.values(r.project_work??{}),node=el('section'),recordsOnly=state.shared_workspace?.capability==='shared-operations-records-v1',interactive=['shared-operations-authoring-v1','shared-operations-refinement-v1','shared-operations-originals-v1'].includes(state.shared_workspace?.capability);
+  const work=Object.values(r.project_work??{}),node=el('section'),recordsOnly=state.shared_workspace?.capability==='shared-operations-records-v1',interactive=['shared-operations-authoring-v1','shared-operations-refinement-v1','shared-operations-originals-v1','shared-operations-calendar-v1'].includes(state.shared_workspace?.capability);
   node.append(el('h3','Project preparation'),el('p',interactive?'Review current context, supply authored source and registered resources, render the PDF, then inspect every actual raster page. Delivery remains held.':recordsOnly?'Save preparation and focused refinement requests against current context. Requests are queued; authoring and delivery are held in this workspace. Existing output and execution evidence remain history.':'Load current private context for the named workflow. A handoff is a task; file retrieval, authoring and client delivery need a supported authenticated tool.','muted'));
   if(r.restriction){node.append(el('p','Contact is stopped. Prior preparation stays in history; no new sales output is released.','notice'));if(!interactive)return node;}
   if(!r.restriction&&!work.length)node.append(eventForm(r,'Prepare from the existing confirmed project context','project_preparation_requested',[],{},'Create the eligible preparation handoff'));

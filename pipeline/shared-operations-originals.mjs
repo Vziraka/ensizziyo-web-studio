@@ -1,3 +1,4 @@
+import {operationsCalendarCapability} from './shared-operations-calendar.mjs';
 import {check,hash} from './lifecycle.mjs';
 import {projectContext} from './project-work.mjs';
 import {projectAssetVersion,projectOriginalLimit} from './project-assets.mjs';
@@ -7,7 +8,7 @@ export const operationsOriginalsCapability='shared-operations-originals-v1';
 export const originalTransitionSchema=Object.freeze({version:1,transitions:['claim','progress','hold','reserve','complete','verified','reconcile'],recovery:'observed-hash-close-publication-v1',grant_profile:'drive-originals-readonly-v1'});
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v),safe=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,256}$/.test(v);
 const exact=(v,names)=>check(v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).sort().join(',')===names.split(',').sort().join(','),'Unknown or missing original transition fields');
-export const hasOperationsOriginals=app=>app.config?.shared_capability===operationsOriginalsCapability&&app.store?.dispatchBinding?.scope.capability===operationsOriginalsCapability;
+export const hasOperationsOriginals=app=>[operationsOriginalsCapability,operationsCalendarCapability].includes(app.config?.shared_capability)&&app.store?.dispatchBinding?.scope.capability===app.config.shared_capability;
 export const driveOriginalSource=s=>({reference:s.reference,name:s.name,mime_type:s.mime_type,modified_time:s.modified_time,account:'ensizziyo@evzdigital.studio'});
 export function validateDriveOriginalPolicy(config,state){
  exact(config,'account,grant_id,sources');check(config.account==='ensizziyo@evzdigital.studio'&&safe(config.grant_id)&&config.grant_id.length<=100&&Array.isArray(config.sources)&&config.sources.length>0&&config.sources.length<=64,'Exact business Drive read policy is unavailable');
@@ -23,13 +24,13 @@ export function validateDriveOriginalPolicy(config,state){
 export function operationsOriginalSource(app,state,ids,env){
  check(hasOperationsOriginals(app)&&!app.store.projectBinding&&app.store.key==='workspace','Exact shared originals dispatch authority required');
  const b=app.store.dispatchBinding.scope;
- check(env.CONTEXT==='production'&&env.EVZ_OPERATIONS_DESK_ENABLED===operationsOriginalsCapability&&env.EVZ_OPERATIONS_BLOB_NAMESPACE===b.namespace&&env.EVZ_OPERATIONS_ORIGIN===b.origin&&env.SITE_ID===b.site_id&&env.DEPLOY_ID===b.deploy_id&&hash(JSON.parse(env.EVZ_INTERNAL_DISPATCH_BINDING??'null'))===hash(app.store.dispatchBinding),'Original deployment binding changed');
- check(env.EVZ_OPERATIONS_GOOGLE_DRIVE_ORIGINALS===operationsOriginalsCapability,'Hosted Drive original read is disabled');
+ check(env.CONTEXT==='production'&&env.EVZ_OPERATIONS_DESK_ENABLED===app.config.shared_capability&&env.EVZ_OPERATIONS_BLOB_NAMESPACE===b.namespace&&env.EVZ_OPERATIONS_ORIGIN===b.origin&&env.SITE_ID===b.site_id&&env.DEPLOY_ID===b.deploy_id&&hash(JSON.parse(env.EVZ_INTERNAL_DISPATCH_BINDING??'null'))===hash(app.store.dispatchBinding),'Original deployment binding changed');
+ check(env.EVZ_OPERATIONS_GOOGLE_DRIVE_ORIGINALS===app.config.shared_capability,'Hosted Drive original read is disabled');
  const config=validateDriveOriginalPolicy(app.config.google_drive_originals,state),s=config.sources.find(s=>s.project_id===ids.project_id&&s.asset_id===ids.asset_id&&s.version_id===ids.version_id);check(s,'Choose an exact allowed registered Drive original');
  let keys;try{keys=JSON.parse(env.EVZ_DRIVE_RESOURCE_KEYS??'{}');}catch{throw Error('Server Drive resource-key configuration is invalid');}
  check(keys&&typeof keys==='object'&&!Array.isArray(keys)&&Object.keys(keys).length<=64&&Object.entries(keys).every(([id,key])=>safe(id)&&safe(key)),'Server Drive resource-key configuration is invalid');
  const resourceKey=Object.hasOwn(keys,s.reference.slice(6))?keys[s.reference.slice(6)]:null;
- const policy=hash({capability:operationsOriginalsCapability,authority_key:app.store.key,binding_sha256:hash(app.store.dispatchBinding),source_policy_sha256:hash(config),account:config.account,grant_id:config.grant_id,source:s,resource_key_sha256:hash(resourceKey)});
+ const policy=hash({capability:app.config.shared_capability,authority_key:app.store.key,binding_sha256:hash(app.store.dispatchBinding),source_policy_sha256:hash(config),account:config.account,grant_id:config.grant_id,source:s,resource_key_sha256:hash(resourceKey)});
  return {config,s,resourceKey,version:projectAssetVersion(state,ids.project_id,ids.asset_id,ids.version_id),policy};
 }
 function receipt(state,w){return w.type==='reconcile'&&w.input.kind==='manual'?projectAssetVersion(state,w.ids.project_id,w.ids.asset_id,w.ids.version_id).original_transfer:state.drive_original_reads?.[w.receipt_id];}

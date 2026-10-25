@@ -1,3 +1,5 @@
+October25: [Disabled shared operations Calendar](SHARED-OPERATIONS-CALENDAR.md) composes the repaired exact Calendar caller with originals/authoring/refinement/manual/project/internal dispatch on one actual authority. Run `node --test shared-operations-calendar.test.mjs google-calendar.test.mjs google-oauth.test.mjs`; all real grants/runtime remain default-disabled and activation/provider/host/device/cost acceptance stays open.
+
 October25: [Disabled shared operations originals](SHARED-OPERATIONS-ORIGINALS.md) composes exact Drive reads and inert original recovery on the existing dispatch authority. Run `node --test shared-operations-originals.test.mjs`; independent grants/runtime remain default-disabled and real activation/host/device/cost acceptance stays open.
 
 # Controlled research proof

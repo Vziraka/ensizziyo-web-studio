@@ -1,5 +1,7 @@
 # Disabled hosted business Google owner grant
 
+The exact [shared operations Calendar successor](SHARED-OPERATIONS-CALENDAR.md#future-independent-owner-consent) adds a distinct live-envelope Calendar client/namespace/key/AAD and prebound logical grant under the actual dispatch binding. Its scopes remain `calendar-booking-v1`; transport rereads the current independent grant across provider/replay waits. This future consent capability is separate from Calendar execution and every Gmail/Drive profile. All actual flags/grants remain unset.
+
 The separately disabled [shared internal dispatch profile](SHARED-INTERNAL-DISPATCH.md#separate-future-google-profile) adds a distinct published Gmail-only client/namespace/key binding. It cannot reuse or widen the profiles below; no actual consent/settings change occurred.
 
 The independently disabled [incoming synchronization caller](GOOGLE-INCOMING-MAIL.md) also consumes this exact grant through the server token provider. Connecting OAuth starts no reading; neither incoming scope nor the owner-only grant-management contract is broadened.

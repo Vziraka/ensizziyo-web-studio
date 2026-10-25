@@ -1,3 +1,4 @@
+import {operationsCalendarCapability} from './shared-operations-calendar.mjs';
 import {operationsOriginalsCapability} from './shared-operations-originals.mjs';
 import {createHmac,timingSafeEqual} from 'node:crypto';
 import {check,hash} from './lifecycle.mjs';
@@ -57,15 +58,15 @@ export async function refinementSpec(app,id,actor){
  return {spec,...frozen,runtime,packet,job};
 }
 export function refinementBinding(app){
- const binding=app.config.shared_capability===refinementCapability?app.store?.projectBinding:[operationsRefinementCapability,operationsOriginalsCapability].includes(app.config.shared_capability)?app.store?.dispatchBinding:null;
- check(binding?.scope.capability===app.config.shared_capability&&[refinementCapability,operationsRefinementCapability,operationsOriginalsCapability].includes(app.config.shared_capability),'Existing capabilities reject refinement provider execution');return binding;
+ const binding=app.config.shared_capability===refinementCapability?app.store?.projectBinding:[operationsRefinementCapability,operationsOriginalsCapability,operationsCalendarCapability].includes(app.config.shared_capability)?app.store?.dispatchBinding:null;
+ check(binding?.scope.capability===app.config.shared_capability&&[refinementCapability,operationsRefinementCapability,operationsOriginalsCapability,operationsCalendarCapability].includes(app.config.shared_capability),'Existing capabilities reject refinement provider execution');return binding;
 }
 function capability(app){refinementBinding(app);return validateRefinementPolicy(app.config.refinement_generation);}
 // Prospective claims are reconstructed for existing Ready work only; they are never published by preparation.
 export async function validatePreparedRefinement(envelope,binding,files){
  const {config}=envelope,p=validateRefinementPolicy(config.refinement_generation),state=structuredClone(envelope.state),runtimes=config.refinement_generation_runtimes;
  check(Buffer.byteLength(JSON.stringify(envelope))<=20_000_000,'Prepared refinement exceeds the existing 20 MB shared workspace');
- check([operationsRefinementCapability,operationsOriginalsCapability].includes(config.shared_capability)&&runtimes&&typeof runtimes==='object'&&!Array.isArray(runtimes)&&Object.keys(runtimes).every(id=>p.jobs.some(j=>j.job_id===id)),'Exact future runtime registrations required');
+ check([operationsRefinementCapability,operationsOriginalsCapability,operationsCalendarCapability].includes(config.shared_capability)&&runtimes&&typeof runtimes==='object'&&!Array.isArray(runtimes)&&Object.keys(runtimes).every(id=>p.jobs.some(j=>j.job_id===id)),'Exact future runtime registrations required');
  const app={config,store:{dispatchBinding:binding},snapshot:async()=>structuredClone(state),authoringStore:{get:async(id,name)=>files.get(`project-authored/${id}/${name}`)??(name==='runtime.json'&&runtimes[id]?Buffer.from(JSON.stringify(runtimes[id],null,2)):null)},originalStore:{get:async original=>files.get(`project-originals/${original.sha256}.pdf`)}};
  for(const spec of p.jobs){
   const w=state.prospects[spec.project_id]?.project_work?.[spec.work_id];check(w?.status==='Ready'&&w.kind==='website-refinement'&&!w.execution,'Policy must name exact existing Ready unclaimed refinement work');
@@ -86,7 +87,7 @@ const day=now=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York'}).fo
 function attempts(s){return Object.values(s.ai_attempts).filter(a=>a.provider==='refinement-gateway-v1');}
 export function applyGenerationTransition(s,c,config,now){
  const {type,input,actor,details:d}=c,p=validateRefinementPolicy(config.refinement_generation);
- check([refinementCapability,operationsRefinementCapability,operationsOriginalsCapability].includes(config.shared_capability)&&['owner','friend'].includes(actor)&&c.revision===s.revision,'Exact signed refinement revision required');
+ check([refinementCapability,operationsRefinementCapability,operationsOriginalsCapability,operationsCalendarCapability].includes(config.shared_capability)&&['owner','friend'].includes(actor)&&c.revision===s.revision,'Exact signed refinement revision required');
  if(type==='authorize'){
   check(actor==='owner'&&!s.refinement_generation_policy&&input.policy_sha256===hash(p)&&input.auto_recharge_disabled===true,'Only the signed owner can grant one finite exact policy; no reset');
   const observed=Date.parse(input.observed_at);check(observed<=+now&&+now-observed<=120000&&Number.isSafeInteger(input.remaining_credits)&&input.remaining_credits*1e6>=p.maximum_microcredits+(p.host_reserve_credits+p.prior_policy_reserve_credits)*1e6,'Fresh included balance, recharge and prior-policy/hosting reserves required');
@@ -142,7 +143,7 @@ export async function validateGenerationTransition(app,c){
 }
 function validateRaw(a,p){const r=a.raw,u=r.usage;check(!r.truncated&&r.text_bytes===Buffer.byteLength(r.text)&&r.text_sha256===hash(r.text)&&r.model===p.model&&r.catalog.sha256===p.catalog_sha256&&r.candidates===1&&r.finish==='STOP','Unexpected model/catalog or incomplete response');check(u&&Number.isSafeInteger(u.promptTokenCount)&&u.promptTokenCount===a.phases.count.tokens&&u.promptTokenCount>0&&u.promptTokenCount<=p.maximum_input_tokens&&Number.isSafeInteger(u.candidatesTokenCount)&&u.candidatesTokenCount>0&&u.candidatesTokenCount<=p.maximum_output_tokens&&[null,0].includes(u.thoughtsTokenCount)&&[null,0].includes(u.toolUsePromptTokenCount),'Missing/mismatched usage or token caps');}
 async function transition(app,type,input,actor,details={},expectedRevision){const state=await app.snapshot(),command={type,input,actor,revision:expectedRevision??state.revision,details,binding:structuredClone(refinementBinding(app))};await validateGenerationTransition(app,command);const at=app.now();return app.change(s=>applyGenerationTransition(s,command,app.config,at),{projectGeneration:command});}
-const enabled=async env=>{try{dispatchSecret(env);return [refinementCapability,operationsRefinementCapability,operationsOriginalsCapability].includes(env.EVZ_OPERATIONS_DESK_ENABLED)&&env.EVZ_OPERATIONS_PROJECT_AUTHORING===(env.EVZ_OPERATIONS_DESK_ENABLED===operationsOriginalsCapability?'shared-operations-originals-node-v1':env.EVZ_OPERATIONS_DESK_ENABLED===operationsRefinementCapability?'shared-operations-refinement-node-v1':'shared-project-node-v1')&&env.EVZ_REFINEMENT_GENERATION_ENABLED===env.EVZ_OPERATIONS_DESK_ENABLED&&(await import('./gateway-proof.mjs')).gatewayCapability(env,env.EVZ_OPERATIONS_DESK_ENABLED).ready;}catch{return false;}};
+const enabled=async env=>{try{dispatchSecret(env);return [refinementCapability,operationsRefinementCapability,operationsOriginalsCapability,operationsCalendarCapability].includes(env.EVZ_OPERATIONS_DESK_ENABLED)&&env.EVZ_OPERATIONS_PROJECT_AUTHORING===(env.EVZ_OPERATIONS_DESK_ENABLED===operationsCalendarCapability?'shared-operations-calendar-node-v1':env.EVZ_OPERATIONS_DESK_ENABLED===operationsOriginalsCapability?'shared-operations-originals-node-v1':env.EVZ_OPERATIONS_DESK_ENABLED===operationsRefinementCapability?'shared-operations-refinement-node-v1':'shared-project-node-v1')&&env.EVZ_REFINEMENT_GENERATION_ENABLED===env.EVZ_OPERATIONS_DESK_ENABLED&&(await import('./gateway-proof.mjs')).gatewayCapability(env,env.EVZ_OPERATIONS_DESK_ENABLED).ready;}catch{return false;}};
 export {enabled as refinementRuntimeEnabled};
 export function refinementPolicyProjection(binding,state,now,policyHash=binding.scope.capability===refinementCapability?binding.scope.policy_sha256:null){
  const grant=state.refinement_generation_policy;
@@ -150,11 +151,11 @@ export function refinementPolicyProjection(binding,state,now,policyHash=binding.
  if(grant?.approved_by==='owner'&&grant.policy_sha256===policyHash){
   policy=grant.binding_sha256!==hash(binding)?'Held: binding changed':grant.paused_at?'Paused':Date.parse(grant.expires_at)>+now?'Authorized':'Expired';
  }
- if([operationsRefinementCapability,operationsOriginalsCapability].includes(binding.scope.capability)&&grant?.approved_by==='owner'&&grant.binding_sha256!==hash(binding))policy='Held: binding changed';
- return {policy,runtime:'Not checked',...([operationsRefinementCapability,operationsOriginalsCapability].includes(binding.scope.capability)?{policy_sha256:policyHash}:{})};
+ if([operationsRefinementCapability,operationsOriginalsCapability,operationsCalendarCapability].includes(binding.scope.capability)&&grant?.approved_by==='owner'&&grant.binding_sha256!==hash(binding))policy='Held: binding changed';
+ return {policy,runtime:'Not checked',...([operationsRefinementCapability,operationsOriginalsCapability,operationsCalendarCapability].includes(binding.scope.capability)?{policy_sha256:policyHash}:{})};
 }
 export function refinementStatusText(status,capability=refinementCapability){
- const delivery=[operationsRefinementCapability,operationsOriginalsCapability].includes(capability)?'Prospect contact and client delivery remain held; internal notifications follow their separate standing policy. Generated PDFs':'Contact and sending remain disabled; generated PDFs';
+ const delivery=[operationsRefinementCapability,operationsOriginalsCapability,operationsCalendarCapability].includes(capability)?'Prospect contact and client delivery remain held; internal notifications follow their separate standing policy. Generated PDFs':'Contact and sending remain disabled; generated PDFs';
  return `Bounded refinement source generation · policy grant: ${status.policy} · runtime flags: ${status.runtime}. Each job still requires exact source, assignment and finite limits. ${delivery} require actual raster and human semantic/design review.`;
 }
 export async function refinementStatus(app,input,actor){capability(app);exact(input,['job_id']);check(['owner','friend'].includes(actor),'Signed operator required');const s=await app.snapshot(),job=registeredAuthoring(s,input.job_id);return {revision:s.revision,policy:proposedRefinementPolicy,approval:s.refinement_generation_policy??null,attempt:s.ai_attempts[attemptID(input.job_id)]??null,authoring:job,next:'Rendered source requires actual PDF rasters and human semantic/design review; no automatic completion'};}

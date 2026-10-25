@@ -1,5 +1,7 @@
 # Disabled direct business Calendar transport
 
+The separately disabled [shared operations successor](SHARED-OPERATIONS-CALENDAR.md) composes this repaired transport on the actual dispatch authority with state-owned confirmations and independent live-envelope Calendar OAuth. The standalone profile and config-owned confirmation behavior described here remain supported.
+
 `google-calendar.mjs` adds a separately disabled direct REST transport to the existing [guest-confirmed booking lifecycle](CALL-DESK.md). The current source accepts only the controlled fictional shared preview and `.invalid` guests. `EVZ_OPERATIONS_GOOGLE_CALENDAR` and the separate Calendar owner OAuth capability are unset. No Google call, actual consent, invitation, hosted configuration, production activation or computer-off proof was performed.
 
 ## Supported signed caller

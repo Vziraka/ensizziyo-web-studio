@@ -1,4 +1,5 @@
 import {followUpOutcomes,followUpSetupIssues,renderFollowUpHtml,composeFollowUp,operatorDisplayName,operatorNamesConfigured,evzIdentity} from './follow-up-template.mjs';
+import {bookingContext,bookingKey,bookingConfirmations} from './calendar-confirmation.mjs';
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { check, hash, initialConfig, businessDate, businessDaysBetween, addBusinessDays, currentHostedTranscript } from './lifecycle.mjs';
@@ -167,41 +168,44 @@ async function stageProspect(app, prospectId) {
     app.config = c;
   });
 }
-export const bookingContext = r => hash({contact:r.contact,reply:r.reply??null,discovery:r.discovery??null,calls:r.calls,owner:r.follow_up_owner??null});
-export async function queueMeeting(app, input, {actor='owner',hostedCalendar=false,configFingerprint,calendarPolicy}={}) {
+export {bookingContext,bookingKey,bookingConfirmations} from './calendar-confirmation.mjs';
+export async function queueMeeting(app, input, {actor='owner',hostedCalendar=false,configFingerprint,calendarPolicy,calendarRecord,calendarSignal}={}) {
   const path = app.store?null:join(app.directory, 'lifecycle-config.json');
   return app.change(async (state,sharedConfig) => {
     const c = sharedConfig??await readJson(path);
+    const shared=c.shared_capability==='shared-operations-calendar-v1',now=app.now(),bookings=bookingConfirmations(state,c);
     check(!app.store?.inertBinding,'D2 notes-only authority rejects booking');
-    if(hostedCalendar)check(app.store&&c.mode==='controlled'&&['owner','friend'].includes(actor)&&input.revision===state.revision,'Hosted booking requires a current signed fictional confirmation');
-    if(c.mode==='production') requireBookingRelease(c);
+    if(hostedCalendar)check(app.store&&(shared?c.mode==='production'&&app.store.dispatchBinding?.scope.capability===c.shared_capability:c.mode==='controlled')&&['owner','friend'].includes(actor)&&input.revision===state.revision,'Hosted booking requires a current signed confirmation');
+    if(c.mode==='production'&&!shared) requireBookingRelease(c);
     const r = state.prospects[input.prospect_id];
     check(r && !r.restriction && ['Discovery', 'Information requested'].includes(r.stage), 'Review the owner conversation before scheduling');
     check(input.revision===undefined||input.revision===state.revision,'Record changed; review the invitation again');
-    check(input.slot_agreed === true && (email(input.attendee_email)||r.controlled&&input.attendee_email?.endsWith('@example.invalid')) && (input.attendee_email === r.contact.email || input.recipient_confirmed===true), 'Confirm the exact guest agreed to this invitation');
+    check(input.slot_agreed === true && (email(input.attendee_email)||(r.controlled||shared)&&input.attendee_email?.endsWith('@example.invalid')) && (input.attendee_email === r.contact.email || input.recipient_confirmed===true), 'Confirm the exact guest agreed to this invitation');
     check(input.title?.startsWith('EVZ Digital') && input.title.length <= 200 && typeof input.description === 'string' && input.description.length < 1500 && Number.isFinite(Date.parse(input.start)) && Number.isFinite(Date.parse(input.end)), 'Bound the exact meeting title, description and times');
     check(input.mode===undefined||['video','phone'].includes(input.mode),'Choose video or phone');
-    validateBookingSlot({start:input.start,end:input.end,timezone:'America/New_York'},[],c.calendar,app.now().toISOString(),app.now());
-    const key = `meeting-${hash({ prospect_id: r.id, start: input.start, end: input.end, attendee: input.attendee_email }).slice(0, 32)}`;
+    validateBookingSlot({start:input.start,end:input.end,timezone:'America/New_York'},[],c.calendar,now.toISOString(),now);
+    const key = bookingKey({...input,prospect_id:r.id});
     check(!r.meeting||r.meeting.event_id===key,'A meeting already exists; reconcile or reschedule that event instead of creating another');
-    check(!Object.entries(c.operations?.bookings??{}).some(([id,b])=>b.prospect_id===r.id&&id!==key),'An invitation is already reserved for this business; review it before choosing another slot');
+    check(!Object.entries(bookings).some(([id,b])=>b.prospect_id===r.id&&id!==key),'An invitation is already reserved for this business; review it before choosing another slot');
     if(c.mode==='controlled'&&!hostedCalendar) {r.meeting={event_id:key,start:input.start,end:input.end,mode:input.mode??'video',reference:`fixture:${key}`,current_status:'Simulated',verified_at:app.now().toISOString()};state.revision++;return {simulated:true,booked:false,booking_id:key};}
     const booking = { prospect_id: r.id, attendee_email: input.attendee_email, start: input.start, end: input.end, title: input.title, description: input.description,
       ...(input.mode?{mode:input.mode}:{}), ...(input.recipient_confirmed === true ? { recipient_confirmed: true } : {}), approved: true, approval_ref: `owner-console:${key}`,
       ...(hostedCalendar?{mode:input.mode??'video',location:input.location??'',timezone:'America/New_York',approved_by:actor,source_sha256:bookingContext(r),policy_sha256:calendarPolicy,confirmation_event:key+'-confirmed',transport:'google-calendar-v1'}:{}) };
     if(hostedCalendar){
-      check(r.controlled&&r.contact?.verified&&input.attendee_email.endsWith('@example.invalid')&&(!r.follow_up_owner||r.follow_up_owner===actor),'Exact current fictional contact and conversation owner required');
-      check(!Object.entries(c.operations?.bookings??{}).some(([id,b])=>id!==key&&Date.parse(b.start)<Date.parse(input.end)+c.calendar.buffer_minutes*60000&&Date.parse(b.end)>Date.parse(input.start)-c.calendar.buffer_minutes*60000),'Another invitation already reserves this slot or buffer');
+      check((shared||r.controlled&&input.attendee_email.endsWith('@example.invalid'))&&r.contact?.verified&&(!r.follow_up_owner||r.follow_up_owner===actor),'Exact current contact and conversation owner required');
+      check(!Object.entries(bookings).some(([id,b])=>id!==key&&Date.parse(b.start)<Date.parse(input.end)+c.calendar.buffer_minutes*60000&&Date.parse(b.end)>Date.parse(input.start)-c.calendar.buffer_minutes*60000),'Another invitation already reserves this slot or buffer');
     }
-    check(!c.operations.bookings[key] || hash(c.operations.bookings[key]) === hash(booking), 'An existing slot changed; preserve its reservation');
-    c.operations.bookings[key] ??= booking;
-    if(hostedCalendar)state.events[booking.confirmation_event]??={id:booking.confirmation_event,type:'meeting_queued',prospect_id:r.id,actor,at:app.now().toISOString(),data:{booking_id:key,booking_sha256:hash(booking)}};
+    check(!bookings[key] || hash(bookings[key]) === hash(booking), 'An existing slot changed; preserve its reservation');
+    if(shared){const o=state.operations??={};o.bookings??={};o.bookings[key]??={confirmation:booking};}
+    else c.operations.bookings[key] ??= booking;
+    if(hostedCalendar)state.events[booking.confirmation_event]??={id:booking.confirmation_event,type:'meeting_queued',prospect_id:r.id,actor,at:now.toISOString(),data:{booking_id:key,booking_sha256:hash(booking)}};
     if(path)await saveJson(path, c); app.config = c;
     if (state.operations?.cycle) { state.operations.cycle.completed_bookings = state.operations.cycle.completed_bookings.filter(id => id !== key); delete state.operations.cycle.completed_at; }
-    state.runtime = { ...state.runtime, wake_requested: true };
-    state.revision++; state.updated_at=app.now().toISOString();
+    if(!shared)state.runtime = { ...state.runtime, wake_requested: true };
+    state.revision++; state.updated_at=now.toISOString();
+    if(calendarRecord){calendarRecord.at=now.toISOString();calendarRecord.confirmation_sha256=hash(booking);}
     return { queued: true, booking_id: key, booked: false };
-  },configFingerprint?{configFingerprint}:undefined);
+  },calendarRecord?{configFingerprint,projectCalendar:calendarRecord,calendarSignal}:configFingerprint?{configFingerprint}:undefined);
 }
 export async function pauseStudio(app) {
   const c = await app.change(async state => {

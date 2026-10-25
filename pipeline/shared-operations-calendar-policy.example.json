@@ -1,0 +1,30 @@
+{
+  "version": "shared-operations-calendar-v1",
+  "status": "UNAPPROVED",
+  "account": "ensizziyo@evzdigital.studio",
+  "calendar_id": "ensizziyo@evzdigital.studio",
+  "grant_id": "",
+  "grant_profile": "calendar-booking-v1",
+  "slot_policy": {
+    "duration_minutes": 20,
+    "buffer_minutes": 15,
+    "start_hour": 9,
+    "end_hour": 17,
+    "weekdays": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ]
+  },
+  "operations": [
+    "availability",
+    "queue",
+    "dispatch-once",
+    "exact-id-reconcile"
+  ],
+  "response_bytes": 100000,
+  "request_ms": 10000,
+  "execution_ms": 40000
+}
