@@ -165,18 +165,18 @@ export async function executeResearch(app,reference,token,{env=process.env,catal
  let a=(await app.snapshot()).ai_attempts[reference.attempt_id];check(a?.policy_sha256===grant.policy_sha256,'Durable attempt missing');const i={batch_id:a.batch_id,candidate_id:a.candidate_id},actor=a.actor;if(a.status!=='Reserved')return researchStatus(app,i,actor);
  let uncertain=false;const signal=AbortSignal.timeout(p.execution_ms);
  const step=async(type,details={})=>{const result=await transition(app,type,i,actor,details);await afterPhase?.(type);return result;};
- const guard=async()=>{const state=await app.snapshot(),now=app.now();active(state,p,now,app.store.projectBinding);current(state,i,actor,p);check(+now>=Date.parse(state.updated_at)&&+now<Date.parse(a.deadline),'Research clock/deadline changed; no next effect');};
+ const guard=async phase=>{const state=await app.snapshot(),now=app.now();active(state,p,now,app.store.projectBinding);const {c}=current(state,i,actor,p),live=state.ai_attempts[reference.attempt_id];check(c.research_attempt===reference.attempt_id&&live?.id===reference.attempt_id&&hash(live)===hash(a)&&live.status===(phase==='request'?'Captured':'Running')&&(phase==='request'?Boolean(live.request):live.phases[phase]?.status==='Claimed'),'Research attempt/claimed phase changed; no next effect');check(+now>=Date.parse(state.updated_at)&&+now<Date.parse(live.deadline),'Research clock/deadline changed; no next effect');};
  try{
-  uncertain=true;await step('capture-claim');await guard();
+  uncertain=true;a=await step('capture-claim');await guard('capture');
   const job={...a.source_request,id:'known-'+hash(a.spec).slice(0,25)};let captures;
-  const resolveCurrent=async name=>{await guard();const addresses=await (resolveHost??(host=>lookup(host,{all:true})))(name);await guard();return addresses;};
-  const requestCurrent=async(url,options)=>{await guard();return request?request(url,options):publicHTTPSRequest(url,options,resolveCurrent);};
+  const resolveCurrent=async name=>{await guard('capture');const addresses=await (resolveHost??(host=>lookup(host,{all:true})))(name);await guard('capture');return addresses;};
+  const requestCurrent=async(url,options)=>{await guard('capture');return request?request(url,options):publicHTTPSRequest(url,options,resolveCurrent);};
   try{captures=await collectPublicSources(job,{request:requestCurrent,resolveHost:resolveCurrent,now:app.now,signal,exactURLs:true});}
   catch(error){if(error.code==='SOURCE_UNAVAILABLE'){await step('capture-failed',{failures:error.failures});return researchStatus(app,i,actor);}throw error;}
   a=await step('captured',{captures});uncertain=false;a=await step('request');
-  const catalog=await liveCatalog(catalogRequest,p);check(catalog.sha256===p.catalog_sha256,'Catalog fingerprint changed');await guard();const client=clientFactory?await clientFactory(p):await makeGatewayClient(env,undefined,p.execution_ms,p);
-  uncertain=true;await step('count-claim');await guard();const count=await client.models.countTokens({model:p.model,contents:a.request.contents,config:{abortSignal:signal}});await step('count-returned',{tokens:count.totalTokens});uncertain=false;
-  uncertain=true;await step('generation-claim');await guard();const response=await client.models.generateContent({...a.request,config:{...a.request.config,abortSignal:signal}}),textValue=typeof response.text==='string'?response.text:'',size=Buffer.byteLength(textValue),u=response.usageMetadata;
+  await guard('request');const catalog=await liveCatalog(catalogRequest,p);check(catalog.sha256===p.catalog_sha256,'Catalog fingerprint changed');await guard('request');const client=clientFactory?await clientFactory(p):await makeGatewayClient(env,undefined,p.execution_ms,p);
+  uncertain=true;a=await step('count-claim');await guard('count');const count=await client.models.countTokens({model:p.model,contents:a.request.contents,config:{abortSignal:signal}});a=await step('count-returned',{tokens:count.totalTokens});uncertain=false;
+  uncertain=true;a=await step('generation-claim');await guard('generation');const response=await client.models.generateContent({...a.request,config:{...a.request.config,abortSignal:signal}}),textValue=typeof response.text==='string'?response.text:'',size=Buffer.byteLength(textValue),u=response.usageMetadata;
   const raw={text:size>p.maximum_output_bytes?Buffer.from(textValue).subarray(0,p.maximum_output_bytes-3).toString('utf8'):textValue,text_bytes:size,text_sha256:hash(textValue),truncated:size>p.maximum_output_bytes,usage:u?Object.fromEntries(['promptTokenCount','candidatesTokenCount','thoughtsTokenCount','toolUsePromptTokenCount'].map(k=>[k,u[k]??null])):null,model:response.modelVersion??null,candidates:response.candidates?.length??0,finish:response.candidates?.[0]?.finishReason??null,catalog};
   await step('returned',{raw});uncertain=false;await step('proposal');
  }catch(error){try{await transition(app,'failure',i,actor,{uncertain,reason:String(error.message).slice(0,500)});}catch{} }
