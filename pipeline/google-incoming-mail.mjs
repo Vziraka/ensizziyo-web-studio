@@ -17,7 +17,7 @@ function routes(state,c){
  const all=[];
  for(const [project_id,b] of Object.entries(c.operations?.threads??{}))all.push({project_id,...b});
  for(const [id,e] of Object.entries(state.operations?.email??{})){
-  const a=state.actions[id];if(!a)continue;
+  const a=state.actions[id];if(!a||a.payload?.internal_notification===true)continue;
   if(e.thread)all.push({project_id:a.prospect_id,...e.thread});
   const d=a.delivery,p=a.payload?.package;
   if(a.payload?.exact_mail&&a.status==='Verified'&&d?.rfc_message_id&&p)all.push({project_id:a.prospect_id,thread_id:d.thread_id,original_id:d.message_id,from:p.from,to:p.to,subject:p.subject,rfc_message_id:d.rfc_message_id});
