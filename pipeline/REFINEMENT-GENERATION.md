@@ -1,5 +1,7 @@
 # Bounded selected-direction source generation
 
+The [shared operations exact-mail profile](SHARED-OPERATIONS-EXACT-MAIL.md) retains separate refinement policy/grant/allowance and Node-only shared runtime rules. Reply content/facts and exact send approval remain separate from design/export review. A rebind still requires eligible future Ready work; stopped historical work is retained, never revived for preparation.
+
 This is a **default-disabled source candidate**, not an activated model allowance. The exported policy proposal is UNAPPROVED with no selected model or amount. Original Gateway four-job receipts/limits and all later transcript policies are separate and unchanged. Local fictional HTTP/SDK proofs establish integration only. Actual model usefulness, hosting/rasterizer/cost/latency, physical-device and computer-off acceptance remain open.
 
 The existing authoring caller now supports one bounded missing stage: provider-authored declarative source for an existing assigned `website-refinement` work item. It uses the same project/work/execution IDs, `ai_attempts`, immutable authoring transfers, conditional workspace and Node PDF renderer. It stops at **Rendered / Needs actual raster and human semantic/design review**. It neither creates a queue nor approves a design, sends a companion email, publishes a site, runs discovery or explores new concepts.

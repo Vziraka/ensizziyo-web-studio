@@ -1,3 +1,4 @@
+import {operationsMailCapability} from './shared-operations-exact-mail.mjs';
 import {operationsCalendarCapability} from './shared-operations-calendar.mjs';
 import {check,hash} from './lifecycle.mjs';
 import {projectContext} from './project-work.mjs';
@@ -8,7 +9,7 @@ export const operationsOriginalsCapability='shared-operations-originals-v1';
 export const originalTransitionSchema=Object.freeze({version:1,transitions:['claim','progress','hold','reserve','complete','verified','reconcile'],recovery:'observed-hash-close-publication-v1',grant_profile:'drive-originals-readonly-v1'});
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v),safe=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,256}$/.test(v);
 const exact=(v,names)=>check(v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).sort().join(',')===names.split(',').sort().join(','),'Unknown or missing original transition fields');
-export const hasOperationsOriginals=app=>[operationsOriginalsCapability,operationsCalendarCapability].includes(app.config?.shared_capability)&&app.store?.dispatchBinding?.scope.capability===app.config.shared_capability;
+export const hasOperationsOriginals=app=>[operationsOriginalsCapability,operationsCalendarCapability,operationsMailCapability].includes(app.config?.shared_capability)&&app.store?.dispatchBinding?.scope.capability===app.config.shared_capability;
 export const driveOriginalSource=s=>({reference:s.reference,name:s.name,mime_type:s.mime_type,modified_time:s.modified_time,account:'ensizziyo@evzdigital.studio'});
 export function validateDriveOriginalPolicy(config,state){
  exact(config,'account,grant_id,sources');check(config.account==='ensizziyo@evzdigital.studio'&&safe(config.grant_id)&&config.grant_id.length<=100&&Array.isArray(config.sources)&&config.sources.length>0&&config.sources.length<=64,'Exact business Drive read policy is unavailable');

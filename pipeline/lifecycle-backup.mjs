@@ -1,3 +1,4 @@
+import {validateMailEvidence} from './shared-operations-exact-mail.mjs';
 import {validateResearchEvidence} from './known-identity-research.mjs';
 import {validateCalendarImport} from './shared-operations-calendar.mjs';
 import {supportsProjectAuthoring} from './shared-project-continuation.mjs';
@@ -36,6 +37,7 @@ export function hasProjectDependencies(state){return Object.keys(state.drive_ori
 
 // Resolve a closed allowlist from records, never recurse through the workspace.
 async function inventory(state,read,{restoring=false}={}){
+ await validateMailEvidence(state);
  if(Object.values(state.operations?.bookings??{}).some(b=>b.confirmation))validateCalendarImport(state,{operations:{bookings:{}}});
  const dispatch=state.operations?.internal_dispatch;check(!Object.values(dispatch?.ticks??{}).some(t=>['Reserved','Claimed'].includes(t.status)),'Complete G1 held: reconcile incomplete dispatch against its exact observed hash; never replay');
  if(dispatch?.authorization)check(hash(dispatch.policy)===dispatch.authorization.data?.policy_sha256&&hash(state.events[dispatch.authorization.id])===hash(dispatch.authorization),'Standing policy/authorization bytes are incomplete');

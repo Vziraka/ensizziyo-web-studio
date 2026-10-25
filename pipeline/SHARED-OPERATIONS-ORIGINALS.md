@@ -1,5 +1,7 @@
 # Disabled shared operations original recovery
 
+The [shared operations exact-mail profile](SHARED-OPERATIONS-EXACT-MAIL.md) explicitly retains this independent Drive/original/recovery capability on the actual dispatch binding. Original bytes and complete inert G1 remain retrievable by both operators after stop/handoff; a PDF mail hold does not remove asset rights.
+
 `shared-operations-originals-v1` is the exact successor of the shared refinement source profile. It composes registered Drive original reads and original-evidence recovery with the same signed manual/project records, interactive Node authoring, bounded refinement and internal dispatcher. It uses the actual `dispatchBinding`, `ConditionalLifecycleStore`, `workspace` key and namespace; `projectBinding` stays null. Default flags remain unset, policies remain UNAPPROVED, and no installation, account configuration, consent, migration or activation is included.
 
 ## Preparation and immutable authority

@@ -1,5 +1,7 @@
 # Disabled hosted business Google owner grant
 
+The [shared operations exact-mail profile](SHARED-OPERATIONS-EXACT-MAIL.md#independent-future-owner-oauth) is `operations-exact-mail-gmail-v1`, with separate `EVZ_OPERATIONS_EXACT_MAIL_` credentials and `/desk/api/operations-exact-mail-oauth` callback. It binds fourteen actual source/deployment fields plus profile in encrypted AAD, requires canonical four scopes and both current/grant assertions. Its owner consent flag and prospect-send grant are independent from internal Gmail, Drive and Calendar. All real flags/grants remain unset.
+
 The exact [shared operations Calendar successor](SHARED-OPERATIONS-CALENDAR.md#future-independent-owner-consent) adds a distinct live-envelope Calendar client/namespace/key/AAD and prebound logical grant under the actual dispatch binding. Its scopes remain `calendar-booking-v1`; transport rereads the current independent grant across provider/replay waits. This future consent capability is separate from Calendar execution and every Gmail/Drive profile. All actual flags/grants remain unset.
 
 The separately disabled [shared internal dispatch profile](SHARED-INTERNAL-DISPATCH.md#separate-future-google-profile) adds a distinct published Gmail-only client/namespace/key binding. It cannot reuse or widen the profiles below; no actual consent/settings change occurred.

@@ -1,5 +1,7 @@
 # Disabled shared operations authoring
 
+The [shared operations exact-mail profile](SHARED-OPERATIONS-EXACT-MAIL.md) retains Node authoring, partial inert bins, protected project continuation and independent refinement controls. Its authoring flag is `shared-operations-exact-mail-node-v1`; all current project PDF companions remain explicitly held before mail approval or execution. Existing profiles retain their own runtime values and denials.
+
 `shared-operations-authoring-v1` joins the existing signed [interactive Node PDF authoring and observed-evidence recovery](PROJECT-AUTHORING.md) to [shared operations records](SHARED-OPERATIONS-RECORDS.md) and the internal dispatcher. One actual `dispatchBinding`, namespace and `workspace` CAS own all state. There is no active project copy, transplanted project binding, queue or new provider/model capability. Existing profiles keep their gates.
 
 The [exact proposed policy](shared-operations-authoring.example.json) remains UNAPPROVED with real grant, recipients, role verification, deployment, dates and measured finite allowances blank. The new manifest is `shared-operations-authoring-source-v1`. Its immutable policy/manifest retain the eleven-event human partition and bind this exact additional schema:

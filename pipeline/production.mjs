@@ -173,7 +173,7 @@ export async function queueMeeting(app, input, {actor='owner',hostedCalendar=fal
   const path = app.store?null:join(app.directory, 'lifecycle-config.json');
   return app.change(async (state,sharedConfig) => {
     const c = sharedConfig??await readJson(path);
-    const shared=c.shared_capability==='shared-operations-calendar-v1',now=app.now(),bookings=bookingConfirmations(state,c);
+    const shared=['shared-operations-calendar-v1','shared-operations-exact-mail-v1'].includes(c.shared_capability),now=app.now(),bookings=bookingConfirmations(state,c);
     check(!app.store?.inertBinding,'D2 notes-only authority rejects booking');
     if(hostedCalendar)check(app.store&&(shared?c.mode==='production'&&app.store.dispatchBinding?.scope.capability===c.shared_capability:c.mode==='controlled')&&['owner','friend'].includes(actor)&&input.revision===state.revision,'Hosted booking requires a current signed confirmation');
     if(c.mode==='production'&&!shared) requireBookingRelease(c);

@@ -14,10 +14,12 @@ export const at='2026-10-24T21:00:00.000Z',origin='https://preview.example.inval
 export const env={CONTEXT:'deploy-preview',EVZ_OPERATIONS_DESK_ENABLED:'fictional-preview',EVZ_OPERATIONS_PROJECT_AUTHORING:'fictional-node-v1',EVZ_OPERATIONS_SHARED_ORIGINALS:'fictional-chunks-v1',EVZ_OPERATIONS_ORIGIN:origin,EVZ_OPERATIONS_BLOB_NAMESPACE:'evz-redesign-proof-authoring-123',EVZ_OPERATIONS_OWNER_KEY:'o'.repeat(43),EVZ_OPERATIONS_FRIEND_KEY:'f'.repeat(43),EVZ_OPERATIONS_SESSION_SECRET:'s'.repeat(43)};
 export const event=(id,type,data={},prospect_id='shared-proof')=>({id,type,data,prospect_id,at});
 // Real pinned SDK, substituted private HTTP boundary. No Netlify network or credentials.
-export function fictionalBlobs(){
+let observeBlobs=null;
+export const observeFictionalBlobs=callback=>{observeBlobs=callback;};
+export function fictionalBlobs({namespace='fictional-authoring'}={}){
  const entries=new Map(),requests=[];let serial=0;
  const control={entries,requests,lose:null,hook:null};
- control.raw=getStore({name:'fictional-authoring',siteID:'fictional-site',token:'fictional-token',edgeURL:'https://edge.example.invalid',uncachedEdgeURL:'https://strong.example.invalid',fetch:async(url,options)=>{
+ control.raw=getStore({name:namespace,siteID:'fictional-site',token:'fictional-token',edgeURL:'https://edge.example.invalid',uncachedEdgeURL:'https://strong.example.invalid',fetch:async(url,options)=>{
   const key=decodeURIComponent(new URL(url).pathname.split('/').slice(3).join('/')),headers=new Headers(options.headers),method=options.method.toUpperCase(),prior=entries.get(key);requests.push({method,key,url:String(url),match:headers.get('if-match'),fresh:headers.get('if-none-match')});
   if(method==='GET'){if(control.readHook)await control.readHook(key);return prior?new Response(prior.bytes,{headers:{etag:prior.etag}}):new Response(null,{status:404});}
   const bytes=Buffer.from(await new Response(options.body).arrayBuffer()),current=entries.get(key);
@@ -25,7 +27,7 @@ export function fictionalBlobs(){
   const etag='"'+(++serial)+'"';entries.set(key,{bytes,etag});
   if(control.hook)await control.hook(key,bytes);
   if(control.lose===key){control.lose=null;throw Error('Fictional storage response loss');}return new Response(null,{headers:{etag}});
- }});return control;
+ }});control.namespace=namespace;observeBlobs?.(control);return control;
 }
 export async function fixture({actor='owner',fetcher:outerFetch}={}){
  const storage=fictionalBlobs(),make=settings=>createHostedDesk({env:settings??env,storeFactory:()=>storage.raw,now:()=>new Date(at)}),requests=[];

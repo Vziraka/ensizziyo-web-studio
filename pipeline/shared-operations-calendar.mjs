@@ -1,3 +1,4 @@
+import {operationsMailCapability} from './shared-operations-exact-mail.mjs';
 import {check,hash} from './lifecycle.mjs';
 import {bookingKey,bookingContext,bookingConfirmations} from './calendar-confirmation.mjs';
 import {validateBookingSlot} from './lifecycle-documents.mjs';
@@ -9,7 +10,7 @@ export const calendarSlotPolicy=Object.freeze({duration_minutes:20,buffer_minute
 const exact=(v,fields)=>check(v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).sort().join(',')===fields.split(',').sort().join(','),'Unknown or missing Calendar fields');
 const key=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(v)&&!['__proto__','constructor','prototype'].includes(v);
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v),uuid=v=>typeof v==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(v);
-export const hasOperationsCalendar=app=>app.config?.shared_capability===operationsCalendarCapability&&app.store?.dispatchBinding?.scope.capability===operationsCalendarCapability;
+export const hasOperationsCalendar=app=>[operationsCalendarCapability,operationsMailCapability].includes(app.config?.shared_capability)&&app.store?.dispatchBinding?.scope.capability===app.config.shared_capability;
 export function validateCalendarPolicy(p){
  exact(p,'version,status,account,calendar_id,grant_id,grant_profile,slot_policy,operations,response_bytes,request_ms,execution_ms');
  check(p.version===operationsCalendarCapability&&p.status==='UNAPPROVED'&&p.account==='ensizziyo@evzdigital.studio'&&p.calendar_id===p.account&&key(p.grant_id)&&p.grant_profile==='calendar-booking-v1'&&hash(p.slot_policy)===hash(calendarSlotPolicy)&&hash(p.operations)===hash(['availability','queue','dispatch-once','exact-id-reconcile'])&&p.response_bytes===100000&&p.request_ms===10000&&p.execution_ms===40000,'Exact unapproved independent Calendar policy required');return p;
@@ -17,10 +18,10 @@ export function validateCalendarPolicy(p){
 export function sharedCalendarPolicy(app,c,env,{runtime=true}={}){
  check(hasOperationsCalendar({...app,config:c})&&!app.store.projectBinding&&app.store.key==='workspace','Exact shared Calendar dispatch authority required');
  const binding=app.store.dispatchBinding,b=binding.scope,p=validateCalendarPolicy(c.google_calendar);
- check(env?.CONTEXT==='production'&&env.EVZ_OPERATIONS_DESK_ENABLED===operationsCalendarCapability&&env.EVZ_OPERATIONS_BLOB_NAMESPACE===b.namespace&&env.EVZ_OPERATIONS_ORIGIN===b.origin&&env.SITE_ID===b.site_id&&env.DEPLOY_ID===b.deploy_id&&hash(JSON.parse(env.EVZ_INTERNAL_DISPATCH_BINDING??'null'))===hash(binding),'Calendar deployment binding changed');
- check(!runtime||env.EVZ_OPERATIONS_GOOGLE_CALENDAR===operationsCalendarCapability,'Hosted Calendar is disabled');
+ check(env?.CONTEXT==='production'&&env.EVZ_OPERATIONS_DESK_ENABLED===c.shared_capability&&env.EVZ_OPERATIONS_BLOB_NAMESPACE===b.namespace&&env.EVZ_OPERATIONS_ORIGIN===b.origin&&env.SITE_ID===b.site_id&&env.DEPLOY_ID===b.deploy_id&&hash(JSON.parse(env.EVZ_INTERNAL_DISPATCH_BINDING??'null'))===hash(binding),'Calendar deployment binding changed');
+ check(!runtime||env.EVZ_OPERATIONS_GOOGLE_CALENDAR===c.shared_capability,'Hosted Calendar is disabled');
  check(hash(c.calendar)===hash({...calendarSlotPolicy,calendar_id:'primary',owner_email:p.account}),'Exact Eastern business-primary slot policy required');
- return hash({capability:operationsCalendarCapability,authority_key:app.store.key,binding_sha256:hash(binding),source_policy_sha256:hash(p),calendar:c.calendar,run:c.run_id});
+ return hash({capability:c.shared_capability,authority_key:app.store.key,binding_sha256:hash(binding),source_policy_sha256:hash(p),calendar:c.calendar,run:c.run_id});
 }
 export function validateCalendarImport(state,sourceConfig){
  check(!Object.keys(sourceConfig?.operations?.bookings??{}).length,'Legacy config-owned Calendar confirmations require an explicit source-bound adaptation; whole installation held before writes');

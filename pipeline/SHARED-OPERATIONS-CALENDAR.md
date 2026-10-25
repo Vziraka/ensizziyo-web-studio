@@ -1,5 +1,7 @@
 # Disabled shared operations Calendar
 
+The [shared operations exact-mail profile](SHARED-OPERATIONS-EXACT-MAIL.md) explicitly retains these independent Calendar controls and actual capability binding. Its prospect replies require separate exact approval and OAuth; every current project PDF companion remains held. Existing Calendar profiles and grants keep their own denials.
+
 `shared-operations-calendar-v1` composes the existing exact [Calendar caller](GOOGLE-CALENDAR.md) with [shared originals](SHARED-OPERATIONS-ORIGINALS.md), manual/project records, interactive Node authoring/recovery, bounded refinement and standing internal dispatch. The actual `dispatchBinding`, `ConditionalLifecycleStore`, namespace and `workspace` key remain the single authority; `projectBinding` is null. All real flags remain unset, policies UNAPPROVED and installation execution disabled. This source increment grants no consent or invitation authority.
 
 ## Immutable configuration and one booking authority

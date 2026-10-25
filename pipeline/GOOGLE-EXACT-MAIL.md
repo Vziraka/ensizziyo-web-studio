@@ -1,5 +1,7 @@
 # Disabled hosted Gmail exact-message transport
 
+The new [default-disabled shared operations slice](SHARED-OPERATIONS-EXACT-MAIL.md) reuses this composer, intent and raw verifier on the actual dispatch authority. It supports only immutable declared-thread replies; every current project PDF companion is explicitly held before approval/action/reservation/token/send. The controlled standalone candidate described below retains its separate profile and limits. No full shared PDF delivery or real activation is claimed.
+
 The separately disabled [incoming reader](GOOGLE-INCOMING-MAIL.md) now consumes these existing verified delivery/thread associations through bounded history sync and the existing reply/stop/review lifecycle. It adds no sending authority, grant scopes or scheduler; provider acceptance remains unverified.
 
 The separate [disabled owner OAuth source](GOOGLE-OAUTH.md) now supplies a new owner-only authorization-code grant, encrypted credentials and serialized server token provider. Its local tests cover the actual signed callback and both-operator transport wiring. Real client/consent/deployed callback/provider proof remains open; the earlier transport-only checkpoint below does not claim those occurred.
