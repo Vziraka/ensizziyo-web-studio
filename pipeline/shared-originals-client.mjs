@@ -30,6 +30,8 @@ export async function connectSharedOriginals(options={}){
   async readDriveOriginal(ids){
    const context=await this.context(ids.project_id);return json(pathFor(ids)+'/drive-read',{method:'POST',body:{context_sha256:context.context_sha256}});
   },
+  async recovery(ids,{kind,transfer_id}){const context=await this.context(ids.project_id);return json(pathFor(ids)+'/recovery',{method:'POST',body:{kind,transfer_id,context_sha256:context.context_sha256}});},
+  async reconcile(ids,input){return json(pathFor(ids)+'/reconcile',{method:'POST',body:input});},
   async upload(ids,bytes,source){
    const path=pathFor(ids),manifest=originalManifest(bytes),context=await this.context(ids.project_id),transfer=await json(path+'/reserve',{method:'POST',body:{manifest,source,context_sha256:context.context_sha256}});
    for(let index=0;index<manifest.chunks.length;index++)await json(path+'/chunk/'+index,{method:'POST',binary:true,headers:{'x-studio-transfer':transfer.id},body:bytes.subarray(index*originalChunkSize,(index+1)*originalChunkSize)});

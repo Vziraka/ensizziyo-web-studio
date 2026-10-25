@@ -4,7 +4,7 @@ import {dispatchOAuthProfile,dispatchOAuthPath,dispatchOAuthCallbackHTML,dispatc
 import {researchCapability,researchWorkerPath,researchCommand,executeResearch,verifyResearchDispatch,researchRuntimeEnabled,researchProjection,researchStatusText} from './known-identity-research.mjs';
 import {validateProjectBinding} from './shared-project-continuation.mjs';
 import {refinementCapability,refinementWorkerPath,generateRefinement,executeRefinement,verifyRefinementDispatch,refinementStatus,authorizeRefinement,pauseRefinement,continueRefinementRender,refinementRuntimeEnabled,refinementPolicyProjection,refinementStatusText} from './refinement-generation.mjs';
-import {blobProjectOriginalStore,reserveSharedOriginal,uploadSharedOriginalChunk,completeSharedOriginal,sharedOriginalManifest,readSharedOriginalChunk,originalChunkRequest,originalDigest} from './shared-project-originals.mjs';
+import {blobProjectOriginalStore,reserveSharedOriginal,uploadSharedOriginalChunk,completeSharedOriginal,sharedOriginalManifest,readSharedOriginalChunk,originalChunkRequest,originalDigest,observeOriginalRecovery,reconcileOriginalRecovery} from './shared-project-originals.mjs';
 import {validateInertBinding} from './inert-shared-workspace.mjs';
 import {validateManualBinding,manualRecordEvents} from './shared-manual-records.mjs';
 import {gatewayProofView,configureGatewayProof,runGatewayProof,pauseGatewayProof,reviewGatewayProof} from './gateway-proof.mjs';
@@ -21,7 +21,7 @@ import {audioRequest,saveCallAudio,readCallAudio,reconcileCallAudio,blobAudioSto
 import {exactMailPackage,approveExactMail,dispatchExactMail,reconcileExactMail} from './exact-mail.mjs';
 import {teamNotificationBoundary,notificationPolicy,authorizeNotificationPolicy,exactNotificationPackage,approveExactNotification} from './exact-team-notifications.mjs';
 import {createGoogleOAuth,googleOAuthPath,googleOAuthCallbackHTML,googleOAuthCallbackJS} from './google-oauth.mjs';
-import {readDriveOriginalStep} from './google-drive-originals.mjs';
+import {readDriveOriginalStep,driveOriginalRecoveryTarget} from './google-drive-originals.mjs';
 import {driveOAuthProfile,driveOAuthPath,driveOAuthCallbackHTML,driveOAuthCallbackJS} from './google-oauth.mjs';
 import {calendarOAuthProfile,calendarOAuthPath,calendarOAuthCallbackHTML,calendarOAuthCallbackJS} from './google-oauth.mjs';
 import {calendarAvailability,queueGoogleMeeting,dispatchGoogleMeeting,reconcileGoogleMeeting} from './google-calendar.mjs';
@@ -179,10 +179,11 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
     if(post&&/^\/api\/project-author\/(begin|render|inspect|resume|revise|rasters|complete|recovery|reconcile)$/.test(path))return json(200,await hostedAuthoringCommand(app,path.split('/').at(-1),await inputBody(request),actor));
     return json(405,{error:'Use the existing bounded project authoring caller'});
    }
-   const originalRoute=/^\/api\/project-original\/([a-zA-Z0-9_-]{1,100})\/([a-zA-Z0-9_-]{1,100})\/([a-zA-Z0-9_-]{1,100})(?:\/(reserve|complete|chunk|drive-read)(?:\/([0-9]{1,2}))?)?$/.exec(path);
+   const originalRoute=/^\/api\/project-original\/([a-zA-Z0-9_-]{1,100})\/([a-zA-Z0-9_-]{1,100})\/([a-zA-Z0-9_-]{1,100})(?:\/(reserve|complete|chunk|drive-read|recovery|reconcile)(?:\/([0-9]{1,2}))?)?$/.exec(path);
    if(originalRoute){
     check(settings.projectBinding||settings.dispatchBinding?request.method==='GET':(settings.inertBinding||settings.manualBinding)&&request.method==='GET'||env.EVZ_OPERATIONS_SHARED_ORIGINALS==='fictional-chunks-v1','Shared original transfer is not configured');
     const [,project_id,asset_id,version_id,operation,index]=originalRoute,ids={project_id,asset_id,version_id},store=blobProjectOriginalStore(raw);
+    if(post&&['recovery','reconcile'].includes(operation)&&index===undefined){const input=await inputBody(request),options={resolveDriveTarget:(state,ids,receipt)=>driveOriginalRecoveryTarget(app,state,ids,receipt,env)};return json(200,await (operation==='recovery'?observeOriginalRecovery:reconcileOriginalRecovery)(app,store,ids,input,actor,options));}
     if(request.method==='GET'&&!operation)return json(200,await sharedOriginalManifest(app,store,ids));
     if(request.method==='GET'&&operation==='chunk'&&index!==undefined){const result=await readSharedOriginalChunk(app,store,ids,Number(index));return new Response(result.bytes,{headers:{...headers,'Content-Type':'application/octet-stream','Content-Length':String(result.bytes.length),'Content-Disposition':'attachment; filename="original-chunk.bin"','X-Content-SHA256':result.sha256}});}
     if(post&&operation==='drive-read'&&index===undefined){

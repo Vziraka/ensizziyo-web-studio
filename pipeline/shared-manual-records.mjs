@@ -2,6 +2,7 @@ import {check,hash,StudioLifecycle} from './lifecycle.mjs';
 import {prepareInertWorkspace} from './inert-shared-workspace.mjs';
 import {validateBackupDependencies,writeLifecycleBackup} from './lifecycle-backup.mjs';
 import {blobProjectOriginalStore,originalDigest} from './shared-project-originals.mjs';
+import {rejectPartialOriginalImport} from './original-recovery.mjs';
 
 export const manualRecordEvents=Object.freeze(['note_added','call_logged','call_claimed','follow_up_handed_off','contact_stopped']);
 const key=v=>typeof v==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(v);
@@ -32,12 +33,13 @@ export async function prepareManualWorkspace({backup,sourceConfig,scope}){
 export async function installManualWorkspace(store,packet,{commit=false}={}){
  const {envelope,binding,files}=packet;validateManualEnvelope(envelope,binding);
  check(hash(envelope.state)===envelope.manual_source.source_state_sha256,'Source records changed after preparation');await validateBackupDependencies(envelope.state,files);
+ rejectPartialOriginalImport(envelope.state,files);
  check(hash([...files].map(([path,bytes])=>({path,sha256:originalDigest(bytes),bytes:bytes.length,availability:path.startsWith('project-originals/')?'shared-original-chunks':'offline-package-only'})))===hash(envelope.manual_source.dependencies),'Source dependencies changed after preparation');
  check(Buffer.byteLength(JSON.stringify(envelope))<=20_000_000,'Manual-record workspace exceeds the existing 20 MB store');
  if(!commit)return {dry_run:true,execution:'disabled',binding,dependencies:envelope.manual_source.dependencies};
  check(hash(store.manualBinding)===hash(binding),'Import store must match the reviewed manual binding');store.validate(envelope);
  check(!await store.store.getWithMetadata(store.key,{type:'json',consistency:'strong'}),'Manual-record destination already exists; never overwrite or reseed');
- const originals=blobProjectOriginalStore(store.store);for(const [path,bytes] of files)if(path.startsWith('project-originals/'))await originals.put(bytes);
+ const originals=blobProjectOriginalStore(store.store);for(const [path,bytes] of files)if(/^project-originals\/[a-f0-9]{64}\.pdf$/.test(path))await originals.put(bytes);
  let result;try{result=await store.store.setJSON(store.key,envelope,{onlyIfNew:true});}catch{check(hash((await store.envelope()).data)===hash(envelope),'Manual-record import outcome uncertain; inspect exact manifest');return {execution:'disabled',reconciled:true};}
  check(result?.modified===true,'Manual-record destination changed; inspect before retrying');check(hash((await store.envelope()).data)===hash(envelope),'Manual-record readback changed');return {dry_run:false,execution:'disabled'};
 }

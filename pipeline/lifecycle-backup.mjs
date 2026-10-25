@@ -8,12 +8,13 @@ import {privateStateDirectory} from './engine.mjs';
 import {audioArchiveFiles} from './call-audio.mjs';
 import {nodePDFResources} from './project-authoring-node.mjs';
 import {validateAuthoringRecovery} from './authoring-recovery.mjs';
+import {originalEvidencePattern,validateOriginalDependencies} from './original-recovery.mjs';
 
 const digest=b=>createHash('sha256').update(b).digest('hex'),sha=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 const jobID=v=>typeof v==='string'&&/^author-[a-f0-9]{32}$/.test(v);
 const fileLimit=64_000_000,totalLimit=512_000_000,countLimit=6000,jsonLimit=4_000_000;
 const authorPath=/^project-authored\/(author-[a-f0-9]{32})\/(context\.json|input\.json|authored\.json|runtime\.json|renderer-evidence\.json|export\.json|output\.pdf|(review-)?page-[1-9][0-9]?\.(png|json)|image-[a-zA-Z0-9_-]{1,100}\.(png|jpg|jpeg|webp)|recovery-[a-f0-9]{64}\.bin)$/;
-function allowed(path){return typeof path==='string'&&(/^(project-originals\/[a-f0-9]{64}\.pdf|call-audio\/[a-zA-Z0-9_-]{1,80})$/.test(path)||authorPath.test(path));}
+function allowed(path){return typeof path==='string'&&(/^(project-originals\/[a-f0-9]{64}\.pdf|call-audio\/[a-zA-Z0-9_-]{1,80})$/.test(path)||originalEvidencePattern.test(path)||authorPath.test(path));}
 
 // Every ancestor is checked: a regular leaf alone does not prevent junction escapes.
 export async function boundedBackupRead(root,path,max=fileLimit,optional=false){
@@ -30,7 +31,7 @@ export async function boundedBackupRead(root,path,max=fileLimit,optional=false){
  }catch(error){if(optional&&error.code==='ENOENT')return null;throw error;}
 }
 function workHistory(state){const pending=Object.values(state.prospects??{}).flatMap(r=>Object.values(r.project_work??{})),result=[];while(pending.length){check(result.length+pending.length<=6000,'Authoring history exceeds its verified bounds');const work=pending.pop();result.push(work);pending.push(...(work.history??[]));}return result;}
-export function hasProjectDependencies(state){return Object.values(state.asset_index??{}).some(a=>Object.values(a.versions??{}).some(v=>v.verified_original||v.provenance?.source_reference))||workHistory(state).some(w=>w.execution||w.authoring_history?.length)||Object.values(state.prospects??{}).some(r=>r.project_email_drafts?.some(d=>d.attachment));}
+export function hasProjectDependencies(state){return Object.keys(state.drive_original_reads??{}).length>0||Object.values(state.asset_index??{}).some(a=>Object.values(a.versions??{}).some(v=>v.original_transfer||v.verified_original||v.provenance?.source_reference))||workHistory(state).some(w=>w.execution||w.authoring_history?.length)||Object.values(state.prospects??{}).some(r=>r.project_email_drafts?.some(d=>d.attachment));}
 
 // Resolve a closed allowlist from records, never recurse through the workspace.
 async function inventory(state,read,{restoring=false}={}){
@@ -44,6 +45,7 @@ async function inventory(state,read,{restoring=false}={}){
   check((!expected||digest(bytes)===expected)&&(size===undefined||bytes.length===size),'Backup dependency checksum or size mismatch');return bytes;
  };
  const json=async(path,options={})=>{const bytes=await add(path,{max:jsonLimit,...options});return bytes?JSON.parse(bytes):null;};
+ await validateOriginalDependencies(state,(path,expected,size)=>add(path,{max:originalEvidencePattern.test(path)?1_000_000:fileLimit,expected,size}));
  function job(value){check(jobID(value.id)&&sha(value.context_sha256),'Unsafe authoring dependency declaration');const prior=jobs.get(value.id)??{};for(const k of ['context_sha256','source_sha256','runtime_sha256','renderer_sha256','renderer_lock_sha256','export_sha256'])check(!prior[k]||!value[k]||prior[k]===value[k],'Conflicting authoring dependency declarations');jobs.set(value.id,{...prior,...value});}
  for(const work of workHistory(state))for(const value of [...(work.authoring_history??[]),...(work.execution?[work.execution]:[])])job(value);
  for(const r of Object.values(state.prospects??{})){
@@ -117,6 +119,7 @@ export async function hostedBackupInventory(app,audioStore){
   check(allowed(path),'Unsafe hosted backup path');let bytes;
   const match=authorPath.exec(path);
   if(match)bytes=await app.authoringStore.get(match[1],match[2]);
+  else if(originalEvidencePattern.test(path))bytes=await app.originalStore.getEvidence(path);
   else if(path.startsWith('project-originals/')){const original=originals.get(path.slice(18,-4));check(original,'Missing registered original dependency');bytes=await app.originalStore.get(original);}
   else bytes=await audioStore.get(path.slice('call-audio/'.length));
   check(bytes||optional,'Missing required hosted backup dependency');check(!bytes||bytes.length<=max,'Oversized hosted backup dependency');return bytes??null;

@@ -1,6 +1,7 @@
 import {check,hash,initialConfig} from './lifecycle.mjs';
 import {readLifecycleBackup,validateBackupDependencies,writeLifecycleBackup} from './lifecycle-backup.mjs';
 import {blobProjectOriginalStore,originalDigest} from './shared-project-originals.mjs';
+import {rejectPartialOriginalImport} from './original-recovery.mjs';
 
 const key=v=>typeof v==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(v);
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
@@ -40,6 +41,7 @@ export async function prepareInertWorkspace({backup,sourceConfig,scope}){
 async function validatePackage(packet){
  const {envelope,binding,files}=packet;validateInertEnvelope(envelope,binding);check(Buffer.byteLength(JSON.stringify(envelope))<=20_000_000,'Inert workspace exceeds the existing 20 MB store');check(hash(envelope.state)===envelope.inert_source.source_state_sha256,'Source records changed after preparation');
  await validateBackupDependencies(envelope.state,files);
+ rejectPartialOriginalImport(envelope.state,files);
  check(hash([...files].map(([path,bytes])=>({path,sha256:originalDigest(bytes),bytes:bytes.length,availability:path.startsWith('project-originals/')?'shared-original-chunks':'offline-package-only'})))===hash(envelope.inert_source.dependencies),'Source dependencies changed after preparation');
 }
 // Default is validation only and does not even read the supplied store. No hosted import route exists.
@@ -49,7 +51,7 @@ export async function installInertWorkspace(store,packet,{commit=false}={}){
  store.validate(packet.envelope);
  check(!await store.store.getWithMetadata(store.key,{type:'json',consistency:'strong'}),'Inert destination already exists; never overwrite or reseed');
  const originals=blobProjectOriginalStore(store.store);
- for(const [path,bytes] of packet.files)if(path.startsWith('project-originals/'))await originals.put(bytes);
+ for(const [path,bytes] of packet.files)if(/^project-originals\/[a-f0-9]{64}\.pdf$/.test(path))await originals.put(bytes);
  let result;try{result=await store.store.setJSON(store.key,packet.envelope,{onlyIfNew:true});}catch{const saved=await store.envelope();check(hash(saved.data)===hash(packet.envelope),'Inert import outcome uncertain; inspect the exact manifest before retrying');return {execution:'disabled',reconciled:true};}
  check(result?.modified===true,'Inert destination changed; inspect before retrying');check(hash((await store.envelope()).data)===hash(packet.envelope),'Inert import readback changed');return {execution:'disabled',dry_run:false};
 }

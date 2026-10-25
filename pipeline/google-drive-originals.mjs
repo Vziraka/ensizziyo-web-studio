@@ -7,6 +7,7 @@ import {driveOAuthProfile,driveOAuthScopes} from './google-oauth.mjs';
 
 const safe=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,256}$/.test(value);
 const hold=message=>{const error=Error(message);error.driveHold=true;return error;};
+export function driveOriginalRecoveryTarget(app,state,ids,receipt,env){const {s,policy}=sourceFor(app,state,ids,env);check(receipt.policy===policy&&receipt.id===hash({policy,context:receipt.context})&&receipt.sha256===s.sha256&&receipt.bytes===s.bytes,'Legacy Drive receipt policy cannot be reconciled against this registered source');return {...ids,reference:s.reference};}
 function sourceFor(app,state,ids,env){
  check(env.EVZ_OPERATIONS_GOOGLE_DRIVE_ORIGINALS==='fictional-drive-read-v1'&&env.EVZ_OPERATIONS_SHARED_ORIGINALS==='fictional-chunks-v1'&&env.CONTEXT==='deploy-preview'&&env.EVZ_OPERATIONS_DESK_ENABLED==='fictional-preview','Hosted Drive original read is disabled');
  const config=app.config.google_drive_originals,version=projectAssetVersion(state,ids.project_id,ids.asset_id,ids.version_id);
@@ -36,6 +37,7 @@ async function save(app,key,data,etag){
  try{await app.change(state=>{
   const receipts=state.drive_original_reads??={},prior=Object.hasOwn(receipts,key)?receipts[key]:null;
   check(etag?prior&&hash(prior)===etag:!prior,'Drive transfer changed; refresh its exact receipt');
+  check(!prior?.recovery&&prior?.status!=='Reconciled','Drive original publication is closed; retain its exact recovery');
   if(prior?.status==='Reading'&&['Ready','Verified'].includes(data.status))check(prior.lease_until>+app.now(),'Drive read claim expired; resume exact transfer');
   check(prior||Object.keys(receipts).length<64,'Drive transfer receipt limit reached; review incomplete originals');
   receipts[key]=data;state.revision++;state.updated_at=app.now().toISOString();
@@ -51,10 +53,10 @@ export async function readDriveOriginalStep(app,store,ids,input,{env=process.env
  let state=await app.snapshot();const selected=sourceFor(app,state,ids,env),{config,s,resourceKey,policy}=selected,context=originalBaseContext(state,ids);
  check(projectContext(state,ids.project_id).context_sha256===input.context_sha256,'Project context changed; reload before reading Drive');
  const id=hash({policy,context}),key=id;let entry=await progress(app,key);
- if(entry){check(entry.data.id===id&&entry.data.policy===policy&&entry.data.context===context&&entry.data.sha256===s.sha256&&entry.data.bytes===s.bytes,'Drive receipt binding differs');if(entry.data.status==='Held')return view(entry.data);check(entry.data.status!=='Reading'||entry.data.lease_until<=now(),'Drive original read is already claimed; resume after its lease');}
+ if(entry){check(entry.data.id===id&&entry.data.policy===policy&&entry.data.context===context&&entry.data.sha256===s.sha256&&entry.data.bytes===s.bytes,'Drive receipt binding differs');check(!entry.data.recovery&&entry.data.status!=='Reconciled','Drive original publication is closed; inspect retained recovery');if(entry.data.status==='Held')return view(entry.data);check(entry.data.status!=='Reading'||entry.data.lease_until<=now(),'Drive original read is already claimed; resume after its lease');}
  let token;try{token=await getAccessToken?.();}catch{throw Error('New business Drive grant unavailable; owner reauthorization required');}
  check(token?.profile===driveOAuthProfile&&token.account===config.account&&token.grant_id===config.grant_id&&Array.isArray(token.scopes)&&token.scopes.length===driveOAuthScopes.length&&new Set(token.scopes).size===token.scopes.length&&driveOAuthScopes.every(s=>token.scopes.includes(s))&&typeof token.access_token==='string'&&/^[\x21-\x7e]{10,8192}$/.test(token.access_token)&&token.expires_at>now()+45_000,'Exact independent Drive read-only grant/account required');
- entry=await save(app,key,{...(entry?.data??{schema:1,id,policy,context,sha256:s.sha256,bytes:s.bytes,chunks:[]}),status:'Reading',claimed_by:actor,claim:randomUUID(),lease_until:now()+45_000},entry?.etag);
+ entry=await save(app,key,{...(entry?.data??{schema:1,id,policy,context,target:{...ids,reference:s.reference},sha256:s.sha256,bytes:s.bytes,chunks:[]}),status:'Reading',claimed_by:actor,claim:randomUUID(),lease_until:now()+45_000},entry?.etag);
  const signal=AbortSignal.timeout(40_000),file=s.reference.slice(6);
  async function request(path,headers={},max=16000){
   let response;try{response=await fetcher('https://www.googleapis.com/drive/v3/'+path,{method:'GET',headers:{Authorization:'Bearer '+token.access_token,...(resourceKey?{'X-Goog-Drive-Resource-Keys':file+'/'+resourceKey}:{}),...headers},redirect:'error',signal});}catch{throw Error('Drive read interrupted; resume this exact original');}

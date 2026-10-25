@@ -9,6 +9,7 @@ import {blobAuthoringStore,attachHostedAuthoring} from './hosted-authoring.mjs';
 import {blobAudioStore} from './call-audio.mjs';
 import {applyAuthoringTransition,validateAuthoringTransition} from './project-authoring.mjs';
 import {validateAuthoringRecovery} from './authoring-recovery.mjs';
+import {rejectPartialOriginalImport} from './original-recovery.mjs';
 import {refinementCapability,validateRefinementPolicy,applyGenerationTransition,validateGenerationTransition,reconcileGeneration,validateGenerationAuthoring,refinementPolicyProjection,refinementStatusText} from './refinement-generation.mjs';
 
 export const supportsProjectAuthoring=app=>Boolean(app.store?.projectBinding&&['shared-project-continuation-v1',refinementCapability].includes(app.config.shared_capability)||['shared-operations-authoring-v1','shared-operations-refinement-v1'].includes(app.store?.dispatchBinding?.scope.capability)&&app.config.shared_capability===app.store.dispatchBinding.scope.capability);
@@ -37,22 +38,27 @@ export async function prepareProjectWorkspace({backup,sourceConfig,scope,refinem
  const packet=await prepareInertWorkspace({backup,sourceConfig,scope:inertScope}),config={...packet.envelope.config,shared_capability:scope.capability};
  if(scope.capability===researchCapability){validateResearchPolicy(researchPolicy);check(hash(researchPolicy)===scope.policy_sha256,'Prepare exact unapproved research policy');config.known_identity_research=structuredClone(researchPolicy);}
  if(scope.capability===refinementCapability){validateRefinementPolicy(refinementPolicy);check(hash(refinementPolicy)===scope.policy_sha256,'Prepare the exact unapproved refinement policy');config.refinement_generation=structuredClone(refinementPolicy);}
- const blockers=[];
- for(const [path,bytes] of packet.files){
-  const author=/^project-authored\/(author-[a-f0-9]{32})\/(.+)$/.exec(path);if(!author)continue;
-  if(!/^(context|input|authored|runtime|export|renderer-evidence)\.json$|^output\.pdf$|^page-[1-9][0-9]?\.json$|^review-page-[1-9][0-9]?\.png$|^recovery-[a-f0-9]{64}\.bin$/.test(author[2]))blockers.push(path);
-  else if(author[2]==='runtime.json'&&JSON.parse(bytes).renderer!=='node-pdf-v1')blockers.push(path+' (local runtime)');
- }
- check(!blockers.length,'Shared project installation held; preserve the complete original G1 package. Unsupported retained dependencies ('+blockers.length+'): '+blockers.slice(0,20).join(', '));
+ validateSharedProjectDependencies(packet.files);
 
  const dependencies=[...packet.files].map(([path,bytes])=>({path,sha256:originalDigest(bytes),bytes:bytes.length,availability:'shared-immutable-dependency'}));
  const manifest={...packet.envelope.inert_source,kind:'shared-project-source-v1',binding:structuredClone(scope),config_sha256:hash(config),dependencies,allowed_events:scope.capability===researchCapability?[]:[...sharedProjectEvents],unsupported:scope.capability===researchCapability?['autonomous-discovery','trusted-import','automatic-semantic-review','contact-execution','sending']:scope.capability===refinementCapability?['general-provider-execution','automatic-migration','automatic-design-review','new-concept-exploration']:['provider-execution','automatic-migration','unattended-authoring']};
  const envelope={schema_version:1,config,state:packet.envelope.state,project_source:manifest},binding={scope:structuredClone(scope),manifest_sha256:hash(manifest)};
  validateProjectEnvelope(envelope,binding);return {envelope,binding,files:packet.files};
 }
+export function validateSharedProjectDependencies(files){
+ const blockers=[];
+ for(const [path,bytes] of files){
+  const author=/^project-authored\/(author-[a-f0-9]{32})\/(.+)$/.exec(path);if(!author)continue;
+  if(!/^(context|input|authored|runtime|export|renderer-evidence)\.json$|^output\.pdf$|^page-[1-9][0-9]?\.json$|^review-page-[1-9][0-9]?\.png$|^recovery-[a-f0-9]{64}\.bin$/.test(author[2]))blockers.push(path);
+  else if(author[2]==='runtime.json'&&JSON.parse(bytes).renderer!=='node-pdf-v1')blockers.push(path+' (local runtime)');
+ }
+ check(!blockers.length,'Shared project installation held; preserve the complete original G1 package. Unsupported retained dependencies ('+blockers.length+'): '+blockers.slice(0,20).join(', '));
+}
 export async function installProjectWorkspace(store,packet,{commit=false}={}){
  const {envelope,binding,files}=packet;validateProjectEnvelope(envelope,binding);store.validate(envelope);
  check(hash(envelope.state)===envelope.project_source.source_state_sha256,'Shared project source changed after preparation');await validateBackupDependencies(envelope.state,files);
+ rejectPartialOriginalImport(envelope.state,files);
+ validateSharedProjectDependencies(files);
  check(hash([...files].map(([path,bytes])=>({path,sha256:originalDigest(bytes),bytes:bytes.length,availability:'shared-immutable-dependency'})))===hash(envelope.project_source.dependencies),'Shared project dependencies changed');
  if(!commit)return {dry_run:true,execution:'external-disabled',binding,dependencies:envelope.project_source.dependencies};
  check(hash(store.projectBinding)===hash(binding),'Import store must match the exact reviewed shared project binding');
@@ -61,7 +67,7 @@ export async function installProjectWorkspace(store,packet,{commit=false}={}){
  for(const [path,bytes] of files){
   const author=/^project-authored\/(author-[a-f0-9]{32})\/(.+)$/.exec(path);
   if(author)await authored.put(author[1],author[2],bytes);
-  else if(path.startsWith('project-originals/'))await originals.put(bytes);
+  else if(/^project-originals\/[a-f0-9]{64}\.pdf$/.test(path))await originals.put(bytes);
   else {check(path.startsWith('call-audio/'),'Unsupported shared project dependency');await audio.put(path.slice(11),bytes);}
  }
  // Validate the actual stored inventory before publishing the state authority.

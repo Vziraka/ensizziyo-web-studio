@@ -1,8 +1,9 @@
 import {check,hash,businessDate} from './lifecycle.mjs';
-import {prepareProjectWorkspace,applySharedProjectEvent,replayProjectAuthoring} from './shared-project-continuation.mjs';
+import {prepareProjectWorkspace,applySharedProjectEvent,replayProjectAuthoring,validateSharedProjectDependencies} from './shared-project-continuation.mjs';
 import {sharedProjectEvents} from './shared-project-events.mjs';
 import {validateBackupDependencies,hostedBackupInventory} from './lifecycle-backup.mjs';
 import {blobProjectOriginalStore,originalDigest} from './shared-project-originals.mjs';
+import {rejectPartialOriginalImport} from './original-recovery.mjs';
 import {blobAuthoringStore,attachHostedAuthoring} from './hosted-authoring.mjs';
 import {blobAudioStore} from './call-audio.mjs';
 import {notificationEnvelope} from './exact-team-notifications.mjs';
@@ -93,12 +94,15 @@ export async function prepareDispatchWorkspace({backup,sourceConfig,scope,dispat
 }
 export async function installDispatchWorkspace(store,packet,{commit=false}={}){
  const {envelope,binding,files}=packet;validateDispatchEnvelope(envelope,binding);check(hash(envelope.state)===envelope.dispatch_source.source_state_sha256,'Dispatch source changed');await validateBackupDependencies(envelope.state,files);
+ rejectPartialOriginalImport(envelope.state,files);
+ validateSharedProjectDependencies(files);
+ check(Buffer.byteLength(JSON.stringify(envelope))<=20_000_000,'Shared dispatch workspace exceeds the existing 20 MB store');
  check(hash([...files].map(([path,bytes])=>({path,sha256:originalDigest(bytes),bytes:bytes.length,availability:'shared-immutable-dependency'})))===hash(envelope.dispatch_source.dependencies),'Dispatch dependencies changed');
  if(binding.scope.capability===operationsRefinementCapability)await validatePreparedRefinement(envelope,binding,files);
  if(!commit)return {dry_run:true,execution:'disabled',binding};
  check(hash(store.dispatchBinding)===hash(binding),'Exact import binding required');store.validate(envelope);check(!await store.store.getWithMetadata(store.key,{type:'json',consistency:'strong'}),'Shared destination exists; never overwrite or reseed');
  const originals=blobProjectOriginalStore(store.store),authored=blobAuthoringStore(store.store),audio=blobAudioStore(store.store);
- for(const [path,bytes] of files){const a=/^project-authored\/(author-[a-f0-9]{32})\/(.+)$/.exec(path);if(a)await authored.put(a[1],a[2],bytes);else if(path.startsWith('project-originals/'))await originals.put(bytes);else{check(path.startsWith('call-audio/'),'Unsupported retained dependency');await audio.put(path.slice(11),bytes);}}
+ for(const [path,bytes] of files){const a=/^project-authored\/(author-[a-f0-9]{32})\/(.+)$/.exec(path);if(a)await authored.put(a[1],a[2],bytes);else if(/^project-originals\/[a-f0-9]{64}\.pdf$/.test(path))await originals.put(bytes);else{check(path.startsWith('call-audio/'),'Unsupported retained dependency');await audio.put(path.slice(11),bytes);}}
  const probe={store,config:envelope.config,snapshot:async()=>structuredClone(envelope.state)};attachHostedAuthoring(probe,store.store);await hostedBackupInventory(probe,audio);
  try{const result=await store.store.setJSON(store.key,envelope,{onlyIfNew:true});check(result?.modified===true,'Shared destination changed');}catch{check(hash((await store.envelope()).data)===hash(envelope),'Import outcome uncertain; inspect the exact manifest');}
  check(hash((await store.envelope()).data)===hash(envelope),'Import readback changed');return {dry_run:false,execution:'disabled'};
