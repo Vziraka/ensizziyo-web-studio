@@ -63,6 +63,7 @@ function capability(app){refinementBinding(app);return validateRefinementPolicy(
 // Prospective claims are reconstructed for existing Ready work only; they are never published by preparation.
 export async function validatePreparedRefinement(envelope,binding,files){
  const {config}=envelope,p=validateRefinementPolicy(config.refinement_generation),state=structuredClone(envelope.state),runtimes=config.refinement_generation_runtimes;
+ check(Buffer.byteLength(JSON.stringify(envelope))<=20_000_000,'Prepared refinement exceeds the existing 20 MB shared workspace');
  check(config.shared_capability===operationsRefinementCapability&&runtimes&&typeof runtimes==='object'&&!Array.isArray(runtimes)&&Object.keys(runtimes).every(id=>p.jobs.some(j=>j.job_id===id)),'Exact future runtime registrations required');
  const app={config,store:{dispatchBinding:binding},snapshot:async()=>structuredClone(state),authoringStore:{get:async(id,name)=>files.get(`project-authored/${id}/${name}`)??(name==='runtime.json'&&runtimes[id]?Buffer.from(JSON.stringify(runtimes[id],null,2)):null)},originalStore:{get:async original=>files.get(`project-originals/${original.sha256}.pdf`)}};
  for(const spec of p.jobs){
