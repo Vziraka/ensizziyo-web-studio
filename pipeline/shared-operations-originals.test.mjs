@@ -18,6 +18,7 @@ test('new exact signed owner/friend profile publishes original bytes on the real
 });
 
 test('closed preparation, final fingerprints, old profiles, signed routes and trusted published deployment',async t=>{
+ const example=JSON.parse(await (await import('node:fs/promises')).readFile(new URL('./shared-operations-originals.example.json',import.meta.url),'utf8'));assert.equal(dispatch.validateDispatchPolicy(example),example);assert.throws(()=>dispatch.validateDispatchPolicy(example,{active:true}),/Exact business Google grant\/account\/from required/);
  const f=await fixture(t),pre=structuredClone(f.preparation);
  const {ConditionalLifecycleStore}=await import('./lifecycle-store.mjs');assert.throws(()=>new ConditionalLifecycleStore(f.storage.raw,{dispatchBinding:f.packet.binding,key:'another-workspace'}),/actual workspace/);
  assert.equal(f.packet.envelope.dispatch_source.originals.source_policy_sha256,hash(f.google_drive_originals));assert.deepEqual(f.packet.envelope.dispatch_source.originals.schema,originalTransitionSchema);

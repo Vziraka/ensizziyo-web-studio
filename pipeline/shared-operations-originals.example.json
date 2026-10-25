@@ -33,7 +33,7 @@
     "privacy": "no-contact-or-private-notes-v1",
     "signature": "internal-operations-v1"
   },
-  "signature": "EVZ Digital team \u00c2\u00b7 Internal operations notification",
+  "signature": "EVZ Digital team \u00b7 Internal operations notification",
   "starts_at": "",
   "expires_at": "",
   "routes": [],
@@ -69,7 +69,7 @@
     "exception": "A saved exception requires an operator decision. Open Needs attention in the private desk.",
     "hold": "A connected operation is held. Review its retained evidence in the private desk.",
     "runtime": "The local operations service reports a problem. Review its private status and retained logs.",
-    "digest": "EVZ Digital internal team summary \u00c2\u00b7 {day} \u00c2\u00b7 9am America/New_York\nNew businesses prepared today: {new} /25 shared target.\nDue callbacks: {callbacks}. Other due call tasks: {calls}.\nInterested projects: {interested}. Verified replies awaiting review: {replies}. Attention items: {attention}.\nOpen the private desk for source evidence and assigned next steps. No prospect email or private call notes are included in this summary."
+    "digest": "EVZ Digital internal team summary \u00b7 {day} \u00b7 9am America/New_York\nNew businesses prepared today: {new} /25 shared target.\nDue callbacks: {callbacks}. Other due call tasks: {calls}.\nInterested projects: {interested}. Verified replies awaiting review: {replies}. Attention items: {attention}.\nOpen the private desk for source evidence and assigned next steps. No prospect email or private call notes are included in this summary."
   },
   "host_allowance": {
     "available_ticks": null,
