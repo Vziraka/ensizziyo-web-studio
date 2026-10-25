@@ -67,25 +67,33 @@ export function verifySentRaw(message,expected){
 
 // Credentials exist only in this server-owned closure; the owner grant supplies them.
 export function googleHostedTransport({getAccessToken,fetcher=fetch,account,grantId}={}){
- async function request(path,{method='GET',body,max=120_000}={}){
+ async function request(path,{method='GET',body,max=120_000,guard=async()=>{},signal:operationSignal,onPost=()=>{}}={}){
+  const signal=operationSignal?AbortSignal.any([operationSignal,AbortSignal.timeout(25_000)]):AbortSignal.timeout(25_000);
+  const alive=()=>check(!signal.aborted,'Gmail request deadline expired; retain the original intent');
+  async function bounded(start){alive();let abort;const expired=new Promise((_,reject)=>{abort=()=>reject(Error('Gmail request deadline expired; retain the original intent'));signal.addEventListener('abort',abort,{once:true});});try{const result=await Promise.race([start(),expired]);alive();return result;}finally{signal.removeEventListener('abort',abort);}}
   check(typeof getAccessToken==='function','New hosted owner OAuth grant is unavailable');
-  let token;try{token=await getAccessToken();}catch{throw Error('Hosted Google authorization unavailable; owner reauthorization required');}
-  check(token?.account===account&&token.grant_id===grantId&&typeof token.access_token==='string'&&/^[\x21-\x7e]{10,8192}$/.test(token.access_token)&&token.expires_at>Date.now()+30_000&&Array.isArray(token.scopes)&&new Set(token.scopes).size===token.scopes.length&&gmailScopes.every(s=>token.scopes.includes(s))&&(token.scopes.length===gmailScopes.length||token.scopes.length===4&&identityScopes.every(s=>token.scopes.includes(s))),'Exact hosted gmail.readonly + gmail.send grant/account required; only essential OpenID email identity may accompany it');
-  let response;try{response=await fetcher('https://gmail.googleapis.com/gmail/v1/users/me/'+path,{method,headers:{Authorization:'Bearer '+token.access_token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'error',signal:AbortSignal.timeout(25_000)});}catch{throw Error('Gmail response unavailable; never retry an uncertain send');}
-  if(!response.ok){await response.body?.cancel();if(response.status===401&&typeof getAccessToken.invalidate==='function'){try{await getAccessToken.invalidate(token);}catch{}}const error=Error(response.status===403?'Gmail 403: exact grant/API or send-as access unavailable; verify required grant without expanding scopes':`Gmail ${response.status}: held; automatic retry disabled`);error.status=response.status;throw error;}
+  await bounded(guard);
+  let token;try{token=await bounded(()=>getAccessToken());}catch{throw Error('Hosted Google authorization unavailable; owner reauthorization required');}
+  const exactToken=()=>check(token?.account===account&&token.grant_id===grantId&&typeof token.access_token==='string'&&/^[\x21-\x7e]{10,8192}$/.test(token.access_token)&&Number.isSafeInteger(token.expires_at)&&token.expires_at>Date.now()+30_000&&Array.isArray(token.scopes)&&new Set(token.scopes).size===token.scopes.length&&gmailScopes.every(s=>token.scopes.includes(s))&&(token.scopes.length===gmailScopes.length||token.scopes.length===4&&identityScopes.every(s=>token.scopes.includes(s))),'Exact hosted gmail.readonly + gmail.send grant/account required; only essential OpenID email identity may accompany it');
+  async function live(){alive();exactToken();if(getAccessToken.assertCurrent)await bounded(()=>getAccessToken.assertCurrent(token));if(getAccessToken.assertGrant)await bounded(()=>getAccessToken.assertGrant(Object.fromEntries(['profile','account','grant_id','scopes','expires_at'].map(k=>[k,token[k]]))));await bounded(guard);alive();exactToken();}
+  await live();
+  let response;try{if(method==='POST')onPost();response=await bounded(()=>fetcher('https://gmail.googleapis.com/gmail/v1/users/me/'+path,{method,headers:{Authorization:'Bearer '+token.access_token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'error',signal}));}catch{throw Error('Gmail response unavailable; never retry an uncertain send');}
+  try{await live();}catch(error){void response.body?.cancel().catch(()=>{});throw error;}
+  if(!response.ok){await bounded(()=>response.body?.cancel());await live();if(response.status===401&&typeof getAccessToken.invalidate==='function'){try{await bounded(()=>getAccessToken.invalidate(token));}catch{}}const error=Error(response.status===403?'Gmail 403: exact grant/API or send-as access unavailable; verify required grant without expanding scopes':`Gmail ${response.status}: held; automatic retry disabled`);error.status=response.status;throw error;}
   check(response.body,'Gmail response incomplete');const reader=response.body.getReader(),chunks=[];let size=0;
-  try{for(;;){const {value,done}=await reader.read();if(done)break;size+=value.length;check(size<=max,'Gmail response exceeds bounded read');chunks.push(Buffer.from(value));}}finally{await reader.cancel();}
+  try{for(;;){const {value,done}=await bounded(()=>reader.read());await live();if(done)break;size+=value.length;check(size<=max,'Gmail response exceeds bounded read');chunks.push(Buffer.from(value));}}finally{const cancelled=reader.cancel();try{await bounded(()=>cancelled);}catch(error){void cancelled.catch(()=>{});throw error;}}
+  await live();
   try{return JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw Error('Gmail returned invalid JSON; held without retry');}
  }
  return {
   incomingProfile:()=>request('profile'),
   incomingHistory:(cursor,page)=>request('history?'+new URLSearchParams({startHistoryId:cursor,maxResults:'50',...(page?{pageToken:page}:{})}),{max:250_000}),
   incomingThread:thread=>request('threads/'+encodeURIComponent(thread)+'?format=full',{max:2_000_000}),
-  async preflight(){const profile=await request('profile');check(profile.emailAddress===account,'Gmail business owner differs');const aliases=await request('settings/sendAs');check(Array.isArray(aliases.sendAs)&&aliases.sendAs.filter(a=>a.sendAsEmail==='hello@evzdigital.studio'&&a.verificationStatus==='accepted').length===1,'Accepted hello@evzdigital.studio send-as identity required');return {account,from:'hello@evzdigital.studio',grant_id:grantId};},
-  async freshSource(p){
-   if(!p.reply_source){const result=await request('messages?'+new URLSearchParams({q:'from:'+p.to,maxResults:'10'}));check(!result.nextPageToken&&(!result.messages||Array.isArray(result.messages)&&result.messages.length===0),'Mailbox contains an unbound prior reply; import and review it before dispatch');return {no_prior_incoming:true};}
+  async preflight(options={}){const profile=await request('profile',options);check(profile.emailAddress===account,'Gmail business owner differs');const aliases=await request('settings/sendAs',options);check(Array.isArray(aliases.sendAs)&&aliases.sendAs.filter(a=>a.sendAsEmail==='hello@evzdigital.studio'&&a.verificationStatus==='accepted').length===1,'Accepted hello@evzdigital.studio send-as identity required');return {account,from:'hello@evzdigital.studio',grant_id:grantId};},
+  async freshSource(p,options={}){
+   if(!p.reply_source){const result=await request('messages?'+new URLSearchParams({q:'from:'+p.to,maxResults:'10'}),options);check(!result.nextPageToken&&(!result.messages||Array.isArray(result.messages)&&result.messages.length===0),'Mailbox contains an unbound prior reply; import and review it before dispatch');return {no_prior_incoming:true};}
    check(p.reply_source?.content?.status==='Complete','Complete prior reply provenance is required');const c=p.reply_source.content;
-   const thread=await request('threads/'+encodeURIComponent(c.thread_id)+'?format=full',{max:2_000_000});
+   const thread=await request('threads/'+encodeURIComponent(c.thread_id)+'?format=full',{...options,max:2_000_000});
    check(thread.id===c.thread_id&&Array.isArray(thread.messages)&&thread.messages.length>0&&thread.messages.length<20,'Missing, truncated or excessive current reply thread');
    const source=thread.messages.find(m=>m.id===c.message_id),latest=thread.messages.at(-1);
    check(source&&latest.id===source.id&&source.threadId===c.thread_id&&!source.labelIds?.includes('SENT'),'Reply changed or later provider message exists; review current thread');
@@ -93,16 +101,16 @@ export function googleHostedTransport({getAccessToken,fetcher=fetch,account,gran
    const content=replyContent(source,thread.id);
    check(content.status==='Complete'&&['message_header_id','in_reply_to','from','to','subject','body_sha256'].every(k=>content[k]===c[k])&&(content.references??'')===(c.references??''),'Fresh reply source differs from retained original provenance');return {source_id:c.message_id,thread_id:thread.id,body_sha256:c.body_sha256};
   },
-  async send(expected){const sent=await request('messages/send',{method:'POST',body:{raw:expected.raw.toString('base64url'),...(expected.thread_id?{threadId:expected.thread_id}:{})}});check(id(sent.id)&&id(sent.threadId)&&(!expected.thread_id||sent.threadId===expected.thread_id),'Send identity incomplete; reconcile only');return {id:sent.id,thread_id:sent.threadId};},
-  async reconcileSent(expected,known=null){
+  async send(expected,options={}){const sent=await request('messages/send',{...options,method:'POST',body:{raw:expected.raw.toString('base64url'),...(expected.thread_id?{threadId:expected.thread_id}:{})}});check(id(sent.id)&&id(sent.threadId)&&(!expected.thread_id||sent.threadId===expected.thread_id),'Send identity incomplete; reconcile only');return {id:sent.id,thread_id:sent.threadId};},
+  async reconcileSent(expected,known=null,options={}){
    let ids=[];
    if(known)ids=[known];else{let page;const seen=new Set();for(let n=0;n<3;n++){
-    const query=new URLSearchParams({q:'in:sent rfc822msgid:'+expected.message_id,maxResults:'10',...(page?{pageToken:page}:{})}),result=await request('messages?'+query);
+    const query=new URLSearchParams({q:'in:sent rfc822msgid:'+expected.message_id,maxResults:'10',...(page?{pageToken:page}:{})}),result=await request('messages?'+query,options);
     check(result.messages===undefined||Array.isArray(result.messages)&&result.messages.length<=10,'Invalid Gmail search result');ids.push(...(result.messages??[]).map(m=>m.id));
     check(ids.every(id)&&new Set(ids).size===ids.length&&ids.length<=10,'Ambiguous Sent Message-ID search');page=result.nextPageToken;if(!page)break;check(typeof page==='string'&&page.length<=500&&!seen.has(page)&&n<2,'Truncated or looping Sent search');seen.add(page);
    }}
    check(ids.length===1,'Sent search empty or ambiguous; uncertain intent must never resend');
-   const raw=await request('messages/'+encodeURIComponent(ids[0])+'?format=raw',{max:mailLimits.response});check(raw.id===ids[0],'Sent readback identity changed');return verifySentRaw(raw,expected);
+   const raw=await request('messages/'+encodeURIComponent(ids[0])+'?format=raw',{...options,max:mailLimits.response});check(raw.id===ids[0],'Sent readback identity changed');return verifySentRaw(raw,expected);
   }
  };
 }

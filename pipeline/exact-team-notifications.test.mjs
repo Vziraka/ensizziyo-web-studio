@@ -96,8 +96,9 @@ test('stale and nonbusiness-day digests hold; immutable daily IDs coalesce while
  const other=await fixture(t,{reply:false}),b=await approved(other,'owner','digest');other.now('2026-10-26T12:59:00Z');await assert.rejects(dispatch(other,b,wire(other)),/not current|not due/);
 });
 test('policy/config changes and an Eastern day rollover during awaited preflight hold before releasing the reserved effect',async t=>{
- for(const change of [f=>f.now('2026-10-27T13:00:01Z'),f=>f.configChange(c=>{c.google_team_notifications.revision='changed-during-fetch';})]){
-  const f=await fixture(t),a=await approved(f),w=wire(f,{hook:()=>change(f)});assert.equal((await dispatch(f,a,w)).status,'Held');assert.equal(w.sent.length,0);
+ for(const [change,expected] of [[f=>f.now('2026-10-27T13:00:01Z'),'Uncertain'],[f=>f.configChange(c=>{c.google_team_notifications.revision='changed-during-fetch';}),'Held']]){
+  const f=await fixture(t),a=await approved(f),w=wire(f,{hook:()=>change(f)}),result=await dispatch(f,a,w);assert.equal(result.status,expected);assert.equal(w.sent.length,0);
+  if(expected==='Uncertain'){assert.match(result.reason,/deadline/);assert.equal((await f.app.snapshot()).operations.requests[a.action_id+'-intent'].status,'Reserved');}
  }
  const f=await fixture(t),a=await approved(f);f.now('2026-10-27T03:59:59.900Z');const w=wire(f,{hook:()=>f.now('2026-10-27T04:00:00.001Z')});const result=await dispatch(f,a,w);assert.equal(result.status,'Held');assert.match(result.reason,/reservation date/);assert.equal(w.sent.length,0);
 });

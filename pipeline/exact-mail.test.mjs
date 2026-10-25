@@ -16,6 +16,9 @@ import {ConditionalLifecycleStore} from './lifecycle-store.mjs';
 import {archiveProjectAsset} from './project-assets.mjs';
 import {projectContext} from './project-work.mjs';
 import {createHostedDesk} from './hosted-desk.mjs';
+import {getStore} from '@netlify/blobs';
+import {blobProjectOriginalStore} from './shared-project-originals.mjs';
+import {readProjectAsset} from './project-assets.mjs';
 const at='2026-10-24T18:00:00.000Z',env={EVZ_OPERATIONS_GOOGLE_EXACT_MAIL:'fictional-exact-mail-v1'},account='business@example.invalid';
 const event=(id,type,data={})=>({id,prospect_id:'project',type,at,data});
 async function setup(t,actor='owner'){
@@ -123,13 +126,13 @@ test('raw MIME uses UTF-8/base64 and safe filenames, rejects header injection, e
  const large=Buffer.alloc(mailLimits.attachments+1);large.write('%PDF-');assert.throws(()=>composeExactMail({...p,attachments:[{...a,sha256:byteHash(large),bytes:large.length}]},'intent',at,[large]),/Drive-link/);
  assert.throws(()=>verifySentRaw({id:'sent',threadId:'new',labelIds:['SENT'],raw:m.raw.subarray(0,m.raw.length-8).toString('base64url')},m));
 });
-async function pdfDraft(app,actor){
+async function pdfDraft(app,actor,pdfBytes=null){
  await app.apply({id:'reference',prospect_id:'studio-assets',type:'asset_registered',at,data:{asset_id:'reference',scope:'studio',kind:'template',name:'Fictional original',version_id:'v1',version_label:'v1',reference:'private-path:fixture/reference.pdf'}},{actor});
  const original=Buffer.from('%PDF-1.4\nFictional original source');await archiveProjectAsset(app,{project_id:'project',asset_id:'reference',version_id:'v1',context_sha256:projectContext(await app.snapshot(),'project').context_sha256,expected_sha256:byteHash(original)},original,{reference:'private-path:fixture/reference.pdf',name:'reference.pdf',mime_type:'application/pdf',modified_time:at},actor);
  const packet=projectWorkContext(await app.snapshot(),'project','website-concepts'),input={project_id:'project',work_id:'website-concepts',context_sha256:packet.context_sha256,references:[{asset_id:'reference',version_id:'v1'}]},job=await claimAuthoring(app,input,actor);
- const source=applyDesignPreferences({schema_version:1,context_sha256:job.context_sha256,kind:job.kind,author:'Fictional author',requirements_review:'Exact fictional criteria',visual_premise:'Five directions',limitations:'Substituted render boundary only',questions:[],directions:Array.from({length:5},(_,i)=>({id:'d'+i,name:'Direction '+i,premise:'Distinct layout',tradeoff:'Different emphasis',sections:['Services','Contact']})),pages:Array.from({length:5},(_,i)=>({direction:'d'+i}))},packet),pdf=Buffer.from('%PDF-1.4\nFictional reviewed export.'),png=Buffer.from('Fictional rendered page'),receipt={schema_version:1,context_sha256:job.context_sha256,source_sha256:hash(source),pdf:{name:'output.pdf',sha256:byteHash(pdf),bytes:pdf.length},pages:[{page:1,name:'page-1.png',sha256:byteHash(png)}]};
- for(const [file,bytes] of Object.entries({'renderer.py':'trusted-renderer','runtime.json':JSON.stringify({fictional:true}),'authored.json':JSON.stringify(source),'output.pdf':pdf,'page-1.png':png,'export.json':JSON.stringify(receipt)}))await writeFile(join(job.directory,file),bytes);
- await app.change(s=>Object.assign(s.prospects.project.project_work['website-concepts'].execution,{status:'Rendering',source_sha256:hash(source),renderer_sha256:hash('trusted-renderer'),runtime_sha256:hash({fictional:true})}));
+ const source=applyDesignPreferences({schema_version:1,context_sha256:job.context_sha256,kind:job.kind,author:'Fictional author',requirements_review:'Exact fictional criteria',visual_premise:'Five directions',limitations:'Substituted render boundary only',questions:[],directions:Array.from({length:5},(_,i)=>({id:'d'+i,name:'Direction '+i,premise:'Distinct layout',tradeoff:'Different emphasis',sections:['Services','Contact']})),pages:Array.from({length:5},(_,i)=>({direction:'d'+i}))},packet),pdf=pdfBytes??Buffer.from('%PDF-1.4\nFictional reviewed export.'),png=Buffer.from('Fictional rendered page'),receipt={schema_version:1,context_sha256:job.context_sha256,source_sha256:hash(source),pdf:{name:'output.pdf',sha256:byteHash(pdf),bytes:pdf.length},pages:[{page:1,name:'page-1.png',sha256:byteHash(png)}]};
+ for(const [file,bytes] of Object.entries({'renderer.py':'trusted-renderer','runtime.json':JSON.stringify({}),'input.json':JSON.stringify(source),'authored.json':JSON.stringify(source),'output.pdf':pdf,'page-1.png':png,'export.json':JSON.stringify(receipt)}))await writeFile(join(job.directory,file),bytes);
+ await app.change(s=>Object.assign(s.prospects.project.project_work['website-concepts'].execution,{status:'Rendering',source_sha256:hash(source),renderer_sha256:hash('trusted-renderer'),runtime_sha256:hash({})}));
  const selected={...input,job_id:job.id};await resumeAuthoring(app,selected,actor);await reviewAuthoring(app,{...selected,review:{export_sha256:hash(receipt),pages:receipt.pages,requirements:true,visual_design:true,export:true,notes:'Exact fictional source contract and export reviewed.'}},actor);return {selector:{project_id:'project',kind:'project',draft_id:job.id},pdf};
 }
 test('actual authored held PDF caller requires separate send approval, binds original version/hash and verifies attachment bytes for both roles',async t=>{
@@ -189,4 +192,32 @@ test('Gmail bounded stream stops oversized raw JSON, pagination never truncates 
  const oversized=googleHostedTransport({account,grantId:'g',getAccessToken,fetcher:async()=>new Response(new ReadableStream({pull(c){c.enqueue(new Uint8Array(120001));},cancel(){cancelled=true;}}))});
  await assert.rejects(oversized.preflight(),/bounded read/);assert.equal(cancelled,true);
  const loop=googleHostedTransport({account,grantId:'g',getAccessToken,fetcher:async()=>{calls++;return new Response(JSON.stringify({nextPageToken:'loop'}));}});await assert.rejects(loop.reconcileSent(expected),/looping/);assert.equal(calls,2);
+});
+test('actual SDK original retrieval rechecks a saved stop before MIME or tokens; read-only originals remain retrievable',async t=>{
+ for(const actor of ['owner','friend']){
+  const {app}=await setup(t,actor),{selector,pdf}=await pdfDraft(app,actor),a=await approved(app,actor,selector),w=wire(),entries=new Map();let stopped=false,arm=false;
+  const raw=getStore({name:'fictional-exact-assets',siteID:'fictional-site',token:'fictional-sdk-token',edgeURL:'https://edge.example.invalid',uncachedEdgeURL:'https://strong.example.invalid',fetch:async(url,options)=>{
+   const u=new URL(url);assert.ok(['https://edge.example.invalid','https://strong.example.invalid'].includes(u.origin));const key=decodeURIComponent(u.pathname.split('/').slice(3).join('/')),method=options.method.toUpperCase();assert.match(key,/^project-originals\//);
+   if(method==='PUT'){assert.equal(new Headers(options.headers).get('if-none-match'),'*');if(entries.has(key))return new Response(null,{status:412});entries.set(key,Buffer.from(await new Response(options.body).arrayBuffer()));return new Response(null,{headers:{etag:'fictional'}});}
+   assert.equal(method,'GET');if(arm&&!stopped&&!key.endsWith('/manifest')){stopped=true;await app.apply(event('stop-during-original','contact_stopped',{reason:'do_not_contact'}),{actor:actor==='owner'?'friend':'owner'});}
+   return entries.has(key)?new Response(entries.get(key),{headers:{etag:'fictional'}}):new Response(null,{status:404});
+  }});
+  app.originalStore=blobProjectOriginalStore(raw);await app.originalStore.put(pdf);arm=true;
+  const result=await dispatchExactMail(app,a,{actor,env,transport:w.provider});assert.equal(result.status,'Held',result.reason);assert.equal(w.calls.length,0);assert.equal(stopped,true);
+  const q=(await app.snapshot()).operations.requests[a.action_id+'-intent'];assert.equal(q.raw_base64url,undefined);assert.ok(q.request_claim);
+  await app.change(s=>s.prospects.project.follow_up_owner=actor==='owner'?'friend':'owner');
+  assert.deepEqual((await readProjectAsset(app,'project',a.p.attachments[0].asset_id,a.p.attachments[0].version_id)).bytes,pdf);
+ }
+});
+test('durable MIME exceeding the existing 20MB state ceiling holds before any token or send; the known 30,591,178-byte size stays outside mail',async t=>{
+ const {app,actor}=await setup(t),bytes=Buffer.alloc(12_000_000,32);bytes.write('%PDF-1.4\nFictional size-only fixture');const {selector}=await pdfDraft(app,actor,bytes),a=await approved(app,actor,selector),w=wire();
+ const result=await dispatchExactMail(app,a,{actor,env,transport:w.provider});assert.equal(result.status,'Held',result.reason);assert.equal(w.calls.length,0);const q=(await app.snapshot()).operations.requests[a.action_id+'-intent'];assert.equal(q.status,'Held');assert.equal(q.raw_base64url,undefined);assert.ok(q.request_claim);
+ const other=await setup(t),large=Buffer.alloc(30_591_178,32);large.write('%PDF-1.4\nFictional size-only fixture');const draft=await pdfDraft(other.app,other.actor,large);
+ await assert.rejects(exactMailPackage(other.app,draft.selector,other.actor),/Drive-link/);assert.equal(Object.keys((await other.app.snapshot()).operations?.requests??{}).length,0);
+});
+test('complete uncertain mail claims, MIME, history and authored originals survive inert G1 without replay or liability refund',async t=>{
+ const {app,actor}=await setup(t),{selector,pdf}=await pdfDraft(app,actor),a=await approved(app,actor,selector),w=wire({failure:'lost'});await dispatchExactMail(app,a,{actor,env,transport:w.provider});await app.apply(event('stopped-after-post','contact_stopped',{reason:'do_not_contact'}),{actor:'friend'});
+ const before=await app.snapshot(),output=join(app.directory,'exact-backup.json'),destination=join(app.directory,'inert-restored');await app.backup(output);await StudioLifecycle.restore({input:output,destination});const restored=await StudioLifecycle.open({directory:destination}),after=await restored.snapshot();
+ assert.deepEqual(after.operations.requests,before.operations.requests);assert.deepEqual(after.operations.email,before.operations.email);assert.deepEqual(after.events,before.events);assert.deepEqual(after.asset_index,before.asset_index);assert.deepEqual(after.prospects.project.project_email_drafts,before.prospects.project.project_email_drafts);assert.equal(after.prospects.project.restriction,'do_not_contact');
+ assert.deepEqual((await readProjectAsset(restored,'project',a.p.attachments[0].asset_id,a.p.attachments[0].version_id)).bytes,pdf);assert.equal(restored.config.outreach_enabled,false);assert.equal(restored.config.google_exact_mail,undefined);assert.equal(w.sent.length,1);
 });
