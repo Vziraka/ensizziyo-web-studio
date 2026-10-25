@@ -82,7 +82,7 @@ export async function mailFreshSource(request,p){
 }
 export function mailSendBody(expected){return {raw:expected.raw.toString('base64url'),...(expected.thread_id?{threadId:expected.thread_id}:{})};}
 export function mailObservationJSON(value){
- const pending=[value];let count=0;while(pending.length){const next=pending.pop();if(!next||typeof next!=='object')continue;check(++count<=200000,'Gmail JSON exceeds bounded structure');for(const [key,v]of Object.entries(next)){check(!['accesstoken','refreshtoken','idtoken','clientsecret','credentialkey','authorization'].includes(key.replaceAll('_','').toLowerCase()),'Credential-bearing response is not Gmail evidence');if(v&&typeof v==='object')pending.push(v);}}return value;
+ const pending=[value];let count=0;while(pending.length){const next=pending.pop();if(!next||typeof next!=='object')continue;check(++count<=200000,'Gmail JSON exceeds bounded structure');for(const [key,v]of Object.entries(next)){check(!['accesstoken','refreshtoken','idtoken','clientsecret','credentialkey','authorization','error','errordescription','errormessage'].includes(key.replaceAll('_','').toLowerCase()),'Credential or error response is not Gmail success evidence');if(v&&typeof v==='object')pending.push(v);}}return value;
 }
 export function mailSendResponse(sent,expected){check(id(sent?.id)&&id(sent.threadId)&&(!expected.thread_id||sent.threadId===expected.thread_id),'Send identity incomplete; reconcile only');return {id:sent.id,thread_id:sent.threadId};}
 export async function mailSentReadback(request,expected,known=null,max=mailLimits.response){
