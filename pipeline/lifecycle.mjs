@@ -2,7 +2,7 @@ import {applySharedProjectEvent,sharedProjectDashboard} from './shared-project-c
 import {replySuggestion,replyDraftContent,replyDraftCurrent,validReplySource} from './reply-content.mjs';
 import {applyInertNote,inertReconciliation} from './inert-shared-workspace.mjs';
 import {applyManualRecord,manualRecordEvents} from './shared-manual-records.mjs';
-import {applyDispatchManualRecord,applyDispatchProjectRecord,dispatchHasManual,operationsRecordsCapability,dispatchProjectEvents} from './shared-internal-dispatch.mjs';
+import {applyDispatchManualRecord,applyDispatchProjectRecord,dispatchHasManual,dispatchHasProjects,dispatchProjectEvents} from './shared-internal-dispatch.mjs';
 import {prepareNotificationsInState,notificationView} from './team-notifications.mjs';
 import {openingView,selectOpening} from './opening-policy.mjs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -237,7 +237,7 @@ export class StudioLifecycle {
     check(Date.parse(event.at) <= +this.now() + 60_000, 'An event cannot claim a future action');
     if(this.store?.dispatchBinding&&dispatchHasManual(this.store.dispatchBinding.scope.capability)){
       const config=this.config,record={event,actor,revision:expectedRevision};
-      const project=config.shared_capability===operationsRecordsCapability&&dispatchProjectEvents.includes(event.type);
+      const project=dispatchHasProjects(config.shared_capability)&&dispatchProjectEvents.includes(event.type);
       return this.change(state=>{record.at=this.now().toISOString();return (project?applyDispatchProjectRecord:applyDispatchManualRecord)(state,config,record,new Date(record.at));},{eventId:event.id,eventFingerprint:hash({event,actor}),configFingerprint:hash(config),[project?'projectRecord':'manualRecord']:record});
     }
     if(this.store?.projectBinding)return this.change(state=>applySharedProjectEvent(state,event,actor,expectedRevision,this.now(),this.config),{eventId:event.id,eventFingerprint:hash({event,actor}),projectRecord:{event,actor,revision:expectedRevision}});

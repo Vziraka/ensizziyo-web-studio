@@ -42,7 +42,7 @@ export class ConditionalLifecycleStore {
     if(this.inertBinding)validateInertChange(JSON.parse(before).state,data.state,options);
     if(this.manualBinding)validateManualChange(JSON.parse(before),data,options);
     if(this.projectBinding)await validateProjectChange(JSON.parse(before),data,options,this.store);
-    if(this.dispatchBinding)await validateDispatchChange(JSON.parse(before),data,options);
+    if(this.dispatchBinding)await validateDispatchChange(JSON.parse(before),data,options,this.store);
     if(JSON.stringify(data)===before)return result;
     let modified,uncertain=false;
     try {const written=await this.store.setJSON(this.key,data,{onlyIfMatch:etag});check(typeof written?.modified==='boolean'&&(!written.modified||typeof written.etag==='string'&&written.etag.length>0),'Conditional write result is unavailable');modified=written.modified;}

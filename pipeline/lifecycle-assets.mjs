@@ -6,3 +6,5 @@ for(const icon of ['house','building-2','mail','calendar-days','file-text','user
 
 lifecycleAssets.set('/known-research/',['known-research.html','text/html']);
 lifecycleAssets.set('/known-research.js',['known-research.js','text/javascript']);
+
+lifecycleAssets.set('/project-authoring.js',['project-authoring.js','text/javascript']);

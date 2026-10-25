@@ -1,5 +1,8 @@
 # Controlled research proof
 
+[Disabled shared operations authoring](SHARED-OPERATIONS-AUTHORING.md) joins the existing signed interactive Node PDF and observed-evidence recovery caller to the same manual/project/internal dispatch authority. Exact unapproved profile plus a separate unset-by-default gate; all authored output and companion delivery remain held for review. Run `node --test pipeline/shared-operations-authoring.test.mjs pipeline/shared-manual-internal-dispatch.test.mjs` from the repository root.
+
+
 [Disabled shared operations records](SHARED-OPERATIONS-RECORDS.md) adds one exact profile for signed manual records, project feedback/selection/dispute and protected preparation/refinement requests in the same dispatcher CAS workspace. Requests stay held without authoring authority; old profiles retain their gates. Run `node --test pipeline/shared-operations-records.test.mjs pipeline/shared-manual-internal-dispatch.test.mjs` from the repository root.
 
 [Disabled shared manual/internal composition](SHARED-MANUAL-DISPATCH.md) joins the five signed completed-human-call/ownership/note/stop events to the existing registered incoming and finite internal dispatcher on one exact CAS binding. All new prospect follow-ups stay held; default configuration emits no schedule or activation. Run `node --test pipeline/shared-manual-internal-dispatch.test.mjs` from the repository root.

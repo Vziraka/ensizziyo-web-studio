@@ -1,10 +1,12 @@
+import {interactiveAuthoringPanel} from './project-authoring.js';
 import {deskPath} from './paths.js';
 
-export function preparationPanel(r,state,{el,button,eventForm,tell}){
-  const work=Object.values(r.project_work??{}),node=el('section'),recordsOnly=state.shared_workspace?.capability==='shared-operations-records-v1';
-  node.append(el('h3','Project preparation'),el('p',recordsOnly?'Save preparation and focused refinement requests against current context. Requests are queued; authoring and delivery are held in this workspace. Existing output and execution evidence remain history.':'Load current private context for the named workflow. A handoff is a task; file retrieval, authoring and client delivery need a supported authenticated tool.','muted'));
-  if(r.restriction){node.append(el('p','Contact is stopped. Prior preparation stays in history; no new sales output is released.','notice'));return node;}
-  if(!work.length)node.append(eventForm(r,'Prepare from the existing confirmed project context','project_preparation_requested',[],{},'Create the eligible preparation handoff'));
+export function preparationPanel(r,state,tools){
+  const {el,button,eventForm,tell}=tools;
+  const work=Object.values(r.project_work??{}),node=el('section'),recordsOnly=state.shared_workspace?.capability==='shared-operations-records-v1',interactive=state.shared_workspace?.capability==='shared-operations-authoring-v1';
+  node.append(el('h3','Project preparation'),el('p',interactive?'Review current context, supply authored source and registered resources, render the PDF, then inspect every actual raster page. Delivery remains held.':recordsOnly?'Save preparation and focused refinement requests against current context. Requests are queued; authoring and delivery are held in this workspace. Existing output and execution evidence remain history.':'Load current private context for the named workflow. A handoff is a task; file retrieval, authoring and client delivery need a supported authenticated tool.','muted'));
+  if(r.restriction){node.append(el('p','Contact is stopped. Prior preparation stays in history; no new sales output is released.','notice'));if(!interactive)return node;}
+  if(!r.restriction&&!work.length)node.append(eventForm(r,'Prepare from the existing confirmed project context','project_preparation_requested',[],{},'Create the eligible preparation handoff'));
   for(const item of work){
     const section=el('details');section.append(el('summary',`${item.kind.replaceAll('-',' ')}${item.request?.round?` round ${item.request.round}`:''} · ${recordsOnly&&item.status==='Ready'?'Queued; authoring held':item.status} · requested by ${item.requested_by}`));
     if(recordsOnly)section.append(el('p',`Assigned to ${item.assigned_to}. ${item.execution?`Retained execution: ${item.execution.status}; no retry or continuation is authorized here.`:'No authoring started by this request.'}`,'notice'));
@@ -12,7 +14,7 @@ export function preparationPanel(r,state,{el,button,eventForm,tell}){
     if(item.generation)section.append(el('p',`Source generation: ${item.generation.status}. ${item.generation.next}.`,'notice'));
     if(item.result)section.append(el('p',item.result.reference??item.result.internal_review,'source'),el('p',`Prepared by ${item.prepared_by}; awaiting human asset review. No send or client acceptance recorded.`,'muted'));
     const loaded=el('div');
-    const sharedAuthoring=recordsOnly||['shared-project-continuation-v1','shared-refinement-generation-v1'].includes(state.shared_workspace?.capability);
+    const sharedAuthoring=recordsOnly||interactive||['shared-project-continuation-v1','shared-refinement-generation-v1'].includes(state.shared_workspace?.capability);
     section.append(button(sharedAuthoring?'Load current context':'Load current context & output form',async()=>{try{
       const response=await fetch(deskPath(`/api/project-context/${r.id}/${item.id}`)),packet=await response.json();if(!response.ok)throw Error(packet.error);
       loaded.replaceChildren(el('p',`${packet.workflow.skill} · ${packet.workflow.output}`),el('p','Only the approved baseline is an approved asset. Exact source feedback may concern a draft or disputed alternative; it does not change approval.','notice'));
@@ -31,10 +33,10 @@ export function preparationPanel(r,state,{el,button,eventForm,tell}){
         }return;
       }
       loaded.append(eventForm(r,'Record preparation for review','project_work_recorded',fields,fixed,'Save internal review'));
-    }catch(error){tell(error.message,true);}}),loaded);node.append(section);
+    }catch(error){tell(error.message,true);}}),loaded);if(interactive)section.append(interactiveAuthoringPanel(r,item,state,tools));node.append(section);
   }
   const last=work.filter(w=>['website-concepts','website-refinement'].includes(w.kind)&&w.status==='Review'&&w.result).at(-1);
-  if(last&&!r.quote&&!r.agreement&&(!recordsOnly||['Discovery','Information requested','Preview','Proposal'].includes(r.stage))&&!work.some(w=>w.kind==='website-refinement'&&w.status!=='Held'&&!w.result)){
+  if(!r.restriction&&last&&!r.quote&&!r.agreement&&(!(recordsOnly||interactive)||['Discovery','Information requested','Preview','Proposal'].includes(r.stage))&&!work.some(w=>w.kind==='website-refinement'&&w.status!=='Held'&&!w.result)){
     const used=(r.pre_sale_refinements??[]).length,exceptions=(r.unpaid_refinement_exceptions??[]).filter(e=>!e.used_by);
     node.append(el('p',used?'The included unpaid refinement is used. Agree scope and price, or explicitly approve one additional unpaid round.':'One focused unpaid refinement is included before agreeing scope and price. Paid project revision rounds are separate.','notice'));
     if(!used||exceptions.length)node.append(eventForm(r,'Request a focused refinement of the exact prepared version','concept_refinement_requested',[

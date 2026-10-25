@@ -11,8 +11,8 @@ import {attachHostedAuthoring,blobAuthoringStore} from './hosted-authoring.mjs';
 import {fictionalBlobs} from './fixtures/hosted-authoring.mjs';import {downloadHostedBackup} from './hosted-authoring-client.mjs';
 import {hostedBackupInventory,writePortableLifecycleBackup,readLifecycleBackup,restoreLifecycleBackup} from './lifecycle-backup.mjs';
 // Exercise the accepted manual/dispatch contract unchanged in both exact profiles.
-function test(name,fn){for(const records of [false,true])nodeTest((records?'operations records: ':'manual dispatch: ')+name,async t=>{t.records=records;await fn(t);});}
-const fixture=(t,options={})=>dispatchFixture(t,{manual:true,records:t.records,...options});
+function test(name,fn){for(const profile of ['manual','records','authoring'])nodeTest(profile+': '+name,async t=>{t.records=profile!=='manual';t.authoring=profile==='authoring';await fn(t);});}
+const fixture=(t,options={})=>dispatchFixture(t,{manual:true,records:t.records,authoring:t.authoring,...options});
 const event=(id,type,data={})=>({id,prospect_id:'shared-proof',type,at,data});
 const note=id=>event(id,'note_added',{note:'Fictional private note '+id});
 const call=(id,outcome='no_answer',more={})=>event(id,'call_logged',{call_id:id,outcome,performed_at:at,simulated:false,desk:true,manual_attested:true,focus:'website',...more});
@@ -98,7 +98,7 @@ test('public and typed-store forgery rejects without IO or partial protected-sta
  for(const options of [{},{manualRecord:record,dispatchTransition:{kind:'pause'}},{manualRecord:record,dispatchTransition:false},{manualRecord:record,projectRecord:{}},{projectRecord:{}},{dispatchTransition:{kind:'unknown',at}}])await assert.rejects(f.app.change(s=>{s.prospects['shared-proof'].note='forged';},options));
  for(const mutation of [(s,c)=>s.operations.budget.reserved_microcredits=0,(s,c)=>s.prospects['shared-proof'].contact.email='other@example.invalid',(s,c)=>s.events={},(s,c)=>c.calls_enabled=true])await assert.rejects(f.app.change(mutation,{manualRecord:record}));
  assert.deepEqual(await f.app.snapshot(),before);const reads=f.storage.requests.length;
- for(const path of ['/api/project-author/begin','/api/call-audio','/api/calendar/queue','/api/exact-mail/dispatch','/api/team-notifications/prepare','/api/incoming-mail/sync','/api/google-oauth/start','/api/known-research/run'])await assert.rejects((await f.session('friend')).json(path,{method:'POST',body:{}}),/only|profile/);
+ for(const path of [...(t.authoring?[]:['/api/project-author/begin']),'/api/call-audio','/api/calendar/queue','/api/exact-mail/dispatch','/api/team-notifications/prepare','/api/incoming-mail/sync','/api/google-oauth/start','/api/known-research/run'])await assert.rejects((await f.session('friend')).json(path,{method:'POST',body:{}}),/only|profile/);
  assert.equal(f.storage.requests.length,reads);assert.equal(f.wire.calls.length,0);
 });
 

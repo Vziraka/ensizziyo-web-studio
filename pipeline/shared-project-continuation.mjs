@@ -11,7 +11,7 @@ import {applyAuthoringTransition,validateAuthoringTransition} from './project-au
 import {validateAuthoringRecovery} from './authoring-recovery.mjs';
 import {refinementCapability,validateRefinementPolicy,applyGenerationTransition,validateGenerationTransition,reconcileGeneration,validateGenerationAuthoring,refinementPolicyProjection,refinementStatusText} from './refinement-generation.mjs';
 
-export const supportsProjectAuthoring=app=>Boolean(app.store?.projectBinding&&['shared-project-continuation-v1',refinementCapability].includes(app.config.shared_capability));
+export const supportsProjectAuthoring=app=>Boolean(app.store?.projectBinding&&['shared-project-continuation-v1',refinementCapability].includes(app.config.shared_capability)||app.store?.dispatchBinding?.scope.capability==='shared-operations-authoring-v1'&&app.config.shared_capability==='shared-operations-authoring-v1');
 
 const fields={note_added:['note'],asset_feedback_added:['asset_id','version_id','feedback','scope','project_id'],asset_version_selected:['asset_id','version_id'],asset_version_disputed:['asset_id','version_id'],project_preparation_requested:[],concept_refinement_requested:['asset_id','version_id','selected_direction','feedback','exception_id'],unpaid_refinement_exception:['reason','approved','extra_rounds']};
 const key=v=>typeof v==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(v)&&!['__proto__','constructor','prototype'].includes(v);
@@ -88,17 +88,24 @@ export async function validateProjectChange(before,after,options,raw){
  if(before.project_source.binding.capability===researchCapability)check(options.projectResearch,'Research capability rejects other mutation types');
  if(options.projectGeneration){check(before.project_source.binding.capability===refinementCapability,'Existing project capability rejects provider execution');const app={store:{projectBinding:{scope:before.project_source.binding,manifest_sha256:hash(before.project_source)}},config:before.config,now:()=>now,snapshot:async()=>structuredClone(before.state)};attachHostedAuthoring(app,raw);await validateGenerationTransition(app,options.projectGeneration);applyGenerationTransition(expected,options.projectGeneration,before.config,now);}
  if(options.projectRecord){const {event,actor,revision}=options.projectRecord;applySharedProjectEvent(expected,event,actor,revision,now,before.config);}
- if(options.projectAuthoring){const app={store:{projectBinding:{scope:before.project_source.binding,manifest_sha256:hash(before.project_source)}},config:before.config,now:()=>now,snapshot:async()=>structuredClone(before.state)};attachHostedAuthoring(app,raw);await validateGenerationAuthoring(app,options.projectAuthoring);await validateAuthoringTransition(app,options.projectAuthoring);applyAuthoringTransition(expected,options.projectAuthoring,before.config,now);}
+ const app={store:{projectBinding:{scope:before.project_source.binding,manifest_sha256:hash(before.project_source)}},config:before.config,now:()=>now,snapshot:async()=>structuredClone(before.state)};
+ if(options.projectAuthoring){attachHostedAuthoring(app,raw);await validateGenerationAuthoring(app,options.projectAuthoring);}
+ if(options.projectAuthoring||options.projectReconcile)await replayProjectAuthoring(app,expected,options,raw,now);
+ check(hash(expected)===hash(after.state),'Shared project edit changed protected records, budgets, approvals, history or execution evidence');
+}
+// Both exact shared profiles independently replay the existing authoring/recovery witnesses.
+export async function replayProjectAuthoring(app,expected,options,raw,now){
+ const state=await app.snapshot();attachHostedAuthoring(app,raw);
+ if(options.projectAuthoring){await validateAuthoringTransition(app,options.projectAuthoring);applyAuthoringTransition(expected,options.projectAuthoring,app.config,now);}
  if(options.projectReconcile){
   const {job,result,snapshot,actor}=options.projectReconcile;
   const matches=[];function visit(w){for(const j of [...(w.authoring_history??[]),...(w.execution?[w.execution]:[])])if(j.id===job.id)matches.push(j);for(const prior of w.history??[])visit(prior);}
   for(const r of Object.values(expected.prospects))for(const w of Object.values(r.project_work??{}))visit(w);
   check(matches.length===1&&hash(matches[0])===hash(job)&&actor===job.actor&&['Claimed','Rendering','Rendered','Held'].includes(job.status),'Shared reconciliation job or actor changed');
   check(Object.keys(result.recovery??{}).sort().join(',')==='actor,at,disposition,execution,export_usable,files,observation,prior_status,reason,schema_version,snapshot','Unknown shared recovery fields');
-  const evidence=await blobAuthoringStore(raw).evidence(job.id);check(snapshot===hash({state:before.state,job_id:job.id,files:evidence.files})&&hash(result)===hash({...job,status:'Reconciled',recovery:{...result.recovery,files:evidence.files}})&&result.recovery.snapshot===snapshot&&result.recovery.actor===actor&&result.recovery.prior_status===job.status&&result.recovery.at===after.state.updated_at,'Shared reconciliation observation changed');
-  await validateAuthoringRecovery(result,async name=>evidence.bytes.get(name));Object.assign(matches[0],result);reconcileGeneration(expected,job,after.state.updated_at);expected.revision++;expected.updated_at=after.state.updated_at;
+  const evidence=await blobAuthoringStore(raw).evidence(job.id);check(snapshot===hash({state,job_id:job.id,files:evidence.files})&&hash(result)===hash({...job,status:'Reconciled',recovery:{...result.recovery,files:evidence.files}})&&result.recovery.snapshot===snapshot&&result.recovery.actor===actor&&result.recovery.prior_status===job.status&&result.recovery.at===now.toISOString(),'Authoring recovery observation changed; inspect exact dependencies again');
+  await validateAuthoringRecovery(result,async name=>evidence.bytes.get(name));Object.assign(matches[0],result);reconcileGeneration(expected,job,now.toISOString());expected.revision++;expected.updated_at=now.toISOString();
  }
- check(hash(expected)===hash(after.state),'Shared project edit changed protected records, budgets, approvals, history or execution evidence');
 }
 export function sharedProjectDashboard(binding,state,now=new Date()){
  const view={capability:binding.scope.capability,workspace_id:binding.scope.workspace_id,manifest_sha256:binding.manifest_sha256,allowed_edits:sharedProjectEvents,reconciliation:inertReconciliation(state),execution:'External execution disabled; interactive Node authoring only',unsupported:['provider-execution','unattended-authoring']};
