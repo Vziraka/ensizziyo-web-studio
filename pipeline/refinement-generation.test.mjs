@@ -9,6 +9,106 @@ import {ConditionalLifecycleStore} from './lifecycle-store.mjs';
 import {attachHostedAuthoring} from './hosted-authoring.mjs';
 import {sharedDeskSession} from './shared-originals-client.mjs';
 import {refinementStatus,refinementRequest,verifyRefinementDispatch} from './refinement-generation.mjs';
+import {fixtureReply} from './lifecycle-fixtures.mjs';
+
+async function signedEvent(f,e,actor='friend'){
+ const session=await f.signed(actor);return session.json('/api/event',{method:'POST',body:{event:e,revision:(await f.app.snapshot()).revision}});
+}
+async function trustedEvents(f,events){
+ // This standalone profile has no manual/incoming/registration caller; substitute its external authority at the existing CAS boundary.
+ const entry=await f.storage.raw.getWithMetadata('workspace',{type:'json',consistency:'strong'}),state=entry.data.state;
+ for(const [event,actor] of events)f.app.reduceEvent(state,event,{actor,expectedRevision:state.revision,manualRecording:true});
+ await f.storage.raw.setJSON('workspace',entry.data,{onlyIfMatch:entry.etag});
+ for(const [event] of events)assert.ok((await f.app.snapshot()).events[event.id]);
+}
+async function duringSourceRead(t,phase,change,options={}){
+ let armed=false,observed=false,mutationError;const f=await fixture(t,{...options,afterPhase:name=>{if(name===phase)armed=true;}});
+ f.storage.readHook=async key=>{if(!armed||key!==(options.readKey?.(f)??`project-authored/${f.seed.id}/authored.json/manifest`))return;armed=false;try{await change(f);observed=true;}catch(error){mutationError=error;throw error;}};
+ await f.authorize();const result=await f.generate();if(mutationError)throw mutationError;assert.ok(observed,'Mutation committed during deferred dependency read');return {f,result};
+}
+
+for(const actor of ['owner','friend'])for(const phase of ['count-claim','generation-claim'])test(`deferred source read: signed ${actor} recovery fences ${phase} and preserves the complete Reconciled attempt`,async t=>{
+ let closed,counts;const {f,result}=await duringSourceRead(t,phase,async f=>{
+  const observation=await f.caller.recovery(f.job.id);await f.caller.reconcile(f.job.id,{snapshot:observation.snapshot,reason:'Fictional signed closure during pending source read; process exit not attested',disposition:'close-publication'});
+  closed=(await f.caller.generationStatus(f.job.id)).attempt;counts={...f.counts};assert.equal(closed.status,'Reconciled');
+ },{actor});
+ assert.deepEqual({counts:f.counts,attempt:result.attempt},{counts,attempt:closed},'No provider call or attempt mutation after signed closure');assert.equal(result.authoring.status,'Reconciled');assert.equal(result.attempt.reserved_microcredits,3_000_000);assert.equal((await f.app.snapshot()).asset_index[f.seed.id].versions[f.job.id],undefined);
+});
+for(const phase of ['count-claim','generation-claim'])test(`deferred source read: signed note fences ${phase}`,async t=>{
+ const {f,result}=await duringSourceRead(t,phase,f=>signedEvent(f,event('during-pending-read','note_added',{note:'New fictional context while source read waits.'})));
+ assert.equal(phase==='count-claim'?f.counts.count:f.counts.generation,0,'No provider call after current context changed');assert.equal(result.attempt.status,'Uncertain');assert.equal(result.attempt.raw,undefined);assert.equal(result.attempt.reserved_microcredits,3_000_000);assert.equal((await f.app.snapshot()).asset_index[f.seed.id].versions[f.job.id],undefined);
+});
+
+test('signed feedback, baseline, dispute, pause and expiry during dependency reads fence both provider phases',async t=>{
+ for(const phase of ['count-claim','generation-claim'])for(const change of ['feedback','baseline','dispute','pause','expiry']){
+  let time=Date.parse(at);const {f,result}=await duringSourceRead(t,phase,async f=>{
+   if(change==='expiry'){time+=16*60000;return;}
+   if(change==='pause'){await (await f.connect('friend')).pauseGeneration(hash(f.policy));return;}
+   const data={asset_id:f.seed.id,version_id:f.seed.id};if(change==='feedback')Object.assign(data,{feedback:'Use "#FFFFFF" for page background.',scope:'project',project_id:'shared-proof'});
+   if(change==='dispute'){await trustedEvents(f,[[event('alternative-version','asset_version_registered',{asset_id:f.seed.id,version_id:'alternate',version_label:'Alternate fictional version',reference:'private-path:fictional/alternate-unverified-source.pdf'},'studio-assets'),'owner']]);data.version_id='alternate';}
+   await signedEvent(f,event('pending-'+change,change==='feedback'?'asset_feedback_added':change==='baseline'?'asset_version_selected':'asset_version_disputed',data,'studio-assets'));
+  },{clock:()=>new Date(time)});
+  assert.equal(phase==='count-claim'?f.counts.count:f.counts.generation,0,phase+' '+change);assert.equal(result.attempt.raw,undefined);assert.equal(result.attempt.reserved_microcredits,3_000_000);assert.equal(result.authoring.status,'Claimed');
+ }
+});
+
+test('the final guard also fences signed context changes during original and runtime reads in both phases',async t=>{
+ for(const phase of ['count-claim','generation-claim'])for(const dependency of ['original','runtime']){
+  const {f}=await duringSourceRead(t,phase,f=>signedEvent(f,event('late-dependency-note','note_added',{note:'New fictional context during the later dependency read.'})),{readKey:f=>dependency==='runtime'?`project-authored/${f.job.id}/runtime.json/manifest`:`project-originals/${f.job.references[0].sha256}/manifest`});
+  assert.equal(phase==='count-claim'?f.counts.count:f.counts.generation,0,phase+' '+dependency);
+ }
+});
+
+test('trusted handoff, stop and provider incoming changes during reads fence both phases; signed profile still denies these events',async t=>{
+ for(const phase of ['count-claim','generation-claim'])for(const change of ['handoff','stop','incoming']){
+  const {f,result}=await duringSourceRead(t,phase,async f=>{
+   const e=change==='handoff'?event('pending-handoff','follow_up_handed_off',{to:'friend'}):change==='stop'?event('pending-stop','contact_stopped',{reason:'do_not_contact'}):event('pending-incoming','reply_received',fixtureReply('new-reply'));
+   const before=await f.app.snapshot();await assert.rejects(signedEvent(f,e,'owner'),/supported design feedback|Private shared state is unavailable|Provider\/research events require/);assert.deepEqual(await f.app.snapshot(),before);
+   if(change==='handoff'){
+    const entry=await f.storage.raw.getWithMetadata('workspace',{type:'json',consistency:'strong'});entry.data.state.prospects['shared-proof'].follow_up_owner='owner';await f.storage.raw.setJSON('workspace',entry.data,{onlyIfMatch:entry.etag});
+   }
+   await trustedEvents(f,[[e,change==='incoming'?'provider':'owner']]);
+  });
+  assert.equal(phase==='count-claim'?f.counts.count:f.counts.generation,0,phase+' '+change);assert.equal(result.attempt.raw,undefined);assert.equal(result.attempt.reserved_microcredits,3_000_000);assert.equal((await f.app.snapshot()).asset_index[f.seed.id].versions[f.job.id],undefined);
+ }
+});
+
+test('unrelated signed revision changes and duplicate worker deliveries during both dependency waits allow current work once',async t=>{
+ for(const phase of ['count-claim','generation-claim']){
+  const {f,result}=await duringSourceRead(t,phase,async f=>{
+   const prior=(await f.app.snapshot()).revision;await signedEvent(f,event('unrelated-extra-round','unpaid_refinement_exception',{approved:true,extra_rounds:1,reason:'Separate future round; current source and request stay exact.'}));assert.ok((await f.app.snapshot()).revision>prior);
+   assert.equal((await f.execute(f.tokens[0])).status,200);assert.equal(f.counts.generation,0);
+  },{actor:'friend'});
+  assert.equal(result.attempt.status,'Source ready');assert.equal(result.authoring.status,'Rendered');assert.deepEqual(f.counts,{count:1,generation:1,dispatch:1});
+ }
+});
+
+test('a changed same-status phase claim, assignment or selected source provenance during runtime reads stops the next effect',async t=>{
+ for(const phase of ['count-claim','generation-claim'])for(const change of ['phase-claim','assignment','source-provenance']){
+  const {f}=await duringSourceRead(t,phase,async f=>{
+   const entry=await f.storage.raw.getWithMetadata('workspace',{type:'json',consistency:'strong'}),state=entry.data.state;
+   if(change==='phase-claim')state.ai_attempts['refine-'+f.job.id].phases[phase==='count-claim'?'count':'generation'].claimed_at=new Date(Date.parse(at)+1).toISOString();
+   if(change==='assignment')state.prospects['shared-proof'].project_work[f.job.work_id].assigned_to='friend';
+   if(change==='source-provenance')state.asset_index[f.seed.id].versions[f.seed.id].provenance.source_sha256='0'.repeat(64);
+   await f.storage.raw.setJSON('workspace',entry.data,{onlyIfMatch:entry.etag});
+  },{readKey:f=>`project-authored/${f.job.id}/runtime.json/manifest`});
+  assert.equal(phase==='count-claim'?f.counts.count:f.counts.generation,0,phase+' '+change);
+ }
+});
+
+test('already-started generation retains returned raw after a signed context change and never adopts or retries it; reconciliation stays terminal',async t=>{
+ for(const change of ['note','recovery']){
+  let f,closed;f=await fixture(t,{editOutput:async response=>{
+   assert.equal(f.counts.generation,1,'Provider request already started before mutation');
+   if(change==='note')await signedEvent(f,event('in-flight-note','note_added',{note:'New context after the fictional request started.'}));
+   else{const observation=await f.caller.recovery(f.job.id);await f.caller.reconcile(f.job.id,{snapshot:observation.snapshot,reason:'Close publication of already-started fictional request; exit not attested',disposition:'close-publication'});closed=(await f.caller.generationStatus(f.job.id)).attempt;}
+   return response;
+  }});await f.authorize();const result=await f.generate();
+  if(change==='note'){assert.equal(result.attempt.status,'Held');assert.ok(result.attempt.raw);assert.equal(result.attempt.phases.generation.status,'Returned');}
+  else{assert.deepEqual(result.attempt,closed);assert.equal(result.authoring.status,'Reconciled');}
+  assert.equal(result.attempt.reserved_microcredits,3_000_000);assert.equal((await f.app.snapshot()).asset_index[f.seed.id].versions[f.job.id],undefined);await f.generate();await f.execute(f.tokens[0]);assert.equal(f.counts.generation,1);
+ }
+});
 
 test('both actual signed roles generate through injected provider only to a real Node PDF, then separate review preserves baseline and exact held attachment',async t=>{
  for(const actor of ['owner','friend']){const f=await fixture(t,{actor});await f.authorize();const before=await f.app.snapshot(),result=await f.generate();assert.equal(result.authoring.status,'Rendered');assert.equal(result.attempt.status,'Source ready');assert.deepEqual(f.counts,{count:1,generation:1,dispatch:1});assert.equal(hash(result.attempt.request),result.attempt.spec.request_sha256);assert.equal(hash(result.attempt.raw),result.attempt.raw_sha256);assert.deepEqual((await f.caller.generationStatus(f.job.id)).attempt,result.attempt);await f.generate();await f.execute(f.tokens[0]);assert.equal(f.counts.generation,1);

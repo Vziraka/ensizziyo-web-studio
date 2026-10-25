@@ -78,7 +78,7 @@ export function applyGenerationTransition(s,c,config,now){
   s.ai_attempts[id]={id,provider:'refinement-gateway-v1',job_id:input.job_id,actor,policy_sha256:hash(p),policy:structuredClone(p),spec:d.spec,request:d.request,schema:d.schema,day:day(now),cycle:p.cycle,status:'Reserved',phases:{},reserved_microcredits:p.reserved_microcredits_per_job,reserved_at:now.toISOString()};bump(s,now);return s.ai_attempts[id];
  }
  check(a&&a.actor===actor&&a.job_id===input.job_id&&a.policy_sha256===hash(p),'Load exact assigned refinement attempt');
- if(type==='failure'){check(typeof d.uncertain==='boolean'&&!['Source ready','Rendered','Rejected','Held','Uncertain'].includes(a.status),'Read retained attempt; no replay');a.status=d.uncertain?'Uncertain':'Held';a.reason='Context, policy, provider or output boundary failed; reservation retained, no retry';a.failed_at=now.toISOString();bump(s,now);return a;}
+ if(type==='failure'){check(typeof d.uncertain==='boolean'&&!['Source ready','Rendered','Rejected','Held','Uncertain','Reconciled'].includes(a.status),'Read retained attempt; no replay');a.status=d.uncertain?'Uncertain':'Held';a.reason='Context, policy, provider or output boundary failed; reservation retained, no retry';a.failed_at=now.toISOString();bump(s,now);return a;}
  if(type==='returned'){
   exact(d.raw,['text','text_bytes','text_sha256','truncated','usage','model','candidates','finish','catalog']);
   check(a.status==='Running'&&a.phases.generation?.status==='Claimed'&&!a.raw,'Retain one exact response without replay');
@@ -150,11 +150,16 @@ export async function executeRefinement(app,reference,token,{env=process.env,cat
  try{
   const catalog=await (await import('./gateway-proof.mjs')).liveCatalog(catalogRequest,p);check(catalog.sha256===p.catalog_sha256,'Catalog fingerprint changed');const client=clientFactory?await clientFactory(p):await (await import('./gateway-proof.mjs')).makeGatewayClient(env,undefined,p.execution_ms,p),signal=AbortSignal.timeout(p.execution_ms),start=+app.now();
   const guard=()=>check(+app.now()-start<p.execution_ms,'Execution wall-clock cap exceeded');
-  const beforeProvider=async()=>{const f=await refinementSpec(app,input.job_id,actor);check(p.jobs.some(j=>hash(j)===hash(f.spec)),'Provider source binding changed');active(await app.snapshot(),p,app.now(),app.store.projectBinding);guard();};
-  uncertain=true;await transition(app,'count-claim',input,actor);await afterPhase?.('count-claim');guard();
-  await beforeProvider();const count=await client.models.countTokens({model:p.model,contents:a.request.contents,config:{abortSignal:signal}});await transition(app,'count-returned',input,actor,{tokens:count.totalTokens});uncertain=false;await afterPhase?.('count-returned');guard();
-  uncertain=true;await transition(app,'generation-claim',input,actor);await afterPhase?.('generation-claim');guard();
-  await beforeProvider();const response=await client.models.generateContent({...a.request,config:{...a.request.config,abortSignal:signal}});
+  const beforeProvider=async phase=>{
+   const f=await refinementSpec(app,input.job_id,actor);check(p.jobs.some(j=>hash(j)===hash(f.spec))&&hash(f.spec)===hash(a.spec),'Provider source binding changed');
+   const state=await app.snapshot(),current=eligible(state,input.job_id,actor),live=state.ai_attempts[reference.attempt_id];active(state,p,app.now(),app.store.projectBinding);
+   check(live?.id===a.id&&hash(live)===hash(a)&&live.status==='Running'&&live.phases[phase]?.status==='Claimed','Refinement attempt/claimed phase changed; no next effect');
+   check(current.packet.context_sha256===f.spec.context_sha256&&hash(current.job)===hash(f.job),'Refinement context or authoring claim changed during dependency reads');guard();
+  };
+  uncertain=true;a=await transition(app,'count-claim',input,actor);await afterPhase?.('count-claim');guard();
+  await beforeProvider('count');const count=await client.models.countTokens({model:p.model,contents:a.request.contents,config:{abortSignal:signal}});await transition(app,'count-returned',input,actor,{tokens:count.totalTokens});uncertain=false;await afterPhase?.('count-returned');guard();
+  uncertain=true;a=await transition(app,'generation-claim',input,actor);await afterPhase?.('generation-claim');guard();
+  await beforeProvider('generation');const response=await client.models.generateContent({...a.request,config:{...a.request.config,abortSignal:signal}});
   const text=typeof response.text==='string'?response.text:'',textBytes=Buffer.byteLength(text),u=response.usageMetadata;
   const raw={text:textBytes>p.maximum_output_bytes?Buffer.from(text).subarray(0,Math.max(0,p.maximum_output_bytes-3)).toString('utf8'):text,text_bytes:textBytes,text_sha256:hash(text),truncated:textBytes>p.maximum_output_bytes,usage:u?Object.fromEntries(['promptTokenCount','candidatesTokenCount','thoughtsTokenCount','toolUsePromptTokenCount'].map(k=>[k,u[k]??null])):null,model:typeof response.modelVersion==='string'?response.modelVersion.slice(0,120):null,candidates:response.candidates?.length??0,finish:typeof response.candidates?.[0]?.finishReason==='string'?response.candidates[0].finishReason.slice(0,80):null,catalog};
   await transition(app,'returned',input,actor,{raw});uncertain=false;await afterPhase?.('returned');guard();
