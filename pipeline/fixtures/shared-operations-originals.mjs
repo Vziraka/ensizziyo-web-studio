@@ -17,7 +17,7 @@ export async function fixture(t,options={}){
   if(kind==='about')bytes=Buffer.from(JSON.stringify({user:{emailAddress:token.account}}));
   else if(kind==='metadata'){bytes=Buffer.from(JSON.stringify({id:'fictionalOriginal123',name:source.name,mimeType:source.mime_type,size:String(source.bytes),modifiedTime:source.modified_time,version:source.drive_version,sha256Checksum:source.sha256,trashed:false,capabilities:{canDownload:true},...wire.metadata}));headers.etag=source.etag;}
   else{const [,a,b]=/^bytes=(\d+)-(\d+)$/.exec(init.headers.Range);bytes=f.originalBytes.subarray(+a,+b+1);status=206;headers={'content-type':'application/pdf','content-range':`bytes ${a}-${b}/${source.bytes}`,'content-length':String(bytes.length),etag:source.etag};}
-  let emitted=false;return new Response(new ReadableStream({async pull(controller){if(emitted){controller.close();return;}emitted=true;await wire.bodyHook?.(kind);controller.enqueue(bytes);controller.close();}}),{status,headers});
+  let emitted=false;return new Response(new ReadableStream({async pull(controller){if(emitted){controller.close();return;}emitted=true;await wire.bodyHook?.(kind);controller.enqueue(bytes);controller.close();}},{highWaterMark:0}),{status,headers});
  };
  const connectOriginals=(actor=f.actor)=>connectSharedOriginals({origin:f.env.EVZ_OPERATIONS_ORIGIN,key:f.env[actor==='owner'?'EVZ_OPERATIONS_OWNER_KEY':'EVZ_OPERATIONS_FRIEND_KEY'],fetcher:f.fetcher}),originals=await connectOriginals();
  return {...f,source,driveWire:wire,driveCalls:calls,ranges,token,originals,connectOriginals};
