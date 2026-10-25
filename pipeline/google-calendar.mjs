@@ -19,20 +19,39 @@ function current(s,c,id,actor){
  check(key(id),'Choose the existing exact booking');const b=c.operations?.bookings?.[id],r=s.prospects[b?.prospect_id];
  check(b?.transport==='google-calendar-v1'&&b.approved===true&&b.approved_by===actor&&b.source_sha256===bookingContext(r??{})&&b.timezone==='America/New_York'&&r?.controlled===true&&r.contact?.verified===true&&!r.restriction&&['Discovery','Information requested'].includes(r.stage)&&(!r.follow_up_owner||r.follow_up_owner===actor)&&b.attendee_email.endsWith('@example.invalid')&&(b.attendee_email===r.contact.email||b.recipient_confirmed===true),'Guest confirmation, contact, source or ownership changed; retain the reserved invitation');
  check(!r.meeting||[id,s.operations?.bookings?.[id]?.id].includes(r.meeting.event_id),'An existing meeting owns this conversation');
- check(s.events[b.confirmation_event]?.actor===actor&&s.events[b.confirmation_event].data?.booking_sha256===hash(b),'Exact signed guest confirmation event required');
+ const confirmation=s.events[b.confirmation_event];
+ check(confirmation?.id===b.confirmation_event&&confirmation.type==='meeting_queued'&&confirmation.prospect_id===b.prospect_id&&confirmation.actor===actor&&confirmation.data?.booking_id===id&&confirmation.data.booking_sha256===hash(b),'Exact signed guest confirmation event required');
  return b;
 }
-export function googleCalendarTransport({getAccessToken,fetcher=fetch,config,now=()=>Date.now(),signal=AbortSignal.timeout(40000)}){
+// Each fence reads the actual envelope; an acknowledgement can outlive its source or claim.
+function bookingFence(app,c,id,actor,env,options,expected){
+ const fingerprint=hash(c),logical=id+'-create';
+ function validate(s,actual){
+  check(hash(actual)===fingerprint,'Calendar configuration changed; retain the exact intent');
+  const policy=capability(app,actual,env,actor),b=current(s,actual,id,actor);
+  check(b.policy_sha256===policy,'Calendar grant or account policy changed after guest confirmation');
+  check(!options.signal.aborted&&+app.now()<options.calendarDeadline,'Calendar dispatch deadline expired');
+  check(hash(s.operations?.requests?.[logical]??null)===hash(expected()??null),'Exact Calendar request claim changed; refresh before reconciling');
+  return s;
+ }
+ return {validate,async read(){check(app.store?.envelope,'Calendar requires its conditional workspace');const {data}=await app.store.envelope();return validate(data.state,data.config);}};
+}
+export function googleCalendarTransport({getAccessToken,fetcher=fetch,config,now=()=>Date.now(),signal=AbortSignal.timeout(40000),guard=async()=>{}}){
  const g=config.google_calendar;let token;
+ function exactToken(minimum){check(token?.profile===calendarOAuthProfile&&token.account===g.account&&token.grant_id===g.grant_id&&Array.isArray(token.scopes)&&token.scopes.length===calendarOAuthScopes.length&&new Set(token.scopes).size===token.scopes.length&&calendarOAuthScopes.every(s=>token.scopes.includes(s))&&typeof token.access_token==='string'&&/^[\x21-\x7e]{10,8192}$/.test(token.access_token)&&token.expires_at>now()+minimum,'Exact independent business Calendar grant/account/scopes required');}
+ async function live(authenticated=false){await guard();check(!signal.aborted,'Calendar access expired; retain the existing intent');if(authenticated)exactToken(10000);}
  async function request(path,method='GET',body){
-  check(!signal.aborted&&token?.expires_at>now()+10000,'Calendar access expired; retain the existing intent');
+  await live(true);
   let response;try{response=await fetcher('https://www.googleapis.com/calendar/v3/'+path,{method,headers:{Authorization:'Bearer '+token.access_token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(10000)])});}catch{throw Error('Calendar request interrupted; reconcile the existing intent without another insert');}
-  if(!response.ok){await response.body?.cancel();if(response.status===401){try{await getAccessToken.invalidate?.(token);}catch{}}throw Error(response.status===409?'Calendar event ID conflicts; reconcile only':response.status===404?'Calendar event missing; intent remains held, never recreate':'Calendar response failed; retain existing intent and owner grant');}
-  try{check(response.body,'Missing Calendar response');const reader=response.body.getReader(),chunks=[];let size=0;try{for(;;){const {value,done}=await reader.read();if(done)break;size+=value.length;check(size<=100000,'Calendar response exceeds bound');chunks.push(Buffer.from(value));}}finally{await reader.cancel();}const data=JSON.parse(Buffer.concat(chunks));check(data&&typeof data==='object'&&!Array.isArray(data)&&!data.nextPageToken,'Incomplete Calendar response');return data;}catch{throw Error('Calendar JSON is malformed, partial or exceeds the read bound');}
+  try{await live(true);}catch(error){await response.body?.cancel();throw error;}
+  if(!response.ok){await response.body?.cancel();await live(true);if(response.status===401){try{await getAccessToken.invalidate?.(token);}catch{}await live(true);}throw Error(response.status===409?'Calendar event ID conflicts; reconcile only':response.status===404?'Calendar event missing; intent remains held, never recreate':'Calendar response failed; retain existing intent and owner grant');}
+  try{check(response.body,'Missing Calendar response');const reader=response.body.getReader(),chunks=[];let size=0;try{for(;;){const {value,done}=await reader.read();await live(true);if(done)break;size+=value.length;check(size<=100000,'Calendar response exceeds bound');chunks.push(Buffer.from(value));}}finally{await reader.cancel();}await live(true);const data=JSON.parse(Buffer.concat(chunks));check(data&&typeof data==='object'&&!Array.isArray(data)&&!data.nextPageToken,'Incomplete Calendar response');return data;}catch{throw Error('Calendar JSON is malformed, partial or exceeds the read bound');}
  }
  async function preflight(mode){
+  await live();
   try{token=await getAccessToken?.();}catch{throw Error('Independent business Calendar grant unavailable');}
-  check(token?.profile===calendarOAuthProfile&&token.account===g.account&&token.grant_id===g.grant_id&&Array.isArray(token.scopes)&&token.scopes.length===calendarOAuthScopes.length&&new Set(token.scopes).size===token.scopes.length&&calendarOAuthScopes.every(s=>token.scopes.includes(s))&&typeof token.access_token==='string'&&/^[\x21-\x7e]{10,8192}$/.test(token.access_token)&&token.expires_at>now()+45000,'Exact independent business Calendar grant/account/scopes required');
+  await live();
+  exactToken(45000);
   const p=await request('calendars/primary');check(p.kind==='calendar#calendar'&&p.id===g.calendar_id&&p.timeZone==='America/New_York','Primary Calendar identity or timezone differs');if(mode==='video')check(p.conferenceProperties?.allowedConferenceSolutionTypes?.includes('hangoutsMeet'),'Business Calendar does not support requested video intent');return p;
  }
  async function availability(start,end){
@@ -50,7 +69,7 @@ export function googleCalendarTransport({getAccessToken,fetcher=fetch,config,now
    return {...receipt,event_id:id,calendar_id:g.calendar_id,organizer:g.account,invitation_delivery:'Unverified',guest_response:e.attendees[0].responseStatus,conference_status:b.mode==='video'?'success':'Not requested'};
   }};
 }
-function providerFor(c,options,app){return googleCalendarTransport({...options,config:c,now:()=>+app.now()});}
+function providerFor(c,options,app,guard){return googleCalendarTransport({...options,guard,config:c,now:()=>+app.now()});}
 export async function calendarAvailability(app,{actor,env=process.env,...options}){
  const c=await app.loadConfig();capability(app,c,env,actor);const provider=providerFor(c,options,app);await provider.preflight();const now=app.now(),busy=await provider.availability(now.toISOString(),new Date(+now+11*86400000).toISOString());return {slots:meetingSlots(now,[...busy,...Object.values(c.operations?.bookings??{}).map(b=>({start:b.start,end:b.end}))]),checked_at:now.toISOString(),simulated:true,provider:'Fictional injected Calendar transport; no live delivery proof'};
 }
@@ -63,31 +82,35 @@ export async function queueGoogleMeeting(app,input,{actor,env=process.env,...opt
 }
 export async function dispatchGoogleMeeting(app,input,{actor,env=process.env,...options}){
  options.signal??=AbortSignal.timeout(40000);
+ options.calendarDeadline??=+app.now()+40000;
  const c=await app.loadConfig(),policy=capability(app,c,env,actor),state=await app.snapshot(),b=current(state,c,input.booking_id,actor),logical=input.booking_id+'-create',prior=state.operations?.requests?.[logical];
  check(b.policy_sha256===policy,'Calendar grant or account policy changed after guest confirmation');
  if(prior)return {booking_id:input.booking_id,status:prior.status,reason:'Intent already reserved; reconcile only'};
- const provider=providerFor(c,options,app);await provider.preflight(b.mode);await provider.checkSlot(b);
+ let expected=null;const fence=bookingFence(app,c,input.booking_id,actor,env,options,()=>expected),provider=providerFor(c,options,app,()=>fence.read());await provider.preflight(b.mode);await provider.checkSlot(b);
  const scope=hash({booking:b,policy}),id='e'+hash({run:c.run_id,booking:input.booking_id});
- await app.change(s=>{current(s,c,input.booking_id,actor);const o=s.operations??={};o.requests??={};o.bookings??={};o.holds??={};o.effects??={};check(!o.requests[logical],'Booking already claimed; reconcile only');o.requests[logical]={logical,operation:'booking_create',transport:'google-calendar-v1',status:'Reserved',prepared_at:app.now().toISOString(),event_id:id,scope_sha256:scope,binding_sha256:policy};bump(s,app);},{configFingerprint:hash(c)});
+ await app.change((s,actual)=>{fence.validate(s,actual);const o=s.operations??={};o.requests??={};o.bookings??={};o.holds??={};o.effects??={};expected={logical,operation:'booking_create',transport:'google-calendar-v1',status:'Reserved',prepared_at:app.now().toISOString(),event_id:id,scope_sha256:scope,binding_sha256:policy};o.requests[logical]=structuredClone(expected);bump(s,app);},{configFingerprint:hash(c)});
  try{
   await provider.checkSlot(b);
-  await app.change(s=>{current(s,c,input.booking_id,actor);const q=s.operations.requests[logical];check(!options.signal.aborted,'Calendar dispatch deadline expired');capability(app,c,env,actor);check(q.status==='Reserved','Booking already dispatched');q.status='Uncertain';q.dispatch_started_at=app.now().toISOString();bump(s,app);},{configFingerprint:hash(c)});
-  const inserted=await provider.insert(b,id,scope);check(inserted.id===id&&inserted.organizer?.email===c.google_calendar.account&&inserted.organizer.self===true,'Insert receipt identity differs; reconcile exact reserved event');
-  return reconcileGoogleMeeting(app,input,{actor,env,...options});
- }catch{await app.change(s=>{const q=s.operations.requests[logical];if(q.status!=='Verified'){q.status='Uncertain';s.operations.holds[input.booking_id]='Creation or verification is uncertain; reconcile exact event ID only, never recreate';bump(s,app);}});return {booking_id:input.booking_id,status:'Uncertain'};}
+  await app.change((s,actual)=>{fence.validate(s,actual);check(expected.status==='Reserved','Booking already dispatched');expected={...expected,status:'Uncertain',dispatch_started_at:app.now().toISOString(),dispatch_claim:randomUUID()};s.operations.requests[logical]=structuredClone(expected);bump(s,app);},{configFingerprint:hash(c)});
+  await fence.read();
+  const inserted=await provider.insert(b,id,scope);await fence.read();check(inserted.id===id&&inserted.organizer?.email===c.google_calendar.account&&inserted.organizer.self===true,'Insert receipt identity differs; reconcile exact reserved event');
+  return await reconcileGoogleMeeting(app,input,{actor,env,...options});
+ }catch{await app.change((s,actual)=>{const q=s.operations?.requests?.[logical];if(hash(actual)===hash(c)&&hash(q??null)===hash(expected)&&q.status!=='Verified'){q.status='Uncertain';s.operations.holds[input.booking_id]='Creation or verification is uncertain; reconcile exact event ID only, never recreate';bump(s,app);}});return {booking_id:input.booking_id,status:'Uncertain'};}
 }
 export async function reconcileGoogleMeeting(app,input,{actor,env=process.env,...options}){
  options.signal??=AbortSignal.timeout(40000);
+ options.calendarDeadline??=+app.now()+40000;
  const c=await app.loadConfig(),policy=capability(app,c,env,actor),s=await app.snapshot(),b=current(s,c,input.booking_id,actor),logical=input.booking_id+'-create',q=s.operations?.requests?.[logical];
- check(q?.transport==='google-calendar-v1'&&q.binding_sha256===policy&&q.scope_sha256===hash({booking:b,policy}),'Existing exact booking intent and unchanged grant required');
- const claim=randomUUID();
- await app.change(state=>{current(state,c,input.booking_id,actor);const saved=state.operations.requests[logical];check(hash(saved)===hash(q),'Booking readback changed; refresh before reconciling');saved.read_claim=claim;bump(state,app);},{configFingerprint:hash(c)});
- const provider=providerFor(c,options,app);
+ check(q?.logical===logical&&q.operation==='booking_create'&&q.transport==='google-calendar-v1'&&q.event_id==='e'+hash({run:c.run_id,booking:input.booking_id})&&['Reserved','Uncertain','Verified'].includes(q.status)&&q.binding_sha256===policy&&q.scope_sha256===hash({booking:b,policy}),'Existing exact booking intent and unchanged grant required');
+ let expected=q,finalized=false,effect;const claim=randomUUID(),fence=bookingFence(app,c,input.booking_id,actor,env,options,()=>expected);
+ await app.change((state,actual)=>{fence.validate(state,actual);expected={...expected,read_claim:claim};state.operations.requests[logical]=structuredClone(expected);bump(state,app);},{configFingerprint:hash(c)});
+ const provider=providerFor(c,options,app,()=>fence.read());
  try{await provider.preflight(b.mode);const receipt=await provider.read(b,q.event_id,q.scope_sha256);
-  await app.change(state=>{current(state,c,input.booking_id,actor);capability(app,c,env,actor);const saved=state.operations.requests[logical];check(!options.signal.aborted&&saved.read_claim===claim&&saved.event_id===q.event_id&&saved.scope_sha256===q.scope_sha256,'Booking read claim expired or changed');saved.status='Verified';saved.receipt=receipt;state.operations.bookings[input.booking_id]={...receipt,scope_sha256:hash(b),verified:true};delete state.operations.holds[input.booking_id];const eid='booking-'+hash(input.booking_id).slice(0,32);state.operations.effects[eid]??={event:{id:eid,prospect_id:b.prospect_id,type:'meeting_verified',at:app.now().toISOString(),data:receipt}};if(state.prospects[b.prospect_id].meeting?.event_id===receipt.event_id)state.prospects[b.prospect_id].meeting={...state.prospects[b.prospect_id].meeting,...receipt,current_status:'Verified'};bump(state,app);},{configFingerprint:hash(c)});
-  const eid='booking-'+hash(input.booking_id).slice(0,32),effect=(await app.snapshot()).operations.effects[eid],guarded=Object.create(app);
-  guarded.change=(fn,changeOptions)=>app.change(state=>{current(state,c,input.booking_id,actor);check(!options.signal.aborted&&state.operations.requests[logical].read_claim===claim,'Booking read claim expired or changed');return fn(state);},{...changeOptions,configFingerprint:hash(c)});
+  await app.change((state,actual)=>{fence.validate(state,actual);expected={...expected,status:'Verified',receipt};state.operations.requests[logical]=structuredClone(expected);finalized=true;state.operations.bookings[input.booking_id]={...receipt,scope_sha256:hash(b),verified:true};delete state.operations.holds[input.booking_id];const eid='booking-'+hash(input.booking_id).slice(0,32);state.operations.effects[eid]??={event:{id:eid,prospect_id:b.prospect_id,type:'meeting_verified',at:app.now().toISOString(),data:receipt}};effect=structuredClone(state.operations.effects[eid]);if(state.prospects[b.prospect_id].meeting?.event_id===receipt.event_id)state.prospects[b.prospect_id].meeting={...state.prospects[b.prospect_id].meeting,...receipt,current_status:'Verified'};bump(state,app);},{configFingerprint:hash(c)});
+  const eid='booking-'+hash(input.booking_id).slice(0,32),fresh=await fence.read(),guarded=Object.create(app);check(hash(fresh.operations.effects[eid])===hash(effect),'Exact Calendar effect changed');
+  guarded.change=(fn,changeOptions)=>app.change((state,actual)=>{fence.validate(state,actual);check(hash(state.operations.effects[eid])===hash(effect),'Exact Calendar effect changed');return fn(state);},{...changeOptions,configFingerprint:hash(c)});
   await guarded.apply(effect.event,{actor:'provider'});
+  await fence.read();
   return {booking_id:input.booking_id,status:'Verified',receipt};
- }catch{await app.change(state=>{const saved=state.operations.requests[logical];if(saved.read_claim!==claim)return;saved.status='Uncertain';state.operations.holds[input.booking_id]='Exact event unavailable, changed or conference incomplete; no duplicate create';if(state.operations.bookings[input.booking_id])state.operations.bookings[input.booking_id].verified=false;const r=state.prospects[b.prospect_id];if(r.meeting)r.meeting.current_status='Needs review';bump(state,app);});return {booking_id:input.booking_id,status:'Uncertain'};}
+ }catch{await app.change((state,actual)=>{const saved=state.operations?.requests?.[logical];if(finalized||hash(actual)!==hash(c)||hash(saved??null)!==hash(expected))return;saved.status='Uncertain';state.operations.holds[input.booking_id]='Exact event unavailable, changed or conference incomplete; no duplicate create';const booking=state.operations.bookings[input.booking_id];if(booking?.id===q.event_id&&booking.scope_sha256===hash(b))booking.verified=false;const r=state.prospects[b.prospect_id];if(r?.meeting?.event_id===q.event_id)r.meeting.current_status='Needs review';bump(state,app);});return {booking_id:input.booking_id,status:'Uncertain'};}
 }

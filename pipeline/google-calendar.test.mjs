@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHostedDesk} from './hosted-desk.mjs';
 import {ConditionalLifecycleStore} from './lifecycle-store.mjs';
-import {StudioLifecycle} from './lifecycle.mjs';
+import {StudioLifecycle,hash} from './lifecycle.mjs';
 import {fixtureReply} from './lifecycle-fixtures.mjs';
 const origin='https://calendar.example.invalid',at='2026-10-24T15:00:00.000Z',account='ensizziyo@evzdigital.studio';
 const baseEnv={CONTEXT:'deploy-preview',SITE_ID:'fictional-site',DEPLOY_ID:'fictional-deploy',EVZ_OPERATIONS_DESK_ENABLED:'fictional-preview',EVZ_OPERATIONS_ORIGIN:origin,EVZ_OPERATIONS_BLOB_NAMESPACE:'evz-redesign-proof-calendar-fictional',EVZ_OPERATIONS_OWNER_KEY:'o'.repeat(43),EVZ_OPERATIONS_FRIEND_KEY:'f'.repeat(43),EVZ_OPERATIONS_SESSION_SECRET:'s'.repeat(43),EVZ_OPERATIONS_GOOGLE_CALENDAR:'fictional-calendar-v1'};
@@ -32,7 +32,8 @@ export async function calendarFixture(){
  // The OAuth proof advances this clock; booking calls need a current session/CSRF too.
  const request=async(path,data,actor='owner')=>handler(new Request(origin+'/desk/api/calendar/'+path,{method:'POST',headers:await signed(actor),body:JSON.stringify(data)}));
  const call=async(path,data,actor='owner')=>{const r=await request(path,data,actor),body=await r.json();assert.equal(r.status,200,JSON.stringify(body));return body;};
- return {app,raw,env:options.env,options,calls,token,input,request,call,provider,mode:v=>mode=v,busy:v=>busy=v,onRequest:v=>onRequest=v,advance:ms=>clock+=ms,restart:()=>handler=createHostedDesk(options),config:fn=>fn(entry.data.config),state:fn=>fn(entry.data.state),event:()=>event};
+ const signedEvent=async(event,actor)=>handler(new Request(origin+'/desk/api/event',{method:'POST',headers:await signed(actor),body:JSON.stringify({revision:(await app.snapshot()).revision,event})}));
+ return {app,raw,env:options.env,options,calls,token,input,request,call,signedEvent,provider,mode:v=>mode=v,busy:v=>busy=v,onRequest:v=>onRequest=v,advance:ms=>clock+=ms,restart:()=>handler=createHostedDesk(options),config:fn=>fn(entry.data.config),state:fn=>fn(entry.data.state),event:()=>event};
 }
 test('signed booking uses current availability and existing confirmation/intent/meeting authority',async()=>{
  const f=await calendarFixture(),queued=await f.call('queue',await f.input());assert.equal(queued.queued,true);assert.equal(queued.booked,false);
@@ -151,4 +152,41 @@ test('lost verified write or effect acknowledgement and reconciliation CAS confl
 test('an older reconciliation cannot overwrite a newer accepted readback after its claim is superseded',async()=>{
  const f=await calendarFixture(),q=await f.call('queue',await f.input());f.mode('lost');await f.call('dispatch',q);f.mode('');let release,started;const begun=new Promise(r=>started=r),wait=new Promise(r=>release=r);let first=true;
  f.options.googleCalendarOptions.fetcher=async(url,o)=>{const response=await f.provider(url,o);if(first&&o.method==='GET'&&new URL(url).pathname.includes('/events/')){first=false;started();await wait;}return response;};f.restart();const old=f.call('reconcile',q);await begun;f.mode('accepted');assert.equal((await f.call('reconcile',q)).receipt.guest_response,'accepted');release();assert.equal((await old).status,'Uncertain');const state=await f.app.snapshot();assert.equal(state.operations.requests[q.booking_id+'-create'].status,'Verified');assert.equal(state.prospects['shared-proof'].meeting.guest_response,'accepted');assert.equal(Object.values(state.events).filter(e=>e.type==='meeting_verified').length,1);
+});
+
+for(const [booker,stopper] of [['owner','friend'],['friend','owner']])test(booker+' create claim acknowledgement cannot outlive the other signed operator stop',async()=>{
+ const f=await calendarFixture(),q=await f.call('queue',await f.input(),booker),logical=q.booking_id+'-create',set=f.raw.setJSON.bind(f.raw);
+ let release,started,paused=false;const begun=new Promise(r=>started=r),wait=new Promise(r=>release=r);
+ f.raw.setJSON=async(key,data,options)=>{const result=await set(key,data,options),saved=data.state.operations?.requests?.[logical];if(!paused&&saved?.status==='Uncertain'&&saved.dispatch_started_at&&!saved.read_claim){paused=true;started();await wait;}return result;};
+ const dispatch=f.request('dispatch',q,booker);await begun;
+ const stop=await f.signedEvent({id:'stop-during-claim-ack',prospect_id:'shared-proof',type:'contact_stopped',at,data:{reason:'do_not_contact'}},stopper);assert.equal(stop.status,200,await stop.text());
+ assert.equal((await f.app.snapshot()).prospects['shared-proof'].restriction,'do_not_contact');release();
+ const response=await dispatch;assert.equal(f.calls.filter(c=>c.method==='POST'&&c.path.endsWith('/events')).length,0);assert.equal(response.status,200);assert.equal((await response.json()).status,'Uncertain');
+ const state=await f.app.snapshot();assert.equal(state.operations.requests[logical].status,'Uncertain');assert.equal(state.prospects['shared-proof'].meeting,undefined);
+ assert.equal(f.calls.filter(c=>c.method==='POST'&&c.path.endsWith('/events')).length,0);f.restart();await f.request('dispatch',q,booker);assert.equal(f.calls.filter(c=>c.method==='POST'&&c.path.endsWith('/events')).length,0);
+});
+
+test('a superseding read claim prevents the older dispatcher and its catch from changing that request',async()=>{
+ const f=await calendarFixture(),q=await f.call('queue',await f.input()),logical=q.booking_id+'-create',set=f.raw.setJSON.bind(f.raw);
+ let release,started,paused=false;const begun=new Promise(r=>started=r),wait=new Promise(r=>release=r);
+ f.raw.setJSON=async(key,data,options)=>{const result=await set(key,data,options),saved=data.state.operations?.requests?.[logical];if(!paused&&saved?.dispatch_started_at&&!saved.read_claim){paused=true;started();await wait;}return result;};
+ const older=f.request('dispatch',q);await begun;assert.equal((await f.call('reconcile',q)).status,'Uncertain');const successor=hash((await f.app.snapshot()).operations.requests[logical]);release();await older;
+ assert.equal(hash((await f.app.snapshot()).operations.requests[logical]),successor);assert.equal(f.calls.filter(c=>c.method==='POST'&&c.path.endsWith('/events')).length,0);
+});
+
+test('token scopes remain exact after preflight and before the single insert',async()=>{
+ const f=await calendarFixture(),q=await f.call('queue',await f.input());let busy=0;
+ f.onRequest(u=>{if(u.pathname.endsWith('/freeBusy')&&++busy===2)f.token.scopes.push('https://www.googleapis.com/auth/calendar');});
+ assert.equal((await f.call('dispatch',q)).status,'Uncertain');assert.equal(f.calls.filter(c=>c.method==='POST'&&c.path.endsWith('/events')).length,0);assert.equal((await f.app.snapshot()).operations.requests[q.booking_id+'-create'].status,'Uncertain');
+});
+
+test('a lost verified acknowledgement preserves its terminal receipt for exact reconciliation',async()=>{
+ const f=await calendarFixture(),q=await f.call('queue',await f.input()),logical=q.booking_id+'-create',set=f.raw.setJSON.bind(f.raw);let lost=false;
+ f.raw.setJSON=async(key,data,options)=>{const result=await set(key,data,options);if(!lost&&data.state.operations?.requests?.[logical]?.status==='Verified'){lost=true;throw Error('Fictional lost terminal acknowledgement');}return result;};
+ assert.equal((await f.call('dispatch',q)).status,'Uncertain');const saved=(await f.app.snapshot()).operations.requests[logical];assert.equal(saved.status,'Verified');assert.equal(saved.receipt.invitation_delivery,'Unverified');assert.equal(saved.receipt.guest_response,'needsAction');
+ assert.equal((await f.call('reconcile',q)).status,'Verified');assert.equal(f.calls.filter(c=>c.method==='POST'&&c.path.endsWith('/events')).length,1);assert.equal(Object.values((await f.app.snapshot()).events).filter(e=>e.type==='meeting_verified').length,1);
+});
+
+test('the signed confirmation must retain its exact event type, booking and prospect identity',async()=>{
+ for(const change of [e=>e.type='note_added',e=>e.data.booking_id='unrelated-booking',e=>e.prospect_id='unrelated-prospect']){const f=await calendarFixture(),q=await f.call('queue',await f.input());f.state(s=>change(s.events[q.booking_id+'-confirmed']));assert.equal((await f.request('dispatch',q)).status,400);assert.equal(f.calls.filter(c=>c.path.endsWith('/events')).length,0);}
 });
