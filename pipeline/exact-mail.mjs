@@ -1,10 +1,11 @@
-import {operationsMailCapability,operationsMailProfile,hasOperationsMail,sharedMailBoundary,declaredMailRoute,newThreadMailHold,mailSourceEvidence,mailWitness,currentMailAuthority,mailObservationCount,mailStorageAllowance,mailRawCeiling,mailOwnedState,assertSharedMailAction} from './shared-operations-exact-mail.mjs';
+import {operationsPDFMailCapability,isOperationsMail,pdfAuthorization,reservePDFIncoming,assertPDFIncomingGrant,pdfCoverageActive,operationsMailCapability,operationsMailProfile,hasOperationsMail,sharedMailBoundary,declaredMailRoute,newThreadMailHold,mailSourceEvidence,mailWitness,currentMailAuthority,mailObservationCount,mailStorageAllowance,mailRawCeiling,mailOwnedState,assertSharedMailAction} from './shared-operations-exact-mail.mjs';
 import {check,hash,businessDate} from './lifecycle.mjs';
 import {replyDraftCurrent,validReplySource} from './reply-content.mjs';
 import {projectWorkContext} from './project-work.mjs';
 import {readProjectAsset,projectAssetVersion} from './project-assets.mjs';
 import {composeExactMail,googleHostedTransport,mailLimits,byteHash,mailMessageId} from './google-hosted-transport.mjs';
 import {teamNotificationBoundary,notificationPolicy,currentNotificationPolicy,notificationPackageInState,notificationBudget} from './exact-team-notifications.mjs';
+import {publishPDFRoute} from './google-incoming-mail.mjs';
 import {randomUUID} from 'node:crypto';
 
 const actorCheck=actor=>check(['owner','friend'].includes(actor),'Exact email needs a signed operator');
@@ -13,7 +14,7 @@ const bump=(s,app)=>{s.revision++;s.updated_at=app.now().toISOString();};
 function capability(app,config,env,internal=false){
  if(internal){teamNotificationBoundary(app,config);check(env.EVZ_OPERATIONS_GOOGLE_TEAM_NOTIFICATIONS==='fictional-exact-team-v1','Exact internal notification delivery is disabled');return notificationPolicy(config);}
  check(!app.store?.inertBinding&&config.shared_capability!=='inert-shared-v1','D2 notes-only authority rejects email execution');
- if(config.shared_capability===operationsMailCapability)return sharedMailBoundary(app,config,env);
+ if(isOperationsMail(config.shared_capability))return sharedMailBoundary(app,config,env);
  const c=config.google_exact_mail;
  check(env.EVZ_OPERATIONS_GOOGLE_EXACT_MAIL==='fictional-exact-mail-v1'&&c?.enabled===true&&c.capability==='fictional-exact-mail-v1'&&config.mode==='controlled','Hosted exact email is disabled; production source capability remains unavailable');
  check(c.run_id===config.run_id&&key(c.grant_id)&&c.account_email===config.sender.account_email&&c.from==='hello@evzdigital.studio'&&c.from===config.sender.email&&Number.isInteger(c.daily_limit)&&c.daily_limit>0&&c.daily_limit<=20,'Exact workspace, business owner, sender and bounded allowance binding required');
@@ -65,15 +66,16 @@ function exactSelector(input,approve=false){
 }
 export async function exactMailPackage(app,input,actor){
  check(['reply','project'].includes(input.kind),'Use the separate internal notification review caller');const data=await mailEnvelope(app);if(hasOperationsMail({...app,config:data.config}))exactSelector(input);
- const p=packageInState(data.state,data.config,input,actor);return hasOperationsMail({...app,config:data.config})?{...p,execution_hold:p.kind==='project'?newThreadMailHold:null}:p;
+ const p=packageInState(data.state,data.config,input,actor);return hasOperationsMail({...app,config:data.config})?{...p,execution_hold:p.kind==='project'&&data.config.shared_capability!==operationsPDFMailCapability?newThreadMailHold:null}:p;
 }
 export function applyMailApproval(s,config,input,actor,at,sourceEvidence=null){
  check(input.revision===s.revision&&key(input.event_id)&&input.approved===true&&input.facts_checked===true,'Review and explicitly approve the exact recipient, complete body/signature and PDF bytes');
  if(sourceEvidence)exactSelector(input,true);const p=packageInState(s,config,input,actor);check(input.package_sha256===p.sha256,'Exact package changed; review it again');
- if(sourceEvidence){declaredMailRoute(s,config,p);check(!Object.values(s.actions).some(other=>other.prospect_id===p.project_id&&other.type==='email'&&(['Queued','Pending','Uncertain'].includes(other.status)||s.operations?.requests?.[other.id+'-intent']&&!['Verified','Cancelled'].includes(s.operations.requests[other.id+'-intent'].status))),'Existing conversation email authority must be reconciled; no replacement action');}
+ if(sourceEvidence){declaredMailRoute(s,config,p,new Date(at));check(!Object.values(s.actions).some(other=>other.prospect_id===p.project_id&&other.type==='email'&&(['Queued','Pending','Uncertain'].includes(other.status)||s.operations?.requests?.[other.id+'-intent']&&!['Verified','Cancelled'].includes(s.operations.requests[other.id+'-intent'].status))),'Existing conversation email authority must be reconciled; no replacement action');}
  const id='exact-'+hash({run:s.run_id,project:p.project_id,kind:p.kind,draft:p.draft_id}).slice(0,32),existing=s.actions[id];
  check(!existing||!sourceEvidence&&existing.payload.package_sha256===p.sha256&&!s.operations?.requests?.[id+'-intent'],'Existing exact intent or changed package must be reconciled; no replacement send');
- const event={id:input.event_id,type:'exact_mail_approved',prospect_id:p.project_id,actor,at,data:{package_sha256:p.sha256,action_id:id,...(sourceEvidence?{source_evidence_sha256:hash(sourceEvidence)}:{})}};
+ const incoming=sourceEvidence&&p.kind==='project'?pdfAuthorization(s,config,p,{active:true,now:new Date(at)}):null;
+ const event={id:input.event_id,type:'exact_mail_approved',prospect_id:p.project_id,actor,at,data:{package_sha256:p.sha256,action_id:id,...(sourceEvidence?{source_evidence_sha256:hash(sourceEvidence),...(incoming?{incoming_authorization_event:incoming.id,incoming_permission_sha256:hash(config.internal_dispatch.incoming_pdf)}:{})}:{})}};
  check(!s.events[event.id],'Approval event already exists; read the saved action');
  s.events[event.id]=event;s.actions[id]={id,prospect_id:p.project_id,type:'email',status:'Queued',assigned_to:actor,created_at:event.at,payload:{exact_mail:true,package_sha256:p.sha256,selector:{project_id:input.project_id,kind:input.kind,...(input.draft_id?{draft_id:input.draft_id}:{})},approval_event:event.id,package:p,...(sourceEvidence?{source_evidence:structuredClone(sourceEvidence)}:{})}};
  s.revision++;s.updated_at=at;return {action_id:id,package_sha256:p.sha256,status:'Approved; transport disabled until separately bound'};
@@ -87,19 +89,20 @@ export async function approveExactMail(app,input,actor){
 }
 // The caller and independent store replay share these domain mutations, never a proposed after-state.
 export function applyMailStep(state,config,w,derived={}){
- const id=w.action_id,logical=id+'-intent',a=state.actions[id],p=a.payload.package,internal=a.payload.internal_notification===true,shared=config.shared_capability===operationsMailCapability;let q=state.operations?.requests?.[logical];
+ const id=w.action_id,logical=id+'-intent',a=state.actions[id],p=a.payload.package,internal=a.payload.internal_notification===true,shared=isOperationsMail(config.shared_capability);let q=state.operations?.requests?.[logical];
  if(w.type==='reserve'){
   const today=businessDate(w.at),requests=Object.values(state.operations?.requests??{}),legacy=Object.values(state.prospects).filter(r=>r.information_draft?.approved_at&&businessDate(r.information_draft.approved_at)===today).length,c=internal?notificationPolicy(config):config.google_exact_mail;
   if(internal)notificationBudget(state,currentNotificationPolicy(state,config,new Date(w.at)),new Date(w.at));
   check(!q&&!state.operations?.email?.[id]&&legacy+requests.filter(r=>['intent','send'].includes(r.operation)&&r.prepared_at&&businessDate(r.prepared_at)===today).length<(internal?c.sender_daily_limit:c.daily_limit),'Daily combined sender reservation exhausted');
   const o=state.operations??={};o.requests??={};o.email??={};q=o.requests[logical]={logical,operation:'intent',transport:'google-exact-mail-v1',status:'Reserved',prepared_at:w.at,request_claim:w.details.request_claim,dispatch_deadline:w.deadline,package_sha256:p.sha256,binding_sha256:hash(c),rfc_message_id:mailMessageId(id),...(shared?{source_config_sha256:hash(config),observations:[]}:{}) ,...(internal?{internal_notification:true,policy_id:c.policy_id}:{})};
+  if(shared&&p.kind==='project')q.incoming_pdf=reservePDFIncoming(state,config,p,a.payload.source_evidence.binding,w.at);
   o.email[id]={prospect_id:a.prospect_id,status:'Reserved',package_sha256:p.sha256};a.status='Pending';if(internal)state.team_notifications.messages[p.notification_id].delivery={status:'Reserved; delivery held',action_id:id};
  }else if(w.type==='materialize'){check(q.status==='Reserved'&&!q.raw_base64url,'MIME already materialized; never retry');q.mime_sha256=w.details.mime_sha256;q.raw_base64url=w.details.raw_base64url;
- }else if(w.type==='dispatch'){check(q.status==='Reserved'&&!q.dispatch_claim&&!q.read_claim,'Dispatch already claimed; never retry');q.status='Uncertain';q.dispatch_started_at=w.at;q.dispatch_claim=w.details.dispatch_claim;q.fresh_source=derived.fresh_source;state.operations.email[id].status='Uncertain';if(internal)state.team_notifications.messages[p.notification_id].delivery={status:'Uncertain; dispatch claimed, no resend permission',action_id:id};
+ }else if(w.type==='dispatch'){check(q.status==='Reserved'&&!q.dispatch_claim&&!q.read_claim,'Dispatch already claimed; never retry');q.status='Uncertain';q.dispatch_started_at=w.at;q.dispatch_claim=w.details.dispatch_claim;q.fresh_source=derived.fresh_source;if(shared&&p.kind==='project'){const profile=w.observations.find(o=>o.path==='profile');check(/^[1-9][0-9]{0,29}$/.test(profile?.value?.historyId)&&BigInt(profile.value.historyId)>=BigInt(q.incoming_pdf.reserved_cursor),'Pre-send original history anchor required');q.incoming_pdf.status='Unresolved';q.incoming_pdf.anchor={history_id:profile.value.historyId,observation_sha256:hash(profile)};}state.operations.email[id].status='Uncertain';if(internal)state.team_notifications.messages[p.notification_id].delivery={status:'Uncertain; dispatch claimed, no resend permission',action_id:id};
  }else if(w.type==='sent'){check(q.status==='Uncertain'&&q.dispatch_claim&&!q.receipt,'Only the original unsettled dispatch may retain a response');q.provider_message_id=derived.sent.id;q.provider_thread_id=derived.sent.thread_id;
  }else if(w.type==='read'){check(q&&!q.receipt&&q.status!=='Verified'&&q.raw_base64url,'Exact materialized unsettled intent required');q.read_claim=w.details.read_claim;q.read_deadline=w.deadline;
- }else if(w.type==='verified'){const receipt=derived.receipt;check(q.read_claim&&!q.receipt,'Exact original read claim required');q.status='Verified';q.receipt=receipt;q.verified_at=w.at;a.status='Verified';a.delivery={...receipt,at:w.at};state.operations.email[id]={...state.operations.email[id],status:'Verified',receipt};if(internal){delete q.hold;delete a.hold;state.team_notifications.messages[p.notification_id].delivery={status:'Sender verified; inbox delivery unverified',action_id:id,receipt};}
- }else if(w.type==='hold'){check(q&&q.status!=='Verified'&&!q.receipt,'Cannot replace a missing or terminal exact intent');q.status=q.dispatch_started_at?'Uncertain':'Held';q.hold='Provider/source check or response failed; no automatic resend. Reconcile the reserved intent.';a.status='Uncertain';state.operations.email[id].status=q.status;if(internal){a.hold=q.hold;state.team_notifications.messages[p.notification_id].delivery={status:q.status+'; no resend permission',action_id:id};}
+ }else if(w.type==='verified'){const receipt=derived.receipt;check(q.read_claim&&!q.receipt,'Exact original read claim required');q.status='Verified';q.receipt=receipt;q.verified_at=w.at;a.status='Verified';a.delivery={...receipt,at:w.at};state.operations.email[id]={...state.operations.email[id],status:'Verified',receipt};if(shared&&p.kind==='project')publishPDFRoute(state,config,id,w.at,derived.incoming_active===true);if(internal){delete q.hold;delete a.hold;state.team_notifications.messages[p.notification_id].delivery={status:'Sender verified; inbox delivery unverified',action_id:id,receipt};}
+ }else if(w.type==='hold'){check(q&&q.status!=='Verified'&&!q.receipt,'Cannot replace a missing or terminal exact intent');q.status=q.dispatch_started_at?'Uncertain':'Held';if(shared&&q.incoming_pdf&&!q.dispatch_started_at){q.incoming_pdf.status='Held';q.incoming_pdf.hold={code:'PRE_SEND_HELD',at:w.at,tick_id:null};}q.hold='Provider/source check or response failed; no automatic resend. Reconcile the reserved intent.';a.status='Uncertain';state.operations.email[id].status=q.status;if(internal){a.hold=q.hold;state.team_notifications.messages[p.notification_id].delivery={status:q.status+'; no resend permission',action_id:id};}
  }else throw Error('Unsupported exact mail step');
  if(shared&&w.type!=='reserve'){q.observations.push({type:w.type,at:w.at,deadline:w.deadline,claim:{request_claim:q.request_claim,dispatch_claim:q.dispatch_claim??null,read_claim:q.read_claim??null},grant:structuredClone(w.grant),requests:structuredClone(w.observations)});check(mailObservationCount(q)<=64,'Finite exact mail observation history exceeded');}
  state.revision++;state.updated_at=w.at;return w.type==='verified'?{action_id:id,status:'Verified',receipt:q.receipt}:undefined;
@@ -128,12 +131,12 @@ function mailFence(app,config,action,actor,env,budget,request=null,email=null){
  function validate(s,actual,source){
   budget.check();check(hash(actual)===hash(config),'Google execution configuration changed');capability(app,actual,env,internal);
   check(same(s),'Exact email request, attempt or action ownership changed; reconcile the retained intent');
-  if(source){check(s.actions[id].assigned_to===actor,'Only the signed approved assignee may dispatch this message');currentExactMail(s,actual,s.actions[id],app.now());if(shared)currentMailAuthority(s,actual,s.actions[id],app.store.dispatchBinding);if(expected)check(businessDate(expected.prepared_at)===businessDate(app.now()),'Sender reservation date changed; held without dispatch');}
+  if(source){check(s.actions[id].assigned_to===actor,'Only the signed approved assignee may dispatch this message');currentExactMail(s,actual,s.actions[id],app.now());if(shared)currentMailAuthority(s,actual,s.actions[id],app.store.dispatchBinding,{now:app.now()});if(expected)check(businessDate(expected.prepared_at)===businessDate(app.now()),'Sender reservation date changed; held without dispatch');}
   if(shared&&expected?.raw_base64url&&expected.status!=='Verified'&&(source||expected.read_claim)){const read=!source;check(mailObservationCount(expected)+(read?6:10)<=64,'Finite raw observation allowance exhausted before provider work');mailStorageAllowance({schema_version:1,config:actual,state:s,dispatch_source:s.actions[id].payload.source_evidence.dispatch_source},expected,{read});}
   return s;
  }
  return {get expected(){return expected;},same,
-  async read(source=false){const data=await budget.run(()=>mailEnvelope(app));return validate(data.state,data.config,source);},
+  async read(source=false){let data=await budget.run(()=>mailEnvelope(app));if(source&&shared&&action.payload.package.kind==='project'){await budget.run(()=>assertPDFIncomingGrant(app,data.config,app.now().toISOString()));data=await budget.run(()=>mailEnvelope(app));}return validate(data.state,data.config,source);},
   async change(fn,source=false,holding=false,stage=null){
    if(!holding)prior={request:structuredClone(expected),email:structuredClone(email),identity};const w={};
    return budget.run(()=>app.change((s,actual)=>{
@@ -150,7 +153,7 @@ async function mailResult(app,id,fence,budget,error){
  try{const {state}=await budget.run(()=>mailEnvelope(app));check(fence.same(state),'Exact email ownership changed; read the saved intent');const q=state.operations?.requests?.[id+'-intent'];return {action_id:id,status:q?.status??'Uncertain',...(q?.status==='Verified'?{receipt:q.receipt}:{}),...failure};}catch{return {action_id:id,status:'Uncertain',...failure};}
 }
 async function holdMail(app,id,internal,fence,budget,error,phase='dispatch',provider=null){
- try{await fence.change((s,q)=>{if(!q||q.status==='Verified'||q.receipt)return;q.status=q.dispatch_started_at?'Uncertain':'Held';q.hold='Provider/source check or response failed; no automatic resend. Reconcile the reserved intent.';s.actions[id].status='Uncertain';s.operations.email[id].status=q.status;if(internal){s.actions[id].hold=q.hold;s.team_notifications.messages[s.actions[id].payload.package.notification_id].delivery={status:q.status+'; no resend permission',action_id:id};}bump(s,app);},false,true,{type:'hold',details:{phase,reason_code:budget.signal.aborted?'DEADLINE':'CHECK_FAILED'},provider});}catch{}
+ try{await fence.change((s,q)=>{if(!q||q.status==='Verified'||q.receipt)return;q.status=q.dispatch_started_at?'Uncertain':'Held';if(shared&&q.incoming_pdf&&!q.dispatch_started_at){q.incoming_pdf.status='Held';q.incoming_pdf.hold={code:'PRE_SEND_HELD',at:w.at,tick_id:null};}q.hold='Provider/source check or response failed; no automatic resend. Reconcile the reserved intent.';s.actions[id].status='Uncertain';s.operations.email[id].status=q.status;if(internal){s.actions[id].hold=q.hold;s.team_notifications.messages[s.actions[id].payload.package.notification_id].delivery={status:q.status+'; no resend permission',action_id:id};}bump(s,app);},false,true,{type:'hold',details:{phase,reason_code:budget.signal.aborted?'DEADLINE':'CHECK_FAILED'},provider});}catch{}
  return mailResult(app,id,fence,budget,error);
 }
 async function readExactMail(app,action,internal,provider,fence,budget){
@@ -160,7 +163,7 @@ async function readExactMail(app,action,internal,provider,fence,budget){
  await budget.run(()=>provider.preflight(options));await fence.read();
  const q=fence.expected,receipt=await budget.run(()=>provider.reconcileSent(expectedFor(action,q),q.provider_message_id??null,options));
  await fence.read();
- const result=await fence.change((s,saved)=>{saved.status='Verified';saved.receipt=receipt;saved.verified_at=app.now().toISOString();s.actions[id].status='Verified';s.actions[id].delivery={...receipt,at:saved.verified_at};s.operations.email[id]={...s.operations.email[id],status:'Verified',receipt};if(internal){delete saved.hold;delete s.actions[id].hold;s.team_notifications.messages[action.payload.package.notification_id].delivery={status:'Sender verified; inbox delivery unverified',action_id:id,receipt};}bump(s,app);return {action_id:id,status:'Verified',receipt};},false,false,{type:'verified',details:{},provider,derived:{receipt}});
+ const result=await fence.change((s,saved)=>{saved.status='Verified';saved.receipt=receipt;saved.verified_at=app.now().toISOString();s.actions[id].status='Verified';s.actions[id].delivery={...receipt,at:saved.verified_at};s.operations.email[id]={...s.operations.email[id],status:'Verified',receipt};if(internal){delete saved.hold;delete s.actions[id].hold;s.team_notifications.messages[action.payload.package.notification_id].delivery={status:'Sender verified; inbox delivery unverified',action_id:id,receipt};}bump(s,app);return {action_id:id,status:'Verified',receipt};},false,false,{type:'verified',details:{},provider,derived:{receipt,...(hasOperationsMail(app)&&action.payload.package.kind==='project'?{incoming_active:await budget.run(()=>pdfCoverageActive(app,app.config,app.now().toISOString()))}:{})}});
  // A late successful ACK cannot publish over a newer request/receipt.
  await fence.read();return result;
 }
@@ -168,11 +171,11 @@ export async function dispatchExactMail(app,input,{actor,env=process.env,transpo
  actorCheck(actor);check(key(input.action_id),'Choose exact saved send action');check(!app.store?.inertBinding,'D2 notes-only authority rejects email execution');
  const budget=mailBudget(app,signal);
  try{
-  const {config,state:s}=await budget.run(()=>mailEnvelope(app)),a=s.actions[input.action_id],internal=a?.payload?.internal_notification===true;if(hasOperationsMail({...app,config})){check(Object.keys(input).join(',')==='action_id','Use the exact action selector');assertSharedMailAction(s,input.action_id);}const c=capability(app,config,env,internal);
+  const {config,state:s}=await budget.run(()=>mailEnvelope(app)),a=s.actions[input.action_id],internal=a?.payload?.internal_notification===true;if(hasOperationsMail({...app,config})){check(Object.keys(input).join(',')==='action_id','Use the exact action selector');assertSharedMailAction(s,input.action_id,config);}const c=capability(app,config,env,internal);
   check(a?.assigned_to===actor,'Only the signed approved assignee may dispatch this message');
   const logical=a.id+'-intent',prior=s.operations?.requests?.[logical];if(prior)return {action_id:a.id,status:prior.status,reason:'Intent already reserved; reconcile only, never dispatch again'};
   check(!s.operations?.email?.[a.id],'Existing email authority must be reconciled; no replacement intent');
-  const p=currentExactMail(s,config,a,app.now()),shared=hasOperationsMail(app);if(shared){currentMailAuthority(s,config,a,app.store.dispatchBinding);check(!transport,'Shared exact mail uses its existing raw observed Google transport only');}
+  const p=currentExactMail(s,config,a,app.now()),shared=hasOperationsMail(app);if(shared){currentMailAuthority(s,config,a,app.store.dispatchBinding,{now:app.now()});check(!transport,'Shared exact mail uses its existing raw observed Google transport only');}
   const fence=mailFence(app,config,a,actor,env,budget);let at=app.now().toISOString(),sending=true,phase='materialize';const requestClaim=randomUUID();
   await fence.change(state=>{
    const reservationNow=app.now();if(internal)at=reservationNow.toISOString();

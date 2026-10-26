@@ -1,6 +1,6 @@
-import {check,hash,initialConfig,StudioLifecycle} from './lifecycle.mjs';
-import {incomingRoutes,validateIncomingImport} from './google-incoming-mail.mjs';
-import {validateDispatchBinding,validateDispatchPolicy} from './shared-internal-dispatch.mjs';
+import {check,hash,initialConfig,StudioLifecycle,businessDate} from './lifecycle.mjs';
+import {incomingRoutes,incomingMailView,validateIncomingImport,pdfIncomingRequest,publishPDFRoute,validatePDFIncomingEvidence,validatePDFIncomingHistory} from './google-incoming-mail.mjs';
+import {validateDispatchBinding,validateDispatchPolicy,currentDispatch} from './shared-internal-dispatch.mjs';
 import {packageInState,currentExactMail,applyMailApproval,applyMailStep,retainedAction,expectedFor} from './exact-mail.mjs';
 import {composeExactMail,byteHash,mailMessageId,mailPreflight,mailFreshSource,mailSendBody,mailSendResponse,mailSentReadback,mailObservationJSON} from './google-hosted-transport.mjs';
 import {blobProjectOriginalStore} from './shared-project-originals.mjs';
@@ -11,28 +11,96 @@ import {validateCalendarPolicy} from './shared-operations-calendar.mjs';
 import {nodePDFResources} from './project-authoring-node.mjs';
 
 export const operationsMailCapability='shared-operations-exact-mail-v1';
+export const operationsPDFMailCapability='shared-operations-pdf-mail-v1';
+export const isOperationsMail=value=>[operationsMailCapability,operationsPDFMailCapability].includes(value);
 export const operationsMailProfile='operations-exact-mail-gmail-v1';
 export const operationsMailScopes=Object.freeze(['openid','https://www.googleapis.com/auth/userinfo.email','https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.send']);
 export const mailRecordEvents=Object.freeze(['reply_reviewed','reply_draft_saved','reply_draft_approved']);
 export const mailTransitionSchema=Object.freeze({version:1,mail_events:mailRecordEvents,transitions:['approve','reserve','materialize','dispatch','sent','read','verified','hold'],grant_profile:operationsMailProfile,incoming_mode:'declared-existing-thread-only-new-thread-held',recovery:'retained-mime-exact-sent-read-only-no-resend'});
+export const pdfMailTransitionSchema=Object.freeze({...mailTransitionSchema,version:2,incoming_mode:'one-source-bound-project-new-conversation-v1',pdf_incoming:'one-exact-project-companion-v1'});
+export const mailSchemaFor=c=>c.shared_capability===operationsPDFMailCapability?pdfMailTransitionSchema:mailTransitionSchema;
 export const newThreadMailHold='New PDF conversation is not registered; sending and automatic incoming monitoring are held. Review and original retrieval remain available.';
 const exact=(v,names)=>check(v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).sort().join(',')===(names?names.split(','):[]).sort().join(','),'Unknown or missing exact mail fields');
 const key=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(v)&&!['__proto__','prototype','constructor'].includes(v);
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v),uuid=v=>typeof v==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(v);
 const utc=v=>typeof v==='string'&&Number.isFinite(Date.parse(v))&&new Date(v).toISOString()===v;
 const roles=['owner','friend'],readStages=['sent','read','verified','hold'];
-export const hasOperationsMail=app=>app.config?.shared_capability===operationsMailCapability&&app.store?.dispatchBinding?.scope.capability===operationsMailCapability;
+export const hasOperationsMail=app=>isOperationsMail(app.config?.shared_capability)&&app.store?.dispatchBinding?.scope.capability===app.config.shared_capability;
 export const mailObservationCount=q=>(q?.observations??[]).reduce((n,b)=>n+b.requests.length,0);
 export const mailOwnedState=s=>hash({request:s.q??null,action:retainedAction(s.a),email:s.email??null});
-export function assertSharedMailAction(state,id){
+export function assertSharedMailAction(state,id,config){
  const a=state.actions[id];
  const pdf=a?.payload?.package?.kind==='project'||Object.values(state.prospects).some(r=>(r.project_email_drafts??[]).some(d=>id==='exact-'+hash({run:state.run_id,project:r.id,kind:'project',draft:d.id}).slice(0,32)));
- check(!pdf,newThreadMailHold);check(a?.payload?.exact_mail===true&&a.payload.internal_notification!==true,'Choose the existing separate exact prospect-mail action');
+ check(!pdf||config?.shared_capability===operationsPDFMailCapability,newThreadMailHold);check(a?.payload?.exact_mail===true&&a.payload.internal_notification!==true,'Choose the existing separate exact prospect-mail action');
 }
 export function validateMailPolicy(p,c){
  exact(p,'version,status,run_id,account_email,from,grant_id,grant_profile,approval_mode,kinds,operations,incoming_mode,daily_limit,execution_ms,request_ms,observation_limit');
- check(p.version===operationsMailCapability&&p.status==='UNAPPROVED'&&key(p.run_id)&&p.account_email==='ensizziyo@evzdigital.studio'&&p.from==='hello@evzdigital.studio'&&key(p.grant_id)&&p.grant_profile===operationsMailProfile&&p.approval_mode==='exact-signed-message-only'&&hash(p.kinds)===hash(['reply','project'])&&hash(p.operations)===hash(['package','approve','dispatch-once','exact-sent-reconcile'])&&p.incoming_mode===mailTransitionSchema.incoming_mode&&Number.isInteger(p.daily_limit)&&p.daily_limit>=1&&p.daily_limit<=20&&p.execution_ms===40000&&p.request_ms===25000&&p.observation_limit===64,'Exact separate unapproved mail policy required');
+ check(isOperationsMail(p.version)&&p.status==='UNAPPROVED'&&key(p.run_id)&&p.account_email==='ensizziyo@evzdigital.studio'&&p.from==='hello@evzdigital.studio'&&key(p.grant_id)&&p.grant_profile===operationsMailProfile&&p.approval_mode==='exact-signed-message-only'&&hash(p.kinds)===hash(['reply','project'])&&hash(p.operations)===hash(['package','approve','dispatch-once','exact-sent-reconcile'])&&p.incoming_mode===mailSchemaFor({shared_capability:p.version}).incoming_mode&&Number.isInteger(p.daily_limit)&&p.daily_limit>=1&&p.daily_limit<=20&&p.execution_ms===40000&&p.request_ms===25000&&p.observation_limit===64,'Exact separate unapproved mail policy required');
+ if(c)check(c.shared_capability===p.version,'Exact mail profile differs from its actual source');
  if(c)check(p.run_id===c.run_id&&p.account_email===c.sender.account_email&&p.from===c.sender.email&&[c.internal_dispatch?.grant_id,c.google_drive_originals?.grant_id,c.google_calendar?.grant_id,c.google_team_notifications?.grant_id].every(id=>id!==p.grant_id),'Exact mail workspace/sender and independent prebound grant required');return p;
+}
+export function validatePDFPermission(state,c,{current=true}={}){
+ check(c.shared_capability===operationsPDFMailCapability,'Only the separate PDF source permits this schema');
+ const p=c.internal_dispatch,entry=p.incoming_pdf;exact(entry,'version,mode,permission');exact(entry.permission,'project_id,draft_id,action_id,package_sha256,contact_sha256');
+ const f=entry.permission;check(entry.version===1&&entry.mode==='one-exact-project-companion-v1'&&[f.project_id,f.draft_id,f.action_id].every(key)&&sha(f.package_sha256)&&sha(f.contact_sha256)&&p.routes.length>=1&&p.routes.length<=11,'One exact PDF permission and one reserved route within twelve required');
+ if(current){const r=state.prospects[f.project_id],work=Object.values(r?.project_work??{}).find(w=>w.execution?.id===f.draft_id),actor=work?.assigned_to??r?.follow_up_owner;
+  check(r&&r.origin!=='workspace'&&roles.includes(actor),'Choose an existing incoming-eligible assigned project');
+  const pkg=packageInState(state,c,{project_id:f.project_id,kind:'project',draft_id:f.draft_id},actor);
+  check(pkg.sha256===f.package_sha256&&pkg.contact_sha256===f.contact_sha256&&f.action_id==='exact-'+hash({run:state.run_id,project:f.project_id,kind:'project',draft:f.draft_id}).slice(0,32),'Earlier incoming permission must name the unchanged current PDF package');
+ }
+ return entry;
+}
+export function pdfAuthorization(state,c,p,{active=false,now=new Date(state.updated_at),approval=null}={}){
+ const entry=validatePDFPermission(state,c,{current:false}),f=entry.permission,d=state.operations?.internal_dispatch;
+ check(p.kind==='project'&&p.project_id===f.project_id&&p.draft_id===f.draft_id&&p.sha256===f.package_sha256&&p.contact_sha256===f.contact_sha256,'This exact source permits only its one original PDF companion');
+ const event=approval?state.events[approval.data?.incoming_authorization_event]:d?.authorization;
+ exact(event,'id,type,actor,at,data');exact(event.data,'policy_sha256,policy');
+ check(key(event.id)&&event.type==='internal_dispatch_authorized'&&event.actor==='owner'&&utc(event.at)&&event.data.policy_sha256===hash(c.internal_dispatch)&&hash(event.data.policy)===hash(c.internal_dispatch)&&hash(state.events[event.id])===hash(event),'Genuinely earlier signed owner incoming permission required');
+ if(approval){const order=Object.keys(state.events);check(order.indexOf(event.id)>=0&&order.indexOf(event.id)<order.indexOf(approval.id)&&Date.parse(event.at)<=Date.parse(approval.at)&&approval.data.incoming_permission_sha256===hash(entry),'Exact message approval must follow its separate signed incoming permission');}
+ if(active){currentDispatch(state,c,now);check(hash(d.authorization)===hash(event),'Current owner permission changed');}
+ return event;
+}
+export function pdfFutureTicks(state,c,now){
+ const p=c.internal_dispatch,l=p.limits,all=[...(state.operations?.internal_dispatch_history??[]),state.operations?.internal_dispatch].filter(Boolean),ticks=all.flatMap(d=>Object.values(d.ticks??{}));
+ let count=0,next=+now+l.poll_seconds*1000,remaining=Math.min(l.ticks_lifetime-Object.keys(state.operations.internal_dispatch.ticks).length,Math.floor(p.host_allowance.available_ticks*.7)-ticks.length),dayCounts={};
+ for(const t of ticks)dayCounts[t.day]=(dayCounts[t.day]??0)+1;
+ for(;next<Date.parse(p.expires_at)&&count<remaining;next+=l.poll_seconds*1000){const day=businessDate(new Date(next));if((dayCounts[day]??0)<l.ticks_day){dayCounts[day]=(dayCounts[day]??0)+1;count++;}}
+ return count;
+}
+export function currentPDFMail(state,c,p,now=new Date(state.updated_at)){
+ validateIncomingImport(state,c);const event=pdfAuthorization(state,c,p,{active:true,now}),n=state.operations?.gmail_incoming;
+ check(n?.phase==='history'&&n.status==='Caught up'&&!n.pending&&!n.page&&!n.hold&&!n.resync_hold&&!state.operations?.holds?.gmail_incoming,'PDF send needs genuinely caught-up original incoming coverage');
+ check(!pdfIncomingRequest(state,c)||pdfIncomingRequest(state,c).action_id===c.internal_dispatch.incoming_pdf.permission.action_id,'Existing consumed PDF permission cannot be replaced');
+ check(c.internal_dispatch.limits.bytes_tick>=2120000&&pdfFutureTicks(state,c,now)>=86,'PDF monitoring requires capacity for 86 finite alternating continuations before token/send');return event;
+}
+export function reservePDFIncoming(state,c,p,binding,at){
+ const event=currentPDFMail(state,c,p,new Date(at)),entry=c.internal_dispatch.incoming_pdf;
+ return {schema_version:1,permission_sha256:hash(entry),authorization_event:event.id,authorization_sha256:hash(event),policy_sha256:hash(c.internal_dispatch),source_binding_sha256:hash(binding),reserved_cursor:state.operations.gmail_incoming.cursor,status:'Reserved',anchor:null,route:null,scope_change:null,progress:null,coverage:null,hold:null};
+}
+export function validateIncomingGrant(g,c,at){
+ exact(g,'profile,account,grant_id,scopes,expires_at');check(g.profile==='internal-dispatch-gmail-v1'&&g.account===c.internal_dispatch.account_email&&g.grant_id===c.internal_dispatch.grant_id&&Array.isArray(g.scopes)&&g.scopes.length===4&&hash([...g.scopes].sort())===hash([...operationsMailScopes].sort())&&Number.isSafeInteger(g.expires_at)&&g.expires_at>Date.parse(at)+10000,'Current independent source-bound incoming grant required');return g;
+}
+export async function assertPDFIncomingGrant(app,c,at){
+ check(app.store?.originalsEnvironment?.EVZ_INTERNAL_DISPATCH_RUNTIME===operationsPDFMailCapability,'Current PDF incoming runtime is disabled');
+ check(typeof app.store?.incomingGrant==='function','Independent incoming grant reader required');return validateIncomingGrant(await app.store.incomingGrant(),c,at);
+}
+export async function pdfCoverageActive(app,c,at){
+ try{check(app.store.originalsEnvironment?.EVZ_INTERNAL_DISPATCH_RUNTIME===operationsPDFMailCapability,'Incoming runtime is disabled');currentDispatch(await app.snapshot(),c,new Date(at));await assertPDFIncomingGrant(app,c,at);return true;}catch{return false;}
+}
+export function validatePDFMailImport(state){
+ for(const a of Object.values(state.actions??{}))if(a.payload?.exact_mail===true&&a.payload.internal_notification!==true&&a.payload.package?.kind==='project'){
+  const q=state.operations?.requests?.[a.id+'-intent'];if(!q?.dispatch_claim)continue;
+  check(q.status==='Verified'&&q.receipt&&q.incoming_pdf?.route&&(q.incoming_pdf.status==='Ready'||q.incoming_pdf.status==='Held'&&q.incoming_pdf.hold?.code==='COLLISION'),'Unresolved or uncovered old PDF effect holds the whole shared installation; retain its local inert recovery');
+ }
+}
+function g1Bytes(data,at){const body=JSON.stringify(data.state),files=(data.dispatch_source?.dependencies??[]).map(({path,bytes,sha256})=>({path,bytes,sha256}));return Buffer.byteLength(JSON.stringify({schema_version:2,created_at:at,sha256:hash(body),body,files,files_sha256:hash(files)}));}
+export function pdfIncomingStorageAllowance(data){
+ const bytes=data.config.internal_dispatch.limits.bytes_tick,I=2*bytes+64000;
+ check(Buffer.byteLength(JSON.stringify(data))+I<=20000000&&g1Bytes(data,data.state.updated_at)+I<=25000000&&Buffer.byteLength(JSON.stringify(data.state))+I<=14000000,'Next full PDF incoming observation/state/G1 exceeds the existing finite storage reserve');
+}
+function pdfScopeBytes(data,q){
+ const p=data.state.actions[q.logical.slice(0,-7)].payload.package,n=data.state.operations?.gmail_incoming,route={project_id:p.project_id,thread_id:'t'.repeat(100),original_id:'m'.repeat(100),from:p.from,to:p.to,subject:p.subject,rfc_message_id:q.rfc_message_id,contact_sha256:p.contact_sha256};
+ return Buffer.byteLength(JSON.stringify({route,new_main_route:route,scope_change:{at:data.state.updated_at,before:n,after_binding:'f'.repeat(64),after_routes_sha256:'f'.repeat(64)},progress:{phase:'history',cursor:'9'.repeat(30),page:'p'.repeat(500),pages:Array.from({length:20},(_,i)=>String(i).padStart(3,'0')+'p'.repeat(497)),pending:null,checked_at:data.state.updated_at,read_before:'9'.repeat(30),hold:null}}))+64000;
 }
 // Historical settings are inert. Accept the complete recognized policy config or hold; never carve out its hash.
 export function validateMailConfig(c){
@@ -49,41 +117,44 @@ export function validateMailConfig(c){
  for(const source of c.google_drive_originals.sources)exact(source,'project_id,asset_id,version_id,reference,name,mime_type,modified_time,drive_version,bytes,sha256'+(source.etag===undefined?'':',etag'));
  exact(c.google_incoming_mail,'enabled,capability,run_id,grant_id,account_email');
  for(const route of Object.values(c.operations.threads))check(Object.keys(route).every(k=>['thread_id','original_id','from','to','subject','rfc_message_id','sent_after','sent_before'].includes(k)),'Unknown original declared thread configuration');
- validateMailPolicy(c.google_exact_mail,c);validateDispatchPolicy(c.internal_dispatch);check(c.shared_capability===operationsMailCapability&&c.internal_dispatch.capability===operationsMailCapability&&c.mode==='production','Exact original shared mail capability required');
+ validateMailPolicy(c.google_exact_mail,c);validateDispatchPolicy(c.internal_dispatch);check(isOperationsMail(c.shared_capability)&&c.internal_dispatch.capability===c.shared_capability&&c.mode==='production','Exact original shared mail capability required');
  for(const flag of ['research_enabled','outreach_enabled','connector_writes_enabled','calls_enabled'])check(c[flag]===false,'General execution must remain disabled');
  check(c.runtime.enabled===false&&c.operations.enabled===false&&c.transcript_ai.enabled===false&&c.release.approved===false&&c.call_release.approved===false,'General release must remain revoked');return c;
 }
 export function validateMailSourceEvidence(e){
  exact(e,'schema_version,config,dispatch_source,binding');exact(e.binding,'scope,manifest_sha256');validateDispatchBinding(e.binding.scope);const c=validateMailConfig(e.config),m=e.dispatch_source,p=c.internal_dispatch;
- exact(m,'schema_version,kind,binding,source_state_sha256,source_config_sha256,config_sha256,dependencies,reconciliation,unsupported,allowed_events,human_events,authoring,generation,originals,calendar,mail,mail_events,original_source_state_sha256');
- check(e.schema_version===1&&m.schema_version===1&&m.kind==='shared-operations-exact-mail-source-v1'&&e.binding.scope.capability===operationsMailCapability&&e.binding.scope.run_id===c.run_id&&hash(c)===m.config_sha256&&hash(m)===e.binding.manifest_sha256&&hash(m.binding)===hash(e.binding.scope)&&hash(p)===e.binding.scope.policy_sha256&&hash(p.binding)===hash(Object.fromEntries(['workspace_id','run_id','site_id','deploy_id','origin','namespace'].map(k=>[k,e.binding.scope[k]])))&&hash(m.human_events)===hash(p.human_events)&&hash(m.authoring)===hash(p.authoring)&&hash(m.allowed_events)===hash([...p.human_events.manual,...p.human_events.project,...mailRecordEvents])&&hash(p.mail)===hash(m.mail)&&hash(p.mail.schema)===hash(mailTransitionSchema)&&hash(p.mail_events)===hash(mailRecordEvents)&&hash(m.mail_events)===hash(mailRecordEvents)&&p.mail.source_policy_sha256===hash(c.google_exact_mail)&&sha(m.source_state_sha256)&&sha(m.source_config_sha256)&&sha(m.original_source_state_sha256),'Original complete source/config/manifest/binding evidence differs');
+ exact(m,'schema_version,kind,binding,source_state_sha256,source_config_sha256,config_sha256,dependencies,reconciliation,unsupported,allowed_events,human_events,authoring,generation,originals,calendar,mail,mail_events,original_source_state_sha256'+(c.shared_capability===operationsPDFMailCapability?',incoming_pdf':''));
+ check(e.schema_version===1&&m.schema_version===1&&m.kind===(c.shared_capability===operationsPDFMailCapability?'shared-operations-pdf-mail-source-v1':'shared-operations-exact-mail-source-v1')&&e.binding.scope.capability===c.shared_capability&&e.binding.scope.run_id===c.run_id&&hash(c)===m.config_sha256&&hash(m)===e.binding.manifest_sha256&&hash(m.binding)===hash(e.binding.scope)&&hash(p)===e.binding.scope.policy_sha256&&hash(p.binding)===hash(Object.fromEntries(['workspace_id','run_id','site_id','deploy_id','origin','namespace'].map(k=>[k,e.binding.scope[k]])))&&hash(m.human_events)===hash(p.human_events)&&hash(m.authoring)===hash(p.authoring)&&hash(m.allowed_events)===hash([...p.human_events.manual,...p.human_events.project,...mailRecordEvents])&&hash(p.mail)===hash(m.mail)&&hash(p.mail.schema)===hash(mailSchemaFor(c))&&hash(p.mail_events)===hash(mailRecordEvents)&&hash(m.mail_events)===hash(mailRecordEvents)&&p.mail.source_policy_sha256===hash(c.google_exact_mail)&&sha(m.source_state_sha256)&&sha(m.source_config_sha256)&&sha(m.original_source_state_sha256),'Original complete source/config/manifest/binding evidence differs');
+ if(c.shared_capability===operationsPDFMailCapability){validatePDFPermission(null,c,{current:false});check(hash(m.incoming_pdf)===hash(p.incoming_pdf),'Whole PDF source permission differs');}
  for(const [field,configField,hashField]of [['generation','refinement_generation','policy_sha256'],['originals','google_drive_originals','source_policy_sha256'],['calendar','google_calendar','source_policy_sha256']])check(hash(m[field])===hash(p[field])&&p[field][hashField]===hash(c[configField]),'Original independent source policy changed');return e;
 }
 export function mailSourceEvidence(data,binding){return validateMailSourceEvidence({schema_version:1,config:structuredClone(data.config),dispatch_source:structuredClone(data.dispatch_source),binding:structuredClone(binding)});}
 export function sharedMailBoundary(app,c,env,{runtime=true}={}){
  check(hasOperationsMail({...app,config:c})&&!app.store.projectBinding&&app.store.key==='workspace','Exact actual shared mail dispatch authority required');const binding=app.store.dispatchBinding,b=binding.scope;
- validateMailConfig(c);check(env?.CONTEXT==='production'&&env.EVZ_OPERATIONS_DESK_ENABLED===operationsMailCapability&&env.EVZ_OPERATIONS_BLOB_NAMESPACE===b.namespace&&env.EVZ_OPERATIONS_ORIGIN===b.origin&&env.SITE_ID===b.site_id&&env.DEPLOY_ID===b.deploy_id&&hash(JSON.parse(env.EVZ_INTERNAL_DISPATCH_BINDING??'null'))===hash(binding),'Exact mail deployment binding changed');
- check(!runtime||env.EVZ_OPERATIONS_GOOGLE_EXACT_MAIL===operationsMailCapability,'Hosted exact email is disabled');return c.google_exact_mail;
+ validateMailConfig(c);check(env?.CONTEXT==='production'&&env.EVZ_OPERATIONS_DESK_ENABLED===c.shared_capability&&env.EVZ_OPERATIONS_BLOB_NAMESPACE===b.namespace&&env.EVZ_OPERATIONS_ORIGIN===b.origin&&env.SITE_ID===b.site_id&&env.DEPLOY_ID===b.deploy_id&&hash(JSON.parse(env.EVZ_INTERNAL_DISPATCH_BINDING??'null'))===hash(binding),'Exact mail deployment binding changed');
+ check(!runtime||env.EVZ_OPERATIONS_GOOGLE_EXACT_MAIL===c.shared_capability,'Hosted exact email is disabled');return c.google_exact_mail;
 }
-export function declaredMailRoute(state,c,p){
+export function declaredMailRoute(state,c,p,now=new Date(state.updated_at)){
+ if(c.shared_capability===operationsPDFMailCapability&&p.kind==='project')return currentPDFMail(state,c,p,now);
  check(p.kind==='reply'&&key(p.thread_id),newThreadMailHold);validateIncomingImport(state,c);
  check(!state.operations?.holds?.gmail_incoming&&!state.operations?.gmail_incoming?.hold&&!state.operations?.gmail_incoming?.resync_hold,'Incoming hold or expired-history gap prevents a new send');
- const route=incomingRoutes(state,c).find(r=>r.thread_id===p.thread_id);check(route&&route.project_id===p.project_id&&route.from===p.from&&route.to===p.to&&route.contact_sha256===p.contact_sha256&&hash(incomingRoutes(state,c))===hash(c.internal_dispatch.routes),'Current reply route/contact is not declared in the immutable incoming policy');return route;
+ const route=incomingRoutes(state,c).find(r=>r.thread_id===p.thread_id);check(route&&route.project_id===p.project_id&&route.from===p.from&&route.to===p.to&&route.contact_sha256===p.contact_sha256&&(c.shared_capability===operationsPDFMailCapability?c.internal_dispatch.routes.some(b=>b.thread_id===p.thread_id)||pdfIncomingRequest(state,c)?.request.incoming_pdf.status==='Ready':hash(incomingRoutes(state,c))===hash(c.internal_dispatch.routes)),'Current reply route/contact is not declared in the immutable incoming policy');return route;
 }
 export function mailStatus(state,c,runtime=false){
  let hold=null;try{validateIncomingImport(state,c);}catch{hold='Current declared routes or retained incoming scope differs; sending is held without changing history';}
  if(!hold&&(state.operations?.holds?.gmail_incoming||state.operations?.gmail_incoming?.hold||state.operations?.gmail_incoming?.resync_hold))hold='Incoming hold or expired-history gap prevents new sending';
- return {status:hold?'Held':runtime?'Declared-thread replies only':'Runtime disabled',execution_hold:hold,pdf_hold:newThreadMailHold};
+ const pdf=c.shared_capability===operationsPDFMailCapability,pending=pdfIncomingRequest(state,c)?.request.incoming_pdf;return {status:hold?'Held':pdf?pending?'PDF incoming '+pending.status:'One exact PDF permission; message approval required':runtime?'Declared-thread replies only':'Runtime disabled',execution_hold:hold,pdf_hold:pdf?null:newThreadMailHold,...(pdf?{incoming_permission:c.internal_dispatch.incoming_pdf,pdf_incoming:pending??null,registered_incoming:incomingMailView(state)}:{} )};
 }
-export function currentMailAuthority(state,c,a,binding,{source=true,actor=a?.assigned_to}={}){
+export function currentMailAuthority(state,c,a,binding,{source=true,actor=a?.assigned_to,now=new Date(state.updated_at)}={}){
  check(a?.payload?.exact_mail===true&&a.payload.internal_notification!==true&&roles.includes(a.assigned_to),'Original separate signed prospect mail action required');
  const e=validateMailSourceEvidence(a.payload.source_evidence),approval=state.events[a.payload.approval_event];
  check(hash(e.binding)===hash(binding)&&hash(e.config)===hash(c)&&approval?.data?.source_evidence_sha256===hash(e)&&approval.type==='exact_mail_approved'&&approval.id===a.payload.approval_event&&approval.actor===actor&&(!source||a.assigned_to===actor)&&approval.prospect_id===a.prospect_id&&approval.data.action_id===a.id&&approval.data.package_sha256===a.payload.package_sha256,'Original exact mail source/grant/approval differs; old intents remain held');
- if(source){const p=currentExactMail(state,c,a);declaredMailRoute(state,c,p);return p;}return a.payload.package;
+ if(a.payload.package.kind==='project')pdfAuthorization(state,c,a.payload.package,{approval});
+ if(source){const p=currentExactMail(state,c,a);declaredMailRoute(state,c,p,now);return p;}return a.payload.package;
 }
 export function applyMailRecord(state,c,record,now){
  exact(record,'event,actor,revision,at');const {event,actor,revision}=record;exact(event,'id,prospect_id,type,at,data');
- check(c.shared_capability===operationsMailCapability&&mailRecordEvents.includes(event.type)&&roles.includes(actor)&&key(event.id)&&key(event.prospect_id)&&utc(event.at)&&Date.parse(event.at)<=+now+60000&&record.at===now.toISOString()&&Number.isSafeInteger(revision),'Exact signed current reply event required');
+ check(isOperationsMail(c.shared_capability)&&mailRecordEvents.includes(event.type)&&roles.includes(actor)&&key(event.id)&&key(event.prospect_id)&&utc(event.at)&&Date.parse(event.at)<=+now+60000&&record.at===now.toISOString()&&Number.isSafeInteger(revision),'Exact signed current reply event required');
  const fields={reply_reviewed:['source_id','reply_sha256','outcome','focus','note'],reply_draft_saved:['source_id','reply_sha256','source_sha256','body'],reply_draft_approved:['sha256','approved','facts_checked']}[event.type];
  check(event.data&&typeof event.data==='object'&&!Array.isArray(event.data)&&Object.keys(event.data).every(k=>fields.includes(k)),'Unsupported reply event data');
  const r=state.prospects[event.prospect_id];check(r,'Choose the existing conversation');if(!state.events[event.id])check(!r.follow_up_owner||r.follow_up_owner===actor,'Claim or hand off this conversation first');
@@ -93,6 +164,7 @@ export function mailRawCeiling(q){check(typeof q?.raw_base64url==='string','Exac
 export function mailStorageAllowance(data,q,{read=false,at=data.state.updated_at}={}){
  const raw=mailRawCeiling(q),allowance=2*((read?5*120000:2000000+8*120000)+raw)+64000;
  check(Buffer.byteLength(JSON.stringify(data))+allowance<=20000000,'Projected exact MIME/raw observation envelope exceeds 20 MB; no token or send');
+ if(data.config.shared_capability===operationsPDFMailCapability){const p=data.config.internal_dispatch,S=pdfScopeBytes(data,q),I=2*p.limits.bytes_tick+64000;check(Buffer.byteLength(JSON.stringify(data))+allowance+S+I<=20000000,'PDF scope and next incoming evidence exceed envelope capacity');check(Buffer.byteLength(JSON.stringify(data.state))+allowance+S+2*p.limits.bytes_tick<=14000000,'PDF scope and incoming evidence exceed standing state reserve');const body=JSON.stringify(data.state),files=(data.dispatch_source?.dependencies??[]).map(({path,bytes,sha256})=>({path,bytes,sha256}));check(Buffer.byteLength(JSON.stringify({schema_version:2,created_at:at,sha256:hash(body),body,files,files_sha256:hash(files)}))+allowance+S+I<=25000000,'PDF scope and incoming evidence exceed G1 capacity');}
  const body=JSON.stringify(data.state),files=(data.dispatch_source?.dependencies??[]).map(({path,bytes,sha256})=>({path,bytes,sha256})),shell={schema_version:2,created_at:at,sha256:hash(body),body,files,files_sha256:hash(files)};
  check(Buffer.byteLength(JSON.stringify(shell))+allowance<=25000000,'Projected complete G1 exceeds 25 MB; no token or send');return raw;
 }
@@ -103,8 +175,8 @@ function observation(o,c,p,q,at,deadline,held=false){
  exact(o,'path,method,body_sha256,at,grant,'+(Object.hasOwn(o??{},'error')?'error':'value'));check(utc(o.at)&&Date.parse(o.at)<=Date.parse(at)&&Date.parse(o.at)>=deadline-40000&&sha(o.body_sha256),'Exact dated bounded raw mail observation required');
  const raw=/^messages\/([A-Za-z0-9_-]{1,100})\?format=raw$/.test(o.path),thread=o.path==='threads/'+encodeURIComponent(p.reply_source?.content?.thread_id)+'?format=full';
  const query=o.path.startsWith('messages?')?new URLSearchParams(o.path.slice(9)):null;
- check(['profile','settings/sendAs','messages/send'].includes(o.path)||thread||raw||query&&query.get('maxResults')==='10'&&query.get('q')==='in:sent rfc822msgid:'+q.rfc_message_id&&[...query.keys()].every(k=>['q','maxResults','pageToken'].includes(k))&&[...query.keys()].length===new Set(query.keys()).size,'Unapproved exact mail observation path');
- check(o.method===(o.path==='messages/send'?'POST':'GET')&&o.body_sha256===hash(o.method==='GET'?null:mailSendBody(expectedFor({payload:{package:p}},q))),'Exact observed method/body differs from retained MIME');
+ check(['profile','settings/sendAs','messages/send'].includes(o.path)||thread||raw||query&&query.get('maxResults')==='10'&&(query.get('q')==='in:sent rfc822msgid:'+q.rfc_message_id||c.shared_capability===operationsPDFMailCapability&&p.kind==='project'&&!p.reply_source&&query.get('q')==='from:'+p.to&&!query.has('pageToken'))&&[...query.keys()].every(k=>['q','maxResults','pageToken'].includes(k))&&[...query.keys()].length===new Set(query.keys()).size,'Unapproved exact mail observation path');
+ check(o.method===(o.path==='messages/send'?'POST':'GET')&&o.body_sha256===hash(o.method==='GET'?null:mailSendBody({...expectedFor({payload:{package:p}},q),thread_id:p.thread_id??null})),'Exact observed method/body differs from retained MIME');
  if(o.error){exact(o.error,'code,status,bytes,body_sha256');check(held&&['NETWORK','HTTP','INVALID_JSON','OVERSIZE','DEADLINE'].includes(o.error.code)&&(o.error.status===null||Number.isInteger(o.error.status)&&o.error.status>=100&&o.error.status<=599)&&Number.isSafeInteger(o.error.bytes)&&o.error.bytes>=0&&(o.error.body_sha256===null||sha(o.error.body_sha256)),'Closed unavailable mail response required');if(o.grant)validateGrant(o.grant,c,o.at,false);}
  else{validateGrant(o.grant,c,o.at,!held);mailObservationJSON(o.value);check(o.value&&typeof o.value==='object'&&!Array.isArray(o.value)&&Buffer.byteLength(JSON.stringify(o.value))<=(thread?2000000:raw?mailRawCeiling(q):120000),'Bounded complete parsed Gmail JSON required');if(raw){const {raw:wire,...meta}=o.value;check(typeof wire==='string'&&Buffer.byteLength(JSON.stringify(meta))<=120000,'Bounded full raw readback metadata required');}}
 }
@@ -112,8 +184,8 @@ async function replayObservations(type,requests,grant,c,p,q,at,deadline,{held=fa
  check(Array.isArray(requests)&&requests.length<=10,'Bounded raw mail request observations required');for(const o of requests)observation(o,c,p,q,at,deadline,held);
  let index=0;const consume=async(path,options={})=>{const o=requests[index++];check(o&&o.path===path&&o.method===(options.method??'GET')&&o.body_sha256===hash(options.body??null),'Exact provider request/order/arguments differ');if(o.error)throw Error('Retained unavailable provider observation');check(hash(o.grant)===hash(grant),'Observed independent grant changed');return structuredClone(o.value);};
  let derived={};try{
-  if(type==='dispatch'){await mailPreflight(consume,c.google_exact_mail.account_email);derived.fresh_source=await mailFreshSource(consume,p);}
-  else if(type==='sent'){const expected=expectedFor({payload:{package:p}},q);derived.sent=mailSendResponse(await consume('messages/send',{method:'POST',body:mailSendBody(expected)}),expected);}
+  if(type==='dispatch'){const profile=await mailPreflight(consume,c.google_exact_mail.account_email);if(p.kind==='project'){check(/^[1-9][0-9]{0,29}$/.test(profile.historyId)&&BigInt(profile.historyId)>=BigInt(q.incoming_pdf.reserved_cursor),'Pre-send history anchor must cover the original cursor');}derived.fresh_source=await mailFreshSource(consume,p);}
+  else if(type==='sent'){const expected={...expectedFor({payload:{package:p}},q),thread_id:p.thread_id??null};derived.sent=mailSendResponse(await consume('messages/send',{method:'POST',body:mailSendBody(expected)}),expected);}
   else if(type==='verified'){await mailPreflight(consume,c.google_exact_mail.account_email);derived.receipt=await mailSentReadback(consume,expectedFor({payload:{package:p}},q),q.provider_message_id??null,mailRawCeiling(q));}
   else check(!requests.length&&grant===null,'No provider observation belongs to this mail step');
  }catch(error){if(!held)throw error;check(index>=requests.length,'Unconsumed held raw mail observations');}
@@ -124,17 +196,17 @@ export function mailWitness(app,data,actor,budget,type,details,provider,historyS
  const source=input?mailSourceEvidence(data,app.store.dispatchBinding):a.payload.source_evidence,{action_id,...typed}=details,observations=provider?provider.observations.slice(Math.max(0,mailObservationCount(q)-historyStart)):[];
  return {type,actor,action_id:id,selector:structuredClone(selector),binding_sha256:hash(app.store.dispatchBinding),config_sha256:hash(data.config),source_policy_sha256:hash(data.config.google_exact_mail),source_evidence_sha256:hash(source),package_sha256:input?input.package_sha256:a.payload.package_sha256,approval_event_id:input?input.event_id:a.payload.approval_event,prior_request_sha256:hash(q),prior_action_sha256:hash(readStages.includes(type)?retainedAction(a):a??null),prior_email_sha256:hash(email),request_claim:q?.request_claim??null,dispatch_claim:q?.dispatch_claim??null,read_claim:q?.read_claim??null,at:app.now().toISOString(),deadline:budget.deadline,details:structuredClone(typed),observations:structuredClone(observations),grant:provider?.grant()??null};
 }
-export async function replayMailTransition(before,expected,w,raw,{binding,env,now,mailGrant}={}){
+export async function replayMailTransition(before,expected,w,raw,{binding,env,now,mailGrant,incomingGrant}={}){
  exact(w,'type,actor,action_id,selector,binding_sha256,config_sha256,source_policy_sha256,source_evidence_sha256,package_sha256,approval_event_id,prior_request_sha256,prior_action_sha256,prior_email_sha256,request_claim,dispatch_claim,read_claim,at,deadline,details,observations,grant');
  const c=before.config,s=before.state,app={config:c,store:{dispatchBinding:binding,projectBinding:null,key:'workspace'},now:()=>new Date(w.at)},a=s.actions[w.action_id]??null,q=s.operations?.requests?.[w.action_id+'-intent']??null,email=s.operations?.email?.[w.action_id]??null;
  check(mailTransitionSchema.transitions.includes(w.type)&&roles.includes(w.actor)&&key(w.action_id)&&key(w.approval_event_id)&&utc(w.at)&&Date.parse(w.at)<=+now()&&Number.isSafeInteger(w.deadline)&&w.deadline>Date.parse(w.at)&&w.deadline<=Date.parse(w.at)+40000&&w.binding_sha256===hash(binding)&&w.config_sha256===hash(c)&&w.source_policy_sha256===hash(c.google_exact_mail)&&w.prior_request_sha256===hash(q)&&w.prior_action_sha256===hash(readStages.includes(w.type)?retainedAction(a):a)&&w.prior_email_sha256===hash(email)&&w.request_claim===(q?.request_claim??null)&&w.dispatch_claim===(q?.dispatch_claim??null)&&w.read_claim===(q?.read_claim??null),'Exact mail source/claim/witness ownership changed');
- sharedMailBoundary(app,c,env,{runtime:!['approve','hold'].includes(w.type)});await validateMailEvidence(s,{strict:true});
+ sharedMailBoundary(app,c,env,{runtime:!['approve','hold'].includes(w.type)});await validateMailEvidence(s,{strict:true,assets:async p=>{const bytes=[];for(const part of p.attachments)bytes.push((await readProjectAsset({config:c,snapshot:async()=>structuredClone(s),originalStore:blobProjectOriginalStore(raw),store:{store:raw}},p.project_id,part.asset_id,part.version_id)).bytes);return bytes;}});
  if(w.type==='approve'){
-  exact(w.details,'input');check(!w.observations.length&&w.grant===null&&!q,'Approval cannot replace a retained intent');const p=packageInState(s,c,w.details.input,w.actor);declaredMailRoute(s,c,p);const evidence=mailSourceEvidence(before,binding);
+  exact(w.details,'input');check(!w.observations.length&&w.grant===null&&!q,'Approval cannot replace a retained intent');const p=packageInState(s,c,w.details.input,w.actor);declaredMailRoute(s,c,p,new Date(w.at));if(p.kind==='project'){check(env.EVZ_INTERNAL_DISPATCH_RUNTIME===operationsPDFMailCapability&&typeof incomingGrant==='function','Current independent incoming runtime/grant reader required');validateIncomingGrant(await incomingGrant(),c,w.at);}const evidence=mailSourceEvidence(before,binding);
   check(hash(w.selector)===hash({project_id:w.details.input.project_id,kind:w.details.input.kind,...(w.details.input.draft_id?{draft_id:w.details.input.draft_id}:{})})&&w.source_evidence_sha256===hash(evidence)&&w.package_sha256===p.sha256&&w.approval_event_id===w.details.input.event_id,'Exact signed approval source differs');const result=applyMailApproval(expected,c,w.details.input,w.actor,w.at,evidence);check(result.action_id===w.action_id,'Deterministic original exact action changed');
  }else{
   check(a&&hash(w.selector)===hash(a.payload.selector)&&w.package_sha256===a.payload.package_sha256&&w.approval_event_id===a.payload.approval_event&&w.source_evidence_sha256===hash(a.payload.source_evidence),'Exact original signed assignee/package required');
-  const source=['reserve','materialize','dispatch'].includes(w.type),p=currentMailAuthority(s,c,a,binding,{source,actor:w.actor});
+  const source=['reserve','materialize','dispatch'].includes(w.type),p=currentMailAuthority(s,c,a,binding,{source,actor:w.actor,now:new Date(w.at)});
   const fields={reserve:'request_claim',materialize:'mime_sha256,raw_base64url',dispatch:'dispatch_claim',sent:'',read:'read_claim',verified:'',hold:'phase,reason_code,owned_state_sha256'};exact(w.details,fields[w.type]);
   if(w.type==='reserve')check(uuid(w.details.request_claim)&&!q&&!email,'Only one original reservation is allowed');else check(q&&q.source_config_sha256===hash(c)&&q.binding_sha256===hash(c.google_exact_mail)&&q.request_claim&&q.status!=='Verified'&&!q.receipt,'Exact unsettled current original intent required');
   if(['materialize','dispatch','sent'].includes(w.type))check(w.deadline===q.dispatch_deadline,'Original dispatch deadline cannot be extended');if(w.type==='verified')check(w.deadline===q.read_deadline,'Exact current read deadline required');
@@ -146,34 +218,60 @@ export async function replayMailTransition(before,expected,w,raw,{binding,env,no
   if(['dispatch','sent','verified'].includes(w.type)){validateGrant(w.grant,c,w.at);check(typeof mailGrant==='function','Independent exact mail grant authority required');check(hash(validateGrant(await mailGrant(w.grant),c,w.at))===hash(w.grant),'Independent exact mail grant changed during replay');}
   if(w.type==='dispatch')check(mailObservationCount(q)+10<=64,'Finite raw observation allowance exhausted before token work');if(w.type==='read')check(mailObservationCount(q)+6<=64,'Finite raw observation allowance exhausted before read IO');
   if(w.type==='hold')check(['materialize','dispatch','sent','verified','read'].includes(w.details.phase)&&['CHECK_FAILED','DEADLINE','PROVIDER_UNAVAILABLE'].includes(w.details.reason_code)&&w.details.owned_state_sha256===mailOwnedState({q,a,email}),'Catch no longer owns the original request/action/email');
+  if(p.kind==='project'&&source){check(env.EVZ_INTERNAL_DISPATCH_RUNTIME===operationsPDFMailCapability&&typeof incomingGrant==='function','Current independent incoming runtime/grant reader required');validateIncomingGrant(await incomingGrant(),c,w.at);}
   const derived=await replayObservations(w.type==='hold'?w.details.phase:w.type,w.observations,w.grant,c,p,q,w.at,w.deadline,{held:w.type==='hold'});
+  if(p.kind==='project'&&w.type==='verified'){derived.incoming_active=false;try{check(env.EVZ_INTERNAL_DISPATCH_RUNTIME===operationsPDFMailCapability,'Incoming runtime is disabled');currentDispatch(s,c,new Date(w.at));validateIncomingGrant(await incomingGrant(),c,w.at);derived.incoming_active=true;}catch{}}
   applyMailStep(expected,c,w,derived);
   if(['materialize','dispatch','read'].includes(w.type))mailStorageAllowance({...before,state:expected},expected.operations.requests[a.id+'-intent'],{read:w.type==='read',at:w.at});
  }
+ if(a?.payload.package.kind==='project'&&['reserve','materialize','dispatch'].includes(w.type)){currentPDFMail(s,c,a.payload.package,now());validateIncomingGrant(await incomingGrant(),c,now().toISOString());}
  check(+now()<w.deadline,'Exact mail deadline expired during independent replay');if(w.grant&&w.type!=='hold')check(hash(validateGrant(await mailGrant(w.grant),c,w.at))===hash(w.grant),'Independent exact mail grant changed before publication');sharedMailBoundary(app,c,env,{runtime:!['approve','hold'].includes(w.type)});check(+now()<w.deadline,'Exact mail deadline expired during independent grant validation');
 }
-export async function validateMailEvidence(state,{strict=false}={}){
+async function projectMailBytes(p,q,{assets,read}){
+ if(assets)return assets(p);
+ if(read)return Promise.all(p.attachments.map(a=>read('project-originals/'+a.sha256+'.pdf',64000000)));
+ check(q?.raw_base64url,'Complete actual PDF dependency or retained MIME required');
+ const match=/Content-Type: application\/pdf;[^\r\n]+\r\nContent-Disposition:[^\r\n]+\r\nContent-Transfer-Encoding: base64\r\n\r\n([A-Za-z0-9+/=\r\n]+)\r\n--/.exec(Buffer.from(q.raw_base64url,'base64url').toString('ascii'));
+ check(match,'Original complete PDF MIME is missing');return [Buffer.from(match[1].replaceAll('\r\n',''),'base64')];
+}
+async function validateProjectMailEvidence(state,c,a,e,q,{assets,read}){
+ check(c.shared_capability===operationsPDFMailCapability,'Old mail source does not authorize PDF approval evidence');
+ const p=a.payload.package,r=state.prospects[a.prospect_id];
+ exact(p,'schema_version,project_id,kind,draft_id,from,to,subject,body,attachments,reply_source,owner,contact_sha256,quote_sha256,signature_sha256,operator_names_sha256,source,sha256');exact(p.source,'draft_sha256,context_sha256,quote_sha256');exact(a.payload.selector,'project_id,kind,draft_id');exact(a.payload,'exact_mail,package_sha256,selector,approval_event,package,source_evidence');exact(e,'id,type,prospect_id,actor,at,data');exact(e.data,'package_sha256,action_id,source_evidence_sha256,incoming_authorization_event,incoming_permission_sha256');
+ const {sha256,...body}=p,draft=r?.project_email_drafts?.find(d=>d.id===p.draft_id),work=Object.values(r?.project_work??{}).find(w=>w.execution?.id===p.draft_id);
+ check(p.schema_version===1&&sha256===hash(body)&&sha256===a.payload.package_sha256&&p.project_id===a.prospect_id&&p.kind==='project'&&p.from===c.sender.email&&p.signature_sha256===hash(p.body)&&p.operator_names_sha256===hash(c.sender.operator_names)&&p.attachments.length===1&&(p.reply_source===null||validReplySource(p.reply_source))&&a.id==='exact-'+hash({run:state.run_id,project:p.project_id,kind:'project',draft:p.draft_id}).slice(0,32)&&a.payload.selector.project_id===p.project_id&&a.payload.selector.kind==='project'&&a.payload.selector.draft_id===p.draft_id&&roles.includes(e.actor)&&e.type==='exact_mail_approved'&&e.data.action_id===a.id&&e.data.package_sha256===p.sha256&&e.data.source_evidence_sha256===hash(a.payload.source_evidence)&&e.prospect_id===a.prospect_id&&utc(e.at)&&a.created_at===e.at,'Incomplete original exact PDF approval/package');
+ check(draft&&work&&draft.status==='Held for human review'&&draft.send_authorized===false&&work.execution.companion_draft_id===draft.id&&work.result?.asset_id===draft.attachment.asset_id&&work.result.version_id===draft.attachment.version_id,'Retain the original reviewed PDF companion and execution');
+ const {sha256:draftHash,...draftBody}=draft,part=p.attachments[0];check(draftHash===hash(draftBody)&&draftHash===p.source.draft_sha256&&p.source.context_sha256===draft.context_sha256&&p.source.quote_sha256===(draft.quote_sha256??null)&&p.body===draft.body&&p.subject===draft.subject&&p.from===draft.from&&p.to===draft.to&&hash(part)===hash({...draft.attachment,filename:draft.attachment.sha256+'.pdf',mime:'application/pdf'}),'Original complete companion/body/subject/PDF changed');
+ pdfAuthorization(state,c,p,{approval:e});
+ if(assets||read){const bytes=await projectMailBytes(p,q,{assets,read});check(bytes.length===1&&Buffer.isBuffer(bytes[0])&&bytes[0].length===part.bytes&&byteHash(bytes[0])===part.sha256&&bytes[0].subarray(0,5).toString()==='%PDF-','Original complete PDF dependency differs');}
+}
+export async function validateMailEvidence(state,{strict=false,assets=null,read=null}={}){
  for(const [id,a]of Object.entries(state.actions??{})){
   if(a.payload?.exact_mail!==true||a.payload.internal_notification===true)continue;
   if(!a.payload.source_evidence){check(!strict,'Legacy exact mail lacks original signed full source evidence; whole installation held');continue;}
   const evidence=validateMailSourceEvidence(a.payload.source_evidence),c=evidence.config,p=a.payload.package,e=state.events[a.payload.approval_event],q=state.operations?.requests?.[id+'-intent'];
   exact(a,'id,prospect_id,type,status,assigned_to,created_at,payload'+(Object.hasOwn(a,'hold')?',hold':'')+(Object.hasOwn(a,'delivery')?',delivery':''));
+  const record=state.prospects[a.prospect_id];
+  if(p.kind==='project'){await validateProjectMailEvidence(state,c,a,e,q,{assets,read});}else{
   exact(p,'schema_version,project_id,kind,draft_id,from,to,subject,body,attachments,thread_id,in_reply_to,references,reply_source,owner,contact_sha256,quote_sha256,signature_sha256,operator_names_sha256,source,sha256');exact(p.source,'draft_sha256,approval_event,reply_sha256');exact(a.payload.selector,'project_id,kind');
   exact(a.payload,'exact_mail,package_sha256,selector,approval_event,package,source_evidence');exact(e,'id,type,prospect_id,actor,at,data');exact(e.data,'package_sha256,action_id,source_evidence_sha256');
   const {sha256,...body}=p;check(key(id)&&a.id===id&&a.type==='email'&&roles.includes(a.assigned_to)&&roles.includes(e.actor)&&e.type==='exact_mail_approved'&&e.prospect_id===a.prospect_id&&e.data.action_id===id&&e.data.package_sha256===sha256&&e.data.source_evidence_sha256===hash(evidence)&&utc(e.at)&&a.created_at===e.at&&sha256===hash(body)&&sha256===a.payload.package_sha256&&p.kind==='reply'&&p.project_id===a.prospect_id&&p.from===c.sender.email&&p.attachments.length===0&&validReplySource(p.reply_source)&&p.thread_id===p.reply_source.content.thread_id&&p.signature_sha256===hash(p.body)&&p.operator_names_sha256===hash(c.sender.operator_names)&&id==='exact-'+hash({run:state.run_id,project:p.project_id,kind:p.kind,draft:p.draft_id}).slice(0,32),'Incomplete original exact approval/package/source');
   const content=state.events[p.source.approval_event];check(content?.type==='reply_draft_approved'&&content.prospect_id===a.prospect_id&&content.actor===e.actor&&content.data?.sha256===p.source.draft_sha256&&content.data.approved===true&&content.data.facts_checked===true,'Original separate content/facts approval is missing');
-  const record=state.prospects[a.prospect_id],draft=[record?.reply_draft,...(record?.reply_draft_history??[]),...(record?.reply_drafts??[])].find(d=>d?.sha256===p.source.draft_sha256&&d.approval_event===p.source.approval_event);
+  const draft=[record?.reply_draft,...(record?.reply_draft_history??[]),...(record?.reply_drafts??[])].find(d=>d?.sha256===p.source.draft_sha256&&d.approval_event===p.source.approval_event);
   check(draft&&hash(draft.content)===draft.sha256&&hash(draft.content)===hash(replyDraftContent({reply:p.reply_source},draft.body,e.actor,c))&&p.body===draft.content.body+'\n\n'+draft.content.signature&&p.to===draft.content.to&&p.subject===draft.content.subject&&p.in_reply_to===draft.content.in_reply_to&&p.source.reply_sha256===hash(p.reply_source)&&p.owner===draft.owner&&a.payload.selector.project_id===p.project_id&&a.payload.selector.kind==='reply','Complete original content, signature and facts draft proof differs');
+  }
   let assigned=e.actor;const order=Object.keys(state.events),position=order.indexOf(e.id);
   for(const h of record.follow_up_handoffs??[])if(order.indexOf(h.event_id)>position){exact(h,'from,to,at,event_id');const saved=state.events[h.event_id];exact(saved,'id,prospect_id,type,at,data,fingerprint,actor');exact(saved.data,'to');const {fingerprint,actor,...event}=saved;check(h.from===assigned&&roles.includes(h.to)&&h.to!==assigned&&saved.type==='follow_up_handed_off'&&saved.prospect_id===a.prospect_id&&actor===h.from&&saved.data.to===h.to&&saved.at===h.at&&fingerprint===hash({event,actor}),'Retain the exact signed handoff chain after original approval');assigned=h.to;}
   check(a.assigned_to===assigned,'Current action assignee has no preserved signed handoff from its original approver');
-  const route=c.internal_dispatch.routes.find(r=>r.thread_id===p.thread_id),references=[...(p.reply_source.content.references??'').split(/\s+/).filter(Boolean),p.reply_source.content.message_header_id];
+  if(p.kind==='reply'){
+  const route=(c.shared_capability===operationsPDFMailCapability?incomingRoutes(state,c):c.internal_dispatch.routes).find(r=>r.thread_id===p.thread_id),references=[...(p.reply_source.content.references??'').split(/\s+/).filter(Boolean),p.reply_source.content.message_header_id];
   check(p.schema_version===1&&route?.project_id===p.project_id&&route.contact_sha256===p.contact_sha256&&route.to===p.to&&route.from===p.from&&hash(p.references)===hash(references),'Original approved declared reply route or headers differ');
+  }
   if(!q){check(!state.operations?.email?.[id],'Email reservation lost its original request');continue;}
   exact(state.operations.email[id],'prospect_id,status,package_sha256'+(state.operations.email[id]?.receipt?',receipt':''));
-  const allowed=['logical','operation','transport','status','prepared_at','request_claim','dispatch_deadline','package_sha256','binding_sha256','source_config_sha256','observations','rfc_message_id','mime_sha256','raw_base64url','dispatch_started_at','dispatch_claim','fresh_source','provider_message_id','provider_thread_id','read_claim','read_deadline','receipt','verified_at','hold'];
+  const allowed=['logical','operation','transport','status','prepared_at','request_claim','dispatch_deadline','package_sha256','binding_sha256','source_config_sha256','observations','rfc_message_id','mime_sha256','raw_base64url','dispatch_started_at','dispatch_claim','fresh_source','provider_message_id','provider_thread_id','read_claim','read_deadline','receipt','verified_at','hold',...(c.shared_capability===operationsPDFMailCapability&&p.kind==='project'?['incoming_pdf']:[])];
   check(Object.keys(q).every(k=>allowed.includes(k))&&q.logical===id+'-intent'&&q.operation==='intent'&&q.transport==='google-exact-mail-v1'&&['Reserved','Held','Uncertain','Verified'].includes(q.status)&&utc(q.prepared_at)&&Date.parse(q.prepared_at)>=Date.parse(e.at)&&uuid(q.request_claim)&&Number.isSafeInteger(q.dispatch_deadline)&&q.dispatch_deadline>Date.parse(q.prepared_at)&&q.dispatch_deadline<=Date.parse(q.prepared_at)+40000&&q.package_sha256===p.sha256&&q.binding_sha256===hash(c.google_exact_mail)&&q.source_config_sha256===hash(c)&&q.rfc_message_id===mailMessageId(id)&&Array.isArray(q.observations)&&mailObservationCount(q)<=64&&state.operations.email[id]?.package_sha256===p.sha256,'Incomplete original mail intent/claim/history');
-  if(q.raw_base64url){const composed=composeExactMail(p,id,q.prepared_at,[]);check(q.raw_base64url===composed.raw.toString('base64url')&&q.mime_sha256===byteHash(composed.raw),'Original complete MIME differs');}
+  if(q.raw_base64url){const composed=composeExactMail(p,id,q.prepared_at,p.kind==='project'?await projectMailBytes(p,q,{assets,read}):[]);check(q.raw_base64url===composed.raw.toString('base64url')&&q.mime_sha256===byteHash(composed.raw),'Original complete MIME differs');}
   else check(!q.mime_sha256&&!q.dispatch_claim&&!q.read_claim&&!q.receipt,'Original MIME proof is missing');
   check((q.dispatch_claim===undefined)===(q.dispatch_started_at===undefined)&&(!q.dispatch_claim||uuid(q.dispatch_claim)&&utc(q.dispatch_started_at)&&Date.parse(q.dispatch_started_at)>=Date.parse(q.prepared_at)&&Date.parse(q.dispatch_started_at)<q.dispatch_deadline)&&(!q.read_claim||uuid(q.read_claim)&&Number.isSafeInteger(q.read_deadline)),'Original exact claims/deadlines changed');
   let verified=false;for(const b of q.observations){exact(b,'type,at,deadline,claim,grant,requests');exact(b.claim,'request_claim,dispatch_claim,read_claim');check(mailTransitionSchema.transitions.includes(b.type)&&b.type!=='approve'&&utc(b.at)&&Number.isSafeInteger(b.deadline)&&b.deadline>Date.parse(b.at)&&b.deadline<=Date.parse(b.at)+40000&&b.claim.request_claim===q.request_claim&&(b.claim.dispatch_claim===null||b.claim.dispatch_claim===q.dispatch_claim&&uuid(b.claim.dispatch_claim))&&(b.claim.read_claim===null||uuid(b.claim.read_claim)),'Original mail raw claim chronology differs');
@@ -181,6 +279,7 @@ export async function validateMailEvidence(state,{strict=false}={}){
    else if(b.type==='hold')await replayObservations(b.claim.read_claim?'verified':b.claim.dispatch_claim?'sent':'dispatch',b.requests,b.grant,c,p,q,b.at,b.deadline,{held:true});
    else check(b.requests.length===0&&b.grant===null,'Unexpected raw observations in original stage');
   }
+  if(p.kind==='project'){validatePDFIncomingEvidence(state,c,a,q);await validatePDFIncomingHistory(state,c,a,q);}
   check(!q.receipt||verified,'Original receipt lacks complete raw proof');if(q.status==='Verified')check(q.receipt&&verified&&a.status==='Verified'&&hash(a.delivery)===hash({...q.receipt,at:q.verified_at})&&hash(state.operations.email[id].receipt)===hash(q.receipt),'Original Verified effect/receipt differs');
  }
  if(strict){for(const [id,q]of Object.entries(state.operations?.requests??{})){

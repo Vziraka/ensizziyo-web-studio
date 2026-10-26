@@ -17,7 +17,7 @@ export function calendarCapability(app,c,env,actor){
  return hash({google:g,calendar:c.calendar,run:c.run_id,site:env.SITE_ID,deploy:env.DEPLOY_ID,origin:env.EVZ_OPERATIONS_ORIGIN,namespace:env.EVZ_OPERATIONS_BLOB_NAMESPACE});
 }
 export function currentCalendarBooking(s,c,id,actor){
- check(key(id),'Choose the existing exact booking');const b=bookingConfirmations(s,c)[id],r=s.prospects[b?.prospect_id],shared=['shared-operations-calendar-v1','shared-operations-exact-mail-v1'].includes(c.shared_capability);
+ check(key(id),'Choose the existing exact booking');const b=bookingConfirmations(s,c)[id],r=s.prospects[b?.prospect_id],shared=['shared-operations-calendar-v1','shared-operations-exact-mail-v1','shared-operations-pdf-mail-v1'].includes(c.shared_capability);
  check(b?.transport==='google-calendar-v1'&&b.approved===true&&b.approved_by===actor&&b.source_sha256===bookingContext(r??{})&&b.timezone==='America/New_York'&&(shared||r?.controlled===true&&b.attendee_email.endsWith('@example.invalid'))&&r?.contact?.verified===true&&!r.restriction&&['Discovery','Information requested'].includes(r.stage)&&(!r.follow_up_owner||r.follow_up_owner===actor)&&(b.attendee_email===r.contact.email||b.recipient_confirmed===true),'Guest confirmation, contact, source or ownership changed; retain the reserved invitation');
  check(!r.meeting||[id,s.operations?.bookings?.[id]?.id].includes(r.meeting.event_id),'An existing meeting owns this conversation');
  const confirmation=s.events[b.confirmation_event];
@@ -58,7 +58,7 @@ export function calendarQueueInput(input,shared=false){
 export function googleCalendarTransport({getAccessToken,fetcher=fetch,config,now=()=>Date.now(),signal=AbortSignal.timeout(40000),guard=async()=>{}}){
  const g=config.google_calendar,observations=[];let token;
  function exactToken(minimum){check(token?.profile===calendarOAuthProfile&&token.account===g.account&&token.grant_id===g.grant_id&&Array.isArray(token.scopes)&&token.scopes.length===calendarOAuthScopes.length&&new Set(token.scopes).size===token.scopes.length&&calendarOAuthScopes.every(s=>token.scopes.includes(s))&&typeof token.access_token==='string'&&/^[\x21-\x7e]{10,8192}$/.test(token.access_token)&&token.expires_at>now()+minimum,'Exact independent business Calendar grant/account/scopes required');}
- async function live(authenticated=false){await guard();check(!signal.aborted,'Calendar access expired; retain the existing intent');if(authenticated){exactToken(10000);if(['shared-operations-calendar-v1','shared-operations-exact-mail-v1'].includes(config.shared_capability)){check(typeof getAccessToken.assertCurrent==='function','Independent current Calendar grant reader required');await getAccessToken.assertCurrent(token);await guard();check(!signal.aborted,'Calendar request expired');exactToken(10000);}}}
+ async function live(authenticated=false){await guard();check(!signal.aborted,'Calendar access expired; retain the existing intent');if(authenticated){exactToken(10000);if(['shared-operations-calendar-v1','shared-operations-exact-mail-v1','shared-operations-pdf-mail-v1'].includes(config.shared_capability)){check(typeof getAccessToken.assertCurrent==='function','Independent current Calendar grant reader required');await getAccessToken.assertCurrent(token);await guard();check(!signal.aborted,'Calendar request expired');exactToken(10000);}}}
  async function request(path,method='GET',body){
   await live(true);
   let response;try{response=await fetcher('https://www.googleapis.com/calendar/v3/'+path,{method,headers:{Authorization:'Bearer '+token.access_token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(10000)])});}catch{throw Error('Calendar request interrupted; reconcile the existing intent without another insert');}
@@ -82,7 +82,7 @@ export function googleCalendarTransport({getAccessToken,fetcher=fetch,config,now
   }};
 }
 export function applyCalendarStep(state,c,w){
- const logical=w.booking_id+'-create',q=state.operations?.requests?.[logical],b=bookingConfirmations(state,c)[w.booking_id],shared=['shared-operations-calendar-v1','shared-operations-exact-mail-v1'].includes(c.shared_capability);
+ const logical=w.booking_id+'-create',q=state.operations?.requests?.[logical],b=bookingConfirmations(state,c)[w.booking_id],shared=['shared-operations-calendar-v1','shared-operations-exact-mail-v1','shared-operations-pdf-mail-v1'].includes(c.shared_capability);
  if(w.type==='hold'&&hash(q??null)!==w.prior_sha256)return null;
  check(hash(q??null)===w.prior_sha256,'Exact Calendar request claim changed; refresh before reconciling');
  const o=state.operations??={};o.requests??={};o.bookings??={};o.holds??={};o.effects??={};

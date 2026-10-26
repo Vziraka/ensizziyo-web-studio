@@ -42,10 +42,11 @@ export class ConditionalLifecycleStore {
     if(this.inertBinding)validateInertChange(JSON.parse(before).state,data.state,options);
     if(this.manualBinding)validateManualChange(JSON.parse(before),data,options);
     if(this.projectBinding)await validateProjectChange(JSON.parse(before),data,options,this.store);
-    if(this.dispatchBinding)await validateDispatchChange(JSON.parse(before),data,options,this.store,{binding:this.dispatchBinding,env:this.originalsEnvironment,now:this.now,calendarGrant:this.calendarGrant,mailGrant:this.mailGrant});
+    if(this.dispatchBinding)await validateDispatchChange(JSON.parse(before),data,options,this.store,{binding:this.dispatchBinding,env:this.originalsEnvironment,now:this.now,calendarGrant:this.calendarGrant,mailGrant:this.mailGrant,incomingGrant:this.incomingGrant});
     if(options.projectOriginal)check(+this.now()<options.projectOriginal.http_deadline,'Original transition deadline expired before CAS');
     if(options.projectCalendar){check(options.calendarSignal instanceof AbortSignal,'Calendar request signal required');if(options.projectCalendar.type!=='hold'){check(!options.calendarSignal.aborted,'Calendar request interrupted before CAS');check(+this.now()<options.projectCalendar.deadline,'Calendar transition deadline expired before CAS');}}
     if(options.projectMail){check(options.mailSignal instanceof AbortSignal&&!options.mailSignal.aborted,'Mail request interrupted before CAS');check(+this.now()<options.projectMail.deadline,'Mail transition deadline expired before CAS');}
+    if(this.dispatchBinding?.scope.capability==='shared-operations-pdf-mail-v1'&&options.dispatchTransition?.kind==='incoming'){const t=JSON.parse(before).state.operations.internal_dispatch.ticks[options.dispatchTransition.tick_id];check(options.dispatchSignal instanceof AbortSignal&&!options.dispatchSignal.aborted&&+this.now()<Date.parse(t.deadline),'Incoming transition interrupted or expired before CAS');}
     if(JSON.stringify(data)===before)return result;
     let modified,uncertain=false;
     try {const written=await this.store.setJSON(this.key,data,{onlyIfMatch:etag});check(typeof written?.modified==='boolean'&&(!written.modified||typeof written.etag==='string'&&written.etag.length>0),'Conditional write result is unavailable');modified=written.modified;}

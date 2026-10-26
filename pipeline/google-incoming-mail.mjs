@@ -1,10 +1,11 @@
 import {isDispatchCapability} from './shared-internal-dispatch.mjs';
 import {StudioLifecycle,check,hash,pauseCold} from './lifecycle.mjs';
-import {googleHostedTransport} from './google-hosted-transport.mjs';
+import {googleHostedTransport,mailObservationJSON} from './google-hosted-transport.mjs';
 import {replyContent,replyHeader as header} from './reply-content.mjs';
 import {prepareNotificationsInState} from './team-notifications.mjs';
+import {operationsPDFMailCapability,pdfAuthorization,validateIncomingGrant} from './shared-operations-exact-mail.mjs';
 
-const key=v=>typeof v==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(v)&&v!=='__proto__';
+const key=v=>typeof v==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(v)&&!['__proto__','prototype','constructor'].includes(v);
 const historyId=v=>typeof v==='string'&&/^[1-9][0-9]{0,29}$/.test(v);
 const rfc=v=>typeof v==='string'&&/^<[^<>\s@]+@[^<>\s@]+>$/.test(v)&&v.length<255;
 const address=v=>{const m=v.match(/[^\s<>\",;]+@[^\s<>\",;]+\.[^\s<>\",;]+/g)??[];return m.length===1?m[0].toLowerCase():'';};
@@ -39,17 +40,109 @@ export function incomingRoutes(state,c){
  return result.sort((a,b)=>a.thread_id.localeCompare(b.thread_id));
 }
 const routes=incomingRoutes;
+export function pdfIncomingRequest(state,c){
+ if(c.shared_capability!==operationsPDFMailCapability)return null;
+ const action_id=c.internal_dispatch.incoming_pdf.permission.action_id,request=state.operations?.requests?.[action_id+'-intent'];return request?.incoming_pdf?{action_id,request,action:state.actions[action_id]}:null;
+}
+function authorizedRoutes(state,c){
+ const original=c.internal_dispatch.routes,entry=pdfIncomingRequest(state,c),x=entry?.request.incoming_pdf;
+ if(!x?.route)return original;
+ pdfAuthorization(state,c,entry.action.payload.package,{approval:state.events[entry.action.payload.approval_event]});
+ check(entry.request.status==='Verified'&&x.status!=='Unresolved'&&x.hold?.code!=='SCOPE_CONFLICT','Unresolved or conflicting PDF incoming scope');
+ if(!x.scope_change){check(original.some(b=>b.thread_id===x.route.thread_id)&&x.status==='Held','Missing complete former incoming scope');return original;}
+ return [...original,...(original.some(b=>b.thread_id===x.route.thread_id)?[]:[x.route])].sort((a,b)=>a.thread_id.localeCompare(b.thread_id));
+}
+export function incomingScopeCurrent(state,c){return hash(incomingRoutes(state,c))===hash(authorizedRoutes(state,c));}
+export function publishPDFRoute(state,c,id,at,active){
+ const a=state.actions[id],q=state.operations.requests[id+'-intent'],x=q.incoming_pdf,p=a.payload.package,receipt=q.receipt,n=state.operations.gmail_incoming;
+ const route={project_id:p.project_id,thread_id:receipt.thread_id,original_id:receipt.message_id,from:p.from,to:p.to,subject:p.subject,rfc_message_id:receipt.rfc_message_id,contact_sha256:p.contact_sha256};
+ x.route=route;
+ const known=c.internal_dispatch.routes.some(b=>b.thread_id===route.thread_id)||Object.entries(state.operations.email).some(([other,e])=>other!==id&&(e.thread?.thread_id===route.thread_id||state.actions[other]?.delivery?.thread_id===route.thread_id))||Object.entries(state.operations.requests).some(([logical,r])=>logical!==id+'-intent'&&r.provider_thread_id===route.thread_id);
+ let registered;try{registered=routes(state,c);}catch{x.status='Held';x.hold={code:'SCOPE_CONFLICT',at,tick_id:null};return;}
+ if(hash(registered)!==hash(n.routes)){
+  x.scope_change={at,before:structuredClone(n),after_binding:hash({g:c.google_incoming_mail,registered}),after_routes_sha256:hash(registered)};
+  if(n.phase==='bootstrap')n.bootstrap_routes=n.routes.map(b=>b.thread_id);else n.index=registered.length;
+  n.routes=registered;n.binding=x.scope_change.after_binding;
+ }
+ if(known||!active){x.status='Held';x.hold={code:known?'COLLISION':'AUTHORITY_CHANGED',at,tick_id:null};return;}
+ x.status='Bootstrap';x.progress={phase:'bootstrap',cursor:x.anchor.history_id,page:null,pages:[],pending:null,checked_at:null,read_before:null,hold:null};
+}
+export function pdfIncomingTarget(state,c,now){
+ const entry=pdfIncomingRequest(state,c),x=entry?.request.incoming_pdf;
+ if(!entry||entry.request.status!=='Verified'||+now<entry.request.read_deadline||!['Bootstrap','CatchUp'].includes(x.status))return {kind:'registered'};
+ const last=Object.values(state.operations.internal_dispatch.ticks).map(t=>t.phases.incoming).filter(p=>p?.disposition?.status==='Applied').at(-1);
+ return last?.target?.kind==='pdf'&&last.target.action_id===entry.action_id?{kind:'registered'}:{kind:'pdf',action_id:entry.action_id};
+}
+export const pdfIncomingCodes=Object.freeze(['PRE_SEND_HELD','UNRESOLVED_SENT','COLLISION','THREAD_INCOMPLETE','KNOWN_SOURCE_MISSING','HISTORY_GAP','BOUNDS','AUTHORITY_CHANGED','SCOPE_CONFLICT']);
+export function validatePDFObservation(o,c,t,at){
+ const exact=(v,keys)=>check(v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).sort().join(',')===keys.split(',').sort().join(','),'Closed incoming observation fields required'),sha=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
+ exact(o,'name,args,at,grant,'+(Object.hasOwn(o??{},'error')?'error':'value'));
+ check(['incomingProfile','incomingHistory','incomingThread'].includes(o.name)&&Array.isArray(o.args)&&typeof o.at==='string'&&Number.isFinite(Date.parse(o.at))&&new Date(o.at).toISOString()===o.at&&Date.parse(o.at)>=Date.parse(t.claimed_at)&&Date.parse(o.at)<=Date.parse(at)&&Date.parse(o.at)<Date.parse(t.deadline),'Bounded dated incoming operation required');
+ if(Object.hasOwn(o,'error')){exact(o.error,'code,status,bytes,body_sha256');check(['NETWORK','HTTP','INVALID_JSON','OVERSIZE','DEADLINE'].includes(o.error.code)&&(o.error.status===null||Number.isInteger(o.error.status)&&o.error.status>=100&&o.error.status<=599)&&Number.isSafeInteger(o.error.bytes)&&o.error.bytes>=0&&(o.error.body_sha256===null||sha(o.error.body_sha256)),'Closed nonsecret incoming error required');if(o.grant)validateIncomingGrant(o.grant,c,o.at);}
+ else{validateIncomingGrant(o.grant,c,o.at);mailObservationJSON(o.value);check(o.value&&typeof o.value==='object'&&!Array.isArray(o.value)&&Buffer.byteLength(JSON.stringify(o.value))<=(o.name==='incomingThread'?2000000:o.name==='incomingHistory'?250000:120000),'Bounded complete incoming success required');}
+}
+export function validatePDFIncomingEvidence(state,c,a,q){
+ const x=q.incoming_pdf,exact=(v,keys)=>check(v&&Object.keys(v).sort().join(',')===keys.split(',').sort().join(','),'Incomplete PDF incoming evidence'),sha=v=>/^[a-f0-9]{64}$/.test(v??''),utc=v=>typeof v==='string'&&new Date(v).toISOString()===v;
+ exact(x,'schema_version,permission_sha256,authorization_event,authorization_sha256,policy_sha256,source_binding_sha256,reserved_cursor,status,anchor,route,scope_change,progress,coverage,hold');
+ const auth=pdfAuthorization(state,c,a.payload.package,{approval:state.events[a.payload.approval_event]});
+ check(x.schema_version===1&&x.permission_sha256===hash(c.internal_dispatch.incoming_pdf)&&x.authorization_event===auth.id&&x.authorization_sha256===hash(auth)&&x.policy_sha256===hash(c.internal_dispatch)&&x.source_binding_sha256===hash(a.payload.source_evidence.binding)&&historyId(x.reserved_cursor)&&['Reserved','Unresolved','Bootstrap','CatchUp','Ready','Held'].includes(x.status),'Original PDF permission/source/reservation differs');
+ if(x.anchor){exact(x.anchor,'history_id,observation_sha256');const profile=q.observations.filter(b=>b.type==='dispatch').flatMap(b=>b.requests).find(o=>o.path==='profile');check(historyId(x.anchor.history_id)&&BigInt(x.anchor.history_id)>=BigInt(x.reserved_cursor)&&profile?.value.historyId===x.anchor.history_id&&hash(profile)===x.anchor.observation_sha256&&q.dispatch_claim,'Original pre-send profile anchor differs');}else check(!q.dispatch_claim,'Missing pre-send history anchor');
+ if(x.route){exact(x.route,'project_id,thread_id,original_id,from,to,subject,rfc_message_id,contact_sha256');check(q.status==='Verified'&&x.route.project_id===a.prospect_id&&x.route.thread_id===q.receipt.thread_id&&x.route.original_id===q.receipt.message_id&&x.route.rfc_message_id===q.receipt.rfc_message_id&&x.route.from===a.payload.package.from&&x.route.to===a.payload.package.to&&x.route.subject===a.payload.package.subject&&x.route.contact_sha256===a.payload.package.contact_sha256,'Actual raw-verified PDF route differs');}else check(!q.receipt&&!x.progress&&!x.scope_change&&!x.coverage,'Unproved PDF route cannot have coverage');
+ if(x.scope_change){const v=x.scope_change;exact(v,'at,before,after_binding,after_routes_sha256');check(utc(v.at)&&v.at===q.verified_at&&sha(v.after_binding)&&sha(v.after_routes_sha256)&&v.after_binding===hash({g:c.google_incoming_mail,registered:authorizedRoutes(state,c)})&&v.after_routes_sha256===hash(authorizedRoutes(state,c)),'Original complete scope transition differs');
+  validateIncomingObject(v.before,c,c.internal_dispatch.routes,null);
+ }
+ if(x.progress){const p=x.progress;exact(p,'phase,cursor,page,pages,pending,checked_at,read_before,hold');check(['bootstrap','history','ready','held'].includes(p.phase)&&historyId(p.cursor)&&BigInt(p.cursor)>=BigInt(x.anchor.history_id)&&Array.isArray(p.pages)&&p.pages.length<=20&&p.pages.every(v=>typeof v==='string'&&v.length>0&&v.length<=500)&&new Set(p.pages).size===p.pages.length&&(p.page===null?p.pages.length===0:p.page===p.pages.at(-1))&&(p.checked_at===null||utc(p.checked_at))&&(p.read_before===null||historyId(p.read_before))&&(p.hold===null||pdfIncomingCodes.includes(p.hold)),'Malformed PDF bounded progress');
+  if(p.pending){exact(p.pending,'messages,historyId,nextPageToken');check(Array.isArray(p.pending.messages)&&p.pending.messages.length>0&&p.pending.messages.length<=100&&new Set(p.pending.messages.map(m=>m.id)).size===p.pending.messages.length&&p.pending.messages.every(m=>Object.keys(m).sort().join(',')==='id,threadId'&&key(m.id)&&m.threadId===x.route.thread_id)&&historyId(p.pending.historyId)&&BigInt(p.pending.historyId)>=BigInt(p.cursor)&&(p.pending.nextPageToken===null||typeof p.pending.nextPageToken==='string'&&p.pending.nextPageToken.length>0&&p.pending.nextPageToken.length<=500&&!p.pages.includes(p.pending.nextPageToken)&&p.pages.length<20),'Malformed retained PDF pending page');}
+ }
+ if(x.coverage){exact(x.coverage,'history_id,at,tick_id');check(historyId(x.coverage.history_id)&&utc(x.coverage.at)&&key(x.coverage.tick_id)&&BigInt(x.coverage.history_id)<=BigInt(x.progress.cursor),'Incomplete PDF coverage');}
+ if(x.status==='Ready')check(x.progress?.phase==='ready'&&x.coverage&&!x.progress.pending&&!x.progress.page,'Ready requires complete drained anchored history');
+ if(x.hold){exact(x.hold,'code,at,tick_id');check(x.status==='Held'&&pdfIncomingCodes.includes(x.hold.code)&&utc(x.hold.at)&&(x.hold.tick_id===null||key(x.hold.tick_id)),'Closed PDF coverage hold required');}else check(x.status!=='Held','Held PDF evidence is missing');
+ if(!q.dispatch_claim)check(['Reserved','Held'].includes(x.status)&&x.anchor===null&&x.route===null&&x.scope_change===null&&x.progress===null&&x.coverage===null&&(!x.hold||x.hold.code==='PRE_SEND_HELD'),'Unstarted PDF permission has no incoming coverage');
+ else if(!q.receipt)check(x.status==='Unresolved'&&x.route===null&&x.scope_change===null&&x.progress===null&&x.coverage===null&&x.hold===null,'Unknown Sent outcome cannot identify an incoming route');
+ else check(['Bootstrap','CatchUp','Ready','Held'].includes(x.status),'Verified PDF must expose its actual coverage disposition');
+}
+export async function validatePDFIncomingHistory(state,c,a,q){
+ const x=q.incoming_pdf;if(!x.progress)return;
+ check(x.scope_change&&q.receipt,'PDF progress needs its complete sender scope');
+ const d=[state.operations.internal_dispatch,...(state.operations.internal_dispatch_history??[])].find(d=>hash(d.policy)===x.policy_sha256);check(d,'Original finite incoming policy/ticks must remain');
+ const scratch=structuredClone(state),base=structuredClone(x),n=structuredClone(x.scope_change.before),registered=authorizedRoutes(state,c);
+ n.routes=registered;n.binding=x.scope_change.after_binding;if(n.phase==='bootstrap')n.bootstrap_routes=x.scope_change.before.routes.map(b=>b.thread_id);else n.index=registered.length;
+ base.status='Bootstrap';base.progress={phase:'bootstrap',cursor:x.anchor.history_id,page:null,pages:[],pending:null,checked_at:null,read_before:null,hold:null};base.coverage=null;base.hold=null;
+ scratch.operations.gmail_incoming=n;scratch.operations.requests[a.id+'-intent'].incoming_pdf=base;scratch.operations.internal_dispatch={...structuredClone(d),ticks:{}};
+ for(const [id,e]of Object.entries(scratch.events))if(e.type==='reply_received'&&!n.seen[hash({project:e.prospect_id,message:e.data.source_id})])delete scratch.events[id];
+ scratch.prospects[a.prospect_id].reply=structuredClone(a.payload.package.reply_source);
+ let began=false,pdfSteps=0;
+ for(const [id,t]of Object.entries(d.ticks)){
+  const phase=t.phases.incoming;scratch.operations.internal_dispatch.ticks[id]={...structuredClone(t),phases:{}};if(!phase?.target)continue;
+  const current=scratch.operations.requests[a.id+'-intent'];
+  if(phase.prior_request_sha256!==hash(current)){check(!began,'Retained incoming request chain is incomplete');scratch.operations.internal_dispatch.ticks[id].phases.incoming=structuredClone(phase);continue;}
+  began=true;check(phase.prior_incoming_sha256===hash(scratch.operations.gmail_incoming)&&phase.sha256===hash(phase.observations)&&Date.parse(phase.at)>=Date.parse(q.verified_at),'Retained incoming whole-state chain differs');
+  check(hash(phase.target)===hash(pdfIncomingTarget(scratch,c,new Date(phase.at))),'Retained incoming target selection differs');
+  check(Object.keys(phase).sort().join(',')==='at,disposition,observations,prior_incoming_sha256,prior_request_sha256,sha256,target'&&Object.keys(phase.disposition).sort().join(',')==='code,status'&&Array.isArray(phase.observations)&&phase.observations.length>0&&phase.observations.length<=2&&Buffer.byteLength(JSON.stringify(phase.observations))<=c.internal_dispatch.limits.bytes_tick,'Closed retained incoming phase required');
+  const observations=structuredClone(phase.observations);for(const o of observations)validatePDFObservation(o,c,t,phase.at);
+  const transport=Object.fromEntries(['incomingProfile','incomingHistory','incomingThread'].map(name=>[name,async(...args)=>{const o=observations.shift();check(o?.name===name&&hash(o.args)===hash(args),'Retained incoming raw operation differs');if(o.error){const error=Error('Retained unavailable incoming operation');error.status=o.error.status;throw error;}return structuredClone(o.value);} ])),app={config:c,store:{dispatchBinding:true},now:()=>new Date(phase.at),loadConfig:async()=>c,snapshot:async()=>structuredClone(scratch),change:async fn=>fn(scratch)};
+  let disposition;if(phase.target.kind==='pdf'){pdfSteps++;check(Date.parse(phase.at)>=q.read_deadline,'Original sender deadline fence precedes PDF progress');disposition=await syncPDFIncoming(app,{target:phase.target,tick_id:id,transport});}
+  else disposition=registeredIncomingDisposition(await syncIncomingMail(app,{actor:'service:internal-dispatch',env:{EVZ_INTERNAL_DISPATCH_RUNTIME:c.shared_capability},transport}));
+  check(!observations.length&&hash(disposition)===hash(phase.disposition),'Retained incoming disposition/raw coverage differs');scratch.operations.internal_dispatch.ticks[id].phases.incoming=structuredClone(phase);
+ }
+ check(pdfSteps>0&&hash(scratch.operations.requests[a.id+'-intent'].incoming_pdf)===hash(x),'Complete PDF progress must be reconstructed from original bounded raw ticks');
+ if(hash(state.operations.internal_dispatch?.policy)===x.policy_sha256)check(hash(scratch.operations.gmail_incoming)===hash(state.operations.gmail_incoming),'Current incoming progress differs from retained raw ticks');
+}
 // Import keeps current sync progress exactly, or holds the whole installation before writes.
 export function validateIncomingImport(state,c){
  const registered=routes(state,c),p=c.internal_dispatch,g=c.google_incoming_mail;
- check(isDispatchCapability(c.shared_capability)&&hash(registered)===hash(p.routes),'Incoming routes must exactly match the reviewed immutable dispatch policy');
+ check(isDispatchCapability(c.shared_capability)&&hash(registered)===hash(authorizedRoutes(state,c)),'Incoming routes must exactly match the reviewed immutable dispatch policy and source permission');
  check(g?.enabled===true&&g.capability==='shared-registered-incoming-v1'&&g.run_id===c.run_id&&key(g.grant_id)&&g.grant_id===p.grant_id&&typeof g.account_email==='string'&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(g.account_email)&&g.account_email===p.account_email&&g.account_email===c.sender.account_email&&c.sender.email===p.from&&p.from==='hello@evzdigital.studio','Exact incoming account/grant scope required');
  if(!Object.hasOwn(state.operations??{},'gmail_incoming'))return;
- const n=state.operations.gmail_incoming,sha=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v),record=v=>v!==null&&typeof v==='object'&&!Array.isArray(v),token=v=>typeof v==='string'&&v.length>0&&v.length<=500;
- check(record(n)&&Object.keys(n).every(k=>['binding','routes','seen','phase','index','status','checked_at','cursor','start','pending','page','pages','hold','resync_hold','unrouted_additions'].includes(k)),'Unsupported saved incoming scope; preserve and review the original state');
+ validateIncomingObject(state.operations.gmail_incoming,c,registered,pdfIncomingRequest(state,c)?.request.incoming_pdf.scope_change?.before.routes.map(b=>b.thread_id));
+}
+function validateIncomingObject(n,c,registered,bootstrapOrder){
+ const g=c.google_incoming_mail,sha=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v),record=v=>v!==null&&typeof v==='object'&&!Array.isArray(v),token=v=>typeof v==='string'&&v.length>0&&v.length<=500;
+ check(record(n)&&Object.keys(n).every(k=>['binding','routes','seen','phase','index','status','checked_at','cursor','start','pending','page','pages','hold','resync_hold','unrouted_additions',...(c.shared_capability===operationsPDFMailCapability?['bootstrap_routes']:[])].includes(k)),'Unsupported saved incoming scope; preserve and review the original state');
  check(sha(n.binding)&&n.binding===hash({g,registered})&&Array.isArray(n.routes)&&hash(n.routes)===hash(registered),'Saved incoming account/grant/contact/routes scope differs; preserve the original cursor');
  check(record(n.seen)&&Object.keys(n.seen).length<=1000&&Object.entries(n.seen).every(([id,source])=>sha(id)&&sha(source)),'Malformed saved incoming dedup scope');
- check(['bootstrap','history'].includes(n.phase)&&Number.isSafeInteger(n.index)&&(n.phase==='bootstrap'?n.index>=0&&n.index<registered.length:n.index===registered.length),'Malformed saved incoming phase/index');
+ if(n.bootstrap_routes){const original=bootstrapOrder;check(n.phase==='bootstrap'&&Array.isArray(n.bootstrap_routes)&&hash(n.bootstrap_routes)===hash(original),'Preserve the original bootstrap route order');}
+ check(['bootstrap','history'].includes(n.phase)&&Number.isSafeInteger(n.index)&&(n.phase==='bootstrap'?n.index>=0&&n.index<(n.bootstrap_routes?.length??registered.length):n.index===registered.length),'Malformed saved incoming phase/index');
  check(['Initial registered-thread sync','Registered threads read; history catch-up required','Expired history; bounded registered-thread resync','Held','History page retained; registered thread read required','History page saved; more pages required','Caught up','Caught up; expired-history review remains required'].includes(n.status)&&typeof n.checked_at==='string'&&Number.isFinite(Date.parse(n.checked_at))&&new Date(n.checked_at).toISOString()===n.checked_at,'Malformed saved incoming status/check time');
  if(Object.hasOwn(n,'cursor'))check(historyId(n.cursor),'Malformed saved incoming cursor');
  if(n.phase==='history')check(historyId(n.cursor)&&!Object.hasOwn(n,'start'),'Saved incoming history needs its original cursor');
@@ -90,6 +183,7 @@ function eventsForThread(thread,b,now){
  return result.sort((a,b)=>Date.parse(a.at)-Date.parse(b.at)||a.data.source_id.localeCompare(b.data.source_id));
 }
 export function incomingMailView(state){const s=state.operations?.gmail_incoming;return s?{status:s.status,cursor:s.cursor??null,phase:s.phase,checked_at:s.checked_at,hold:s.hold??null,resync_hold:s.resync_hold??null,registered_threads:s.routes.length,processed_sources:Object.keys(s.seen).length,page_pending:Boolean(s.page||s.pending),unrouted_additions:s.unrouted_additions??0,read_only:true}:{status:'Not started',read_only:true};}
+export function registeredIncomingDisposition(view){return view.hold||view.resync_hold?{status:'Held',code:view.resync_hold?'HISTORY_GAP':'BOUNDS'}:{status:'Applied',code:null};}
 
 // One invocation reads one registered thread or one history page. No HTTP runs inside CAS.
 export async function syncIncomingMail(app,{actor,env=process.env,getAccessToken,fetcher,transport}={}){
@@ -99,6 +193,7 @@ export async function syncIncomingMail(app,{actor,env=process.env,getAccessToken
  const binding=hash({g,registered});
  if(saved&&saved.binding!==binding)return registrationHold(app,revision,'Incoming account/grant/contact/route registration changed; review the previous cursor before reinitialization');
  const provider=transport??googleHostedTransport({getAccessToken,fetcher,account:g.account_email,grantId:g.grant_id});
+ const pdf=pdfIncomingRequest(state,c)?.request.incoming_pdf,processing=pdf?.route&&pdf.status!=='Ready'?registered.filter(b=>b.thread_id!==pdf.route.thread_id||c.internal_dispatch.routes.some(old=>old.thread_id===b.thread_id)):registered;
  async function readThread(b,expected=[]){
   const thread=await provider.incomingThread(b.thread_id),known=state.prospects[b.project_id].reply;
   const ids=[...expected,...(known?.thread_id===b.thread_id?[known.source_id]:[])];
@@ -110,8 +205,8 @@ export async function syncIncomingMail(app,{actor,env=process.env,getAccessToken
   const profile=await provider.incomingProfile();check(profile.emailAddress===g.account_email&&historyId(profile.historyId),'Incoming business mailbox/history identity differs');
   if(next.phase==='bootstrap'&&!next.start)next.start=profile.historyId;
   if(next.phase==='bootstrap'){
-   events=await readThread(registered[next.index]);
-   next.index++;if(next.index===registered.length){next.phase='history';next.cursor=next.start;delete next.start;next.status='Registered threads read; history catch-up required';}
+   const order=next.bootstrap_routes??processing.map(b=>b.thread_id);events=await readThread(registered.find(b=>b.thread_id===order[next.index]));
+   next.index++;if(next.index===order.length){next.phase='history';next.index=registered.length;next.cursor=next.start;delete next.start;delete next.bootstrap_routes;next.status='Registered threads read; history catch-up required';}
   }else if(next.pending){
    const b=registered.find(b=>b.thread_id===next.pending.threads[next.pending.index]);
    events=await readThread(b,next.pending.messages.filter(m=>m.threadId===b.thread_id).map(m=>m.id));next.pending.index++;
@@ -128,8 +223,8 @@ export async function syncIncomingMail(app,{actor,env=process.env,getAccessToken
     check(deleted.length<=100&&deleted.every(a=>key(a.message?.id)&&key(a.message?.threadId)),'Excessive or malformed deleted messages');
     check(!deleted.some(a=>registered.some(b=>b.thread_id===a.message.threadId&&(state.prospects[b.project_id].reply?.source_id===a.message.id||next.seen[hash({project:b.project_id,message:a.message.id})]))),'Known incoming source was deleted; review retained provenance and the original mailbox before cursor recovery');
     if(page.nextPageToken)check(typeof page.nextPageToken==='string'&&page.nextPageToken.length<=500&&!next.pages?.includes(page.nextPageToken)&&(next.pages?.length??0)<20,'Looping or excessive history pagination; review before continuing');
-    const touched=new Set(added.map(a=>a.message.threadId)),pending={threads:registered.filter(b=>touched.has(b.thread_id)).map(b=>b.thread_id),messages:added.filter(a=>registered.some(b=>b.thread_id===a.message.threadId)).map(a=>({id:a.message.id,threadId:a.message.threadId})),index:0,historyId:page.historyId,nextPageToken:page.nextPageToken??null};
-    next.unrouted_additions=(next.unrouted_additions??0)+added.length-pending.messages.length;
+    const touched=new Set(added.map(a=>a.message.threadId)),pending={threads:processing.filter(b=>touched.has(b.thread_id)).map(b=>b.thread_id),messages:added.filter(a=>processing.some(b=>b.thread_id===a.message.threadId)).map(a=>({id:a.message.id,threadId:a.message.threadId})),index:0,historyId:page.historyId,nextPageToken:page.nextPageToken??null};
+    next.unrouted_additions=(next.unrouted_additions??0)+added.filter(a=>!registered.some(b=>b.thread_id===a.message.threadId)).length;
     if(pending.threads.length){next.pending=pending;next.status='History page retained; registered thread read required';}else finishPage(next,pending);
    }
   }
@@ -158,6 +253,59 @@ export async function syncIncomingMail(app,{actor,env=process.env,getAccessToken
 function finishPage(next,page){
  if(page.nextPageToken){next.page=page.nextPageToken;next.pages=[...(next.pages??[]),page.nextPageToken];next.status='History page saved; more pages required';}
  else{next.cursor=page.historyId;next.page=null;next.pages=[];next.status=next.resync_hold?'Caught up; expired-history review remains required':'Caught up';}
+}
+function mainFrontier(state){
+ const n=state.operations.gmail_incoming,ids=[n.cursor,n.pending?.historyId];
+ for(const t of Object.values(state.operations.internal_dispatch.ticks))for(const o of t.phases.incoming?.target?.kind==='registered'?t.phases.incoming.observations:[])if(o.name==='incomingHistory'&&o.value)ids.push(o.value.historyId);
+ return ids.filter(historyId).reduce((a,b)=>BigInt(b)>BigInt(a)?b:a,'1');
+}
+// One anchored continuation lives on the original send request and shares the standing phase/dedup.
+export async function syncPDFIncoming(app,{target,tick_id,transport}={}){
+ const state=await app.snapshot(),c=await app.loadConfig(),entry=pdfIncomingRequest(state,c),q=entry?.request,x=q?.incoming_pdf,now=app.now(),at=now.toISOString();
+ check(hash(target)===hash(pdfIncomingTarget(state,c,now))&&target.kind==='pdf'&&target.action_id===entry.action_id,'Exact current PDF incoming target required');validateIncomingImport(state,c);validatePDFIncomingEvidence(state,c,entry.action,q);
+ const next=structuredClone(x),b={...x.route,account_email:c.internal_dispatch.account_email};let events=[],failure=null;
+ const fail=(code)=>{const e=Error(code);e.pdfCode=code;throw e;};
+ function finish(page){
+  const p=next.progress;if(page.nextPageToken){p.page=page.nextPageToken;p.pages.push(page.nextPageToken);return;}
+  p.cursor=page.historyId;p.page=null;p.pages=[];p.pending=null;next.coverage={history_id:page.historyId,at,tick_id};
+  if(state.operations.gmail_incoming.phase==='history'&&BigInt(page.historyId)>=BigInt(mainFrontier(state))){p.phase='ready';next.status='Ready';}
+ }
+ async function full(expected,profile){
+  const thread=await transport.incomingThread(b.thread_id),messages=thread?.messages??[],root=messages.find(m=>m.id===b.original_id),known=[b.original_id,...Object.values(state.events).filter(e=>e.type==='reply_received'&&e.prospect_id===b.project_id&&e.data.thread_id===b.thread_id).map(e=>e.data.source_id),...expected];
+  if(!known.every(id=>messages.some(m=>m.id===id)))fail('KNOWN_SOURCE_MISSING');
+  if(!root||messages.some(m=>m.id!==root.id&&Number(m.internalDate)<=Number(root.internalDate)))fail('COLLISION');
+  if(messages.some(m=>m.id!==root.id&&m.labelIds?.includes('SENT')&&!Object.values(state.actions).some(a=>a.delivery?.message_id===m.id&&a.delivery?.thread_id===b.thread_id)))fail('COLLISION');
+  let result;try{result=eventsForThread(thread,b,now);}catch{fail('THREAD_INCOMPLETE');}
+  if(result.some(e=>{const current=state.prospects[b.project_id].reply;return current&&current.source_id!==e.data.source_id&&current.thread_id!==b.thread_id&&Date.parse(current.at)===Date.parse(e.at);}))fail('THREAD_INCOMPLETE');
+  next.progress.read_before=profile.historyId;return result;
+ }
+ try{
+  const profile=await transport.incomingProfile();check(profile.emailAddress===c.internal_dispatch.account_email&&historyId(profile.historyId)&&BigInt(profile.historyId)>=BigInt(next.progress.cursor),'Invalid bounded PDF profile');
+  const p=next.progress;
+  if(p.phase==='bootstrap'){events=await full([],profile);p.phase='history';next.status='CatchUp';}
+  else if(p.pending){const page=structuredClone(p.pending);events=await full(page.messages.map(m=>m.id),profile);p.pending=null;finish(page);}
+  else{
+   let page;try{page=await transport.incomingHistory(p.cursor,p.page);}catch(e){if(e.status===404)fail('HISTORY_GAP');throw e;}
+   check(Buffer.byteLength(JSON.stringify(page))<=250000&&historyId(page.historyId)&&BigInt(page.historyId)>=BigInt(p.cursor)&&Array.isArray(page.history??[])&&(page.history??[]).length<=50,'Invalid bounded PDF history');
+   let previous=BigInt(p.cursor);const added=[],deleted=[];
+   for(const h of page.history??[]){check(historyId(h.id)&&BigInt(h.id)>previous&&BigInt(h.id)<=BigInt(page.historyId)&&Array.isArray(h.messagesAdded??[])&&Array.isArray(h.messagesDeleted??[]),'Invalid PDF history chronology');previous=BigInt(h.id);added.push(...h.messagesAdded??[]);deleted.push(...h.messagesDeleted??[]);}
+   check(added.length<=100&&deleted.length<=100&&[...added,...deleted].every(m=>key(m.message?.id)&&key(m.message.threadId)),'Invalid PDF history membership');
+   if(deleted.some(m=>m.message.threadId===b.thread_id))fail('HISTORY_GAP');
+   if(page.nextPageToken)check(typeof page.nextPageToken==='string'&&page.nextPageToken.length>0&&page.nextPageToken.length<=500&&!p.pages.includes(page.nextPageToken)&&p.pages.length<20,'Looping or excessive PDF history pages');
+   const messages=added.filter(m=>m.message.threadId===b.thread_id).map(m=>({id:m.message.id,threadId:m.message.threadId}));check(new Set(messages.map(m=>m.id)).size===messages.length,'Duplicate PDF history additions');
+   const pending={messages,historyId:page.historyId,nextPageToken:page.nextPageToken??null};if(messages.length)p.pending=pending;else finish(pending);
+  }
+ }catch(error){failure=error.pdfCode??(error.status===404?'HISTORY_GAP':'BOUNDS');Object.assign(next,structuredClone(x));next.status='Held';next.hold={code:failure,at,tick_id};next.progress.phase='held';next.progress.hold=failure;events=[];}
+ next.progress.checked_at=at;
+ const n=structuredClone(state.operations.gmail_incoming),seen=n.seen,unique=new Set(events.map(e=>hash({project:e.prospect_id,message:e.data.source_id})).filter(id=>!Object.hasOwn(seen,id)));
+ if(Object.keys(seen).length+unique.size>1000){next.status='Held';next.hold={code:'BOUNDS',at,tick_id};next.progress=structuredClone(x.progress);next.progress.phase='held';next.progress.hold='BOUNDS';next.progress.checked_at=at;events=[];failure='BOUNDS';}
+ await app.change(async s=>{
+  check(hash(s.operations.gmail_incoming)===hash(state.operations.gmail_incoming)&&hash(s.operations.requests[entry.action_id+'-intent'])===hash(q),'PDF incoming scope/request changed during bounded read');
+  const reducer=new StudioLifecycle(null,()=>now);reducer.store={config:async()=>c,change:async fn=>fn(s)};
+  for(const e of events){const id=hash({project:e.prospect_id,message:e.data.source_id}),source=hash(e.data);if(seen[id]===source)continue;await reducer.apply(e,{actor:'provider'});seen[id]=source;}
+  s.operations.gmail_incoming=n;s.operations.requests[entry.action_id+'-intent'].incoming_pdf=next;prepareNotificationsInState(s,now,{origin:'gmail-incoming',includeDigest:false});s.revision++;s.updated_at=at;
+ });
+ return {status:failure?'Held':'Applied',code:failure};
 }
 async function registrationHold(app,revision,reason){return app.change(s=>{
  check(s.revision===revision,'Incoming workspace changed; no registration hold committed');

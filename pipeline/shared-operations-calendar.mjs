@@ -1,4 +1,4 @@
-import {operationsMailCapability} from './shared-operations-exact-mail.mjs';
+import {operationsMailCapability,operationsPDFMailCapability} from './shared-operations-exact-mail.mjs';
 import {check,hash} from './lifecycle.mjs';
 import {bookingKey,bookingContext,bookingConfirmations} from './calendar-confirmation.mjs';
 import {validateBookingSlot} from './lifecycle-documents.mjs';
@@ -10,7 +10,7 @@ export const calendarSlotPolicy=Object.freeze({duration_minutes:20,buffer_minute
 const exact=(v,fields)=>check(v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).sort().join(',')===fields.split(',').sort().join(','),'Unknown or missing Calendar fields');
 const key=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(v)&&!['__proto__','constructor','prototype'].includes(v);
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v),uuid=v=>typeof v==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(v);
-export const hasOperationsCalendar=app=>[operationsCalendarCapability,operationsMailCapability].includes(app.config?.shared_capability)&&app.store?.dispatchBinding?.scope.capability===app.config.shared_capability;
+export const hasOperationsCalendar=app=>[operationsCalendarCapability,operationsMailCapability,operationsPDFMailCapability].includes(app.config?.shared_capability)&&app.store?.dispatchBinding?.scope.capability===app.config.shared_capability;
 export function validateCalendarPolicy(p){
  exact(p,'version,status,account,calendar_id,grant_id,grant_profile,slot_policy,operations,response_bytes,request_ms,execution_ms');
  check(p.version===operationsCalendarCapability&&p.status==='UNAPPROVED'&&p.account==='ensizziyo@evzdigital.studio'&&p.calendar_id===p.account&&key(p.grant_id)&&p.grant_profile==='calendar-booking-v1'&&hash(p.slot_policy)===hash(calendarSlotPolicy)&&hash(p.operations)===hash(['availability','queue','dispatch-once','exact-id-reconcile'])&&p.response_bytes===100000&&p.request_ms===10000&&p.execution_ms===40000,'Exact unapproved independent Calendar policy required');return p;
