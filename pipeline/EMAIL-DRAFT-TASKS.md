@@ -1,6 +1,6 @@
 # Local email draft tasks
 
-This increment prepares replies for fictional existing conversations in the loopback desk, including bounded approved PDF selection. It invokes no model or provider itself. A separately authorized local worker can retrieve one task and return one proposal without possessing an operator session. Native cloud transport, computer-off execution and full-thread retrieval remain incomplete. Runtime and usage fields are worker-reported, not independently verified provider receipts.
+This increment prepares replies for fictional existing conversations in the loopback desk, including bounded approved PDF selection and bounded registered conversation-history retrieval. It invokes no model or provider itself. A separately authorized local worker can retrieve one task and return one proposal without possessing an operator session. Native cloud transport, computer-off execution and complete or live mailbox retrieval remain unproved. Runtime and usage fields are worker-reported, not independently verified provider receipts.
 
 The narrow credential limits these desk routes. It is not an operating-system or tool sandbox for the native Codex development worker; that worker followed a bounded task instruction within this development session. Production worker environment/tool isolation remains a separate gate.
 

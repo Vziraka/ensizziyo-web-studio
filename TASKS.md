@@ -8,8 +8,11 @@ Owner-approved staged code and fictional proof work may proceed; this does not a
 - [x] Add explicit existing-conversation claim and personal writing profiles through signed local routes and opt-in composed shared records; preserve existing owners, reviewed wording and old-profile denials.
 - [x] Add bounded approved PDF selection to local reply tasks, exact bundle review/download, and the fictional task-to-provider-receipt journey; preserve shared-profile denials and stale-file recovery.
 - [x] Retain bounded registered sent/received conversation context for local drafts, with explicit provenance, source-gap holds and exact older-message citations. Keep private drafts and business approval authority separate.
+- [x] Complete the bounded local security review and signed draft-correction proof; [scope, evidence and limitations](pipeline/HYBRID-IMPLEMENTATION.md#quality-and-security-review-current-gate--october-26) remain separate from production readiness.
 - [ ] Complete Stage 1 shared task persistence and native execution/result return; verify the intended account route before expanding dependent integration. Local controlled proofs are not full Stage 1 acceptance.
 - [ ] Verify the intended Business execution route and allowances before cloud or computer-off claims; keep live release separate.
+
+Current stopping gate: the useful bounded local proof and review work is complete. Verify the intended Business account capabilities and execution/result-return route before dependent shared/native implementation; do not treat this checkpoint as full Stage 1 completion.
 
 ## Shared operations desk redesign — October 23, 2026
 
