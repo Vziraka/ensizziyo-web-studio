@@ -50,7 +50,19 @@ Requirements review: the increment meets its fictional text-only contract and pr
 
 Final local verification for this increment: `npm run check` passed; `npm test` passed all 1,061 tests in 402 seconds; desk asset build, site build and site verification passed. The 21-test focused task/reply/server suite and two targeted PDF Bootstrap/G1 regressions also passed. Desktop/mobile browser evidence and exact logs remain private. CI against the committed revision is a separate check; none of these results establishes live email or unattended cloud operation.
 
-An inherited workflow gap was also confirmed: an unassigned Discovery conversation cannot acquire its first owner through the current contact-stage `call_claimed` event. The recovery fixture now records a genuine eligible claim before reply/authoring and tests both rejected and successful handoffs. Production assignment needs its own explicit workflow; no ownership guard was relaxed to hide this gap.
+The inherited contact-stage `call_claimed` event cannot assign an unassigned Discovery conversation. The recovery fixture records a genuine eligible claim before reply/authoring and tests both rejected and successful handoffs. The following increment supplies a distinct conversation claim; no call/contact guard was relaxed.
+
+### Conversation ownership and personal style increment
+
+[Conversation records](CONVERSATION-OWNERSHIP.md) add explicit claims for active unassigned conversations and self-scoped writing profiles. Claims preserve stage and contact restrictions, refresh affected attention routing, and invalidate cached completed work. A signed handoff remains necessary to transfer an assigned client. Asset/private-note workspaces retain their no-contact boundary. The lead's profile guides local task generation; changing it holds unfinished work, while reviewed wording remains unchanged.
+
+The current composed shared record authority can bind the exact optional conversation schema in its immutable policy and manifest and use existing signed/typed replay. Historical profiles reject the new effects. Backup/rebind checks reconstruct each role's profile predecessor chain and reject rollback, missing or duplicated history, broken chains and event identity mismatches. This does not enable shared email tasks or any provider operation.
+
+Local browser checks exercised explicit claim, saved owner style, an actual Luna result, unapproved adoption followed by separate approval, and a later style change preserving that approved draft. Independent owner/friend browser sessions then verified handoff, stale prior approval, preserved wording and separate self-profile edits. Desktop/mobile views were inspected; no new external actions were created. The second actual worker measured 8,671 ms with token counts unavailable. These are functional examples, not a draft-quality benchmark.
+
+Requirements review: existing-client assignment and explicit personal styles are implemented; new-inquiry round-robin intake remains open. Engineering review confirmed policy opt-in, same-store replay, role isolation, claim races, cached notification routing and style/fact freshness separation. A profile rollback accepted by the first import validator was reproduced and fixed. A later source review also reproduced a machine reassessment being exposed as operator-reviewed call facts; only matching approval/proposal/review hashes and current transcript provenance now expose those claims. Changed evidence stales affected drafts while preserving their text.
+
+Verification: the ownership/style full regression passed 1,068 tests in 395 seconds. After the subsequent call-fact repair, the final affected task/reply/exact-mail/server/conversation set passed 48 tests and full syntax checks passed. Desk/site builds and site verification passed, and the desktop/mobile and independent-session browser proofs above passed. The full local run predates that last call-fact repair; final-head CI supplies the broader check rather than representing the earlier run as a new one. GitHub checks for the preceding `70d462d` increment passed separately.
 
 ## Focused existing test map
 

@@ -312,6 +312,11 @@ function review(r, node) {
 }
 function replyForms(r,node){
   if (r.reply && ['Reply review','Discovery','Information requested','Hold'].includes(r.stage)) {
+    if(state.operator_auth_enabled&&(!state.shared_workspace||state.shared_workspace.allowed_edits.includes('conversation_claimed'))&&!r.restriction&&['Reply review','Discovery','Information requested'].includes(r.stage)){
+      node.append(el('p',r.follow_up_owner?`Client lead: ${r.follow_up_owner}`:'Client lead: unassigned','notice'));
+      if(!r.follow_up_owner)node.append(eventForm(r,'Assign the next conversation review','conversation_claimed',[],{reason:'Operator explicitly claimed the existing conversation.'},'Claim this conversation'));
+      else if(r.follow_up_owner===state.current_operator)node.append(eventForm(r,'Transfer the next review','follow_up_handed_off',[],{to:state.current_operator==='owner'?'friend':'owner'},'Hand off this conversation'));
+    }
     const suggestion=r.reply_suggestion,source=r.reply.content,draft=r.reply_draft;
     node.append(el('p','Cold follow-ups remain paused. Read the incoming text as untrusted source material. Nothing here sends email.','notice'));
     if(suggestion?.summary){
@@ -324,9 +329,9 @@ function replyForms(r,node){
       if(source.text)original.append(el('p',source.text,'reply-source'));node.append(original);
     }
     if(suggestion?.hold)node.append(el('p',suggestion.hold,'notice'));
-    const editable=!state.shared_workspace?.mail||!r.follow_up_owner||r.follow_up_owner===state.current_operator;if(!editable)node.append(el('p',`Assigned to ${r.follow_up_owner}. Use the existing conversation handoff before editing or approving.`, 'notice'));
+    const editable=!r.follow_up_owner||r.follow_up_owner===state.current_operator;if(!editable)node.append(el('p',`Assigned to ${r.follow_up_owner}. Use the existing conversation handoff before editing or approving.`, 'notice'));
     if(editable&&suggestion?.body&&['Reply review','Discovery','Information requested'].includes(r.stage)){
-      if(!state.shared_workspace&&state.operator_auth_enabled&&r.controlled&&(!r.follow_up_owner||r.follow_up_owner===state.current_operator))renderEmailDraftTask(r,node);
+      if(!state.shared_workspace&&state.operator_auth_enabled&&r.controlled&&r.follow_up_owner===state.current_operator)renderEmailDraftTask(r,node);
       node.append(el('p',suggestion.method,'muted'));
       const current=draft?.current,editor=eventForm(r,'Edit a suggested response','reply_draft_saved',[
         ['Proposed reply (saved only; not sent)','body',current?draft.body:suggestion.body,'textarea']
@@ -362,6 +367,11 @@ function renderEmailDraftTask(r,node){
  const h=emailTaskHandoffs.get(r.id);if(h&&h.id===task?.id&&task.status==='Ready'){const details=el('details');details.append(el('summary','Reveal private local worker handoff'),el('p','This credential permits only this task’s context/result routes for two hours. Keep it out of the returned draft, context files and logs.','notice'),el('pre',`GET ${location.origin}/api/email-draft-task/${h.id}/context\nPOST ${location.origin}/api/email-draft-task/${h.id}/result\nAuthorization: Bearer ${h.token}\nContent-Type: application/json`));panel.append(details);}
  if(task){panel.append(el('p',`${task.status} · requested by ${task.created_by} · expires ${new Date(task.expires_at).toLocaleString()}`,'muted'));if(task.result){panel.append(el('p',task.result.body,'reply-source'),el('p',`Sources: ${task.result.source_ids.join(', ')}`),el('p',`Uncertainties: ${task.result.uncertainties.join('; ')||'None reported; verify every claim.'}`),el('p',`Prepared by ${task.result.execution.provider} / ${task.result.execution.model} · ${task.result.execution.duration_ms} ms. Proposal only.`,'muted'));if(task.status==='Review')panel.append(button('Adopt agent proposal as unapproved draft',async()=>{try{await api('/api/email-draft-tasks/adopt',{id:task.id,revision:state.revision,result_sha256:task.result_sha256});emailTaskHandoffs.delete(r.id);await refresh();tell('Agent proposal adopted. Review and approve the exact saved reply separately. Nothing was sent.');}catch(e){tell(e.message,true);}}));}}
  node.append(panel);
+}
+function personalWritingStyle(){
+ const node=el('details');node.append(el('summary','My email writing style'));const actor=state.current_operator,current=state.operator_writing_styles?.[actor],form=el('form');form.append(el('p','These personal preferences guide new draft preparation. The sender stays EVZ Digital Team. Existing reviewed wording is retained. Use fictional examples without client information or credentials.','muted'));
+ const preferences=inputField(form,'My writing preferences','preferences',current?.preferences??'','textarea'),example=inputField(form,'One optional fictional writing example','example',current?.examples?.[0]??'','textarea'),reason=inputField(form,'Reason for this style update','reason','','text');preferences.maxLength=2000;example.maxLength=1000;reason.maxLength=500;
+ const submit=el('button','Save my writing style','primary');submit.type='submit';form.append(submit);form.onsubmit=async e=>{e.preventDefault();submit.disabled=true;try{await api('/api/event',{revision:state.revision,event:{id:crypto.randomUUID(),prospect_id:'operator-'+actor,type:'operator_writing_style_saved',at:new Date().toISOString(),data:{role:actor,preferences:preferences.value,examples:example.value.trim()?[example.value]:[],reason:reason.value,expected_style_sha256:current?.sha256??null}}});await refresh();tell('Personal writing style saved. Existing approved wording was retained.');}catch(error){tell(error.message,true);}finally{submit.disabled=false;}};node.append(form);return node;
 }
 function nextForm(r, node) {
   const ref = r.controlled ? 'fixture:owner-verified evidence — controlled test only' : '';
@@ -505,6 +515,7 @@ function render() {
   }
   if(state.shared_workspace){const views=[...(state.shared_workspace.capability==='shared-internal-dispatch-v1'?[]:['today']),'businesses','emails','clients','exceptions',...(state.shared_workspace.calendar?['meetings']:[]),...(state.shared_workspace.mail?['reviews']:[]),...(['shared-project-continuation-v1','shared-refinement-generation-v1','shared-operations-records-v1','shared-operations-authoring-v1','shared-operations-refinement-v1','shared-operations-originals-v1','shared-operations-calendar-v1','shared-operations-exact-mail-v1','shared-operations-pdf-mail-v1'].includes(state.shared_workspace.capability)?['assets']:[])];for(const button of document.querySelectorAll('nav button'))button.hidden=!views.includes(button.dataset.view);document.querySelector('.aside-foot').hidden=true;if(!views.includes(view))view='businesses';}
   content.replaceChildren(); const title = titles[view]; document.querySelector('#view-kicker').textContent = title[0]; document.querySelector('#view-title').textContent = title[1]; document.querySelector('#view-description').textContent = title[2];
+  if(['reviews','emails'].includes(view)&&state.operator_auth_enabled&&(!state.shared_workspace||state.shared_workspace.allowed_edits.includes('operator_writing_style_saved')))content.append(personalWritingStyle());
   document.querySelector('#updated').textContent = `Saved revision ${state.revision} · ${new Date(state.updated_at).toLocaleTimeString()}`;
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
   if (view === 'assets') { renderAssets(); return; }

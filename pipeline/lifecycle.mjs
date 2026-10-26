@@ -3,6 +3,7 @@ import {applySharedProjectEvent,sharedProjectDashboard} from './shared-project-c
 import {bookingConfirmations} from './calendar-confirmation.mjs';
 import {calendarBookingView} from './shared-operations-calendar.mjs';
 import {replySuggestion,replyDraftContent,replyDraftCurrent,validReplySource,emailDraftSource} from './reply-content.mjs';
+import {conversationEvents,applyConversationRecord} from './conversation-records.mjs';
 import {applyInertNote,inertReconciliation} from './inert-shared-workspace.mjs';
 import {applyManualRecord,manualRecordEvents} from './shared-manual-records.mjs';
 import {applyDispatchManualRecord,applyDispatchProjectRecord,dispatchHasManual,dispatchHasProjects,dispatchProjectEvents} from './shared-internal-dispatch.mjs';
@@ -241,7 +242,7 @@ export class StudioLifecycle {
     if(this.store?.dispatchBinding&&dispatchHasManual(this.store.dispatchBinding.scope.capability)){
       const config=this.config,record={event,actor,revision:expectedRevision};
       const mail=isOperationsMail(config.shared_capability)&&mailRecordEvents.includes(event.type);
-      const project=dispatchHasProjects(config.shared_capability)&&dispatchProjectEvents.includes(event.type);
+      const project=dispatchHasProjects(config.shared_capability)&&(dispatchProjectEvents.includes(event.type)||conversationEvents.includes(event.type));
       return this.change(state=>{record.at=this.now().toISOString();return (mail?applyMailRecord:project?applyDispatchProjectRecord:applyDispatchManualRecord)(state,config,record,new Date(record.at));},{eventId:event.id,eventFingerprint:hash({event,actor}),configFingerprint:hash(config),[mail?'mailRecord':project?'projectRecord':'manualRecord']:record});
     }
     if(this.store?.projectBinding)return this.change(state=>applySharedProjectEvent(state,event,actor,expectedRevision,this.now(),this.config),{eventId:event.id,eventFingerprint:hash({event,actor}),projectRecord:{event,actor,revision:expectedRevision}});
@@ -258,6 +259,7 @@ export class StudioLifecycle {
   }
   // Shared manual recording reuses this reducer without the production call-execution release.
   reduceEvent(state,event,{actor,expectedRevision,validateMachineDraft=null,validateHostedAssessment=null,manualRecording=false,projectRecording=false,agentDraft=null}) {
+      if(conversationEvents.includes(event.type))return applyConversationRecord(state,event,actor,expectedRevision,this.now());
       const fingerprint = hash({ event, actor });
       if (state.events[event.id]) { check(state.events[event.id].fingerprint === fingerprint, 'Event ID conflicts with saved evidence'); return { duplicate: true, revision: state.revision }; }
       check(expectedRevision === undefined || expectedRevision === state.revision, 'Record changed; refresh before approving');

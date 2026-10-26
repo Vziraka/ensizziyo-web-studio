@@ -1,5 +1,6 @@
 import {callTranscriptionView,approveCallTranscription,runCallTranscription,pauseCallTranscription} from './call-transcription.mjs';
 import {createEmailDraftTask,emailDraftTaskContext,submitEmailDraftResult,adoptEmailDraftResult} from './email-draft-tasks.mjs';
+import {conversationEvents} from './conversation-records.mjs';
 import {retainedSource} from './retained-sources.mjs';
 import {prepareTeamNotifications,notificationView} from './team-notifications.mjs';
 import {projectContext,projectWorkContext,resolveProject} from './project-work.mjs';
@@ -110,6 +111,7 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
       if(url.pathname==='/api/call-transcription/run')return json(200,await runCallTranscription(app,localAudioStore(app.directory),input,operator));
       if(url.pathname==='/api/call-audio-check')return json(200,await reconcileCallAudio(app,localAudioStore(app.directory),input.prospect_id,input.id));
       if (url.pathname === '/api/event') {
+        if(conversationEvents.includes(input.event?.type))check(operatorAuth,'Individual operator sign-in required for conversation records');
         check(!['prospect_imported', 'verification_imported', 'transcript_assessed', 'reply_received', 'email_delivered', 'meeting_verified','call_audio_reserved','call_audio_stored'].includes(input.event?.type), 'Provider/research/worker events cannot be submitted as owner decisions');
         const result = await app.apply(input.event, { actor: operator, expectedRevision: input.revision });
         if (input.event.type === 'transcript_added') {

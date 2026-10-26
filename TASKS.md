@@ -5,7 +5,8 @@
 Owner-approved staged code and fictional proof work may proceed; this does not authorize deployment, production migration, real client email/calls, purchases or production automation activation. The separately approved development continuation belongs to the current coordinator; the old implementation chat stays paused. Stage 0 uses baseline `3a48fbe` plus preserved inherited worktree snapshot `3bf20a7`. Business-account capability, native cloud execution and durable result return remain unverified; personal-account allowance is not evidence of Business entitlements. Stage 1 acceptance and focused test map: [implementation checkpoints](pipeline/HYBRID-IMPLEMENTATION.md).
 
 - [x] Implement the local fictional task/context/result/adoption contract, verify an actual local Luna draft returning through the desk, and inspect desktop/mobile UI. Keep sending held and revoke unfinished task credentials on backup restore.
-- [ ] Complete the Stage 1 attachment, shared-task, writing-preference and full approval/receipt journey. The local text increment is not full Stage 1 acceptance.
+- [x] Add explicit existing-conversation claim and personal writing profiles through signed local routes and opt-in composed shared records; preserve existing owners, reviewed wording and old-profile denials.
+- [ ] Complete the Stage 1 attachment, shared-task and full approval/receipt journey. The local text increment is not full Stage 1 acceptance.
 - [ ] Verify the intended Business execution route and allowances before cloud or computer-off claims; keep live release separate.
 
 ## Shared operations desk redesign — October 23, 2026
