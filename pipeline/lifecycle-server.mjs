@@ -1,4 +1,5 @@
 import {callTranscriptionView,approveCallTranscription,runCallTranscription,pauseCallTranscription} from './call-transcription.mjs';
+import {createEmailDraftTask,emailDraftTaskContext,submitEmailDraftResult,adoptEmailDraftResult} from './email-draft-tasks.mjs';
 import {retainedSource} from './retained-sources.mjs';
 import {prepareTeamNotifications,notificationView} from './team-notifications.mjs';
 import {projectContext,projectWorkContext,resolveProject} from './project-work.mjs';
@@ -48,6 +49,12 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
         res.end(await readFile(join(fileURLToPath(new URL('./lifecycle-ui/', import.meta.url)), file))); return;
       }
       check(!req.headers['sec-fetch-site'] || ['same-origin', 'none'].includes(req.headers['sec-fetch-site']), 'Cross-site requests are blocked');
+      if(/^\/api\/email-draft-task\/[a-zA-Z0-9_-]{1,80}\/(context|result)$/.test(url.pathname)){
+        const [,,,id,command]=url.pathname.split('/'),token=/^Bearer ([a-f0-9]{64})$/.exec(req.headers.authorization??'')?.[1];
+        if(req.method==='GET'&&command==='context')return json(200,await emailDraftTaskContext(app,id,token));
+        check(req.method==='POST'&&command==='result'&&req.headers['content-type']==='application/json','Use the exact task context/result operation');
+        return json(200,await submitEmailDraftResult(app,id,token,await readInput()));
+      }
       check(req.headers.cookie?.split(';').some(x => x.trim() === `studio_session=${session}`), 'Open the private console first');
       if (req.method === 'GET' && url.pathname === '/api/bootstrap') return json(200, { csrf, operator_auth_required: Boolean(operatorAuth) });
       if (req.method === 'POST' && url.pathname === '/api/login') {
@@ -96,6 +103,8 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
       }
       check(req.method === 'POST' && req.headers['x-studio-token'] === csrf && req.headers['content-type'] === 'application/json', 'Owner session and same-origin approval token required');
       const input = await readInput();
+      if(url.pathname==='/api/email-draft-tasks/create'){check(operatorAuth,'Individual operator sign-in required for email draft tasks');return json(200,await createEmailDraftTask(app,input,operator));}
+      if(url.pathname==='/api/email-draft-tasks/adopt'){check(operatorAuth,'Individual operator sign-in required for email draft tasks');return json(200,await adoptEmailDraftResult(app,input,operator));}
       if(url.pathname==='/api/team-notifications/prepare')return json(200,await prepareTeamNotifications(app));
       if(url.pathname==='/api/call-transcription/approve')return json(200,await approveCallTranscription(app,input,operator));
       if(url.pathname==='/api/call-transcription/run')return json(200,await runCallTranscription(app,localAudioStore(app.directory),input,operator));

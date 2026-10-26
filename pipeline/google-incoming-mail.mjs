@@ -125,7 +125,7 @@ export async function validatePDFIncomingHistory(state,c,a,q){
   else disposition=registeredIncomingDisposition(await syncIncomingMail(app,{actor:'service:internal-dispatch',env:{EVZ_INTERNAL_DISPATCH_RUNTIME:c.shared_capability},transport}));
   check(!observations.length&&hash(disposition)===hash(phase.disposition),'Retained incoming disposition/raw coverage differs');scratch.operations.internal_dispatch.ticks[id].phases.incoming=structuredClone(phase);
  }
- check(pdfSteps>0&&hash(scratch.operations.requests[a.id+'-intent'].incoming_pdf)===hash(x),'Complete PDF progress must be reconstructed from original bounded raw ticks');
+ check((pdfSteps>0||x.status==='Bootstrap')&&hash(scratch.operations.requests[a.id+'-intent'].incoming_pdf)===hash(x),'Complete PDF progress must be reconstructed from original bounded raw ticks');
  if(hash(state.operations.internal_dispatch?.policy)===x.policy_sha256)check(hash(scratch.operations.gmail_incoming)===hash(state.operations.gmail_incoming),'Current incoming progress differs from retained raw ticks');
 }
 // Import keeps current sync progress exactly, or holds the whole installation before writes.

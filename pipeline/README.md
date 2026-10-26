@@ -6,6 +6,8 @@ October25: [Disabled shared operations originals](SHARED-OPERATIONS-ORIGINALS.md
 
 # Controlled research proof
 
+October 26 hybrid implementation: [stages and current gates](HYBRID-IMPLEMENTATION.md), [local fictional email task contract and browser recipe](EMAIL-DRAFT-TASKS.md). The local task gives a worker context/result access, then requires operator adoption and separate review. It does not automatically launch a worker, support attachments or enable shared/cloud execution. Agent-adopted replies use EVZ Digital Team; legacy email paths below retain their existing signatures until migrated.
+
 [Partial-original G1 recovery](GOOGLE-DRIVE-ORIGINALS.md#explicit-incomplete-original-recovery) uses the existing disabled signed D1/Drive caller to retain exact observed chunks and uncertainty as inert evidence. Unresolved backups and unsupported shared imports hold before writes. Run `node --test original-recovery.test.mjs lifecycle-backup.test.mjs shared-project-originals.test.mjs google-drive-originals.test.mjs` from `pipeline`, then the existing full checks. It adds no provider or shared Drive activation.
 
 [Disabled shared operations refinement](REFINEMENT-GENERATION.md#shared-operations-composition-contract--october-25) joins the existing bounded selected-source caller, signed Node authoring/recovery, manual/project records and internal dispatch on one actual dispatch CAS. Internal and generation policies, runtime gates and finite reservations stay independent. Run `node --test pipeline/shared-operations-refinement.test.mjs pipeline/refinement-generation.test.mjs pipeline/shared-operations-authoring.test.mjs` from the repository root, then the existing full pipeline/site checks. No real grant, model/amount approval or activation is included.

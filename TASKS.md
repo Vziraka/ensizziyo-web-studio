@@ -1,5 +1,13 @@
 # Launch tasks
 
+## Hybrid operations staged implementation — October 26, 2026
+
+Owner-approved staged code and fictional proof work may proceed; this does not authorize deployment, production migration, real client email/calls, purchases or production automation activation. The separately approved development continuation belongs to the current coordinator; the old implementation chat stays paused. Stage 0 uses baseline `3a48fbe` plus preserved inherited worktree snapshot `3bf20a7`. Business-account capability, native cloud execution and durable result return remain unverified; personal-account allowance is not evidence of Business entitlements. Stage 1 acceptance and focused test map: [implementation checkpoints](pipeline/HYBRID-IMPLEMENTATION.md).
+
+- [x] Implement the local fictional task/context/result/adoption contract, verify an actual local Luna draft returning through the desk, and inspect desktop/mobile UI. Keep sending held and revoke unfinished task credentials on backup restore.
+- [ ] Complete the Stage 1 attachment, shared-task, writing-preference and full approval/receipt journey. The local text increment is not full Stage 1 acceptance.
+- [ ] Verify the intended Business execution route and allowances before cloud or computer-off claims; keep live release separate.
+
 ## Shared operations desk redesign — October 23, 2026
 
 - [x] Add the accepted default-disabled `shared-operations-exact-mail-v1` slice on the actual dispatch authority: current signed reply content/facts, separate exact approval, eight-stage whole-state/raw replay, independent owner Gmail OAuth and complete inert G1. Every current project PDF companion starts a new thread and is explicitly held before approval/action/reservation/token/send; package inspection and original recovery remain available. The 26 focused signed/SDK checks, 1,024 guarded pipeline tests, both-role desktop/narrow controls, minified consumers, two distinct same-worker reviews and exact-head CI are recorded in private `shared-operations-exact-mail-handoff-20261025.json`. Stop for independent parent acceptance. Full shared PDF delivery, semantic/live/host/device/PC-off/migration/release acceptance and all real activation remain unfinished. [Bounded contract](pipeline/SHARED-OPERATIONS-EXACT-MAIL.md).

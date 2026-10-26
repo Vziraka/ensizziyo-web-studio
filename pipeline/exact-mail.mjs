@@ -29,7 +29,7 @@ export function packageInState(state,config,input,actor,now){
  let draft,mail,attachments=[],context;
  if(input.kind==='reply'){
   draft=r.reply_draft;const approval=state.events[draft?.approval_event];
-  check(draft?.status==='Approved; sending held'&&replyDraftCurrent(r,draft)&&approval?.id===draft.approval_event&&approval.type==='reply_draft_approved'&&approval.prospect_id===r.id&&approval.actor===draft.approved_by&&approval.data?.sha256===draft.sha256&&approval.data.approved===true&&approval.data.facts_checked===true,'Approve the exact current reply content and facts first');
+  check(draft?.status==='Approved; sending held'&&replyDraftCurrent(r,draft,config)&&approval?.id===draft.approval_event&&approval.type==='reply_draft_approved'&&approval.prospect_id===r.id&&approval.actor===draft.approved_by&&approval.data?.sha256===draft.sha256&&approval.data.approved===true&&approval.data.facts_checked===true,'Approve the exact current reply content and facts first');
   mail={from:draft.content.from,to:draft.content.to,subject:draft.content.subject,body:draft.content.body+'\n\n'+draft.content.signature};
   context={draft_sha256:draft.sha256,approval_event:draft.approval_event,reply_sha256:draft.reply_sha256};
  }else{
@@ -153,7 +153,7 @@ async function mailResult(app,id,fence,budget,error){
  try{const {state}=await budget.run(()=>mailEnvelope(app));check(fence.same(state),'Exact email ownership changed; read the saved intent');const q=state.operations?.requests?.[id+'-intent'];return {action_id:id,status:q?.status??'Uncertain',...(q?.status==='Verified'?{receipt:q.receipt}:{}),...failure};}catch{return {action_id:id,status:'Uncertain',...failure};}
 }
 async function holdMail(app,id,internal,fence,budget,error,phase='dispatch',provider=null){
- try{await fence.change((s,q)=>{if(!q||q.status==='Verified'||q.receipt)return;q.status=q.dispatch_started_at?'Uncertain':'Held';if(shared&&q.incoming_pdf&&!q.dispatch_started_at){q.incoming_pdf.status='Held';q.incoming_pdf.hold={code:'PRE_SEND_HELD',at:w.at,tick_id:null};}q.hold='Provider/source check or response failed; no automatic resend. Reconcile the reserved intent.';s.actions[id].status='Uncertain';s.operations.email[id].status=q.status;if(internal){s.actions[id].hold=q.hold;s.team_notifications.messages[s.actions[id].payload.package.notification_id].delivery={status:q.status+'; no resend permission',action_id:id};}bump(s,app);},false,true,{type:'hold',details:{phase,reason_code:budget.signal.aborted?'DEADLINE':'CHECK_FAILED'},provider});}catch{}
+ try{await fence.change((s,q)=>{if(!q||q.status==='Verified'||q.receipt)return;q.status=q.dispatch_started_at?'Uncertain':'Held';q.hold='Provider/source check or response failed; no automatic resend. Reconcile the reserved intent.';s.actions[id].status='Uncertain';s.operations.email[id].status=q.status;if(internal){s.actions[id].hold=q.hold;s.team_notifications.messages[s.actions[id].payload.package.notification_id].delivery={status:q.status+'; no resend permission',action_id:id};}bump(s,app);},false,true,{type:'hold',details:{phase,reason_code:budget.signal.aborted?'DEADLINE':'CHECK_FAILED'},provider});}catch{}
  return mailResult(app,id,fence,budget,error);
 }
 async function readExactMail(app,action,internal,provider,fence,budget){

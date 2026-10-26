@@ -9,6 +9,7 @@ import {readDeskSnapshot} from './snapshot-read.js';
 import {audioBusy,stopAudioCapture} from './call-audio.js';
 let state, csrf, operatorAuthRequired = false, view = 'today', selected = 'juniper', lane = 'all', assetProject = '', dirty = false, refreshAfter = 0;
 let eventRequest,loadedWorkspaceContext;
+const emailTaskHandoffs=new Map();
 const content = document.querySelector('#content'), message = document.querySelector('#message');
 const titles = { today: ['Your calling desk', 'Your next conversation.', 'Prepared leads, clear next steps and your notes in one place.'], reviews: ['Evidence → operator decision', 'Review calls and replies.', 'Connected calls and verified replies wait for an operator decision.'], clients: ['From scope to support', 'Deliver what you agreed.', 'Track materials, payment evidence, delivery checks and open requests.'], exceptions: ['Bounded recovery', 'Handle the exceptions.', 'Held work stays visible while unrelated records continue.'], launch: ['Before the first real contact', 'Approve a working system.', 'These gates stay closed until their evidence and your final approval are recorded.'] };
 Object.assign(titles,{businesses:['Your business directory','Businesses, with context.','Research, professional contacts, social profiles and saved conversations.'],emails:['After the call','Follow-ups at a glance.','Each performed call owns one message. Held work shows what is missing.'],meetings:['Your conversations','Meetings and next steps.','Booked conversations and invitations awaiting calendar verification.']});
@@ -325,6 +326,7 @@ function replyForms(r,node){
     if(suggestion?.hold)node.append(el('p',suggestion.hold,'notice'));
     const editable=!state.shared_workspace?.mail||!r.follow_up_owner||r.follow_up_owner===state.current_operator;if(!editable)node.append(el('p',`Assigned to ${r.follow_up_owner}. Use the existing conversation handoff before editing or approving.`, 'notice'));
     if(editable&&suggestion?.body&&['Reply review','Discovery','Information requested'].includes(r.stage)){
+      if(!state.shared_workspace&&state.operator_auth_enabled&&r.controlled&&(!r.follow_up_owner||r.follow_up_owner===state.current_operator))renderEmailDraftTask(r,node);
       node.append(el('p',suggestion.method,'muted'));
       const current=draft?.current,editor=eventForm(r,'Edit a suggested response','reply_draft_saved',[
         ['Proposed reply (saved only; not sent)','body',current?draft.body:suggestion.body,'textarea']
@@ -350,6 +352,16 @@ function replyForms(r,node){
     ['Service confirmed in this reply', 'focus', 'unspecified', 'text', [{value:'unspecified',label:'Not confirmed — ask which service'}, {value:'website',label:'Website'}, {value:'systems',label:'Systems'}, {value:'ai',label:'AI'}, {value:'marketing',label:'Marketing'}]],
     ['Your reply review note', 'note', r.stage==='Reply review'?'':r.reply_review.note??'', 'textarea']
   ], { source_id: r.reply.source_id, reply_sha256:r.reply_sha256 }, 'Confirm reply outcome'));}
+}
+function renderEmailDraftTask(r,node){
+ const panel=el('section'),task=state.email_draft_tasks?.[r.email_draft_task_id];panel.append(el('h3','Local agent draft preparation'),el('p','Prepare a text reply with an authorized local worker. This desk does not start a worker. Attachments and cloud execution are not connected.','muted'));
+ panel.append(button(task?'Prepare replacement local agent task':'Prepare local agent draft task',async()=>{try{
+  let handoff=emailTaskHandoffs.get(r.id);if(!handoff||handoff.saved){const bytes=crypto.getRandomValues(new Uint8Array(32));handoff={id:crypto.randomUUID(),project_id:r.id,revision:state.revision,token:[...bytes].map(n=>n.toString(16).padStart(2,'0')).join(''),replace_task_id:r.email_draft_task_id??null};emailTaskHandoffs.set(r.id,handoff);}
+  await api('/api/email-draft-tasks/create',{id:handoff.id,project_id:handoff.project_id,revision:handoff.revision,token:handoff.token,replace_task_id:handoff.replace_task_id});handoff.saved=true;await refresh();tell('Local draft task prepared. Give its task-specific handoff only to the authorized worker.');
+ }catch(e){if(e.status===400)emailTaskHandoffs.delete(r.id);tell(e.message,true);}}));
+ const h=emailTaskHandoffs.get(r.id);if(h&&h.id===task?.id&&task.status==='Ready'){const details=el('details');details.append(el('summary','Reveal private local worker handoff'),el('p','This credential permits only this task’s context/result routes for two hours. Keep it out of the returned draft, context files and logs.','notice'),el('pre',`GET ${location.origin}/api/email-draft-task/${h.id}/context\nPOST ${location.origin}/api/email-draft-task/${h.id}/result\nAuthorization: Bearer ${h.token}\nContent-Type: application/json`));panel.append(details);}
+ if(task){panel.append(el('p',`${task.status} · requested by ${task.created_by} · expires ${new Date(task.expires_at).toLocaleString()}`,'muted'));if(task.result){panel.append(el('p',task.result.body,'reply-source'),el('p',`Sources: ${task.result.source_ids.join(', ')}`),el('p',`Uncertainties: ${task.result.uncertainties.join('; ')||'None reported; verify every claim.'}`),el('p',`Prepared by ${task.result.execution.provider} / ${task.result.execution.model} · ${task.result.execution.duration_ms} ms. Proposal only.`,'muted'));if(task.status==='Review')panel.append(button('Adopt agent proposal as unapproved draft',async()=>{try{await api('/api/email-draft-tasks/adopt',{id:task.id,revision:state.revision,result_sha256:task.result_sha256});emailTaskHandoffs.delete(r.id);await refresh();tell('Agent proposal adopted. Review and approve the exact saved reply separately. Nothing was sent.');}catch(e){tell(e.message,true);}}));}}
+ node.append(panel);
 }
 function nextForm(r, node) {
   const ref = r.controlled ? 'fixture:owner-verified evidence — controlled test only' : '';

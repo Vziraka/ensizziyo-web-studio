@@ -81,9 +81,15 @@ export function replySuggestion(record){
   else if(/\bwebsite\b/i.test(text))next='Which website page or customer journey would you most like to focus on?';
   return {status:'Starter',summary,body:`Hi,\n\nThanks for getting back to me.\n\n${next}`,method:'Conservative rule-based clarification starter; edit after reading the full reply. No factual answer or intent assessment was generated.'};
 }
-export function replyDraftContent(record,body,actor,config){
+export function replyDraftContent(record,body,actor,config,team=false){
   if(!validReplySource(record.reply))throw Error('A complete verified reply body is required');
   const c=record.reply.content;
-  return {from:evzIdentity.email,to:c.from,thread_id:c.thread_id,in_reply_to:c.message_header_id,source_id:c.message_id,source_sha256:c.source_sha256,subject:/^re:/i.test(c.subject)?c.subject:`Re: ${c.subject}`,body:body.trim(),signature:`${operatorDisplayName(actor,config)}\n${evzIdentity.name}\n${evzIdentity.email}\n${evzIdentity.phone}`,prepared_by:actor};
+  return {from:evzIdentity.email,to:c.from,thread_id:c.thread_id,in_reply_to:c.message_header_id,source_id:c.message_id,source_sha256:c.source_sha256,subject:/^re:/i.test(c.subject)?c.subject:`Re: ${c.subject}`,body:body.trim(),signature:team?`EVZ Digital Team\n${evzIdentity.email}\n${evzIdentity.phone}`:`${operatorDisplayName(actor,config)}\n${evzIdentity.name}\n${evzIdentity.email}\n${evzIdentity.phone}`,prepared_by:actor};
 }
-export function replyDraftCurrent(record,draft){return Boolean(['Reply review','Discovery','Information requested'].includes(record.stage)&&!record.restriction&&record.reply?.kind==='reply'&&record.contact?.verified===true&&record.contact.email?.toLowerCase()===record.reply.content?.from&&validReplySource(record.reply)&&draft?.source_sha256===record.reply.content.source_sha256&&draft.reply_sha256===hash(record.reply)&&draft.owner===(record.follow_up_owner??null)&&draft.sha256===hash(draft.content));}
+export function emailDraftSource(r,config){
+ const facts=Object.entries(r.approved_calls??{}).map(([id,review])=>({source_id:'call:'+id,review:{outcome:review.outcome,at:review.at,actor:review.actor,proposal_sha256:review.proposal_sha256??null,basis:review.basis??null},claims:r.proposals?.[id]?.review?.verdict==='Accepted'?r.proposals[id].claims:[]}));
+ const review=r.reply_review?(({source_id,reply_sha256,outcome,focus,review_event,actor})=>({source_id,reply_sha256,outcome,focus,review_event,actor}))(r.reply_review):null;
+ const discovery=r.discovery?(({goal,decision_maker,serious_interest,paid_fit_discussed,service,main_flow,preview_screens,confirmed_at,reply_review_event})=>({goal,decision_maker,serious_interest,paid_fit_discussed,service,main_flow,preview_screens,confirmed_at,reply_review_event}))(r.discovery):null;
+ return {project_id:r.id,company:r.name,reply:r.reply,contact:r.contact,owner:r.follow_up_owner??null,stage:r.stage,restriction:r.restriction??null,facts,reply_review:review,discovery,quote:r.quote??null,sender:{email:config.sender?.email,signature:'EVZ Digital Team\nhello@evzdigital.studio\n571-752-9610'}};
+}
+export function replyDraftCurrent(record,draft,config){return Boolean(['Reply review','Discovery','Information requested'].includes(record.stage)&&!record.restriction&&record.reply?.kind==='reply'&&record.contact?.verified===true&&record.contact.email?.toLowerCase()===record.reply.content?.from&&validReplySource(record.reply)&&draft?.source_sha256===record.reply.content.source_sha256&&draft.reply_sha256===hash(record.reply)&&draft.owner===(record.follow_up_owner??null)&&draft.sha256===hash(draft.content)&&(!draft.agent_context_sha256||config&&draft.agent_context_sha256===hash(emailDraftSource(record,config))));}

@@ -1,0 +1,25 @@
+# Local email draft tasks
+
+This increment prepares text replies for fictional existing conversations in the loopback desk. It invokes no model or provider. A separately authorized local worker can retrieve one task and return one proposal without possessing an operator session. Native cloud transport, computer-off execution, full-thread retrieval and attachments remain incomplete. Runtime and usage fields are worker-reported, not independently verified provider receipts.
+
+## Interface and ownership
+
+The signed operator uses `POST /api/email-draft-tasks/create` with a stable `id`, `project_id`, current `revision`, a randomly generated 256-bit `token`, and `replace_task_id` (null initially). The desk stores only the token hash. The token appears only in the explicit operator creation request and UI handoff; keep it outside context, results, checkpoints and logs. A lost creation response can be retried with the same request. A new attempt explicitly replaces the current task and revokes its authority. Tokens expire after two hours and are bound to this workspace directory/run.
+
+`GET /api/email-draft-task/:id/context` and `POST /api/email-draft-task/:id/result` require `Authorization: Bearer <token>`. This credential grants no other route, client, approval or sending authority. Results contain `body`, `source_ids`, `uncertainties`, and `execution` (`provider`, `model`, `duration_ms`, `input_tokens`, `output_tokens`; token counts may be null when unavailable). Context explains the result schema and identifies allowed source IDs. Incoming text is evidence, never instructions.
+
+The worker result is an unapproved proposal. The assigned signed operator uses `POST /api/email-draft-tasks/adopt` with `id`, current `revision` and exact `result_sha256`. Adoption atomically records the existing `reply_draft_saved` event and task receipt under the lifecycle lock. Replaying adoption returns that original receipt without overwriting later human edits. Existing content/facts approval and separate sending approval remain mandatory. The adopted reply uses EVZ Digital Team; operator and worker attribution remain internal.
+
+## Freshness and failures
+
+Task context binds the current reply provenance, verified contact, assignment, restriction, stage, reviewed call facts, reply/discovery review, approved quote, existing draft and sender identity. Private notes are excluded. Unrelated notes do not invalidate work. A changed dependency holds context retrieval, submission and adoption. Adoption also checks the current revision. An obsolete/replaced/expired attempt cannot submit or adopt. Exact result retries reconcile by hash; different second results are rejected. No automatic retry starts execution or sends email.
+
+Only controlled fictional local workspaces are supported. Every shared store fails before mutation; no hosted typed replay authority is added. Copying into another directory invalidates task credentials. The supported backup restore also supersedes unfinished tasks, including restoration to the original path; proposal evidence is retained and fresh work requires a new task. Ordinary process restart preserves the existing task until expiry. Credential-shaped content and unknown fields are rejected at input/output boundaries; this check cannot guarantee arbitrary secret detection or semantic truth, so operators must review the exact proposal.
+
+## Verification
+
+Run `node --test email-draft-tasks.test.mjs reply-content.test.mjs lifecycle-server.test.mjs` from `pipeline`. The focused task tests exercise actual signed HTTP creation, task-only authentication, scoped context, submission, atomic adoption, replay, replacement, stale sources/ownership/restrictions, malicious fields/credentials, and shared-store denial. No model quality or real delivery claim follows from these fixtures.
+
+In the local desk, open **Call & reply reviews**, choose a fictional reply, and select **Prepare local agent draft task**. Give the displayed endpoint/token handoff to an authorized local worker. Refresh after submission, inspect the returned body, sources and uncertainties, and choose **Adopt agent proposal as unapproved draft**. Continue the existing exact saved-reply review. The task does not run a worker automatically.
+
+October 26 controlled browser evidence: individual operator login, task preparation, an actual Codex local Luna worker context read/result submission, proposal display and unapproved adoption passed at 1440×1000 and 390×844. Saved actions were unchanged; the Team signature, clean post-login browser console and lack of horizontal page overflow were checked. The successful worker measured 23,811 ms from its context request through result preparation; token counts were unavailable. This is one functional example, not a quality or capacity benchmark. Private screenshots and run evidence are retained with the implementation checkpoint outside Git.
