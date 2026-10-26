@@ -1,6 +1,6 @@
 import {isDispatchCapability} from './shared-internal-dispatch.mjs';
 import {StudioLifecycle,check,hash,pauseCold} from './lifecycle.mjs';
-import {googleHostedTransport,mailObservationJSON} from './google-hosted-transport.mjs';
+import {googleHostedTransport,mailObservationJSON,byteHash,verifySentRaw} from './google-hosted-transport.mjs';
 import {replyContent,replyHeader as header} from './reply-content.mjs';
 import {prepareNotificationsInState} from './team-notifications.mjs';
 import {operationsPDFMailCapability,pdfAuthorization,validateIncomingGrant} from './shared-operations-exact-mail.mjs';
@@ -182,6 +182,48 @@ function eventsForThread(thread,b,now){
  }
  return result.sort((a,b)=>Date.parse(a.at)-Date.parse(b.at)||a.data.source_id.localeCompare(b.data.source_id));
 }
+const conversationCoverage='Sent and received messages from the registered original through this capture; unsent drafts excluded. Earlier mailbox history and quoted text are not independently established.';
+function conversationRoute(b){return Object.fromEntries(['project_id','thread_id','original_id','from','to','subject','rfc_message_id','sent_after','sent_before','contact_sha256'].map(k=>[k,b[k]??null]));}
+function ownedConversationSent(state,b,id,content){
+ const owned=Object.values(state.actions).filter(a=>{const q=state.operations?.requests?.[a.id+'-intent'];return a.payload?.exact_mail&&!a.payload.internal_notification&&([a.delivery?.message_id,q?.provider_message_id,q?.receipt?.message_id].includes(id)||q?.rfc_message_id===content.message_header_id);});
+ if(!owned.length)return {kind:'mailbox-sent',label:'Mailbox sent record; desk approval/delivery not established',registered_original:id===b.original_id};
+ check(owned.length===1,'Conversation outgoing message has conflicting owned intents');const a=owned[0],q=state.operations.requests[a.id+'-intent'],p=a.payload.package,approval=state.events[a.payload.approval_event],{sha256:packageHash,...packageBody}=p??{};
+ check(a.prospect_id===b.project_id&&a.status==='Verified'&&q?.status==='Verified'&&q.receipt&&a.delivery&&p&&packageHash===hash(packageBody)&&a.payload.package_sha256===packageHash&&q.package_sha256===packageHash&&approval?.type==='exact_mail_approved'&&['owner','friend'].includes(approval.actor)&&approval.prospect_id===b.project_id&&approval.data.action_id===a.id&&approval.data.package_sha256===packageHash,'Conversation outgoing text has an unsettled or mismatched owned approval/receipt');
+ check(typeof q.raw_base64url==='string'&&q.mime_sha256===byteHash(Buffer.from(q.raw_base64url,'base64url'))&&q.receipt.mime_sha256===q.mime_sha256&&['message_id','thread_id','rfc_message_id','mime_sha256'].every(k=>a.delivery[k]===q.receipt[k]),'Conversation owned MIME/receipt evidence differs');
+ const receipt=verifySentRaw({id,threadId:b.thread_id,labelIds:['SENT'],raw:q.raw_base64url},{raw:Buffer.from(q.raw_base64url,'base64url'),message_id:q.rfc_message_id,thread_id:b.thread_id});check(hash(receipt)===hash(q.receipt)&&content.message_header_id===receipt.rfc_message_id&&content.from===p.from&&content.to===p.to&&content.subject===p.subject&&content.text===p.body.replace(/\r\n?/g,'\n').trim()&&(content.in_reply_to||null)===(p.in_reply_to||null)&&(content.references??'').split(/\s+/).filter(Boolean).join(' ')===(p.references??[]).join(' '),'Conversation owned outgoing body/routing differs from its exact package');
+ return {kind:'verified-owned-exact-send',label:'Exact desk-approved message; sender receipt verified, recipient delivery not established',action_id:a.id,package_sha256:packageHash,approval_event:approval.id,approval_sha256:hash(approval),receipt_sha256:hash(q.receipt),mime_sha256:q.mime_sha256};
+}
+function knownConversationIds(state,b){
+ const known=[...(state.prospects[b.project_id].reply_history??[]),state.prospects[b.project_id].reply].filter(r=>r?.thread_id===b.thread_id).map(r=>r.source_id);known.push(...(state.prospects[b.project_id].conversation_histories?.[b.thread_id]?.messages??[]).map(m=>m.message_id));
+ for(const a of Object.values(state.actions)){const q=state.operations?.requests?.[a.id+'-intent'];if(a.prospect_id===b.project_id&&a.payload?.exact_mail&&!a.payload.internal_notification&&a.delivery?.thread_id===b.thread_id)known.push(a.delivery.message_id);if(a.prospect_id===b.project_id&&q?.receipt?.thread_id===b.thread_id)known.push(q.receipt.message_id);}
+ return [...new Set(known)];
+}
+function unsettledConversationSent(state,b){return Object.values(state.actions).some(a=>{const q=state.operations?.requests?.[a.id+'-intent'];return a.prospect_id===b.project_id&&a.payload?.exact_mail&&!a.payload.internal_notification&&q?.dispatch_started_at&&q.status!=='Verified'&&(q.provider_message_id||q.rfc_message_id)&&(a.payload.package?.thread_id===b.thread_id||q.provider_thread_id===b.thread_id);});}
+export function conversationHasUnsettledSend(state,c,project){const thread=state.prospects[project]?.reply?.thread_id;return routes(state,c).some(b=>b.project_id===project&&b.thread_id===thread&&unsettledConversationSent(state,b));}
+function conversationSnapshot(state,c,b,thread,events,now){
+ check(Buffer.byteLength(JSON.stringify(thread))<=2000000,'Conversation source exceeds the bounded thread read');const messages=thread.messages.filter(m=>!m.labelIds.includes('DRAFT')||m.labelIds.includes('SENT')).sort((a,b)=>Number(a.internalDate)-Number(b.internalDate)||a.id.localeCompare(b.id)),root=messages.find(m=>m.id===b.original_id),previous=state.prospects[b.project_id].conversation_histories?.[b.thread_id];
+ check(messages[0]?.id===root?.id,'Conversation contains sent/received messages before its registered original; coverage requires review');
+ check(knownConversationIds(state,b).every(id=>messages.some(m=>m.id===id)),'A known retained conversation message disappeared; source coverage is incomplete');
+ const previousBodies=new Map();for(const old of state.prospects[b.project_id].reply_history??[])if(old.thread_id===b.thread_id&&old.content?.status==='Complete')previousBodies.set(old.source_id,{source_sha256:old.content.source_sha256,at:old.at});for(const old of previous?.messages??[])previousBodies.set(old.message_id,{source_sha256:old.content.source_sha256,at:old.at});
+ for(const [id,old] of previousBodies)if(id!==state.prospects[b.project_id].reply?.source_id){const current=messages.find(m=>m.id===id),content=replyContent(current,b.thread_id);check(content.source_sha256===old.source_sha256&&Number(current.internalDate)===Date.parse(old.at),'Previously retained conversation source/body changed; review its provenance before replacing history');}
+ const entries=[],priorSent=[];let textBytes=0;
+ for(const m of messages){
+  check(!m.labelIds.includes('DRAFT'),'Ambiguous sent/private draft message cannot establish conversation history');const content=replyContent(m,b.thread_id);check(content.status==='Complete','Conversation body is incomplete or unsupported');check(!header(m,'sender')||address(header(m,'sender'))===content.from,'Conversation sender/routing is ambiguous');const sent=m.labelIds.includes('SENT');let provenance;
+  if(sent){check(content.from===b.from&&content.to===b.to,'Conversation outgoing sender/contact differs from the registered route');provenance=ownedConversationSent(state,b,m.id,content);priorSent.push(content.message_header_id);}
+  else{const event=events.find(e=>e.data.source_id===m.id);check(event&&['reply','out_of_office','bounce'].includes(event.data.kind),'Conversation incoming disposition is unsupported');const refs=[content.in_reply_to,...(content.references??'').split(/\s+/)];check(refs.some(id=>priorSent.includes(id)),'Conversation client reply refers only to a later or unknown outgoing message');provenance=event.data.kind==='reply'?{kind:'authenticated-client-message',label:'Aligned authenticated client message; its text and quotes are untrusted evidence'}:{kind:'authenticated-automatic-message',label:'Authenticated automatic/bounce record; not human intent or approved facts'};}
+  textBytes+=Buffer.byteLength(content.text);check(textBytes<=96000,'Aggregate conversation text exceeds 96 KB; no truncation is permitted');entries.push({citation_id:'message:'+m.id,message_id:m.id,thread_id:b.thread_id,role:sent?'evz':provenance.kind==='authenticated-automatic-message'?'automatic':'client',at:new Date(Number(m.internalDate)).toISOString(),content,provider_source_sha256:hash({id:m.id,thread_id:m.threadId,date:m.internalDate,payload:m.payload}),provenance});
+ }
+ const latest=events.at(-1),source={schema_version:1,coverage:conversationCoverage,route:conversationRoute(b),binding_sha256:hash({g:c.google_incoming_mail,route:b}),account_email:c.google_incoming_mail.account_email,messages:entries,latest_reply_sha256:latest?hash({...latest.data,at:latest.at}):null};return {...source,sha256:hash(source),checked_at:now.toISOString()};
+}
+export function retainedConversationContext(state,c,project){
+ const r=state?.prospects?.[project];if(!r?.conversation_histories)return {status:'Current reply only',coverage:'No retained conversation snapshot; earlier messages have not been supplied by this task.',messages:[]};
+ const inventory_sha256=hash(r.conversation_histories);try{
+  check(!state.operations?.gmail_incoming?.hold&&!state.operations?.gmail_incoming?.resync_hold,'Registered incoming synchronization has a hold or history gap');const thread=r.reply?.thread_id,snapshot=r.conversation_histories[thread];check(snapshot,'The current conversation has no retained source snapshot');const n=state.operations?.gmail_incoming;check(n?.phase==='history'&&!n.page&&!n.pending?.nextPageToken&&!n.pending?.threads?.slice(n.pending.index).includes(thread)&&n.status!=='Registered threads read; history catch-up required','Conversation history catch-up or a detected message change is pending');
+  const b=routes(state,c).find(b=>b.project_id===project&&b.thread_id===thread);check(b&&snapshot.account_email===c.sender.account_email&&snapshot.account_email===c.google_incoming_mail?.account_email&&snapshot.binding_sha256===hash({g:c.google_incoming_mail,route:b})&&hash(snapshot.route)===hash(conversationRoute(b)),'Retained conversation account/contact/route changed');const {sha256,checked_at,...body}=snapshot;check(sha256===hash(body)&&snapshot.latest_reply_sha256===hash(r.reply)&&knownConversationIds(state,b).every(id=>snapshot.messages.some(m=>m.message_id===id)),'Retained conversation source, known messages or latest client reply changed');
+  for(const m of snapshot.messages)if(m.role==='evz')check(hash(ownedConversationSent(state,b,m.message_id,m.content))===hash(m.provenance),'Retained outgoing approval/receipt provenance changed');
+  return {status:'Current',coverage:snapshot.coverage,snapshot_sha256:sha256,account_email:snapshot.account_email,route:snapshot.route,messages:snapshot.messages};
+ }catch(error){return {status:'Held',coverage:conversationCoverage,hold:error.message,inventory_sha256,messages:[]};}
+}
 export function incomingMailView(state){const s=state.operations?.gmail_incoming;return s?{status:s.status,cursor:s.cursor??null,phase:s.phase,checked_at:s.checked_at,hold:s.hold??null,resync_hold:s.resync_hold??null,registered_threads:s.routes.length,processed_sources:Object.keys(s.seen).length,page_pending:Boolean(s.page||s.pending),unrouted_additions:s.unrouted_additions??0,read_only:true}:{status:'Not started',read_only:true};}
 export function registeredIncomingDisposition(view){return view.hold||view.resync_hold?{status:'Held',code:view.resync_hold?'HISTORY_GAP':'BOUNDS'}:{status:'Applied',code:null};}
 
@@ -198,9 +240,9 @@ export async function syncIncomingMail(app,{actor,env=process.env,getAccessToken
   const thread=await provider.incomingThread(b.thread_id),known=state.prospects[b.project_id].reply;
   const ids=[...expected,...(known?.thread_id===b.thread_id?[known.source_id]:[])];
   check(ids.every(id=>thread.messages?.some(m=>m.id===id)),'A known incoming message disappeared from its registered thread; source review required');
-  return eventsForThread(thread,{...b,account_email:g.account_email},app.now());
+  const events=eventsForThread(thread,{...b,account_email:g.account_email},app.now());if(!app.store)snapshots.push({project:b.project_id,thread:b.thread_id,value:conversationSnapshot(state,c,b,thread,events,app.now())});return events;
  }
- let next=structuredClone(saved??{binding,routes:registered,seen:{},phase:'bootstrap',index:0,status:'Initial registered-thread sync'}),events=[],failure=null;
+ let next=structuredClone(saved??{binding,routes:registered,seen:{},phase:'bootstrap',index:0,status:'Initial registered-thread sync'}),events=[],snapshots=[],failure=null;
  try{
   const profile=await provider.incomingProfile();check(profile.emailAddress===g.account_email&&historyId(profile.historyId),'Incoming business mailbox/history identity differs');
   if(next.phase==='bootstrap'&&!next.start)next.start=profile.historyId;
@@ -221,16 +263,17 @@ export async function syncIncomingMail(app,{actor,env=process.env,getAccessToken
     check(added.length<=100&&added.every(a=>key(a.message?.id)&&key(a.message?.threadId)),'Excessive or malformed added messages');
     const deleted=(page.history??[]).flatMap(h=>{check(Array.isArray(h.messagesDeleted??[]),'Malformed deleted-message history');return h.messagesDeleted??[];});
     check(deleted.length<=100&&deleted.every(a=>key(a.message?.id)&&key(a.message?.threadId)),'Excessive or malformed deleted messages');
-    check(!deleted.some(a=>registered.some(b=>b.thread_id===a.message.threadId&&(state.prospects[b.project_id].reply?.source_id===a.message.id||next.seen[hash({project:b.project_id,message:a.message.id})]))),'Known incoming source was deleted; review retained provenance and the original mailbox before cursor recovery');
+    check(!deleted.some(a=>registered.some(b=>b.thread_id===a.message.threadId&&(state.prospects[b.project_id].reply?.source_id===a.message.id||next.seen[hash({project:b.project_id,message:a.message.id})]||!app.store&&state.prospects[b.project_id].conversation_histories?.[b.thread_id]?.messages.some(m=>m.message_id===a.message.id)))),'Known incoming source was deleted; review retained provenance and the original mailbox before cursor recovery');
     if(page.nextPageToken)check(typeof page.nextPageToken==='string'&&page.nextPageToken.length<=500&&!next.pages?.includes(page.nextPageToken)&&(next.pages?.length??0)<20,'Looping or excessive history pagination; review before continuing');
-    const touched=new Set(added.map(a=>a.message.threadId)),pending={threads:processing.filter(b=>touched.has(b.thread_id)).map(b=>b.thread_id),messages:added.filter(a=>processing.some(b=>b.thread_id===a.message.threadId)).map(a=>({id:a.message.id,threadId:a.message.threadId})),index:0,historyId:page.historyId,nextPageToken:page.nextPageToken??null};
+    const visibleAdded=app.store?added:added.filter(a=>!a.message.labelIds?.includes('DRAFT')||a.message.labelIds.includes('SENT'));
+    const touched=new Set(visibleAdded.map(a=>a.message.threadId)),pending={threads:processing.filter(b=>touched.has(b.thread_id)).map(b=>b.thread_id),messages:visibleAdded.filter(a=>processing.some(b=>b.thread_id===a.message.threadId)).map(a=>({id:a.message.id,threadId:a.message.threadId})),index:0,historyId:page.historyId,nextPageToken:page.nextPageToken??null};
     next.unrouted_additions=(next.unrouted_additions??0)+added.filter(a=>!registered.some(b=>b.thread_id===a.message.threadId)).length;
     if(pending.threads.length){next.pending=pending;next.status='History page retained; registered thread read required';}else finishPage(next,pending);
    }
   }
- }catch(error){failure=error.message;next=structuredClone(saved??next);events=[];next.status='Held';}
+ }catch(error){failure=error.message;next=structuredClone(saved??next);events=[];snapshots=[];next.status='Held';}
  const newSources=new Set(events.map(e=>hash({project:e.prospect_id,message:e.data.source_id})).filter(id=>!Object.hasOwn(next.seen,id)));
- if(Object.keys(next.seen).length+newSources.size>1000){next=structuredClone(saved??next);events=[];next.status='Held';failure='Incoming dedup history is full; review retention without advancing cursor';}
+ if(Object.keys(next.seen).length+newSources.size>1000){next=structuredClone(saved??next);events=[];snapshots=[];next.status='Held';failure='Incoming dedup history is full; review retention without advancing cursor';}
  next.checked_at=app.now().toISOString();if(failure)next.hold=failure;else delete next.hold;
  // Reuse the lifecycle reducer against the single prospective CAS state. Effects, stops,
  // notification preparation, dedup and cursor are committed together or none are.
@@ -244,6 +287,7 @@ export async function syncIncomingMail(app,{actor,env=process.env,getAccessToken
    check(Object.keys(next.seen).length<1000||Object.hasOwn(next.seen,identity),'Incoming dedup history is full; review retention without advancing cursor');
    await reducer.apply(event,{actor:'provider'});next.seen[identity]=source;
   }
+  if(!app.store)for(const snapshot of snapshots){s.prospects[snapshot.project].conversation_histories??={};s.prospects[snapshot.project].conversation_histories[snapshot.thread]=snapshot.value;}
   s.operations??={};s.operations.gmail_incoming=next;s.operations.holds??={};
   if(next.hold||next.resync_hold){s.operations.holds.gmail_incoming=next.hold??next.resync_hold;for(const b of registered)pauseCold(s,s.prospects[b.project_id],'incoming-hold-'+hash(binding).slice(0,20),'Incoming source synchronization needs review');}
   else delete s.operations.holds.gmail_incoming;

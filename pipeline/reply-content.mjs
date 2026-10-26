@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {operatorDisplayName,evzIdentity} from './follow-up-template.mjs';
 import {currentReplyAttachments} from './reply-attachments.mjs';
+import {retainedConversationContext} from './google-incoming-mail.mjs';
 
 const hash=value=>createHash('sha256').update(typeof value==='string'?value:JSON.stringify(value)).digest('hex');
 const limit=24_000;
@@ -95,13 +96,14 @@ function reviewedEmailCall(r,id,approved){
  const available=['owner','friend'].includes(approved.actor)&&call?.outcome==='connected'&&transcriptCurrent&&proposal.transcript_sha256===transcript.sha256&&approved.proposal_sha256===proposalHash&&proposalHash===evidence.proposal_content_sha256&&independent?.verdict==='Accepted'&&independent.independent===true&&independent.proposal_sha256===proposalHash&&provenanceCurrent&&Array.isArray(proposal.claims)&&proposal.claims.every(c=>typeof c.claim==='string'&&typeof c.quote==='string'&&transcript.text.includes(c.quote));
  return {source_id:'call:'+id,review:{outcome:approved.outcome,at:approved.at,actor:approved.actor,proposal_sha256:approved.proposal_sha256??null,basis:approved.basis??null},evidence,status:available?'Exact operator-reviewed facts':'Unavailable',claims:available?proposal.claims:[],...(!available?{unavailable_reason:'Call claims are unavailable until the exact operator-approved proposal, independent review and current transcript provenance agree.'}:{})};
 }
-export function emailDraftSource(r,config){
+export function emailDraftSource(r,config,state){
  const facts=Object.entries(r.approved_calls??{}).map(([id,review])=>reviewedEmailCall(r,id,review));
  const review=r.reply_review?(({source_id,reply_sha256,outcome,focus,review_event,actor})=>({source_id,reply_sha256,outcome,focus,review_event,actor}))(r.reply_review):null;
  const discovery=r.discovery?(({goal,decision_maker,serious_interest,paid_fit_discussed,service,main_flow,preview_screens,confirmed_at,reply_review_event})=>({goal,decision_maker,serious_interest,paid_fit_discussed,service,main_flow,preview_screens,confirmed_at,reply_review_event}))(r.discovery):null;
- return {project_id:r.id,company:r.name,reply:r.reply,contact:r.contact,owner:r.follow_up_owner??null,stage:r.stage,restriction:r.restriction??null,facts,reply_review:review,discovery,quote:r.quote??null,sender:{email:config.sender?.email,signature:'EVZ Digital Team\nhello@evzdigital.studio\n571-752-9610'}};
+ return {project_id:r.id,company:r.name,reply:r.reply,contact:r.contact,owner:r.follow_up_owner??null,stage:r.stage,restriction:r.restriction??null,facts,reply_review:review,discovery,quote:r.quote??null,sender:{email:config.sender?.email,signature:'EVZ Digital Team\nhello@evzdigital.studio\n571-752-9610'},...(r.conversation_histories?{conversation_history:state?retainedConversationContext(state,config,r.id):{status:'Held',hold:'Complete retained source state is required',messages:[]}}:{})};
 }
 export function replyDraftCurrent(record,draft,config,state){
  try{if(draft?.content&&Object.hasOwn(draft.content,'attachments')){if(!state)return false;currentReplyAttachments(state,record.id,draft.content.attachments);}}catch{return false;}
- return Boolean(['Reply review','Discovery','Information requested'].includes(record.stage)&&!record.restriction&&record.reply?.kind==='reply'&&record.contact?.verified===true&&record.contact.email?.toLowerCase()===record.reply.content?.from&&validReplySource(record.reply)&&draft?.source_sha256===record.reply.content.source_sha256&&draft.reply_sha256===hash(record.reply)&&draft.owner===(record.follow_up_owner??null)&&draft.sha256===hash(draft.content)&&(!draft.agent_context_sha256||config&&draft.agent_context_sha256===hash(emailDraftSource(record,config))));
+ if(record.conversation_histories){const history=state&&config?retainedConversationContext(state,config,record.id):null;if(history?.status!=='Current'||!draft?.agent_context_sha256)return false;}
+ return Boolean(['Reply review','Discovery','Information requested'].includes(record.stage)&&!record.restriction&&record.reply?.kind==='reply'&&record.contact?.verified===true&&record.contact.email?.toLowerCase()===record.reply.content?.from&&validReplySource(record.reply)&&draft?.source_sha256===record.reply.content.source_sha256&&draft.reply_sha256===hash(record.reply)&&draft.owner===(record.follow_up_owner??null)&&draft.sha256===hash(draft.content)&&(!draft.agent_context_sha256||config&&draft.agent_context_sha256===hash(emailDraftSource(record,config,state))));
 }

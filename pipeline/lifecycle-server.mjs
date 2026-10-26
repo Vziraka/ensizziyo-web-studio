@@ -1,6 +1,7 @@
 import {callTranscriptionView,approveCallTranscription,runCallTranscription,pauseCallTranscription} from './call-transcription.mjs';
 import {createEmailDraftTask,emailDraftTaskContext,submitEmailDraftResult,adoptEmailDraftResult,readEmailTaskAttachment} from './email-draft-tasks.mjs';
 import {conversationEvents} from './conversation-records.mjs';
+import {syncIncomingMail,incomingMailView} from './google-incoming-mail.mjs';
 import {retainedSource} from './retained-sources.mjs';
 import {prepareTeamNotifications,notificationView} from './team-notifications.mjs';
 import {projectContext,projectWorkContext,resolveProject} from './project-work.mjs';
@@ -25,7 +26,7 @@ import {audioRequest,saveCallAudio,readCallAudio,reconcileCallAudio,localAudioSt
 
 import {lifecycleAssets} from './lifecycle-assets.mjs';
 export {lifecycleAssets};
-export function serveLifecycle(app, { port = 8807, quiet = false, analyze = assessTranscript, operatorAuth = createOperatorAuth() } = {}) {
+export function serveLifecycle(app, { port = 8807, quiet = false, analyze = assessTranscript, operatorAuth = createOperatorAuth(), incomingOptions = {} } = {}) {
   const version = runtimeVersion();
   check(Number.isInteger(port) && port >= 0 && port <= 65535, 'Invalid local port');
   const session = randomBytes(32).toString('hex'), csrf = randomBytes(32).toString('hex'), work = new Map();
@@ -81,7 +82,8 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
       if(req.method==='GET'&&/^\/retained-source\/[a-zA-Z0-9_-]{1,100}\/[a-f0-9]{64}$/.test(url.pathname)){const [,,project,sha]=url.pathname.split('/');return json(200,retainedSource(await app.snapshot(),project,sha,url.searchParams.get('url'),url.searchParams.get('at')));}
       if(req.method==='GET'&&url.pathname==='/api/call-transcription')return json(200,await callTranscriptionView(app));
       if(req.method==='GET'&&url.pathname==='/api/team-notifications')return json(200,notificationView(await app.snapshot()));
-      if (req.method === 'GET' && url.pathname === '/api/state') return json(200, { ...await app.dashboard(), build:await version, csrf, workers: [...work.keys()], current_operator: operator, operator_auth_enabled: Boolean(operatorAuth) });
+      if(req.method==='GET'&&url.pathname==='/api/incoming-mail')return json(200,incomingMailView(await app.snapshot()));
+      if (req.method === 'GET' && url.pathname === '/api/state') return json(200, { ...await app.dashboard(), build:await version, csrf, workers: [...work.keys()], current_operator: operator, operator_auth_enabled: Boolean(operatorAuth),incoming_sync_enabled:!app.store&&Boolean(operatorAuth)&&app.config.google_incoming_mail?.enabled===true&&(incomingOptions.env??process.env).EVZ_OPERATIONS_GOOGLE_INCOMING_MAIL==='fictional-incoming-v1' });
       if(req.method==='GET'&&/^\/call-audio\/[a-zA-Z0-9_-]{1,100}\/[a-zA-Z0-9_-]{1,80}$/.test(url.pathname)){
         const [, ,project,id]=url.pathname.split('/'),clip=await readCallAudio(app,localAudioStore(app.directory),project,id);
         res.writeHead(200,{...headers,'Content-Type':clip.audio.mime,'Content-Length':clip.bytes.length,'Content-Disposition':`inline; filename="${clip.filename}"`});res.end(clip.bytes);return;
@@ -106,6 +108,7 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
       }
       check(req.method === 'POST' && req.headers['x-studio-token'] === csrf && req.headers['content-type'] === 'application/json', 'Owner session and same-origin approval token required');
       const input = await readInput();
+      if(url.pathname==='/api/incoming-mail/sync'){check(operatorAuth&&!app.store,'Signed local incoming-source session required');check(input&&typeof input==='object'&&!Array.isArray(input)&&Object.keys(input).length===0,'Registered incoming refresh accepts only an empty object');return json(200,await syncIncomingMail(app,{...incomingOptions,actor:operator}));}
       if(url.pathname==='/api/email-draft-tasks/create'){check(operatorAuth,'Individual operator sign-in required for email draft tasks');return json(200,await createEmailDraftTask(app,input,operator));}
       if(url.pathname==='/api/email-draft-tasks/adopt'){check(operatorAuth,'Individual operator sign-in required for email draft tasks');return json(200,await adoptEmailDraftResult(app,input,operator));}
       if(url.pathname==='/api/team-notifications/prepare')return json(200,await prepareTeamNotifications(app));
