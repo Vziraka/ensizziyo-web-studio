@@ -1,6 +1,7 @@
 import {operationsPDFMailCapability,isOperationsMail,pdfAuthorization,reservePDFIncoming,assertPDFIncomingGrant,pdfCoverageActive,operationsMailCapability,operationsMailProfile,hasOperationsMail,sharedMailBoundary,declaredMailRoute,newThreadMailHold,mailSourceEvidence,mailWitness,currentMailAuthority,mailObservationCount,mailStorageAllowance,mailRawCeiling,mailOwnedState,assertSharedMailAction} from './shared-operations-exact-mail.mjs';
 import {check,hash,businessDate} from './lifecycle.mjs';
 import {replyDraftCurrent,validReplySource} from './reply-content.mjs';
+import {currentReplyAttachments} from './reply-attachments.mjs';
 import {projectWorkContext} from './project-work.mjs';
 import {readProjectAsset,projectAssetVersion} from './project-assets.mjs';
 import {composeExactMail,googleHostedTransport,mailLimits,byteHash,mailMessageId} from './google-hosted-transport.mjs';
@@ -29,7 +30,8 @@ export function packageInState(state,config,input,actor,now){
  let draft,mail,attachments=[],context;
  if(input.kind==='reply'){
   draft=r.reply_draft;const approval=state.events[draft?.approval_event];
-  check(draft?.status==='Approved; sending held'&&replyDraftCurrent(r,draft,config)&&approval?.id===draft.approval_event&&approval.type==='reply_draft_approved'&&approval.prospect_id===r.id&&approval.actor===draft.approved_by&&approval.data?.sha256===draft.sha256&&approval.data.approved===true&&approval.data.facts_checked===true,'Approve the exact current reply content and facts first');
+  check(draft?.status==='Approved; sending held'&&replyDraftCurrent(r,draft,config,state)&&approval?.id===draft.approval_event&&approval.type==='reply_draft_approved'&&approval.prospect_id===r.id&&approval.actor===draft.approved_by&&approval.data?.sha256===draft.sha256&&approval.data.approved===true&&approval.data.facts_checked===true,'Approve the exact current reply content and facts first');
+  if(draft.content.attachments?.length){check(!config.shared_capability,'Existing shared profiles do not authorize attached replies');attachments=currentReplyAttachments(state,r.id,draft.content.attachments).map(a=>({...a,filename:a.sha256+'.pdf'}));}
   mail={from:draft.content.from,to:draft.content.to,subject:draft.content.subject,body:draft.content.body+'\n\n'+draft.content.signature};
   context={draft_sha256:draft.sha256,approval_event:draft.approval_event,reply_sha256:draft.reply_sha256};
  }else{

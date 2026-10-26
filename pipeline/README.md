@@ -6,7 +6,7 @@ October25: [Disabled shared operations originals](SHARED-OPERATIONS-ORIGINALS.md
 
 # Controlled research proof
 
-October 26 hybrid implementation: [stages and current gates](HYBRID-IMPLEMENTATION.md), [local fictional email task contract and browser recipe](EMAIL-DRAFT-TASKS.md). The local task gives a worker context/result access, then requires operator adoption and separate review. It does not automatically launch a worker, support attachments or enable shared/cloud execution. Agent-adopted replies use EVZ Digital Team; legacy email paths below retain their existing signatures until migrated.
+October 26 hybrid implementation: [stages and current gates](HYBRID-IMPLEMENTATION.md), [local fictional email task contract and browser recipe](EMAIL-DRAFT-TASKS.md). The local task gives a worker scoped context/result and approved PDF access, then requires operator adoption and separate exact-bundle review. Studio PDFs require explicit task permission. It does not automatically launch a worker or enable shared/cloud task execution; existing shared profiles reject attached replies. Agent-adopted replies use EVZ Digital Team; legacy email paths below retain their existing signatures until migrated.
 
 [Partial-original G1 recovery](GOOGLE-DRIVE-ORIGINALS.md#explicit-incomplete-original-recovery) uses the existing disabled signed D1/Drive caller to retain exact observed chunks and uncertainty as inert evidence. Unresolved backups and unsupported shared imports hold before writes. Run `node --test original-recovery.test.mjs lifecycle-backup.test.mjs shared-project-originals.test.mjs google-drive-originals.test.mjs` from `pipeline`, then the existing full checks. It adds no provider or shared Drive activation.
 

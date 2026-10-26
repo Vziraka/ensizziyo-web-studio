@@ -64,9 +64,23 @@ Requirements review: existing-client assignment and explicit personal styles are
 
 Verification: the ownership/style full regression passed 1,068 tests in 395 seconds. After the subsequent call-fact repair, the final affected task/reply/exact-mail/server/conversation set passed 48 tests and full syntax checks passed. Desk/site builds and site verification passed, and the desktop/mobile and independent-session browser proofs above passed. The full local run predates that last call-fact repair; final-head CI supplies the broader check rather than representing the earlier run as a new one. GitHub checks for the preceding `70d462d` increment passed separately.
 
+### Approved PDF reply increment
+
+The existing local task now offers a bounded catalogue of current approved, undisputed PDF originals. Same-project assets are eligible; studio assets require the signed lead's explicit selection. The worker can read only offered versions through its existing task credential and return at most two exact asset/version/hash references. Adoption verifies the bytes and saves the full bundle as an unapproved draft. Body edits preserve the selection; explicit removal preserves the wording and requires fresh review.
+
+The desk shows PDF identity, version, size, hash and exact-original preview/download. Content approval binds that bundle, and the separate exact-send approval uses the existing mail path. Dispatch rereads the originals before any provider call; the fictional provider receipt verifies the complete MIME. A lost or invalid receipt remains uncertain without sending again. Existing shared profiles reject attached replies; the separate project-PDF new-conversation route gains no authority.
+
+Requirements review: the local existing-client attachment journey now includes source selection, actual file retrieval, adoption, separate approvals and injected provider receipt for both operators. Native cloud execution, shared task/result storage and full conversation context remain open. Internal asset approval remains separate from client acceptance and email approval.
+
+Engineering review covered scoped reads, studio permission manufacture, current approval identities, immutable byte checks, shared-profile denial and uncertain-send recovery. Two source-review gaps were repaired: jointly approved versions after a resolved dispute must remain eligible, and stale attachments must be removable without losing saved wording. The combined mail test independently decodes and compares the entire MIME attachment, in addition to the production receipt verifier.
+
+Verification: 73 affected tests passed, then the strengthened full-MIME journey passed separately. Syntax and diff checks passed. A real local Luna worker read and inspected a valid fictional PDF, returned its exact reference and a sourced reply in 17,230 ms (token counts unavailable). The browser proof passed individual login, task creation, unapproved adoption, separate content approval, exact inline/download bytes, preserved approval after a style change, and stale-baseline removal retaining the wording. Desktop and mobile screenshots were inspected; no horizontal overflow, post-login console errors or external actions occurred. An earlier browser assertion read state before an asynchronous removal save completed; adding the missing UI completion wait produced the passing run. These are local functional examples, not cloud, delivery or model-quality benchmarks. Private evidence is retained with the checkpoint.
+
+The final attachment regression passed all 1,074 tests in 397 seconds. Desk assets, site build and site verification also passed. Both GitHub checks passed for preceding commit `5a2fbcb`; the new attachment commit requires its own CI result.
+
 ## Focused existing test map
 
-These tests are existing evidence and candidates for a focused Stage 1 regression set; they were not run for this checkpoint. A passing source test does not establish native cloud result return, live provider delivery or production readiness.
+This map was assembled during Stage 0 to select relevant Stage 1 coverage. The increment records above identify the checks actually run later. A passing source test does not establish native cloud result return, live provider delivery or production readiness.
 
 | Concern | Existing coverage | Remaining Stage 1 proof |
 |---|---|---|

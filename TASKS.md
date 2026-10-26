@@ -6,7 +6,8 @@ Owner-approved staged code and fictional proof work may proceed; this does not a
 
 - [x] Implement the local fictional task/context/result/adoption contract, verify an actual local Luna draft returning through the desk, and inspect desktop/mobile UI. Keep sending held and revoke unfinished task credentials on backup restore.
 - [x] Add explicit existing-conversation claim and personal writing profiles through signed local routes and opt-in composed shared records; preserve existing owners, reviewed wording and old-profile denials.
-- [ ] Complete the Stage 1 attachment, shared-task and full approval/receipt journey. The local text increment is not full Stage 1 acceptance.
+- [x] Add bounded approved PDF selection to local reply tasks, exact bundle review/download, and the fictional task-to-provider-receipt journey; preserve shared-profile denials and stale-file recovery.
+- [ ] Complete Stage 1 conversation history, shared task persistence and native execution/result return. Local controlled proofs are not full Stage 1 acceptance.
 - [ ] Verify the intended Business execution route and allowances before cloud or computer-off claims; keep live release separate.
 
 ## Shared operations desk redesign — October 23, 2026

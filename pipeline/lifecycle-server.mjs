@@ -1,5 +1,5 @@
 import {callTranscriptionView,approveCallTranscription,runCallTranscription,pauseCallTranscription} from './call-transcription.mjs';
-import {createEmailDraftTask,emailDraftTaskContext,submitEmailDraftResult,adoptEmailDraftResult} from './email-draft-tasks.mjs';
+import {createEmailDraftTask,emailDraftTaskContext,submitEmailDraftResult,adoptEmailDraftResult,readEmailTaskAttachment} from './email-draft-tasks.mjs';
 import {conversationEvents} from './conversation-records.mjs';
 import {retainedSource} from './retained-sources.mjs';
 import {prepareTeamNotifications,notificationView} from './team-notifications.mjs';
@@ -50,6 +50,8 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
         res.end(await readFile(join(fileURLToPath(new URL('./lifecycle-ui/', import.meta.url)), file))); return;
       }
       check(!req.headers['sec-fetch-site'] || ['same-origin', 'none'].includes(req.headers['sec-fetch-site']), 'Cross-site requests are blocked');
+      const taskAsset=/^\/api\/email-draft-task\/([a-zA-Z0-9_-]{1,80})\/asset\/([a-zA-Z0-9_-]{1,100})\/([a-zA-Z0-9_-]{1,100})$/.exec(url.pathname);
+      if(taskAsset){check(req.method==='GET','Use the exact task PDF read operation');const token=/^Bearer ([a-f0-9]{64})$/.exec(req.headers.authorization??'')?.[1],original=await readEmailTaskAttachment(app,taskAsset[1],token,taskAsset[2],taskAsset[3]);res.writeHead(200,{...headers,'Content-Type':'application/pdf','Content-Length':original.bytes.length,'Content-Disposition':`attachment; filename="${original.filename}"`,'X-Content-SHA256':original.sha256});res.end(original.bytes);return;}
       if(/^\/api\/email-draft-task\/[a-zA-Z0-9_-]{1,80}\/(context|result)$/.test(url.pathname)){
         const [,,,id,command]=url.pathname.split('/'),token=/^Bearer ([a-f0-9]{64})$/.exec(req.headers.authorization??'')?.[1];
         if(req.method==='GET'&&command==='context')return json(200,await emailDraftTaskContext(app,id,token));
@@ -74,7 +76,7 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
       if(req.method==='GET'&&url.pathname==='/api/project-resolve')return json(200,resolveProject(await app.snapshot(),url.searchParams.get('name')));
       if(req.method==='GET'&&/^\/api\/project-asset\/[a-zA-Z0-9_-]{1,100}\/[a-zA-Z0-9_-]{1,100}\/[a-zA-Z0-9_-]{1,100}$/.test(url.pathname)){
         const [,,,project,asset,version]=url.pathname.split('/'),original=await readProjectAsset(app,project,asset,version);
-        res.writeHead(200,{...headers,'Content-Type':'application/pdf','Content-Length':original.bytes.length,'Content-Disposition':`attachment; filename="${original.filename}"`,'X-Content-SHA256':original.original.sha256});res.end(original.bytes);return;
+        res.writeHead(200,{...headers,'Content-Type':'application/pdf','Content-Length':original.bytes.length,'Content-Disposition':`${url.searchParams.get('preview')==='1'?'inline':'attachment'}; filename="${original.filename}"`,'X-Content-SHA256':original.original.sha256});res.end(original.bytes);return;
       }
       if(req.method==='GET'&&/^\/retained-source\/[a-zA-Z0-9_-]{1,100}\/[a-f0-9]{64}$/.test(url.pathname)){const [,,project,sha]=url.pathname.split('/');return json(200,retainedSource(await app.snapshot(),project,sha,url.searchParams.get('url'),url.searchParams.get('at')));}
       if(req.method==='GET'&&url.pathname==='/api/call-transcription')return json(200,await callTranscriptionView(app));
