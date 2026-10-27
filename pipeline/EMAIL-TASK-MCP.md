@@ -1,6 +1,6 @@
 # Fictional email-task MCP gateway
 
-This gateway lets a manually started cloud Work task call the existing narrow draft-task authority. Source verification uses the official MCP SDK and injected fictional boundaries; deployment, a Business custom connection, cloud PDF inspection and operation with both computers off remain unproved. It starts no agent, provider call, schedule or approval.
+This gateway lets a manually started cloud Work task call the existing narrow draft-task authority. One separately approved isolated Business Work proof inspected the exact PDF and durably returned a proposal after worker-tab closure; both operators independently read it. The temporary connection/grant was removed and hosting restored private. Actual powered-off/different-device operation, capacity and provider delivery remain unproved. The gateway starts no agent, provider call, schedule or approval; the new signed review profile grants workers no additional tools.
 
 ## Caller contract
 
@@ -20,6 +20,8 @@ Inputs reject extra fields. The result retains the existing bounded body/citatio
 MCP uses request-scoped stateless Streamable HTTP with JSON responses. Shared conditional storage owns task state; restarting a function does not grant a new attempt. Request bodies are capped at 120,000 bytes, individual PDF originals at 512,000 bytes and serialized MCP responses at 1,000,000 bytes. Oversized data fails explicitly; no partial PDF is represented as an original. These proof limits do not establish support for the local task's full 20 MB attachment allowance. The shared authority also fences the catalogue to its declared proof limit.
 
 The PDF result carries its actual base64 bytes, not a bearer-bearing URL or an assumption that a later URL fetch forwards authentication. Source tests decode and compare the original bytes. Cloud Work's ability to consume and inspect this embedded resource is a separate required acceptance check. A successful tool call, URI, metadata, hash or extracted text alone does not establish actual PDF inspection.
+
+October27 live evidence: one native Sol 6.1 Medium run decoded/hash-verified and visually inspected the original, then saved a Review result at 04:32:09.690 UTC after its tab closed at 04:31:52.395 UTC. Independent readback verified the PDF-only proposed callback detail and both operator views. Worker-reported duration was 27,030 ms; exact per-run tokens/billing remain unknown. No different-device/powered-off or live duplicate/lost-ack experiment was performed. [Evidence and limits](HYBRID-IMPLEMENTATION.md#verified-native-task-proof-and-next-source-boundary--october-27).
 
 On an uncertain result submission, inspect the durable receipt before retrying. Identical result retries reconcile; a different second result is held by the authority. The proposal remains unapproved. Signed operator adoption, exact content approval and send approval remain separate desk actions.
 

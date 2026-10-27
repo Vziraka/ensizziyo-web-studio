@@ -42,7 +42,7 @@ export class ConditionalLifecycleStore {
     if(this.projectBinding)check(options.projectResearch&&this.projectBinding.scope.capability==='shared-known-identity-research-v1'||options.projectRecord||options.projectAuthoring||options.projectReconcile||options.projectGeneration&&this.projectBinding.scope.capability==='shared-refinement-generation-v1','Shared project storage rejects untyped worker and provider mutations');
     if(this.dispatchBinding)validateDispatchOptions(this.dispatchBinding.scope.capability,options);
     const result=await fn(data.state,data.config);this.validate(data);
-    if(this.emailTaskBinding)validateEmailTaskChange(JSON.parse(before),data,options,this.emailTaskBinding,this.now());
+    if(this.emailTaskBinding)await validateEmailTaskChange(JSON.parse(before),data,options,this.emailTaskBinding,this.now,this.store);
     if(this.inertBinding)validateInertChange(JSON.parse(before).state,data.state,options);
     if(this.manualBinding)validateManualChange(JSON.parse(before),data,options);
     if(this.projectBinding)await validateProjectChange(JSON.parse(before),data,options,this.store);

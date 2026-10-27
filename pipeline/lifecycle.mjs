@@ -241,6 +241,7 @@ export class StudioLifecycle {
     this.config = await this.loadConfig();
     check(key(event?.id) && key(event.prospect_id) && text(event.type, 80) && date(event.at), 'Event needs stable IDs and an explicit timestamp');
     check(Date.parse(event.at) <= +this.now() + 60_000, 'An event cannot claim a future action');
+    if(this.store?.emailTaskBinding)return (await import('./shared-email-draft-tasks.mjs')).recordEmailTaskReview(this,event,actor,expectedRevision);
     if(this.store?.dispatchBinding&&dispatchHasManual(this.store.dispatchBinding.scope.capability)){
       const config=this.config,record={event,actor,revision:expectedRevision};
       const mail=isOperationsMail(config.shared_capability)&&mailRecordEvents.includes(event.type);
@@ -610,18 +611,20 @@ export class StudioLifecycle {
             if (['decline', 'do_not_contact'].includes(data.kind)) { r.restriction = data.kind; r.stage = 'Stopped'; }
             else { r.stage = data.kind === 'reply' ? 'Reply review' : 'Hold'; r.next_check = data.kind === 'reply' ? 'Owner reviews reply and next action' : 'Verify contact/return date; never auto-resume from a bounce or auto-reply'; } break;
           case 'reply_draft_saved': {
+            const sharedReview=this.store?.key==='workspace'&&this.store.emailTaskBinding?.scope.capability==='fictional-email-draft-review-v1';
             owner(actor);check(['owner','friend'].includes(actor),'A signed operator must prepare reply drafts');check(!r.restriction&&r.reply?.kind==='reply'&&['Reply review','Discovery','Information requested'].includes(r.stage)&&validReplySource(r.reply)&&data.source_id===r.reply.source_id&&data.reply_sha256===hash(r.reply)&&data.source_sha256===r.reply.content.source_sha256,'Draft must match the exact current reply with complete content');
             check(!r.follow_up_owner||r.follow_up_owner===actor,'Claim or hand off this reply before editing its draft');
             check(r.contact?.verified===true&&r.contact.email?.toLowerCase()===r.reply.content.from,'Reply recipient differs from the current verified contact');
             check(text(data.body),'Write a bounded reply draft for human review');
-            if(data.agent_task_id||data.agent_context_sha256||data.agent_result_sha256)check(!this.store&&agentDraft&&state.email_draft_tasks?.[data.agent_task_id]===agentDraft&&agentDraft.status==='Review'&&agentDraft.project_id===r.id&&agentDraft.result.body===data.body&&agentDraft.result_sha256===data.agent_result_sha256&&agentDraft.context_sha256===data.agent_context_sha256&&hash(emailDraftSource(r,this.config,state))===data.agent_context_sha256,'Agent drafts require the atomic task adoption service');
-            if(data.attachments!==undefined)check(!this.store&&Array.isArray(data.attachments)&&(data.agent_task_id||data.attachments.length===0),'Attached replies require local task adoption; manual edits may only remove the bundle');
+            if(data.agent_task_id||data.agent_context_sha256||data.agent_result_sha256)check((!this.store||sharedReview)&&agentDraft&&state.email_draft_tasks?.[data.agent_task_id]===agentDraft&&agentDraft.status==='Review'&&agentDraft.project_id===r.id&&agentDraft.result.body===data.body&&agentDraft.result_sha256===data.agent_result_sha256&&agentDraft.context_sha256===data.agent_context_sha256&&hash(emailDraftSource(r,this.config,state))===data.agent_context_sha256,'Agent drafts require the atomic task adoption service');
+            if(data.attachments!==undefined)check((!this.store||sharedReview)&&Array.isArray(data.attachments)&&(data.agent_task_id||data.attachments.length===0),'Attached replies require local task adoption; manual edits may only remove the bundle');
             if(data.agent_task_id)check(hash(data.attachments??[])===hash(agentDraft.result.attachments??[]),'Adopt the exact worker attachment selection');
             const attachments=data.agent_task_id?selectReplyAttachments(state,r.id,data.attachments??[],agentDraft.studio_asset_ids??[]):data.attachments??r.reply_draft?.content.attachments??[];
-            if(attachments.length){check(!this.store,'Shared profiles do not authorize attached reply drafts');currentReplyAttachments(state,r.id,attachments);}
-            const boundContext=data.agent_context_sha256||(r.reply_draft?.agent_context_sha256||r.conversation_histories?hash(emailDraftSource(r,this.config,state)):null);
+            if(attachments.length){check(!this.store||sharedReview,'Shared profiles do not authorize attached reply drafts');currentReplyAttachments(state,r.id,attachments);}
+            const boundContext=data.agent_context_sha256||(sharedReview||r.reply_draft?.agent_context_sha256||r.conversation_histories?hash(emailDraftSource(r,this.config,state)):null);
             const content=replyDraftContent(r,data.body,actor,this.config,Boolean(boundContext));
             if(attachments.length)content.attachments=structuredClone(attachments);
+            if(sharedReview){content.review_binding_sha256=this.config.email_task_proof.binding_sha256;const origin=agentDraft?{task_id:agentDraft.id,result_sha256:agentDraft.result_sha256,context_sha256:agentDraft.context_sha256,source_ids:agentDraft.result.source_ids,uncertainties:agentDraft.result.uncertainties}:r.reply_draft?.content.agent_origin;if(origin)content.agent_origin=structuredClone(origin);}
             if(r.reply_draft){r.reply_draft_history??=[];r.reply_draft_history.push({...r.reply_draft,status:'Superseded'});}
             r.reply_draft={source_id:data.source_id,source_sha256:data.source_sha256,reply_sha256:data.reply_sha256,body:content.body,content,sha256:hash(content),owner:r.follow_up_owner??null,at:event.at,actor,status:'Draft',...(boundContext?{agent_context_sha256:boundContext}:{}),...(data.agent_task_id?{agent_task_id:data.agent_task_id,agent_result_sha256:data.agent_result_sha256}:{})};
             r.reply_drafts??=[];r.reply_drafts.push(r.reply_draft);break;

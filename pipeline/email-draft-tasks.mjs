@@ -1,5 +1,5 @@
 import {timingSafeEqual} from 'node:crypto';
-import {check,hash} from './lifecycle.mjs';
+import {check,hash,StudioLifecycle} from './lifecycle.mjs';
 import {validReplySource,emailDraftSource} from './reply-content.mjs';
 import {retainedConversationContext,conversationHasUnsettledSend} from './google-incoming-mail.mjs';
 import {writingStyle} from './conversation-records.mjs';
@@ -10,7 +10,9 @@ const key=v=>typeof v==='string'&&/^[a-zA-Z0-9_-]{1,80}$/.test(v)&&!['__proto__'
 const exact=(v,fields)=>check(v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).sort().join(',')===fields.split(',').sort().join(','),'Use the exact email draft task fields');
 const text=(v,max)=>typeof v==='string'&&v.trim().length>0&&v.length<=max&&!/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(v);
 const safe=v=>check(!/-----BEGIN [A-Z ]*PRIVATE KEY|\b(?:sk-|ghp_|github_pat_)[a-zA-Z0-9_-]{16,}|(?:password|api[_-]?key|authorization|bearer|token)\s*[:= ]\s*[^\s"',}]{12,}/i.test(JSON.stringify(v)),'Remove credentials from email task material');
-function local(app){check(app.config?.mode==='controlled'&&(!app.store||app.store.key==='workspace'&&app.store.emailTaskBinding?.scope.capability==='fictional-email-draft-task-v1'),'Email draft tasks require the local controlled workspace; shared storage is unsupported');}
+export const sharedDraftReview=app=>app.store?.key==='workspace'&&app.store.emailTaskBinding?.scope.capability==='fictional-email-draft-review-v1';
+export {safe as safeEmailTaskMaterial};
+function local(app){check(app.config?.mode==='controlled'&&(!app.store||app.store.key==='workspace'&&['fictional-email-draft-task-v1','fictional-email-draft-review-v1'].includes(app.store.emailTaskBinding?.scope.capability)),'Email draft tasks require the local controlled workspace; shared storage is unsupported');}
 async function settings(app){local(app);app.config=await app.loadConfig();local(app);return hash(app.config);}
 export function emailTaskWorkspace(app,s){return hash(app.store?.emailTaskBinding?{binding:app.store.emailTaskBinding,run:s.run_id}:{directory:app.directory,run:s.run_id});}
 function catalogue(app,s,project,ids=[]){const c=replyAttachmentCatalogue(s,project,ids);if(!app.store?.emailTaskBinding)return c;const items=c.items.filter(a=>a.bytes<=512000);return {...c,items,oversized_omitted:c.items.length-items.length,max_pdf_bytes:512000};}
@@ -63,10 +65,13 @@ export async function submitEmailDraftResult(app,id,token,result){
  const fingerprint=await settings(app),token_sha256=credential(token);check(!JSON.stringify(result).includes(token),'Do not return the task credential');return taskChange(app,{type:'result',actor:'task',at:app.now().toISOString(),input:{id,token_sha256,result}},fingerprint);
 }
 export async function adoptEmailDraftResult(app,input,actor){
- check(!app.store,'Email draft shared storage is unsupported for adoption; separate signed adoption authority is unavailable');const fingerprint=await settings(app);operator(actor);exact(input,'id,revision,result_sha256');check(key(input.id)&&Number.isSafeInteger(input.revision),'Exact task ID and revision required');
- return app.change(async s=>{const t=s.email_draft_tasks?.[input.id];check(t&&t.result_sha256===input.result_sha256,'Choose the exact saved agent proposal');if(t.status==='Adopted'){check(t.adopted_by===actor,'Original adopting operator required');return {event_id:t.adoption_event,duplicate:true,revision:s.revision};}
+ check(!app.store||sharedDraftReview(app),'Email draft shared storage is unsupported for adoption; separate signed adoption authority is unavailable');const fingerprint=await settings(app);operator(actor);exact(input,'id,revision,result_sha256');check(key(input.id)&&Number.isSafeInteger(input.revision),'Exact task ID and revision required');const tr={type:'adopt',actor,at:app.now().toISOString(),input};
+ return app.change(s=>{const view=Object.create(app);view.now=()=>new Date(tr.at);view.snapshot=async()=>structuredClone(s);return applyEmailTaskAdoption(view,s,input,actor);},{configFingerprint:fingerprint,...(app.store?{emailTask:tr}:{})});
+}
+export async function applyEmailTaskAdoption(app,s,input,actor){
+ check(!app.store||sharedDraftReview(app),'Shared task adoption requires its exact review profile');operator(actor);exact(input,'id,revision,result_sha256');check(key(input.id)&&Number.isSafeInteger(input.revision),'Exact task ID and revision required');const t=s.email_draft_tasks?.[input.id];check(t&&t.result_sha256===input.result_sha256,'Choose the exact saved agent proposal');if(t.status==='Adopted'||t.adoption_event){check(t.adopted_by===actor,'Original adopting operator required');return {event_id:t.adoption_event,duplicate:true,revision:s.revision};}
  const p=current(app,s,t);check(!p.owner||p.owner===actor,'Claim or hand off this reply first');check(t.status==='Review'&&s.revision===input.revision,'Refresh and review the current proposal before adoption');validateResult(t.result,p,s,t,app);check(hash(t.result)===t.result_sha256,'Saved agent proposal integrity changed');
  for(const part of selectReplyAttachments(s,t.project_id,t.result.attachments??[],t.studio_asset_ids)){const read=await readProjectAsset(app,t.project_id,part.asset_id,part.version_id);check(read.original.sha256===part.sha256&&read.bytes.length===part.bytes&&read.bytes.subarray(0,5).toString()==='%PDF-','The selected original PDF changed before adoption');}
  const event={id:'agent-draft-'+t.id,prospect_id:t.project_id,type:'reply_draft_saved',at:app.now().toISOString(),data:{source_id:p.reply.source_id,reply_sha256:hash(p.reply),source_sha256:p.reply.content.source_sha256,body:t.result.body,agent_task_id:t.id,agent_result_sha256:t.result_sha256,agent_context_sha256:t.context_sha256,...(t.result.attachments?.length?{attachments:t.result.attachments}:{})}};
- const result=app.reduceEvent(s,event,{actor,expectedRevision:input.revision,agentDraft:t});Object.assign(t,{status:'Adopted',adopted_by:actor,adopted_at:event.at,adoption_event:event.id});return {...result,event_id:event.id};},{configFingerprint:fingerprint});
+ const reducer=new StudioLifecycle(null,app.now);reducer.config=app.config;reducer.store=app.store;const result=reducer.reduceEvent(s,event,{actor,expectedRevision:input.revision,agentDraft:t});Object.assign(t,{status:'Adopted',adopted_by:actor,adopted_at:event.at,adoption_event:event.id,...(app.store?{adoption_binding_sha256:app.config.email_task_proof.binding_sha256}:{})});return {...result,event_id:event.id};
 }
