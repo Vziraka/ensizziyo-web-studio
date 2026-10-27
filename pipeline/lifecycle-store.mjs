@@ -56,7 +56,7 @@ export class ConditionalLifecycleStore {
     try {const written=await this.store.setJSON(this.key,data,{onlyIfMatch:etag});check(typeof written?.modified==='boolean'&&(!written.modified||typeof written.etag==='string'&&written.etag.length>0),'Conditional write result is unavailable');modified=written.modified;}
     catch {uncertain=true;}
     if(modified===true)return result;
-    if(this.emailTaskBinding){try{const saved=await this.envelope();if(hash(saved.data)===hash(data))return {...result,reconciled:true};}catch{}}
+    if(this.emailTaskBinding||options.emailTask&&this.dispatchBinding){try{const saved=await this.envelope();if(hash(saved.data)===hash(data))return {...result,reconciled:true};}catch{}}
     if(eventId&&eventFingerprint){
       try {const current=await this.snapshot();if(current.events[eventId]?.fingerprint===eventFingerprint)return {...result,reconciled:true};}catch {}
     }

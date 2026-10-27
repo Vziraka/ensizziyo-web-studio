@@ -1,3 +1,4 @@
+import {sharedDispatchEmailTasks,dispatchEmailTaskPolicy} from './email-draft-policy.mjs';
 import {check,hash,StudioLifecycle} from './lifecycle.mjs';
 import {applyEmailTaskTransition,applyEmailTaskAdoption,sharedDraftReview,safeEmailTaskMaterial,emailDraftTaskContext,emailDraftTaskReceipt,submitEmailDraftResult,readEmailTaskAttachment} from './email-draft-tasks.mjs';
 import {blobProjectOriginalStore} from './shared-project-originals.mjs';
@@ -31,7 +32,8 @@ export function validateEmailTaskEnvelope(data,binding){
  if(review)validateReviewEvidence(s);
 }
 function signedEvent(event){const {actor,fingerprint,...original}=event??{};check(['owner','friend'].includes(actor)&&fingerprint===hash({event:original,actor}),'Shared review signed event identity differs');return event;}
-function validateReviewEvidence(s){
+export function validateReviewEvidence(s){
+ check(Object.keys(s.email_draft_tasks??{}).length<=100,'Bounded retained task inventory required');for(const [id,t]of Object.entries(s.email_draft_tasks??{}))check(key(id)&&t.id===id&&sha(t.token_sha256)&&sha(t.workspace_sha256)&&['Ready','Review','Superseded','Adopted'].includes(t.status)&&(!t.result||hash(t.result)===t.result_sha256),'Invalid retained task or result evidence');
  for(const t of Object.values(s.email_draft_tasks??{}))if(t.status==='Adopted'||t.adoption_event){const e=signedEvent(s.events[t.adoption_event]);check(t.result&&sha(t.adoption_binding_sha256)&&e.id===t.adoption_event&&e.id==='agent-draft-'+t.id&&e.type==='reply_draft_saved'&&e.prospect_id===t.project_id&&e.actor===t.adopted_by&&e.at===t.adopted_at&&e.data.agent_task_id===t.id&&e.data.agent_result_sha256===t.result_sha256&&e.data.agent_context_sha256===t.context_sha256&&e.data.body===t.result.body&&hash(e.data.attachments??[])===hash(t.result.attachments??[]),'Shared task adoption event or result linkage differs');}
  for(const r of Object.values(s.prospects))for(const d of [r.reply_draft,...(r.reply_draft_history??[]),...(r.reply_drafts??[])].filter(Boolean)){
   if(d.content?.agent_origin||d.agent_task_id){const o=d.content?.agent_origin,t=s.email_draft_tasks?.[o?.task_id];exact(o,'task_id,result_sha256,context_sha256,source_ids,uncertainties');check(t?.adoption_event&&t.project_id===r.id&&o.result_sha256===t.result_sha256&&o.context_sha256===t.context_sha256&&hash(o.source_ids)===hash(t.result.source_ids)&&hash(o.uncertainties)===hash(t.result.uncertainties)&&sha(d.content.review_binding_sha256)&&d.sha256===hash(d.content),'Shared draft origin or exact content differs');}
@@ -39,8 +41,8 @@ function validateReviewEvidence(s){
   if(d.status==='Approved; sending held')check(d.approval_event,'Shared approved content needs its separate signed approval');
  }
 }
-async function applyReviewRecord(app,s,tr){
- check(sharedDraftReview(app),'Shared reply review requires its exact review profile');check(['owner','friend'].includes(tr.actor),'Signed operator required');exact(tr.input,'event,revision');const {event,revision}=tr.input;exact(event,'id,prospect_id,type,at,data');check(key(event.id)&&key(event.prospect_id)&&Number.isSafeInteger(revision)&&emailTaskReviewEvents.includes(event.type)&&Number.isFinite(Date.parse(event.at))&&Date.parse(event.at)<=+app.now()+60000,'Exact bounded signed reply review event required');check(app.store.emailTaskBinding.scope.routes.some(r=>r.project_id===event.prospect_id),'Choose an allowed fictional conversation');
+export async function applyReviewRecord(app,s,tr){
+ check(sharedDraftReview(app),'Shared reply review requires its exact review profile');check(['owner','friend'].includes(tr.actor),'Signed operator required');exact(tr.input,'event,revision');const {event,revision}=tr.input;exact(event,'id,prospect_id,type,at,data');check(key(event.id)&&key(event.prospect_id)&&Number.isSafeInteger(revision)&&emailTaskReviewEvents.includes(event.type)&&Number.isFinite(Date.parse(event.at))&&Date.parse(event.at)<=+app.now()+60000,'Exact bounded signed reply review event required');check(sharedDispatchEmailTasks(app)?dispatchEmailTaskPolicy(app.config).project_id===event.prospect_id:app.store.emailTaskBinding.scope.routes.some(r=>r.project_id===event.prospect_id),'Choose an allowed fictional conversation');
  const fields={reply_draft_saved:'source_id,reply_sha256,source_sha256,body'+(Object.hasOwn(event.data??{},'attachments')?',attachments':''),reply_draft_approved:'sha256,approved,facts_checked',follow_up_handed_off:'to',contact_stopped:'reason'};exact(event.data,fields[event.type]);safeEmailTaskMaterial(event.data);
  if(event.type==='reply_draft_saved'){check(s.prospects[event.prospect_id]?.reply_draft,'Adopt a proposal before editing its saved reply');check(typeof event.data.body==='string'&&event.data.body.trim()&&event.data.body.length<=3000,'Write a bounded current reply');if(Object.hasOwn(event.data,'attachments'))check(Array.isArray(event.data.attachments)&&event.data.attachments.length===0,'Manual review may only remove attachments');}
  const prior=s.events[event.id];if(prior){check(prior.fingerprint===hash({event,actor:tr.actor}),'Event ID conflicts with saved evidence');return {duplicate:true,revision:s.revision};}
@@ -51,9 +53,9 @@ async function applyReviewRecord(app,s,tr){
 export async function recordEmailTaskReview(app,event,actor,revision){const config=await app.loadConfig();check(sharedDraftReview(app),'Shared reply review requires its exact review profile');const tr={type:'record',actor,at:app.now().toISOString(),input:{event,revision}};return app.change(s=>{const view=Object.create(app);view.config=config;view.now=()=>new Date(tr.at);view.snapshot=async()=>structuredClone(s);return applyReviewRecord(view,s,tr);},{configFingerprint:hash(config),emailTask:tr});}
 export async function validateEmailTaskChange(before,after,options,binding,clock,raw){
  exact(options,'configFingerprint,emailTask');const tr=options.emailTask;exact(tr,'type,actor,at,input');
- check(options.configFingerprint===hash(before.config)&&hash(before.config)===hash(after.config)&&hash(before.email_task_source)===hash(after.email_task_source),'Fictional task configuration or source manifest changed');
+ check(options.configFingerprint===hash(before.config)&&hash(before.config)===hash(after.config)&&hash(before.email_task_source??null)===hash(after.email_task_source??null),'Fictional task configuration or source manifest changed');
  const time=Date.parse(tr.at),now=clock();check(typeof tr.at==='string'&&new Date(time).toISOString()===tr.at&&time<=+now&&time>+now-60000,'Current typed task transition time required');
- const expected=structuredClone(before.state),app={config:before.config,store:{key:'workspace',emailTaskBinding:binding},now:()=>new Date(tr.at),snapshot:async()=>structuredClone(expected),originalStore:blobProjectOriginalStore(raw)};
+ const expected=structuredClone(before.state),app={config:before.config,store:{key:'workspace',...(before.dispatch_source?{dispatchBinding:binding}:{emailTaskBinding:binding})},now:()=>new Date(tr.at),snapshot:async()=>structuredClone(expected),originalStore:blobProjectOriginalStore(raw)};
  if(tr.type==='adopt')await applyEmailTaskAdoption(app,expected,tr.input,tr.actor);else if(tr.type==='record')await applyReviewRecord(app,expected,tr);else applyEmailTaskTransition(app,expected,tr);
  check(hash(expected)===hash(after.state),'Typed task transition changed protected records or result evidence');
  // Independent original reads may outlast the transition or worker credential.
@@ -74,11 +76,17 @@ export function emailTaskBindingFromEnvironment(env){
 }
 async function defaultStore(namespace){const {getStore}=await import('@netlify/blobs');return getStore({name:namespace,consistency:'strong'});}
 export async function openFictionalEmailTaskApp({env,context,storeFactory=defaultStore,now=()=>new Date()}){
+ if(!env.EVZ_OPERATIONS_EMAIL_TASK_BINDING){
+  const {validateDispatchBinding}=await import('./shared-internal-dispatch.mjs'),binding=JSON.parse(env.EVZ_INTERNAL_DISPATCH_BINDING??'null');validateDispatchBinding(binding?.scope);const b=binding.scope;
+  check(b.capability==='shared-operations-exact-mail-v1'&&env.EVZ_OPERATIONS_DESK_ENABLED===b.capability&&env.CONTEXT==='production'&&env.SITE_ID===b.site_id&&env.DEPLOY_ID===b.deploy_id&&env.EVZ_OPERATIONS_ORIGIN===b.origin&&env.EVZ_OPERATIONS_BLOB_NAMESPACE===b.namespace,'Exact task dispatch deployment required');
+  check(context?.site?.id===b.site_id&&context?.deploy?.id===b.deploy_id&&context.deploy.context==='production'&&context.deploy.published===true,'Trusted task dispatch context required');
+  const raw=await storeFactory(b.namespace),{ConditionalLifecycleStore}=await import('./lifecycle-store.mjs'),app=await StudioLifecycle.fromStore({store:new ConditionalLifecycleStore(raw,{dispatchBinding:binding,originalsEnvironment:env,now}),now});check(sharedDispatchEmailTasks(app),'Missing composed task authority');app.originalStore=blobProjectOriginalStore(raw);return app;
+ }
  const binding=emailTaskBindingFromEnvironment(env),b=binding.scope;
  check(context?.site?.id===b.site_id&&context?.deploy?.id===b.deploy_id&&context.deploy.context==='deploy-preview','Trusted fictional preview context required');
  const raw=await storeFactory(b.namespace),{ConditionalLifecycleStore}=await import('./lifecycle-store.mjs'),store=new ConditionalLifecycleStore(raw,{emailTaskBinding:binding,maxBytes:2_000_000,now});
  const app=await StudioLifecycle.fromStore({store,now});app.originalStore=blobProjectOriginalStore(raw);return app;
 }
 export async function openFictionalEmailTaskAuthority(options){
- const app=await openFictionalEmailTaskApp(options);return {origin:app.store.emailTaskBinding.scope.origin,context:(id,token)=>emailDraftTaskContext(app,id,token),readPdf:(id,token,asset,version)=>readEmailTaskAttachment(app,id,token,asset,version),submit:(id,token,result)=>submitEmailDraftResult(app,id,token,result),receipt:(id,token)=>emailDraftTaskReceipt(app,id,token)};
+ const app=await openFictionalEmailTaskApp(options);return {origin:(app.store.emailTaskBinding??app.store.dispatchBinding).scope.origin,context:(id,token)=>emailDraftTaskContext(app,id,token),readPdf:(id,token,asset,version)=>readEmailTaskAttachment(app,id,token,asset,version),submit:(id,token,result)=>submitEmailDraftResult(app,id,token,result),receipt:(id,token)=>emailDraftTaskReceipt(app,id,token)};
 }

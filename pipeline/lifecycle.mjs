@@ -1,3 +1,4 @@
+import {sharedDispatchEmailTasks,emailDraftReviewBinding} from './email-draft-policy.mjs';
 import {operationsMailCapability,isOperationsMail,mailRecordEvents,applyMailRecord} from './shared-operations-exact-mail.mjs';
 import {applySharedProjectEvent,sharedProjectDashboard} from './shared-project-continuation.mjs';
 import {bookingConfirmations} from './calendar-confirmation.mjs';
@@ -246,7 +247,7 @@ export class StudioLifecycle {
       const config=this.config,record={event,actor,revision:expectedRevision};
       const mail=isOperationsMail(config.shared_capability)&&mailRecordEvents.includes(event.type);
       const project=dispatchHasProjects(config.shared_capability)&&(dispatchProjectEvents.includes(event.type)||conversationEvents.includes(event.type));
-      return this.change(state=>{record.at=this.now().toISOString();return (mail?applyMailRecord:project?applyDispatchProjectRecord:applyDispatchManualRecord)(state,config,record,new Date(record.at));},{eventId:event.id,eventFingerprint:hash({event,actor}),configFingerprint:hash(config),[mail?'mailRecord':project?'projectRecord':'manualRecord']:record});
+      return this.change(state=>{record.at=this.now().toISOString();if(mail)return applyMailRecord(state,config,record,new Date(record.at),{app:this});return (project?applyDispatchProjectRecord:applyDispatchManualRecord)(state,config,record,new Date(record.at));},{eventId:event.id,eventFingerprint:hash({event,actor}),configFingerprint:hash(config),[mail?'mailRecord':project?'projectRecord':'manualRecord']:record});
     }
     if(this.store?.projectBinding)return this.change(state=>applySharedProjectEvent(state,event,actor,expectedRevision,this.now(),this.config),{eventId:event.id,eventFingerprint:hash({event,actor}),projectRecord:{event,actor,revision:expectedRevision}});
     if(this.store?.inertBinding)return this.change(state=>applyInertNote(state,event,actor,expectedRevision,this.now()),{eventId:event.id,eventFingerprint:hash({event,actor}),inertNote:{event,actor,revision:expectedRevision}});
@@ -611,7 +612,7 @@ export class StudioLifecycle {
             if (['decline', 'do_not_contact'].includes(data.kind)) { r.restriction = data.kind; r.stage = 'Stopped'; }
             else { r.stage = data.kind === 'reply' ? 'Reply review' : 'Hold'; r.next_check = data.kind === 'reply' ? 'Owner reviews reply and next action' : 'Verify contact/return date; never auto-resume from a bounce or auto-reply'; } break;
           case 'reply_draft_saved': {
-            const sharedReview=this.store?.key==='workspace'&&this.store.emailTaskBinding?.scope.capability==='fictional-email-draft-review-v1';
+            const sharedReview=this.store?.key==='workspace'&&this.store.emailTaskBinding?.scope.capability==='fictional-email-draft-review-v1'||sharedDispatchEmailTasks(this);
             owner(actor);check(['owner','friend'].includes(actor),'A signed operator must prepare reply drafts');check(!r.restriction&&r.reply?.kind==='reply'&&['Reply review','Discovery','Information requested'].includes(r.stage)&&validReplySource(r.reply)&&data.source_id===r.reply.source_id&&data.reply_sha256===hash(r.reply)&&data.source_sha256===r.reply.content.source_sha256,'Draft must match the exact current reply with complete content');
             check(!r.follow_up_owner||r.follow_up_owner===actor,'Claim or hand off this reply before editing its draft');
             check(r.contact?.verified===true&&r.contact.email?.toLowerCase()===r.reply.content.from,'Reply recipient differs from the current verified contact');
@@ -624,7 +625,7 @@ export class StudioLifecycle {
             const boundContext=data.agent_context_sha256||(sharedReview||r.reply_draft?.agent_context_sha256||r.conversation_histories?hash(emailDraftSource(r,this.config,state)):null);
             const content=replyDraftContent(r,data.body,actor,this.config,Boolean(boundContext));
             if(attachments.length)content.attachments=structuredClone(attachments);
-            if(sharedReview){content.review_binding_sha256=this.config.email_task_proof.binding_sha256;const origin=agentDraft?{task_id:agentDraft.id,result_sha256:agentDraft.result_sha256,context_sha256:agentDraft.context_sha256,source_ids:agentDraft.result.source_ids,uncertainties:agentDraft.result.uncertainties}:r.reply_draft?.content.agent_origin;if(origin)content.agent_origin=structuredClone(origin);}
+            if(sharedReview){content.review_binding_sha256=emailDraftReviewBinding(this.config);const origin=agentDraft?{task_id:agentDraft.id,result_sha256:agentDraft.result_sha256,context_sha256:agentDraft.context_sha256,source_ids:agentDraft.result.source_ids,uncertainties:agentDraft.result.uncertainties}:r.reply_draft?.content.agent_origin;if(origin)content.agent_origin=structuredClone(origin);}
             if(r.reply_draft){r.reply_draft_history??=[];r.reply_draft_history.push({...r.reply_draft,status:'Superseded'});}
             r.reply_draft={source_id:data.source_id,source_sha256:data.source_sha256,reply_sha256:data.reply_sha256,body:content.body,content,sha256:hash(content),owner:r.follow_up_owner??null,at:event.at,actor,status:'Draft',...(boundContext?{agent_context_sha256:boundContext}:{}),...(data.agent_task_id?{agent_task_id:data.agent_task_id,agent_result_sha256:data.agent_result_sha256}:{})};
             r.reply_drafts??=[];r.reply_drafts.push(r.reply_draft);break;
