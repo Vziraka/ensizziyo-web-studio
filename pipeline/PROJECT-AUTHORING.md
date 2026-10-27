@@ -133,6 +133,8 @@ Bounds: 4 MB source, 2-32 resources, 16 MB per resource, 24 MB total resource by
 
 Render retains `input.json`, `authored.json`, portable resource bytes in `runtime.json`, `renderer-evidence.json`, actual `output.pdf`, canonical `page-N.json` and `export.json`. Source/resource/runtime/output hashes, renderer canonical-LF source SHA-256, pinned canonical-LF lockfile SHA-256 and actual Node/dependency versions are retained. The source/lock fingerprint module is checked against both files in tests. Fixed metadata and pinned dependencies make the same inputs byte deterministic under the same tested runtime. Rendering validates in memory and writes the export receipt last; partial writes never index a version. A Rendered job is still **unreviewed**, with no companion draft or baseline approval.
 
+October 26 protocol dependency adoption changed the whole project lockfile without changing the renderer or its six resolved PDF dependency entries (`pdf-lib`, fontkit, standard-fonts, upng, pako and tslib). The canonical-LF lock fingerprint was rebound to that reviewed lock; source/lock assertions and byte-for-byte rendering checks remain mandatory. Any future project lock change requires the same review and fingerprint refresh, including additions unrelated to PDFs. This records runtime provenance rather than changing saved PDF bytes or granting old jobs new execution authority.
+
 **Canonical JSON cannot satisfy visual acceptance.** Rasterize the actual PDF with an independently available local PDF tool, inspect every page, then save a private manifest `{pdf_sha256,rasterizer,pages:["/absolute/private/page-1.png",...]}`. Retain it through:
 
 ```text
