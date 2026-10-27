@@ -167,6 +167,8 @@ Current catalog decision: link and consult upstream only. Do not install catalog
 5. For a useful recurring capability, install or adapt it in the appropriate project scope when authorized, record the tested version/commit and verification command here, and update it deliberately. Never claim installation or compatibility from a catalog entry.
 6. Report a missing capability and use a suitable available alternative when possible. Do not repeatedly install overlapping workflow packs or silently invent tool access.
 
+October 27 hybrid production-foundation assessment: consulted the installed Supabase Postgres design references (transactions, pooling, locking and RLS), official PostgreSQL isolation/locking documentation and current Netlify Database/Blobs/Identity documentation; compared only Supabase PostgreSQL/Auth with existing Blobs retained. [The decision contract](docs/hybrid-production-foundation.md) records budget, historical-hash, transaction, identity and combined-restore constraints. No database SDK/driver, service, credential, container or adapter was installed or activated. A local PostgreSQL experiment requires a selected read/write-set contract and versioned runtime verification first.
+
 ## Selection guide
 
 | Task | Candidate and source | Intended use / activation condition |
