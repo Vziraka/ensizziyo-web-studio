@@ -1,0 +1,34 @@
+# Fictional email-task MCP gateway
+
+This gateway lets a manually started cloud Work task call the existing narrow draft-task authority. Source verification uses the official MCP SDK and injected fictional boundaries; deployment, a Business custom connection, cloud PDF inspection and operation with both computers off remain unproved. It starts no agent, provider call, schedule or approval.
+
+## Caller contract
+
+The private connection URL is `https://<approved-test-origin>/desk-email-task/<task-id>/mcp`. The task ID is a nonsecret identifier; the credential belongs only in the connection's bearer-token input. Every request, including discovery, requires `Authorization: Bearer <task-credential>` and a current exact task context. This is fixed-token authentication, not OAuth. The two-hour task expiry/replacement/source fences remain authoritative. A per-task connection is this proof's contract, not automatic multi-task production routing.
+
+The separate Netlify function opens `openFictionalEmailTaskAuthority` with trusted deployment metadata. The authority validates the exact fictional binding, shared envelope, task credential and source state. The gateway validates the exact path, origin/host, method and absence of query parameters. Operator cookies and credentials grant no access. The existing deployment team's hosting gate remains in force: a protected Deploy Preview is not automatically reachable by ChatGPT. A separately approved test-host/access decision is required before remote connection testing; never weaken the current gate to make discovery pass.
+
+| Tool | Arguments | Result |
+| --- | --- | --- |
+| `evz_get_draft_task` | `task_id` | Current sourced context, writing style, approved catalogue and result schema |
+| `evz_read_task_pdf` | `task_id`, `asset_id`, `version_id`, `sha256` | Verified original bytes as an embedded `application/pdf` resource; exact identity, size and hash |
+| `evz_submit_draft_result` | `task_id`, `context_sha256`, `result` | Saved unapproved proposal receipt from the shared authority |
+| `evz_get_draft_receipt` | `task_id` | Current durable receipt and exact saved result |
+
+Inputs reject extra fields. The result retains the existing bounded body/citations/uncertainties/execution fields and optional two exact attachments. The gateway never lists tasks, creates/replaces a task, adopts a proposal, approves content, refreshes mailbox data, sends, fetches arbitrary URLs or exposes a filesystem. Tool annotations describe behavior and confer no authority.
+
+MCP uses request-scoped stateless Streamable HTTP with JSON responses. Shared conditional storage owns task state; restarting a function does not grant a new attempt. Request bodies are capped at 120,000 bytes, individual PDF originals at 512,000 bytes and serialized MCP responses at 1,000,000 bytes. Oversized data fails explicitly; no partial PDF is represented as an original. These proof limits do not establish support for the local task's full 20 MB attachment allowance. The shared authority also fences the catalogue to its declared proof limit.
+
+The PDF result carries its actual base64 bytes, not a bearer-bearing URL or an assumption that a later URL fetch forwards authentication. Source tests decode and compare the original bytes. Cloud Work's ability to consume and inspect this embedded resource is a separate required acceptance check. A successful tool call, URI, metadata, hash or extracted text alone does not establish actual PDF inspection.
+
+On an uncertain result submission, inspect the durable receipt before retrying. Identical result retries reconcile; a different second result is held by the authority. The proposal remains unapproved. Signed operator adoption, exact content approval and send approval remain separate desk actions.
+
+## Verification and activation boundary
+
+From `pipeline`, run `node --test email-task-mcp.test.mjs` for actual SDK client discovery/calls, identity/route/credential rejection, exact PDF bytes and integrity/size failures, strict schemas, duplicate/conflicting results, stale context, bounded malformed HTTP and lost-acknowledgement receipt recovery. Five protocol tests inject the authority; a sixth uses the real shared authority and conditional store over a fictional storage boundary. That combined test reads the valid original PDF, submits and reads back the exact result through fresh gateway instances, reopens the store, verifies unchanged provider actions/events/operator draft, confirms duplicate submission does not increment revision and rejects an expired task. The test fetch boundary invokes a fresh gateway per request and never contacts OpenAI, Netlify or another provider. The shared-task suite separately owns broader CAS, source, recovery and deployment-binding cases.
+
+October 26 source verification: all six focused protocol/composition tests passed; syntax/diff checks passed. Cached esbuild 0.28.2 produced a 7.1 MB ESM entrypoint bundle. A raw esbuild bundle initially failed on an inherited CommonJS dependency; the actual [Netlify bundler](https://github.com/netlify/zip-it-and-ship-it/blob/main/src/runtimes/node/bundlers/esbuild/bundler.ts) supplies an [ESM/CommonJS shim](https://github.com/netlify/zip-it-and-ship-it/blob/main/src/runtimes/node/utils/esm_cjs_compat.ts). Adding that exact upstream shim to the private smoke artifact let Node 24 import the entrypoint and verify its unauthenticated 401 guard. No application shim or dependency refactor was added. This packaging smoke does not prove the deployed function, Netlify hosting gate or a Business cloud connection.
+
+The gateway has no UI. Before any authorized external proof, review its exact binding/namespace, create a fictional task through the signed desk, configure the dedicated task credential securely, and confirm hosting access without exposing operator/provider secrets. Then manually run one Work task, independently read back saved result/artifact identity in the desk, verify retries/holds and observed usage, and demonstrate original PDF inspection. Deployment, developer-mode changes, external connection creation and secret provisioning require the separate activation decision. Zero workspace credits and a subscription identity do not by themselves prove allowance for every execution mode.
+
+Rollback removes the private MCP connection and its deployment route and revokes/replaces the task credential. Do not delete shared task/result evidence or alter the existing desk's approval/provider behavior.
