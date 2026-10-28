@@ -1,0 +1,26 @@
+[
+  {
+    "id": "wai-navigation",
+    "title": "Accessible navigation and interaction patterns",
+    "url": "https://www.w3.org/WAI/ARIA/apg/patterns/",
+    "tags": ["ux", "navigation", "dialog", "tabs", "keyboard", "accessibility"],
+    "use_when": "Compare keyboard and focus behavior for a specific interface pattern.",
+    "limits": "Interaction guidance, not a visual style or a claim that a particular implementation passes accessibility review."
+  },
+  {
+    "id": "reduced-motion",
+    "title": "Reduced motion preferences",
+    "url": "https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion",
+    "tags": ["animation", "motion", "accessibility", "css", "reduced-motion"],
+    "use_when": "Plan alternatives to large movement, parallax and decorative transitions.",
+    "limits": "A media query alone does not establish that every animation or embedded widget respects the preference."
+  },
+  {
+    "id": "studio-voice",
+    "title": "EVZ approved voice demo and dotted waveform",
+    "url": "https://evzdigital.studio/studio/demos/voice/",
+    "tags": ["ui", "voice", "canvas", "animation", "typography", "waveform"],
+    "use_when": "Review an existing studio example with a documented design decision and repeatable verification.",
+    "limits": "Reference only; its style is not a default for other clients. Source and verification: docs/voice-demo-ui/README.md."
+  }
+]

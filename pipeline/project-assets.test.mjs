@@ -80,6 +80,6 @@ test('signed HTTP client resolves by name, verifies original bytes and writes ex
  const current=await(await fetch(base+route,{headers})).json();assert.equal(current.context.source.project_note,event.data.note);
  const feedback={id:'api-feedback',prospect_id:'studio-assets',type:'asset_feedback_added',at,data:{asset_id:'mockup',version_id:'r3',scope:'project',project_id:'p',feedback:'Recovery readback only; no design approval.'}};
  assert.equal((await fetch(base+'/api/event',{method:'POST',headers,body:JSON.stringify({revision:current.revision,event:feedback})})).status,200);
- const reread=await(await fetch(base+route,{headers})).json();assert.equal(reread.context.source.preferences[0].feedback,feedback.data.feedback);assert.equal(reread.context.source.preferences[0].actor,'friend');assert.equal(reread.context.source.approved_assets.length,0);
+ const ordinary=await(await fetch(base+route,{headers})).json();assert.deepEqual(ordinary.context.source.preferences,[]);const reread=await(await fetch(base+route+'&preferences=1',{headers})).json();assert.equal(reread.context.source.preferences[0].feedback,feedback.data.feedback);assert.equal(reread.context.source.preferences[0].actor,'friend');assert.equal(reread.context.source.approved_assets.length,0);
  assert.notEqual((await fetch(base+'/api/project-asset/p/mockup/not-registered',{headers})).status,200);
 });

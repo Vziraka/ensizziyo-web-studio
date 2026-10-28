@@ -5,7 +5,7 @@ Updated October 12, 2026. This is a continuing project. The first website is an 
 ## From request to reviewed change
 
 1. Read the current brief, tasks, and affected code. For substantial work, record the user-visible outcome, acceptance criteria, unresolved decisions, dependencies, and verification method in the existing task or brief. Resolve observable facts through inspection or experiments; ask about consequential product/preferences unknowns. Do not re-interview settled decisions.
-2. Start a short-lived branch from current main: feature/<topic>, fix/<topic>, or docs/<topic>. Inspect the working tree first and preserve existing changes. Keep independently active work isolated when necessary.
+2. Start a short-lived `codex/<topic>` branch from current main, or the identified feature base when extending unmerged work. Inspect the working tree first and preserve existing changes. Reuse a suitable checkout; discussion/read-only chats do not need new worktrees. Isolate independently active writers when needed and state any stacked PR dependency.
 3. Consult TOOLKIT.md. Read only the relevant skill or documentation, verify compatibility, and use the capability that fits the task. A link is not an installed tool.
 4. Resolve uncertain design through the prototype process below. Before implementing integrations or data changes, define their caller-facing interface, data ownership, failure behavior, and relevant migration implications. Record meaningful alternatives and tradeoffs where they affect the choice.
 5. Implement complete, demonstrable increments across the layers needed for each behavior. State which increments depend on others; verify each before building dependent work. Refactor when it improves the current design or supports an understood roadmap requirement. Scope size is determined by the requested outcome.
@@ -14,6 +14,8 @@ Updated October 12, 2026. This is a continuing project. The first website is an 
 8. Update relevant docs and task status in the same change. Record deployment and rollback instructions when hosting is introduced.
 
 ## Prototypes and production handoff
+
+For substantial planning/design changes, load the portable [studio grilling skill](.agents/skills/studio-grilling/SKILL.md). Save settled decisions and their reasons through the existing task/client record; do not re-interview settled choices. [The studio workflow](docs/studio-workflow.md) owns optional reference/preference recall and learned-procedure suggestions. Check releases and actual model availability before substantial work using [studio model review](.agents/skills/studio-model-review/SKILL.md); it never changes defaults automatically.
 
 State the question each prototype must answer. For visual exploration, compare two structurally different layouts using realistic copy and representative content; add another only when it explores a meaningful alternative. Make variants easy to compare in one preview with labelled controls or links.
 

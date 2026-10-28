@@ -1,5 +1,20 @@
 # Launch tasks
 
+## Studio workflow implementation — October 28, 2026
+
+Owner authorized implementation after the design interview. Latest selection: references and saved client preferences are consulted only when requested. Model reviews are weekly and before substantial work; defaults never switch automatically. Preserve the separate staging checkout and all client/provider state.
+
+- [x] Add portable grilling, requested design recall and model-review skills, with shared agent entry instructions and existing decision-record ownership.
+- [x] Add a searchable public reference index and same-client preference recall using existing lifecycle records; no new client database.
+- [x] Keep new Always/Never feedback project-scoped by default; project historical unconfirmed global feedback locally without altering stored history.
+- [x] Make direct capture/public contact queues public-first; optional Apollo identity search requires an exact current public-gap review. Preserve historical receipts, restrictions and provider bindings.
+- [x] Add a paired Apollo evaluation summary command; actual value comparison requires reviewed paired evidence and is not established by fictional tests.
+- [x] Activate/read back `evz-weekly-model-release-review`: Mondays 9 AM Eastern, quiet for unchanged state, recommendation-only. Existing automations and model defaults unchanged.
+- [x] Finish 92 focused behavior/integration checks, the separate shared authoring/refinement/originals/restore suite, pipeline syntax, three skill validations and diff checks. Requirements/engineering passes corrected eager connector startup, unused-grant renewal and actual request-only packet projection; stable request context has a regression.
+- [ ] Open the stacked review PR. Source implementation is complete; hosted/live runtime activation and a new paid Apollo sample are separate from these checks.
+
+Implementation: [studio workflow](docs/studio-workflow.md). This branch extends the committed hybrid-operations base; uncommitted protected-staging changes in the other checkout are not included or modified.
+
 ## Hybrid operations staged implementation — October 26, 2026
 
 Completed source increment: the fresh task→context/PDF/result→unapproved adoption→signed content review→separate exact-send approval→injected full MIME/provider receipt journey uses the existing declared-thread dispatch workspace/CAS. Both-role browser checks and parent/independent review passed. Commit `fa9c3fa` passed pipeline CI `40461199892` and site CI `40461199921`. The [exact contract](pipeline/EMAIL-DRAFT-TASKS.md#same-workspace-declared-thread-composition--approved-implementation-contract) preserves historical profile denials; no live provider or production activation follows.

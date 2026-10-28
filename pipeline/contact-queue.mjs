@@ -38,7 +38,7 @@ export async function createContactQueue(directory,plan,state,{now=()=>new Date(
     check(current(input,r),'Contact scope binding changed');validateJob(input.job);
     check(input.job.research_version===3&&input.job.business_name===r.name&&host(input.job.website)===host(r.contact.source)&&input.job.seed_urls.every(u=>host(u)===host(input.job.website)),'Capture approved business sources only');
     check(/^[a-z0-9-]{1,80}$/.test(input.prospect_id),'Safe existing-card identity required');
-    const i={prospect_id:input.prospect_id,company_id:input.company_id,bound_contact_sha256:input.bound_contact_sha256,job:input.job,pages:input.job.seed_urls.map(url=>({url,status:'Pending'})),search:{status:'Pending'},apollo:{status:platform(input.job.website)?'Skipped platform domain':'Pending'},status:'Pending',retained_audited:Boolean(plan.retained_audit_ref)};
+    const i={prospect_id:input.prospect_id,company_id:input.company_id,bound_contact_sha256:input.bound_contact_sha256,job:input.job,pages:input.job.seed_urls.map(url=>({url,status:'Pending'})),search:{status:'Pending'},apollo:{status:platform(input.job.website)?'Skipped platform domain':'Deferred public-first review'},status:'Pending',retained_audited:Boolean(plan.retained_audit_ref)};
     if(input.reuse){
       const saved=await readJson(input.reuse.path),old=saved.report;
       check(saved.sha256===input.reuse.sha256&&saved.sha256===hash(old)&&old.prospect_id===r.id&&old.company_id===r.company_id&&old.job.business_name===r.name&&old.bound_contact_sha256===input.bound_contact_sha256&&old.snapshots?.sources.every(s=>Date.parse(s.fetched_at)<=+now()&&+now()-Date.parse(s.fetched_at)<=30*86400000),'Existing capture receipt changed or is stale');
@@ -85,6 +85,7 @@ export async function contactQueueTick(app,directory,{connect,now=app.now,collec
       catch(e){signal?.throwIfAborted();page.status='Unavailable';page.reason=String(e.message).slice(0,350);if(e.failures)page.failures=e.failures.map(f=>({url:f.url,reason:String(f.reason).slice(0,350)}));}
       page.checked_at=stamp(now);await save();
     }else{
+      if(i.apollo.status==='Pending'&&(!i.apollo.gap_review||i.apollo.gap_review.public_evidence_sha256!==hash({pages:i.pages,search:i.search})||!Number.isFinite(Date.parse(i.apollo.gap_review.reviewed_at))||Date.parse(i.apollo.gap_review.reviewed_at)>+now()||+now()-Date.parse(i.apollo.gap_review.reviewed_at)>86400000)){i.apollo.status='Deferred public-first review';i.apollo.reason='Review the current public evidence and identify a gap before enabling the optional provider query';}
       const action=i.search.status==='Pending'?i.search:i.apollo.status==='Pending'?i.apollo:null;
       if(action){action.status='Reserved';action.started_at=stamp(now);await save();
         try{
@@ -102,6 +103,18 @@ export async function contactQueueTick(app,directory,{connect,now=app.now,collec
     if(i.pages.every(p=>p.status!=='Pending')&&i.search.status!=='Pending'&&i.apollo.status!=='Pending')i.status='Awaiting review';
     q.updated_at=stamp(now);await save();
     const summary=contactQueueSummary(q);if(project)await app.change(s=>{s.contact_research=summary;});return summary;
+  }finally{await release();}
+}
+
+export async function enableApolloGap(app,directory,review){
+  directory=await privateStateDirectory(directory);const release=await lock(directory);
+  try{
+    const q=await readJson(queuePath(directory)),i=q.items.find(item=>item.prospect_id===review.prospect_id),state=await app.snapshot();
+    check(q.scope_sha256===scope(q.items)&&i&&current(i,state.prospects[i.prospect_id]),'Review scope/contact binding changed');
+    check(!final(i)&&i.status==='Awaiting review'&&i.apollo.status==='Deferred public-first review'&&!i.apollo.started_at&&!i.apollo.receipt&&!platform(i.job.website),'Finish public review before enabling one unused optional identity query');
+    check(i.pages.every(p=>!['Pending','Reserved'].includes(p.status))&&!['Pending','Reserved'].includes(i.search.status)&&review.public_evidence_sha256===hash({pages:i.pages,search:i.search}),'Public evidence changed or retrieval is unfinished');
+    check(typeof review.reviewed_by==='string'&&review.reviewed_by.trim().length>=3&&typeof review.gap==='string'&&review.gap.trim().length>=15&&review.gap.length<=600&&typeof review.approval_ref==='string'&&review.approval_ref.length>5&&Number.isFinite(Date.parse(review.reviewed_at))&&Date.parse(review.reviewed_at)<=+app.now()&&+app.now()-Date.parse(review.reviewed_at)<=86400000,'Identify the reviewed public gap, reviewer, date and approval');
+    i.apollo={...i.apollo,status:'Pending',...(i.apollo.gap_review?{gap_review_history:[...(i.apollo.gap_review_history??[]),i.apollo.gap_review]}:{}),gap_review:structuredClone(review)};i.status='Pending';q.updated_at=stamp(app.now);await saveJson(queuePath(directory),q);return contactQueueSummary(q);
   }finally{await release();}
 }
 
@@ -153,7 +166,7 @@ export async function refineContactSearch(app,directory,ids) {
   }finally{await release();}
 }
 
-export async function runContactQueueService(app,{signal,wait=delay,intervalMs=15_000,clientFactory=options=>new AppConnectors(options)}={}) {
+export async function runContactQueueService(app,{signal,wait=delay,intervalMs=15_000,collect=collectPublicSources,clientFactory=options=>new AppConnectors(options)}={}) {
   let client;
   try{
     while(!signal?.aborted){
@@ -169,8 +182,8 @@ export async function runContactQueueService(app,{signal,wait=delay,intervalMs=1
             await client?.close();client=null;const result={...contactQueueSummary(q),status:'Paused for priority'};await app.change(s=>{s.contact_research=result;s.contact_research_runtime={...result,checked_at:stamp(app.now)};});
           }else{
           if(client?.closed||client?.bytes>20_000_000){await client.close();client=null;}
-          if(!client){client=clientFactory({cwd:app.directory,signal,conversationRef:'evzownerqueue7c4'});await client.connect();}
-          const result=await contactQueueTick(app,c.directory,{connect:client,signal,priority:config.priority});
+          const connect={call:async(...args)=>{if(!client){client=clientFactory({cwd:app.directory,signal,conversationRef:'evzownerqueue7c4'});try{await client.connect();}catch(error){await client.close();client=null;throw error;}}return client.call(...args);}};
+          const result=await contactQueueTick(app,c.directory,{connect,collect,signal,priority:config.priority});
           await app.change(s=>{s.contact_research=result;s.contact_research_runtime={...result,checked_at:stamp(app.now)};});
           }
         }catch(e){if(signal?.aborted)break;await client?.close();client=null;await app.change(s=>{s.contact_research_runtime={status:'Held',reason:String(e.message).slice(0,350),checked_at:stamp(app.now)};});}
