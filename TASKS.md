@@ -11,7 +11,7 @@ Owner authorized implementation after the design interview. Latest selection: re
 - [x] Add a paired Apollo evaluation summary command; actual value comparison requires reviewed paired evidence and is not established by fictional tests.
 - [x] Activate/read back `evz-weekly-model-release-review`: Mondays 9 AM Eastern, quiet for unchanged state, recommendation-only. Existing automations and model defaults unchanged.
 - [x] Finish 92 focused behavior/integration checks, the separate shared authoring/refinement/originals/restore suite, pipeline syntax, three skill validations and diff checks. Requirements/engineering passes corrected eager connector startup, unused-grant renewal and actual request-only packet projection; stable request context has a regression.
-- [ ] Open the stacked review PR. Source implementation is complete; hosted/live runtime activation and a new paid Apollo sample are separate from these checks.
+- [x] Open [PR125](https://github.com/Vziraka/ensizziyo-web-studio/pull/125), stacked on `codex/evz-hybrid-operations`. Source implementation is complete; CI status belongs to the PR. Hosted/live runtime activation and a new paid Apollo sample are separate from these checks.
 
 Implementation: [studio workflow](docs/studio-workflow.md). This branch extends the committed hybrid-operations base; uncommitted protected-staging changes in the other checkout are not included or modified.
 
