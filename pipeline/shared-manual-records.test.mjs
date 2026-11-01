@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';import {join} from 'node:path';import {tmpdir} from 'node:os';
 import {getStore} from '@netlify/blobs';
-import {StudioLifecycle,initialConfig} from './lifecycle.mjs';import {fixtureProspect} from './lifecycle-fixtures.mjs';
+import {StudioLifecycle,initialConfig,hash} from './lifecycle.mjs';import {fixtureProspect} from './lifecycle-fixtures.mjs';
 import {ConditionalLifecycleStore} from './lifecycle-store.mjs';import {writeLifecycleBackup,readLifecycleBackup} from './lifecycle-backup.mjs';
 import {prepareManualWorkspace,installManualWorkspace,exportManualBackup} from './shared-manual-records.mjs';
 import {originalDigest} from './shared-project-originals.mjs';import {readProjectAsset} from './project-assets.mjs';
@@ -34,15 +34,15 @@ async function fixture(t,capability=scope.capability){
  state.runtime={status:'Running',transport:'historical-host'};state.ai_attempts={immutable:{status:'Uncertain',reserved_microcredits:1900,receipt:'retained original attempt'}};
  const backup=join(directory,'source.backup.json');await writeLifecycleBackup(app.directory,state,backup,at);
  const sourceConfig={...structuredClone(initialConfig),mode:'production',run_id:scope.run_id,calls_enabled:true,outreach_enabled:true,connector_writes_enabled:true,transcript_ai:{...initialConfig.transcript_ai,enabled:true,daily_calls:100},runtime:{enabled:true},release:{approved:true,fingerprint:'old'},call_release:{approved:true},sender:{operator_names:{owner:'Synthetic Owner',friend:'Synthetic Friend'},secret:'NEVER_COPY'}};
- const packet=await prepareManualWorkspace({backup,sourceConfig,scope:{...scope,capability}}),sdk=sdkMemory(),store=new ConditionalLifecycleStore(sdk.raw,{manualBinding:packet.binding});
+ const packet=await prepareManualWorkspace({backup,sourceConfig,scope:{...scope,capability},...(capability==='shared-mailbox-review-v1'?{mailbox:{schema_version:1,account:'ensizziyo@evzdigital.studio',grant_id:'synthetic-mailbox',after:'2026-10-24T00:00:00.000Z'}}:{})}),sdk=sdkMemory(),store=new ConditionalLifecycleStore(sdk.raw,{manualBinding:packet.binding});
  return {directory,local:app.directory,state,pdf,path,packet,sdk,store,sourceConfig};
 }
 const note=id=>({id,prospect_id:'synthetic-project',type:'note_added',at,data:{note:`Private note ${id}`}});
 const cookie=r=>r.headers.get('set-cookie')?.split(';',1)[0];
-async function client(f,actor,overrides={}){
+async function client(f,actor,overrides={},options={}){
  const env={CONTEXT:'deploy-preview',SITE_ID:scope.site_id,DEPLOY_ID:scope.deploy_id,EVZ_OPERATIONS_DESK_ENABLED:f.packet.binding.scope.capability,EVZ_OPERATIONS_MANUAL_BINDING:JSON.stringify(f.packet.binding),EVZ_OPERATIONS_ORIGIN:origin,EVZ_OPERATIONS_BLOB_NAMESPACE:scope.namespace,EVZ_OPERATIONS_OWNER_KEY:'o'.repeat(43),EVZ_OPERATIONS_FRIEND_KEY:'f'.repeat(43),EVZ_OPERATIONS_SESSION_SECRET:'s'.repeat(43),...overrides};
  const request=(path,{method='GET',headers={},body}={})=>new Request(origin+'/desk'+path,{method,headers,body:body?JSON.stringify(body):undefined});
- const handler=createHostedDesk({env,storeFactory:namespace=>{assert.equal(namespace,scope.namespace);return f.sdk.raw;},now:()=>new Date(at)});
+ const handler=createHostedDesk({...options,env,storeFactory:namespace=>{assert.equal(namespace,scope.namespace);return f.sdk.raw;},now:()=>new Date(at)});
  const boot=await handler(request('/api/bootstrap'));if(boot.status!==200)return {handler,request,boot};const csrf=(await boot.json()).csrf,initial=cookie(boot),login=await handler(request('/api/login',{method:'POST',headers:{cookie:initial,'content-type':'application/json','x-studio-token':csrf,origin},body:{key:env[actor==='owner'?'EVZ_OPERATIONS_OWNER_KEY':'EVZ_OPERATIONS_FRIEND_KEY']}}));assert.equal(login.status,200);
  const headers={cookie:initial+'; '+cookie(login),'content-type':'application/json','x-studio-token':csrf,origin};
  return {handler,request,headers,call:(path,body)=>handler(request(path,{headers,...(body?{method:'POST',body}:{})})),read:async()=>readDeskSnapshot(await handler(request('/api/state',{headers})),{path:'/api/state',fetch:path=>handler(request(path,{headers}))})};
@@ -140,4 +140,62 @@ test('old manual bindings cannot acquire shared outreach review through an envir
  assert.equal(mismatched.boot.status,503);assert.equal(f.sdk.writes,before);
  await installManualWorkspace(f.store,f.packet,{commit:true});const app=await StudioLifecycle.fromStore({store:f.store,now:()=>new Date(at)});
  await assert.rejects(app.apply({id:'unauthorized-review',prospect_id:'outreach-batches',type:'outreach_batch_paused',at,data:{reason:'Synthetic rejection'}},{actor:'owner',expectedRevision:(await app.snapshot()).revision}),/declared/);
+});
+
+
+test('signed mailbox callers persist actual transport evidence and failure without advancing or widening old profiles',async t=>{
+ const f=await fixture(t,'shared-mailbox-review-v1');await installManualWorkspace(f.store,f.packet,{commit:true});
+ const app=await StudioLifecycle.fromStore({store:f.store,now:()=>new Date(at)});
+ const token={profile:'shared-mailbox-gmail-v1',account:'ensizziyo@evzdigital.studio',grant_id:'synthetic-mailbox',access_token:'synthetic-access-token',expires_at:Date.parse(at)+3600000,scopes:['openid','https://www.googleapis.com/auth/userinfo.email','https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.send']};
+ const getAccessToken=async()=>token;getAccessToken.assertCurrent=async()=>{};getAccessToken.assertGrant=async()=>{};
+ let requests=0;
+ const options={googleIncomingOptions:{getAccessToken,fetcher:async(url,o)=>{requests++;assert.equal(o.method,'GET');const u=new URL(url);
+  if(u.pathname.endsWith('/profile'))return Response.json({emailAddress:token.account,historyId:'100'});
+  if(u.pathname.endsWith('/messages')){assert.match(u.searchParams.get('q'),/after:/);return Response.json({messages:[{id:'synthetic-incoming',threadId:'synthetic-thread'}]});}
+  if(u.pathname.endsWith('/messages/synthetic-incoming'))return Response.json({id:'synthetic-incoming',threadId:'synthetic-thread',internalDate:String(Date.parse(at)),labelIds:['INBOX'],payload:{mimeType:'text/plain',headers:[{name:'From',value:'new@example.org'},{name:'To',value:'hello@evzdigital.studio'},{name:'Subject',value:'Synthetic inquiry'},{name:'Message-ID',value:'<synthetic@example.org>'}],body:{data:Buffer.from('Synthetic website question').toString('base64url')}}});
+  assert.ok(u.pathname.endsWith('/history'));return new Response(null,{status:404});
+ }}};
+ const owner=await client(f,'owner',{},options),friend=await client(f,'friend',{},options);
+ const unauthenticated=await owner.handler(owner.request('/api/mailbox/sync',{method:'POST',headers:{'content-type':'application/json'},body:{}}));assert.equal(unauthenticated.status,403);assert.equal(requests,0);
+ assert.equal((await owner.call('/api/mailbox/sync',{cursor:'forged'})).status,400);assert.equal((await owner.call('/api/mailbox/sync',[])).status,400);assert.equal(requests,0);
+ for(const c of [owner,friend,owner]){const response=await c.call('/api/mailbox/sync',{});assert.equal(response.status,200,await response.text());}
+ let state=await app.snapshot();assert.equal(state.inquiry_intake.sources['synthetic-incoming'].classification,'uncertain');assert.equal(state.mailbox_sync.checked_at,null);
+ const event={id:'classify-incoming',prospect_id:'inquiry-intake',type:'inquiry_classification_reviewed',at,data:{source_id:'synthetic-incoming',classification:'inquiry',reason:'Reviewed exact synthetic source'}};
+ const review=await friend.call('/api/event',{revision:state.revision,event});assert.equal(review.status,200,await review.text());state=await app.snapshot();const receipt=state.inquiry_intake.sources['synthetic-incoming'];assert.equal(receipt.assigned_to,'owner');assert.equal(state.prospects[receipt.project_id].reply.at,at);
+ const r=state.prospects[receipt.project_id];
+ const draft=await owner.call('/api/event',{revision:state.revision,event:{id:'incoming-draft',prospect_id:r.id,type:'reply_draft_saved',at,data:{source_id:r.reply.source_id,reply_sha256:hash(r.reply),source_sha256:r.reply.content.source_sha256,body:'Thanks for the synthetic question. Which step needs attention?'}}});assert.equal(draft.status,200,await draft.text());
+ state=await app.snapshot();const approval=await owner.call('/api/event',{revision:state.revision,event:{id:'incoming-approval',prospect_id:r.id,type:'reply_draft_approved',at,data:{sha256:state.prospects[r.id].reply_draft.sha256,approved:true,facts_checked:true}}});assert.equal(approval.status,200,await approval.text());assert.equal((await app.snapshot()).prospects[r.id].reply_draft.status,'Approved; sending held');
+ const failure=await owner.call('/api/mailbox/sync',{});assert.equal((await failure.json()).held,true);state=await app.snapshot();assert.equal(state.mailbox_sync.cursor,'100');assert.equal(state.mailbox_failure.reason,'History expired; full recovery required');
+ await friend.call('/api/mailbox/sync',{});assert.equal(requests,4);assert.equal((await friend.read()).mailbox_failure.reason,state.mailbox_failure.reason);
+ const before=await app.snapshot();await assert.rejects(app.change(s=>{s.prospects[receipt.project_id].name='forged';},{mailboxFailure:before.mailbox_failure}),/unrelated/);assert.deepEqual(await app.snapshot(),before);
+ const old=await installed(t),oldOwner=await client(old,'owner',{},options);assert.equal((await oldOwner.call('/api/mailbox/sync',{})).status,409);assert.equal(requests,4);
+});
+
+
+test('mailbox OAuth uses a separate encrypted grant bound to the exact shared source and rejects transplanted policies',async t=>{
+ const {createGoogleOAuth,googleOAuthScopes}=await import('./google-oauth.mjs');const {generateKeyPairSync,sign}=await import('node:crypto');
+ const f=await fixture(t,'shared-mailbox-review-v1');await installManualWorkspace(f.store,f.packet,{commit:true});const app=await StudioLifecycle.fromStore({store:f.store,now:()=>new Date(at)});
+ const binding={capability:'shared-mailbox-review-v1',workspace_id:scope.workspace_id,run_id:scope.run_id,namespace:scope.namespace,manual_binding_sha256:hash(f.packet.binding),source_policy_sha256:hash(app.config.mailbox),tenant_id:'synthetic-business',site_id:scope.site_id,deploy_id:scope.deploy_id,origin,redirect_uri:origin+'/desk/api/google-oauth/callback',client_id:'synthetic-mailbox.apps.googleusercontent.com',account:app.config.mailbox.account,audience:'internal'};
+ const env={CONTEXT:'deploy-preview',SITE_ID:scope.site_id,DEPLOY_ID:scope.deploy_id,EVZ_OPERATIONS_ORIGIN:origin,EVZ_OPERATIONS_BLOB_NAMESPACE:scope.namespace,EVZ_OPERATIONS_DESK_ENABLED:binding.capability,EVZ_OPERATIONS_MANUAL_BINDING:JSON.stringify(f.packet.binding),EVZ_OPERATIONS_GOOGLE_OAUTH:'owner-mailbox-code-v1',EVZ_GOOGLE_OAUTH_BINDING:JSON.stringify(binding),EVZ_GOOGLE_CREDENTIAL_NAMESPACE:'evz-mailbox-credentials-synthetic-test',EVZ_GOOGLE_CREDENTIAL_KEY_ID:'synthetic-key',EVZ_GOOGLE_CREDENTIAL_KEY:Buffer.alloc(32,7).toString('base64url'),EVZ_GOOGLE_CLIENT_SECRET:'synthetic-client-secret'};
+ let saved=null,version=0,nonce;const raw={async getWithMetadata(){return saved?{data:structuredClone(saved),etag:String(version)}:null;},async setJSON(k,v,o){if(o.onlyIfNew&&saved||o.onlyIfMatch!==undefined&&o.onlyIfMatch!==String(version))return {modified:false};saved=structuredClone(v);return {modified:true,etag:String(++version)};}};
+ const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048}),seconds=Math.floor(Date.now()/1000);
+ const make=(override={})=>createGoogleOAuth({env:{...env,...override},dispatchApp:app,profile:'shared-mailbox-gmail-v1',now:()=>seconds*1000,storeFactory:n=>{assert.equal(n,env.EVZ_GOOGLE_CREDENTIAL_NAMESPACE);return raw;},certificates:async()=>({'synthetic-key':publicKey.export({type:'spki',format:'pem'})}),fetcher:async(url,o)=>{assert.equal(url,'https://oauth2.googleapis.com/token');const bytes=[{alg:'RS256',kid:'synthetic-key'},{iss:'https://accounts.google.com',aud:binding.client_id,iat:seconds,exp:seconds+3600,sub:'synthetic-owner',email:binding.account,email_verified:true,hd:'evzdigital.studio',nonce}].map(v=>Buffer.from(JSON.stringify(v)).toString('base64url')).join('.');return Response.json({access_token:'synthetic-mailbox-access',refresh_token:'synthetic-mailbox-refresh',token_type:'Bearer',expires_in:3600,scope:googleOAuthScopes.join(' '),id_token:bytes+'.'+sign('RSA-SHA256',Buffer.from(bytes),privateKey).toString('base64url')});}});
+ const oauth=make(),session='synthetic-owner-session'.repeat(4);await assert.rejects(oauth.start('friend',session),/signed owner/);
+ const started=await oauth.start('owner',session),url=new URL(started.authorization_url);nonce=url.searchParams.get('nonce');const connected=await oauth.callback('owner',session,{state:url.searchParams.get('state'),code:'synthetic-code'});assert.equal(connected.status,'Connected');assert.equal(connected.grant_id,'synthetic-mailbox');
+ const token=await make().getAccessToken();assert.equal(token.profile,'shared-mailbox-gmail-v1');assert.doesNotMatch(JSON.stringify(saved),/synthetic-mailbox-access|synthetic-mailbox-refresh/);
+ assert.throws(()=>make({EVZ_GOOGLE_CREDENTIAL_NAMESPACE:'evz-google-credentials-synthetic-test'}),/Separate/);
+ assert.throws(()=>make({EVZ_GOOGLE_OAUTH_BINDING:JSON.stringify({...binding,source_policy_sha256:'0'.repeat(64)})}),/source binding/);
+ await oauth.disconnect('owner');await assert.rejects(make().getAccessToken(),/unavailable/);
+});
+
+
+test('an unassigned existing incoming conversation can be claimed without altering historical automation',async t=>{
+ const {syncMailboxStep}=await import('./mailbox-intake.mjs');const f=await fixture(t,'shared-mailbox-review-v1');await installManualWorkspace(f.store,f.packet,{commit:true});const app=await StudioLifecycle.fromStore({store:f.store,now:()=>new Date(at)}),initial=await app.snapshot();
+ const sender=initial.prospects['synthetic-project'].contact.email,grant={profile:'shared-mailbox-gmail-v1',account:'ensizziyo@evzdigital.studio',grant_id:'synthetic-mailbox',expires_at:Date.parse(at)+3600000,scopes:['openid','https://www.googleapis.com/auth/userinfo.email','https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.send']};
+ const transport={grant:()=>grant,incomingProfile:async()=>({emailAddress:grant.account,historyId:'100'}),mailboxList:async()=>({messages:[{id:'existing-incoming',threadId:'existing-thread'}]}),mailboxMessage:async()=>({id:'existing-incoming',threadId:'existing-thread',internalDate:String(Date.parse(at)),labelIds:['INBOX'],payload:{mimeType:'text/plain',headers:[{name:'From',value:sender},{name:'To',value:'hello@evzdigital.studio'},{name:'Subject',value:'Synthetic question'},{name:'Message-ID',value:'<existing@example.invalid>'}],body:{data:Buffer.from('Synthetic existing conversation').toString('base64url')}}})};
+ for(let n=0;n<3;n++)await syncMailboxStep(app,{transport});
+ await app.apply({id:'classify-existing',prospect_id:'inquiry-intake',type:'inquiry_classification_reviewed',at,data:{source_id:'existing-incoming',classification:'inquiry',reason:'Synthetic reviewed question'}},{actor:'owner',expectedRevision:(await app.snapshot()).revision});
+ await app.apply({id:'claim-existing',prospect_id:'synthetic-project',type:'conversation_claimed',at,data:{reason:'Taking responsibility for this existing reply.'}},{actor:'friend',expectedRevision:(await app.snapshot()).revision});
+ const saved=await app.snapshot();assert.equal(saved.prospects['synthetic-project'].follow_up_owner,'friend');assert.deepEqual(saved.operations,initial.operations);
+ await assert.rejects(app.apply({id:'claim-twice',prospect_id:'synthetic-project',type:'conversation_claimed',at,data:{reason:'Must use explicit handoff instead.'}},{actor:'owner',expectedRevision:saved.revision}),/already has a lead/);
 });

@@ -39,7 +39,7 @@ export class ConditionalLifecycleStore {
     if(options.configFingerprint)check(hash(data.config)===options.configFingerprint,'Incoming configuration changed during read; no cursor or effects committed');
     if(this.emailTaskBinding)check(options.emailTask,'Fictional task storage requires a typed task transition');
     if(this.inertBinding)check(options.inertNote,'Inert storage rejects worker and provider mutations');
-    if(this.manualBinding)check(options.manualRecord,'Manual storage rejects worker and provider mutations');
+    if(this.manualBinding)check(options.manualRecord||this.manualBinding.scope.capability==='shared-mailbox-review-v1'&&(options.mailboxObservation||options.mailboxFailure),'Manual storage rejects worker and provider mutations');
     if(this.projectBinding)check(options.projectResearch&&this.projectBinding.scope.capability==='shared-known-identity-research-v1'||options.projectRecord||options.projectAuthoring||options.projectReconcile||options.projectGeneration&&this.projectBinding.scope.capability==='shared-refinement-generation-v1','Shared project storage rejects untyped worker and provider mutations');
     if(this.dispatchBinding)validateDispatchOptions(this.dispatchBinding.scope.capability,options);
     const result=await fn(data.state,data.config);this.validate(data);

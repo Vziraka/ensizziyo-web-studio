@@ -1,0 +1,31 @@
+# Shared business mailbox review
+
+`shared-mailbox-review-v1` extends the manual and exact outreach review desk with business-mail intake. It uses one existing conditional workspace, a fresh immutable migration manifest, and a separate encrypted `shared-mailbox-gmail-v1` grant. Old manual/review bindings cannot acquire intake with an environment flag. It does not enable sending, a clock, AI, Calendar or Drive access.
+
+## Source and persistence
+
+The immutable mailbox policy has exactly `schema_version: 1`, `account: ensizziyo@evzdigital.studio`, a prebound `grant_id`, and canonical UTC `after`. Initial import captures the profile history anchor, lists only messages after that boundary (excluding Sent, Drafts, Spam and Trash), and drains saved message identities before requesting another page. Subsequent history reads keep their prior anchor until every pending message has been processed. Source IDs deduplicate adoption. Actual Gmail internal receipt time prevents late classification of old mail from replacing a newer reply.
+
+Every request is a bounded read through the existing pinned Gmail REST transport and fresh account/grant checks. The server accepts no client mailbox query, cursor, message body or grant. `/api/mailbox/sync` requires a signed operator, same-origin CSRF and an empty JSON object. It performs one provider step; another request continues from persisted progress. The store replays a closed typed observation against the unchanged policy and source cursor. Normal CAS rules prevent overlapping commits. Failures retain the prior cursor and success time, expose redacted status, and never expose provider error bodies or credentials. An expired history anchor stops further history requests until a separate full recovery is implemented and verified; it never silently resets coverage.
+
+Read bounds: 50 list/history entries per page, at most 100 message identities, 100 unique pagination tokens, 2 MB full-message response, 1,000 retained inquiry sources and 1,000 held incomplete sources. New reads hold at 18.5 MB workspace state, below the existing 20 MB envelope/read limit. These are safety bounds, not proof of sustained 100-business/day capacity. Recovery, retention and long-term capacity remain release work.
+
+## Operator flow
+
+A matching sender or registered thread pauses cold outreach before content classification, even for an incomplete message. Complete ordinary messages enter uncertain classification. Mailing-list and auto-submitted headers exclude obvious automated material from assignment, while retaining its source for inspection. Incomplete/ambiguous MIME is retained as an original-review hold with identity, timestamp and digest; it never becomes a fabricated reply body. HTML is projected to conservative text, never executed.
+
+Needs attention exposes source text and human classification. Existing exact contacts keep their assigned operator; ambiguous identity stays held. A new classified inquiry alternates owner/teammate and remains separate from researched prospects. Existing unassigned conversations can be explicitly claimed, and ownership handoff remains signed. The assigned operator can save and approve exact reply wording; approval says `Approved; sending held`. Both operators can inspect sources and sync state. No imported content grants permission to act.
+
+## Connection configuration
+
+Use `EVZ_OPERATIONS_DESK_ENABLED=shared-mailbox-review-v1`, the newly prepared `EVZ_OPERATIONS_MANUAL_BINDING`, exact site/deploy/origin/namespace and existing operator/session settings. Connection controls additionally require `EVZ_OPERATIONS_GOOGLE_OAUTH=owner-mailbox-code-v1`, `EVZ_GOOGLE_OAUTH_BINDING`, a separate `evz-mailbox-credentials-…` namespace, key ID, AES key and client secret in private environment configuration.
+
+The Google binding contains the exact existing tenant/site/deploy/origin/redirect/client/account/audience plus capability, workspace/run/namespace, manual-binding SHA and mailbox-policy SHA. The redirect remains `/desk/api/google-oauth/callback`. Grant profile, namespace, deployment and source policy are authenticated encryption context; do not transplant older grants. Reuse the existing four-scope identity/Gmail consent model without broadening it. Gmail send permission in that grant does not create a send route in this workspace. Owner initiates/disconnects consent; either signed operator can read its redacted status and request intake.
+
+## Verification
+
+Run from `pipeline`: `node --test mailbox-intake.test.mjs shared-manual-records.test.mjs google-oauth.test.mjs hosted-desk.test.mjs conversation-records.test.mjs`, followed by `npm run check` and the required full suite. SDK-bound HTTP fixtures cover signed callers, account/CSRF/source checks, exact draft approval, protected state, expired-history holds and old-profile rejection. RSA-signed synthetic OAuth tests verify encryption, source binding, owner-only consent, disconnect and absence of plaintext credentials. Pure source tests cover pagination, conflicts, bootstrap coverage, reply-stop and older-message chronology.
+
+Browser recipe: launch a synthetic production-shaped workspace under this exact capability with a synthetic typed incoming observation; open Needs attention, classify the retained request, open its assigned reply, save wording, approve both exact-message checkboxes and reload. Inspect `Approved; sending held` and persisted source/ownership; repeat at narrow width. Stop only the local server created for this check. Private evidence is outside Git. This is distinct from connecting real Google, deployed readback, a recurring cloud worker and actual second-operator login.
+
+Official source: [Gmail synchronization](https://developers.google.com/workspace/gmail/api/guides/sync), checked November 1, 2026. Gmail can return 404 when an anchor has expired; this increment explicitly holds instead of declaring coverage.
