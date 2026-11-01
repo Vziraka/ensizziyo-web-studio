@@ -355,7 +355,7 @@ function review(r, node) {
   ], { call_id: call.call_id, proposal_sha256: proposal.sha256 }, 'Confirm this outcome'));
 }
 function mailboxWorkPanel(r,node){
- if(state.shared_workspace?.capability!=='shared-mailbox-work-v1')return;
+ if(!['shared-mailbox-work-v1','shared-mailbox-clock-v1'].includes(state.shared_workspace?.capability))return;
  const task=state.email_draft_tasks?.[r.email_draft_task_id],box=panel('AI reply proposal'),assigned=r.follow_up_owner===state.current_operator;
  box.dataset.exactReplyReview='active';box.classList.add('mailbox-work-proposal');
  box.append(el('p',task?`Task status: ${task.status}. A proposal never approves or sends a message.`:'Ask the connected cloud worker for a proposal based on the retained conversation and approved project PDFs.','notice'));
@@ -727,7 +727,7 @@ function render() {
       const readButton=button('Read next mailbox batch',async()=>{if(mailboxBusy)return;mailboxBusy=true;readButton.disabled=true;try{if(refreshPromise)await refreshPromise;await api('/api/mailbox/sync',{});await refresh();tell('Mailbox step saved. Review its status and incoming messages.');}catch(error){tell(error.message+' Refresh saved status before attempting another step.',true);}finally{mailboxBusy=false;readButton.disabled=false;const current=content.querySelector('[data-mailbox-read]');if(current)current.disabled=false;}});readButton.dataset.mailboxRead='true';readButton.disabled=mailboxBusy;box.append(readButton);content.append(box);
     }
     if(state.hosted_preview&&(!googleConnectionPanel||googleConnectionActor!==state.current_operator)){
-      const connection=panel('Business Gmail connection'),status=el('p',['shared-mailbox-review-v1','shared-mailbox-work-v1','shared-mailbox-clock-v1'].includes(state.shared_workspace?.capability)?'Check the business connection, then read the next mailbox batch. Automatic checks and sending remain paused.':'Check the connection before requesting owner consent. Connecting does not enable sending or mailbox synchronization.','muted'),actions=el('div',undefined,'actions');
+      const connection=panel('Business Gmail connection'),status=el('p',['shared-mailbox-review-v1','shared-mailbox-work-v1','shared-mailbox-clock-v1'].includes(state.shared_workspace?.capability)?state.shared_workspace?.capability==='shared-mailbox-clock-v1'?'Check the business connection. Automatic checks follow the schedule controls above; sending remains paused.':'Check the business connection, then read the next mailbox batch. Automatic checks and sending remain paused.':'Check the connection before requesting owner consent. Connecting does not enable sending or mailbox synchronization.','muted'),actions=el('div',undefined,'actions');
       const inspect=async()=>{
         actions.replaceChildren();checkConnection.disabled=true;
         try{
