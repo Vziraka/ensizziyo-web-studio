@@ -130,7 +130,7 @@ test('signed retrieval rejects guessed jobs, executable files, disabled gate, pr
  await assert.rejects(client.download('author-'+'0'.repeat(32),'context.json'),/Unknown registered/);await assert.rejects(client.download(job.id,'renderer.mjs'),/retained authoring file/);
  const disabledFetch=(url,options)=>f.make({...env,EVZ_OPERATIONS_PROJECT_AUTHORING:''})(new Request(url,options)),disabled=await connectSharedAuthoring({origin,key:env.EVZ_OPERATIONS_OWNER_KEY,fetcher:disabledFetch}),before=f.storage.requests.length;await assert.rejects(disabled.inspect(job.id),/disabled/);assert.equal(f.storage.requests.length,before);
  const production=f.make({...env,CONTEXT:'production'});assert.equal((await production(new Request(origin+'/desk/api/state'))).status,503);
- const foreign=await f.session.request('/api/bootstrap',{headers:{origin:'https://foreign.invalid'}}).catch(e=>e);assert.match(foreign.message,/not permitted/);
+ const foreign=await f.session.request('/api/bootstrap',{headers:{origin:'https://foreign.invalid'}}).catch(e=>e);assert.match(foreign.message,/Origin does not match its deployment/);
  const app=await f.fresh();app.store.inertBinding={};assert.throws(()=>attachHostedAuthoring(app,f.storage.raw),/fictional/);
 });
 
