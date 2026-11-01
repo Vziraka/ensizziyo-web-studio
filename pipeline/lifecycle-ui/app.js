@@ -97,7 +97,7 @@ function panel(title) { const node = el('section', undefined, 'panel'); if (titl
 function outreachReviewPanel(){
  const review=state.outreach_review,node=panel('Review outreach batches');
  node.dataset.exactReplyReview='active';node.classList.add('outreach-review');
- node.append(el('p',review.execution,'notice'),el('p',`${review.scheduled_new} new-business messages scheduled for ${review.date} · ${review.approval_shortfall} still need approval toward the 100/day target. ${review.sent_new} sent; delivery shortfall ${review.shortfall}. Previously called businesses are additional.`));
+ node.append(el('p',state.mailbox_delivery_status?`Delivery: ${state.mailbox_delivery_status.status}. Exact send approvals and an enabled delivery schedule are required for automatic sending.`:review.execution,'notice'),el('p',`${review.scheduled_new} new-business messages scheduled for ${review.date} · ${review.approval_shortfall} still need approval toward the 100/day target. ${review.sent_new} sent; delivery shortfall ${review.shortfall}. Previously called businesses are additional.`));
  if(review.alert)node.append(el('p',review.alert.message,'notice'));
  for(const summary of review.saved_summaries??[])node.append(el('p',`${summary.date} · ${summary.sender_verified} sender-verified emails (${summary.new_businesses} new, ${summary.follow_ups} follow-ups) · ${summary.replies} replies · ${summary.calls} calls · ${summary.call_due} calls due · ${summary.shortfall} shortfall · ${summary.still_scheduled} still scheduled · ${summary.uncertain} uncertain.`));
  const eligible=Object.values(state.prospects).filter(r=>(r.controlled||['shared-outreach-review-v1','shared-mailbox-review-v1','shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1'].includes(state.shared_workspace?.capability))&&r.origin!=='workspace'&&r.origin!=='inquiry'&&r.contact?.verified&&!r.restriction&&!r.cold_paused&&r.qualification?.verdict==='Research-qualified');
@@ -402,7 +402,7 @@ function mailboxDeliveryPanel(r,node,kind='reply'){
  }));
  const approvals=Object.values(state.mailbox_delivery?.approvals??{}).filter(a=>a.package.project_id===r.id&&a.package.kind===kind),intents=Object.values(state.mailbox_delivery?.intents??{});
  for(const a of approvals){
-  const i=intents.find(i=>i.approval_id===a.id);if(i){box.append(el('p',`Saved delivery: ${i.status}${i.hold?' · '+i.hold:''}`,'notice'));if(i.receipt)box.append(el('p',`Sender verified ${new Date(i.receipt.sent_at).toLocaleString()} · ${i.receipt.message_id}`));if(owned&&i.claimed_at&&i.status!=='Verified'){const reconcile=button('Read original sender receipt',()=>run('reconcile',{id:i.id}));reconcile.disabled=!enabled;box.append(reconcile);}}
+  const i=intents.find(i=>i.approval_id===a.id);if(i){box.append(el('p',`Saved delivery: ${i.status}${i.hold?' · '+i.hold:''}`,'notice'));if(i.receipt)box.append(el('p',`Sender verified ${new Date(i.receipt.sent_at).toLocaleString()} · ${i.receipt.message_id}`));if(i.package.owner===state.current_operator&&i.claimed_at&&i.status!=='Verified'){const reconcile=button('Read original sender receipt',()=>run('reconcile',{id:i.id}));reconcile.disabled=!enabled;box.append(reconcile);}}
   else if(owned&&a.epoch===state.mailbox_delivery.epoch){const send=button(kind==='reply'?'Send this approved reply':'Send in its approved time slot',()=>run('dispatch',{approval_id:a.id}));send.disabled=!enabled||state.mailbox_delivery_status?.status!=='Ready';box.append(send);}
  }
  node.append(box);
