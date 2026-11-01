@@ -402,7 +402,7 @@ function replyForms(r,node){
     const editable=!r.follow_up_owner||r.follow_up_owner===state.current_operator;if(!editable)node.append(el('p',state.email_task_proof?`Assigned to ${r.follow_up_owner}. You can review this saved proposal; only the assigned operator can prepare a replacement.`:`Assigned to ${r.follow_up_owner}. Use the existing conversation handoff before editing or approving.`, 'notice'));
     mailboxWorkPanel(r,node);
     if(state.email_task_proof&&state.operator_auth_enabled&&r.controlled&&(r.follow_up_owner===state.current_operator||r.email_draft_task_id))renderEmailDraftTask(r,node);
-    if(state.email_task_proof?.content_review_available&&draft&&(!editable||!['Reply review','Discovery','Information requested'].includes(r.stage))){node.append(el('h3','Saved exact reply'),el('p',`${draft.status} · ${draft.current?'Current bundle':'Stale or held; fresh review is required'}`,'notice'));renderSavedReplyBundle(r,draft,node);}
+    if((state.email_task_proof?.content_review_available||state.shared_workspace?.capability==='shared-mailbox-work-v1')&&draft&&(!editable||!['Reply review','Discovery','Information requested'].includes(r.stage))){node.append(el('h3','Saved exact reply'),el('p',`${draft.status} · ${draft.current?'Current bundle':'Stale or held; fresh review is required'}`,'notice'));renderSavedReplyBundle(r,draft,node);}
     if((!state.email_task_proof||state.email_task_proof.content_review_available&&draft)&&editable&&(suggestion?.body||state.email_task_proof?.content_review_available&&draft)&&['Reply review','Discovery','Information requested'].includes(r.stage)){
       if(!state.shared_workspace&&state.operator_auth_enabled&&r.controlled&&r.follow_up_owner===state.current_operator)renderEmailDraftTask(r,node);
       node.append(el('p',draft?.content.agent_origin?'Saved reply based on the agent proposal. Review the current wording, source and PDFs before approval.':draft?'Saved reply. Review the current wording and exact source before approval.':suggestion.method,'muted'));
@@ -411,7 +411,7 @@ function replyForms(r,node){
       ],{source_id:r.reply.source_id,reply_sha256:r.reply_sha256,source_sha256:source.source_sha256},current?'Save revised reply draft':'Save reply draft');
       editor.classList.add('reply-editor');
       node.append(editor);
-      if((!state.shared_workspace||state.email_task_proof?.content_review_available)&&draft?.content.attachments?.length)node.append(eventForm(r,'Remove PDFs and keep the saved wording','reply_draft_saved',[],{source_id:r.reply.source_id,reply_sha256:r.reply_sha256,source_sha256:source.source_sha256,body:draft.body,attachments:[]},'Remove all reply attachments'));
+      if((!state.shared_workspace||state.email_task_proof?.content_review_available||state.shared_workspace?.capability==='shared-mailbox-work-v1')&&draft?.content.attachments?.length)node.append(eventForm(r,'Remove PDFs and keep the saved wording','reply_draft_saved',[],{source_id:r.reply.source_id,reply_sha256:r.reply_sha256,source_sha256:source.source_sha256,body:draft.body,attachments:[]},'Remove all reply attachments'));
       if(current){
         const review=el('div');review.append(el('h3','Review exact saved reply'),el('p',`${draft.status} · prepared by ${draft.actor}. Approval does not send.`,'notice'));
         renderSavedReplyBundle(r,draft,review);
