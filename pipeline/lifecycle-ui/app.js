@@ -13,7 +13,7 @@ let googleConnectionPanel,googleConnectionActor;
 const emailTaskHandoffs=new Map();
 const content = document.querySelector('#content'), message = document.querySelector('#message');
 const titles = { today: ['Your calling desk', 'Your work today.', 'Prepared leads, clear next steps and your notes in one place.'], reviews: ['Evidence → operator decision', 'Review calls and replies.', 'Connected calls and verified replies wait for an operator decision.'], clients: ['From scope to support', 'Deliver what you agreed.', 'Track materials, payment evidence, delivery checks and open requests.'], exceptions: ['Bounded recovery', 'Handle the exceptions.', 'Held work stays visible while unrelated records continue.'], launch: ['Before the first real contact', 'Approve a working system.', 'These gates stay closed until their evidence and your final approval are recorded.'] };
-Object.assign(titles,{businesses:['Your business directory','Businesses, with context.','Research, professional contacts, social profiles and saved conversations.'],emails:['After the call','Follow-ups at a glance.','Each performed call owns one message. Held work shows what is missing.'],meetings:['Your conversations','Meetings and next steps.','Booked conversations and invitations awaiting calendar verification.']});
+Object.assign(titles,{businesses:['Your business directory','Businesses, with context.','Research, professional contacts, social profiles and saved conversations.'],emails:['Messages and approvals','Review the next message.','Prepare introductions and follow-ups, inspect evidence, and approve exact selections.'],meetings:['Your conversations','Meetings and next steps.','Booked conversations and invitations awaiting calendar verification.']});
 Object.assign(titles,{assets:['Shared asset index','Keep approved versions easy to find.','Studio files and project references stay organized across every sales stage.']});
 function el(tag, text, className) { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; }
 function button(text, fn, className = 'quiet') { const node = el('button', text, className); node.type = 'button'; node.addEventListener('click', fn); return node; }
@@ -89,6 +89,39 @@ async function refresh() {
 }
 function pill(text) { return el('span', text, 'badge'); }
 function panel(title) { const node = el('section', undefined, 'panel'); if (title) node.append(el('h2', title)); return node; }
+function outreachReviewPanel(){
+ const review=state.outreach_review,node=panel('Review outreach batches');
+ node.dataset.exactReplyReview='active';node.classList.add('outreach-review');
+ node.append(el('p',review.execution,'notice'),el('p',`${review.scheduled_new} new-business messages scheduled for ${review.date} · ${review.approval_shortfall} still need approval toward the 100/day target. ${review.sent_new} sent; delivery shortfall ${review.shortfall}. Previously called businesses are additional.`));
+ const eligible=Object.values(state.prospects).filter(r=>r.controlled&&r.contact?.verified&&!r.restriction&&!r.cold_paused&&r.qualification?.verdict==='Research-qualified');
+ const choose=el('details');choose.append(el('summary','Prepare or edit a message'));
+ for(const r of eligible){
+  if(!r.follow_up_owner){choose.append(eventForm(r,r.name,'call_claimed',[],{},'Assign to me'));continue;}
+  if(r.follow_up_owner!==state.current_operator)continue;
+  const saved=review.items.find(d=>d.project_id===r.id),box=el('details');box.append(el('summary',r.name));
+  for(const observation of r.call_prep?.observations??[]){box.append(el('p',observation.fact));for(const source of observation.sources??[])box.append(link(`${source.excerpt} · checked ${source.checked_at}`,source.url));}
+  box.append(eventForm(r,'Exact introduction','outreach_draft_saved',[
+   ['Contact approach','lane',saved?.lane??'call-first','text',[{value:'call-first',label:'Call first'},{value:'email-first',label:'Email first'},{value:'hold',label:'Hold'}]],
+   ['Recipient timezone','timezone',saved?.timezone??'America/New_York'],['Subject','subject',saved?.subject??''],['Complete message including signature','body',saved?.body??'','textarea']
+  ],{},'Save exact draft'));
+  choose.append(box);
+ }
+ if(!eligible.length)choose.append(el('p','Reviewed research and a verified contact are required before a draft can enter this queue.'));
+ node.append(choose);
+ const form=el('form'),selected=new Map();
+ for(const d of review.items){
+  const box=el('fieldset'),legend=el('legend',d.name??d.project_id),label=el('label',undefined,'checkbox'),select=document.createElement('input');select.type='checkbox';select.disabled=!d.approvable||d.owner!==state.current_operator;selected.set(d.project_id,{select,draft:d});
+  label.append(select,document.createTextNode(` Include ${d.name??d.project_id}`));box.append(legend,label,el('p',`${d.status} · ${d.kind} · ${d.lane}`),el('p',`From ${d.from} → ${d.to}`),el('strong',d.subject),el('p',d.body,'email-copy'));
+  if(d.schedule)box.append(el('p',`Scheduled ${new Date(d.schedule.at).toLocaleString('en-US',{timeZone:d.timezone})} (${d.timezone}). ${d.schedule.execution}`));
+  const r=state.prospects[d.project_id];for(const o of r?.call_prep?.observations??[]){box.append(el('p',o.fact));for(const s of o.sources??[])box.append(link(s.url,s.url));}
+  form.append(box);
+ }
+ const facts=document.createElement('input');facts.type='checkbox';const factsLabel=el('label',undefined,'checkbox');factsLabel.append(facts,document.createTextNode(' I reviewed every selected recipient, exact message and supporting evidence.'));
+ const approve=el('button','Approve selected exact messages','primary');approve.type='submit';form.append(factsLabel,approve);
+ form.onsubmit=async event=>{event.preventDefault();approve.disabled=true;try{const items=[...selected.values()].filter(x=>x.select.checked&&!x.select.disabled).map(x=>({project_id:x.draft.project_id,sha256:x.draft.sha256}));await api('/api/event',{revision:state.revision,event:{id:crypto.randomUUID(),prospect_id:'outreach-batches',type:'outreach_batch_approved',at:new Date().toISOString(),data:{items,facts_checked:facts.checked}}});dirty=false;await refresh();tell('Exact selections scheduled. Live sending remains held.');}catch(error){tell(error.message,true);}finally{approve.disabled=false;}};
+ if(review.items.length)node.append(form,eventForm({id:'outreach-batches'},'Pause all scheduled outreach','outreach_batch_paused',[['Reason','reason','Pause for review']],{},'Pause all outreach'));
+ return node;
+}
 function link(label, href) { const node = el('a', label); if (/^https:\/\//i.test(href) || href === '/preview/' || /^\/retained-source\/[a-zA-Z0-9_-]{1,100}\/[a-f0-9]{64}\?url=[^#]+&at=[^#]+$/.test(href) || /^\/(?:proposal\/[a-zA-Z0-9_-]+|follow-up\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+)$/.test(href)) { node.href = deskPath(href); node.target = '_blank'; node.rel = 'noreferrer'; } else node.removeAttribute('href'); return node; }
 function summary(r) {
   const node = button('', () => { selected = r.id; render(); }, `record${selected === r.id ? ' selected' : ''}`);
@@ -679,12 +712,13 @@ function render() {
       content.append(research);
     }
     const node = panel('Required before live automation'), list = el('div', undefined, 'checklist');
-    const checks = { owner_design_approved: ['Your final design approval', 'Review this console, operating rules and controlled proof.'], business_sender_verified: ['Business sender ready', 'Workspace access, mailbox receipt/send-as and domain authentication checked.'], native_automation_verified: ['Apollo automatic handoff', 'Approved templates, exact intent lists, native workflow triggers and stop rules tested.'], delivery_and_stop_verified: ['Controlled delivery and cancellation', 'One approved owner-only rehearsal of the final native sending route; no blind retries.'], website_inquiry_verified: ['Website and inquiry route', 'Published studio and reachable inquiry destination verified.'], prospect_supply_verified: ['Reviewed local-business prospect supply', 'Resume research only when authorized; keep the shared 25-new-business target honest when strong evidence is missing.'], capacity_verified: ['Subscription and operating capacity', 'Live Luna/high + Sol/high compatibility, allowance, source review and upkeep measured.'] };
+    const checks = { owner_design_approved: ['Your final design approval', 'Review this console, operating rules and controlled proof.'], business_sender_verified: ['Business sender ready', 'Workspace access, mailbox receipt/send-as and domain authentication checked.'], native_automation_verified: ['Approved outreach scheduling', 'Exact selected messages, recipient-local windows, reply stops and uncertain-delivery recovery tested.'], delivery_and_stop_verified: ['Controlled delivery and cancellation', 'One approved owner-only rehearsal of the final native sending route; no blind retries.'], website_inquiry_verified: ['Website and inquiry route', 'Published studio and reachable inquiry destination verified.'], prospect_supply_verified: ['Reviewed local-business prospect supply', 'Resume research only when authorized; show an explicit shortfall against the 100-new-email target when approved supply is insufficient.'], capacity_verified: ['Subscription and operating capacity', 'Current subscription access, allowance, source review and sustainable daily capacity measured.'] };
     for (const [key, [label, description]] of Object.entries(checks)) { const row = el('div', undefined, 'check-item'), copy = el('div'), gate = state.controls.final_review?.gates.find(g => g.key === key); copy.append(el('strong', label), el('p', description)); if (gate?.note) copy.append(el('p', gate.note)); const passed = state.controls.final_review ? gate?.passed : state.controls.readiness[key]; row.append(el('span', passed ? '✓' : '·'), copy); list.append(row); }
     if (state.controls.final_review?.verified?.length) { node.append(el('h3', 'Verified so far')); for (const line of state.controls.final_review.verified) node.append(el('p', line, 'muted')); }
     node.append(list, el('p', 'Readiness values are evidence-based gates, not checkboxes that activate sending. No production activation is available from this review screen.', 'muted')); content.append(node); return;
   }
   if (view === 'emails') {
+    if(state.outreach_review?.enabled)content.append(outreachReviewPanel());
     const node=panel('Saved follow-ups');
     if(state.controls.outreach_paused)node.append(el('p','Commercial sending is held. Messages below are prepared records, not proof of delivery.','notice'));
     const rows=Object.values(state.prospects).flatMap(r=>Object.values(r.follow_ups??{}).map(f=>({r,f}))).sort((a,b)=>b.f.created_at.localeCompare(a.f.created_at));

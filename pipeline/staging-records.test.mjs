@@ -1,17 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {initialConfig,hash} from './lifecycle.mjs';
-import {fixtureReply,fixtureQuote} from './lifecycle-fixtures.mjs';
+import {initialConfig,hash,StudioLifecycle} from './lifecycle.mjs';
+import {fixtureReply,fixtureQuote,fixtureProspect} from './lifecycle-fixtures.mjs';
 import {buildBasis} from './local-delivery-gates.mjs';
 import {createHostedDesk} from './hosted-desk.mjs';
 import {createStagingBoundary} from './staging-boundary.mjs';
 import {StagingRecordStore,stagingRecordApp} from './staging-records.mjs';
 const at='2026-10-28T15:00:00.000Z',now=()=>new Date(at);
 const inquiry=id=>({id,prospect_id:'inquiry-intake',type:'inquiry_recorded',at,data:{company_name:'STUDIO TEST '+id,classification:'inquiry',reply:fixtureReply('source-'+id,'thread-'+id,id+'@example.invalid','Website inquiry')}});
-async function fixture(http=false){
+async function fixture(http=false,research=false){
  let data,version=0;const raw={lose:false,beforeRead:null,async getWithMetadata(){await this.beforeRead?.();return data?{data:structuredClone(data),etag:String(version)}:null;},async setJSON(key,next,options){if(options.onlyIfNew&&data||options.onlyIfMatch!==undefined&&options.onlyIfMatch!==String(version))return {modified:false};data=structuredClone(next);version++;if(this.lose){this.lose=false;throw Error('Lost ack');}return {modified:true,etag:String(version)};}};
  const config={...structuredClone(initialConfig),staging_recording:'fictional-records-v1'};
- const store=new StagingRecordStore(raw,{now});await store.initialize(config,{schema_version:1,run_id:config.run_id,mode:'controlled',revision:0,updated_at:at,prospects:{},events:{},actions:{},asset_index:{},ai_attempts:{},exceptions:[]});
+ const initial={schema_version:1,run_id:config.run_id,mode:'controlled',revision:0,updated_at:at,prospects:{},events:{},actions:{},asset_index:{},ai_attempts:{},exceptions:[]};
+ if(research){const local=new StudioLifecycle(null,now);local.config=config;local.reduceEvent(initial,fixtureProspect('batch-test',at),{actor:'controlled-fixture'});}
+ const store=new StagingRecordStore(raw,{now});await store.initialize(config,initial);
  const app=await stagingRecordApp(raw,now);
  if(http){
   const binding={site_id:'d7840f1d-c0e6-4f87-a41f-e34f53c81625',deploy_id:'httpjourney',origin:'https://httpjourney--evz-hybrid-fictional-20261027.netlify.app',namespace:'evz-redesign-proof-staging-1234567890abcdef',recording:true};
@@ -27,6 +29,20 @@ async function fixture(http=false){
  }
  return {raw,store,app};
 }
+
+test('signed hosted batch review retains exact approval, survives lost acknowledgment and either operator can pause',async()=>{
+ const {app,raw}=await fixture(true,true);let n=0;
+ const send=async(type,data,actor='owner',project='batch-test')=>{const s=await app.snapshot();return app.apply({id:'batch-'+n++,prospect_id:project,type,at,data},{actor,expectedRevision:s.revision});};
+ await send('call_claimed',{});
+ await send('outreach_draft_saved',{lane:'email-first',timezone:'America/New_York',subject:'Fictional discussion',body:'Fictional introduction for review.'});
+ const d=(await app.snapshot()).outreach_review.drafts['batch-test'],data={items:[{project_id:'batch-test',sha256:d.sha256}],facts_checked:true};
+ await assert.rejects(send('outreach_batch_approved',data,'friend','outreach-batches'));
+ raw.lose=true;await send('outreach_batch_approved',data,'owner','outreach-batches');
+ const fresh=await stagingRecordApp(raw,now),view=(await fresh.dashboard()).outreach_review;
+ assert.equal(view.items[0].schedule.approved_by,'owner');assert.equal(view.items[0].sha256,d.sha256);assert.equal(view.sent_new,0);
+ await send('outreach_batch_paused',{reason:'Review the evidence'},'friend','outreach-batches');
+ assert.equal((await fresh.dashboard()).outreach_review.items[0].schedule,null);assert.equal((await fresh.dashboard()).outreach_review.paused,true);
+});
 test('shared fictional inquiry uses CAS, exact replay, two-role rotation and restart readback',async()=>{
  const {raw,store,app}=await fixture(),other=await stagingRecordApp(raw,now);
  const results=await Promise.allSettled([app.apply(inquiry('pine'),{actor:'owner',expectedRevision:0}),other.apply(inquiry('elm'),{actor:'friend',expectedRevision:0})]);

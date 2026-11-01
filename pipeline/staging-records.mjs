@@ -3,10 +3,11 @@ import {fixtureProspect,fixtureReply} from './lifecycle-fixtures.mjs';
 import {ConditionalLifecycleStore} from './lifecycle-store.mjs';
 import {localInquiryEvents} from './local-inquiry-intake.mjs';
 import {localDeliveryEvents} from './local-delivery-gates.mjs';
+import {outreachReviewEvents} from './outreach-review.mjs';
 
 export const stagingInquiryExample=at=>({id:'staging-example-inquiry',prospect_id:'inquiry-intake',type:'inquiry_recorded',at,data:{company_name:'STUDIO TEST Pine Roofing',classification:'inquiry',reply:fixtureReply('staging-inquiry-source','staging-inquiry-thread','pine@example.invalid','Fictional staging exercise: please discuss a website using our blue brand colors. No real message was received.')}});
 
-export const stagingRecordEvents=Object.freeze([...localInquiryEvents,...localDeliveryEvents,
+export const stagingRecordEvents=Object.freeze([...localInquiryEvents,...localDeliveryEvents,...outreachReviewEvents,
  'note_added','call_claimed','follow_up_handed_off','contact_stopped','reply_reviewed',
  'discovery_confirmed','preview_recorded','proposal_approved','agreement_recorded','invoice_recorded','payment_recorded',
  'onboarding_completed','delivery_task_updated','delivery_submitted','revision_requested','acceptance_recorded','handover_completed','support_opened','support_closed']);
