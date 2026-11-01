@@ -10,6 +10,10 @@ const resultsFile = new URL('../docs/context-handoff-pilot-results.json', import
 const hash = value => createHash('sha256').update(value).digest('hex');
 const arms = ['baseline', 'candidate_history', 'candidate_fresh'];
 
+export function followupVersion({addon, policy, original, holdoutHash, runnerHash, scriptHash, checklist}) {
+  return hash(JSON.stringify({addon, policy, original, holdoutHash, runnerHash, scriptHash, checklist}));
+}
+
 export function extractPolicy(workflow, workspace) {
   const start = workflow.indexOf('## Context and long-running work');
   const end = workflow.indexOf('\n## ', start + 3);
@@ -106,7 +110,7 @@ export async function writePrivateTrace(traceDir, record) {
   return {traceName, traceHash: hash(rawTrace)};
 }
 
-async function runCodex(prompt, traceDir) {
+export async function runCodex(prompt, traceDir) {
   const dir = await mkdtemp(join(tmpdir(), 'evz-context-pilot-'));
   const args = ['exec', '--ephemeral', '--ignore-user-config', '--sandbox', 'read-only', '--skip-git-repo-check', '--disable', 'apps', '--disable', 'plugins', '--disable', 'hooks', '--disable', 'shell_tool', '-c', 'web_search="disabled"', '-c', 'model_reasoning_effort="medium"', '--model', 'gpt-6.1-sol', '--json', '-'];
   const started = Date.now();

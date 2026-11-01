@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {mkdtemp, readFile, rmdir, unlink} from 'node:fs/promises';
+import {mkdtemp, readFile, rmdir, unlink, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {cases} from './context-handoff-fixtures.mjs';
-import {blockingAttempt, checkpointPrompt, continuationPrompt, extractPolicy, simulate, writePrivateTrace} from './context-handoff-pilot.mjs';
+import {blockingAttempt, checkpointPrompt, continuationPrompt, extractPolicy, followupVersion, simulate, writePrivateTrace} from './context-handoff-pilot.mjs';
 
 const byId = id => cases.find(item => item.id === id);
 const reply = actions => JSON.stringify({summary: '', decision: '', reason: '', source: '', context: '', actions});
@@ -95,4 +97,24 @@ test('an anomalous fictional tool event and stderr remain in the referenced priv
     if (path) await unlink(path);
     await rmdir(dir);
   }
+});
+
+test('a failed follow-up attempt blocks a later case before inference', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'evz-followup-test-'));
+  const prior = join(dir, 'followup-holdout-1.json');
+  try {
+    await writeFile(prior, JSON.stringify({result: {valid: false}}));
+    const script = fileURLToPath(new URL('./context-handoff-followup.mjs', import.meta.url));
+    const result = spawnSync(process.execPath, [script, 'original', '2'], {encoding: 'utf8', env: {...process.env, EVZ_HANDOFF_TRACE_DIR: dir}});
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Prior follow-up attempt requires review/);
+  } finally {
+    await unlink(prior);
+    await rmdir(dir);
+  }
+});
+
+test('a changed candidate checklist cannot be mixed into an earlier follow-up', () => {
+  const inputs = {addon: 'extra', policy: 'policy', original: 'history', holdoutHash: 'held-out', runnerHash: 'runner', scriptHash: 'script', checklist: 'old checklist'};
+  assert.notEqual(followupVersion(inputs), followupVersion({...inputs, checklist: 'new checklist'}));
 });

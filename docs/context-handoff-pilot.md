@@ -39,6 +39,16 @@ For independent investigation, each execution's raw fictional prompt and CLI out
 
 The installed CLI and [official hook documentation](https://learn.chatgpt.com/docs/hooks) indicate lifecycle hooks exist, but no hook is installed or trusted by this pilot, and no live desktop context meter or automatic handoff is verified. Account allowance is not current context occupancy. If a surface exposes only a maximum, cumulative usage, an ambiguous prior-turn number or account allowance, remaining context and the compaction threshold remain unknown.
 
+## Approval-scope follow-up
+
+After the blind reviewer found that one structured checkpoint omitted a known fictional recipient, test a revised **candidate only** before proposing any adoption. Keep the original experiment at commit `53f4479`; do not overwrite or mix its results. Add this sentence to the original candidate checklist:
+
+> Record non-sensitive exact approval parameters and an identifiable source when known. If the parameters are sensitive, identify the specific authorized private record instead of copying the sensitive values into the repository. If the exact scope or authorization cannot be verified, state the uncertainty and hold the affected action; a checkpoint grants no new authorization.
+
+Generate two checkpoints from the original fictional receipt history and two from a new fictional held-out history prepared with a separate private rubric by the independent requirements reviewer. Use the same model, effort, CLI restrictions, private raw traces and quota gates as the first experiment. Grade both original and held-out outputs without seeing their labels; the held-out rubric remains hidden from the implementer until outputs exist. These checks assess whether the targeted omission recurs, not a general improvement claim. This does not alter active studio instructions or grant permission to record client data in Git.
+
+Before the follow-up runs, the reviewer supplied private `holdout-input.json` SHA-256 `78a01312172116bc5ab833b668f7ac51f03a89be33b47d19c93b42b1499528d8` and a separate `holdout-rubric.json` SHA-256 `1b164b3c95a47055a279310cd1ef56413bcb87a0774df3e5f2b0ce7e58c9b784`. The private evidence directory is identified by the original results. The input covers decisions and reasons, exact approval scope, an uncertain operation and preservation; its expected values remain with the reviewer until the outputs exist.
+
 ## Results and review
 
 Pending. Do not interpret the protocol, a fake-action trace, or a passing static test as proof that the user-facing workflow is active or safe. Independent requirements and engineering reviews must be tied to the exact candidate and evidence; any later changes require affected rechecks. Wider rollout requires a separate, supported host integration and appropriate authorization for real actions.
