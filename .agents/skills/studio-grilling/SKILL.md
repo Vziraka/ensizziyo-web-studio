@@ -3,7 +3,7 @@ name: studio-grilling
 description: Clarify and challenge substantial EVZ planning, design, architecture and workflow changes through a decision-dependent interview. Also use when the owner asks to be grilled. Skip clear small edits and settled decisions.
 ---
 
-Read AGENTS.md, BRIEF.md, TASKS.md and the affected implementation first. Research facts yourself. Read WORKFLOW.md for the existing decision and implementation process; do not create a parallel planning system.
+From the project repository root, read AGENTS.md, BRIEF.md, TASKS.md and the affected implementation first. Research facts yourself. Read the root WORKFLOW.md for the existing decision and implementation process; do not create a parallel planning system.
 
 Map the consequential decisions and their dependencies. In each round ask the decisions whose prerequisites are settled, explain the alternatives and give a recommendation with reasons. Wait for answers before asking dependent questions. Let the decision structure determine the round size; do not invent a fixed question count. If the owner is uncertain about interview mechanics, use this method rather than asking them to design the interview.
 
@@ -13,8 +13,8 @@ Keep a running distinction between settled decisions, open decisions and proposa
 
 Record confirmed project decisions, reasons and acceptance checks in the existing task/brief or authenticated private client record. Quote or accurately attribute the deciding answer. Client information stays outside Git; client-specific decisions never become studio defaults. Propose a wider preference and obtain explicit scope confirmation before saving it as studio-wide. Do not create a glossary or architectural decision record unless WORKFLOW.md's criteria apply.
 
-When a repeated successful procedure or recurring failure suggests a skill improvement, follow the evidence, testing and independent-review lifecycle in `docs/studio-workflow.md`. Within authorized work, agents may create or update a suitably scoped skill and test it; prefer improving an existing skill, test or validator when it fits. Frequency alone does not prove a good rule, and client preferences do not become studio-wide automatically.
+When a repeated successful procedure or recurring failure suggests a skill improvement, follow the evidence, testing and independent-review lifecycle in [studio workflow](../../../docs/studio-workflow.md). Within authorized work, agents may create or update a suitably scoped skill and test it; prefer improving an existing skill, test or validator when it fits. Frequency alone does not prove a good rule, and client preferences do not become studio-wide automatically.
 
-Do not search the design vault or retrieve optional saved design preferences unless requested. Current task requirements, approved baselines and safety restrictions remain binding. See docs/studio-workflow.md for the implemented routes.
+Do not search the design vault or retrieve optional saved design preferences unless requested. Current task requirements, approved baselines and safety restrictions remain binding. See [studio workflow](../../../docs/studio-workflow.md) for the implemented routes.
 
 This is an EVZ adaptation of the decision-dependent interview in [Matt Pocock's grilling](https://github.com/mattpocock/skills/blob/main/skills/productivity/grilling/SKILL.md), not an installation of his wrapper/dependency chain. It is self-contained and does not require a particular provider or a subagent tool.

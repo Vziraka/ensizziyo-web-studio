@@ -2,13 +2,13 @@
 
 ## Agent workflow reliability — November 1, 2026
 
-The owner selected “All EVZ projects, starting here,” “Create and test changes with independent review,” and “Separate requirements and engineering reviews” for substantial operations changes and broad audits. The owner wants reviewers separate from the implementer because an agent may make its own tests pass without satisfying the original goal. The same discussion requested task-based skill/tool routing, decisions with reasons, honest context tracking and handoffs, and evidence-based skill creation and improvement. Included Codex usage is authorized as needed for this task's isolated fictional comparisons, without live client data or paid overage. These are studio standards; this repository is the first implementation, not proof that other EVZ environments have adopted them.
+The owner selected “All EVZ projects, starting here,” “Create and test changes with independent review,” and “Separate requirements and engineering reviews” for substantial operations changes and broad audits. The owner wants reviewers separate from the implementer because an agent may make its own tests pass without satisfying the original goal. The same discussion requested task-based skill/tool routing, decisions with reasons, honest context tracking and handoffs, and evidence-based skill creation and improvement. Included Codex usage is authorized as needed for this task's fictional comparisons, without live client data or paid overage; fresh contexts and separate fixture directories do not imply OS-level isolation. These are studio standards; this repository is the first implementation, not proof that other EVZ environments have adopted them.
 
 - [x] Make the task router findable without loading the full historical catalog; preserve the existing adoption policy and installed/linked distinction.
 - [x] Record decisions, reasons and checkpoints in existing project/private records; use real context signals where exposed and mark unknown otherwise.
 - [x] Require separate independent requirements and engineering reviewers for substantial operations changes and broad audits; require independent review of skill changes. Preserve proportional handling for routine work and report an unavailable review honestly.
 - [ ] Enable evidenced creation and improvement of EVZ skills, with relevant behavior checks, independent review, traceable results and rollback; preserve client privacy and existing model, spending and provider boundaries.
-- [ ] Run isolated fictional baseline/candidate comparisons and document actual observations, limitations, final-revision reviews and relevant checks.
+- [ ] Run fictional baseline/candidate comparisons and document actual observations, isolation limitations, final-revision reviews and relevant checks.
 
 ## Operations release — November 1, 2026
 

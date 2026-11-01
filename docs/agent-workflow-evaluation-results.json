@@ -1,0 +1,143 @@
+{
+  "description": "Final responses from fictional policy-excerpt evaluations; no tool traces or model/token metadata were available in this record.",
+  "baseline_revision": "5e327ecfce7f1f29741fa732a7e2b09f3c27b21d",
+  "candidate_commit": "77da3b9",
+  "results": [
+    {
+      "case": 1,
+      "variant": "baseline",
+      "agent": "/root/eval_1_a",
+      "response": "**Handoff checkpoint**\n\n- **Task:** Complete the digest on `test/desk` at revision `abc1234`.\n- **Acceptance criterion:** Use the approved 6 PM digest time. The owner chose it so both operators can review the digest after their workday.\n- **Hold:** Commercial email remains held until an address is approved.\n- **Verification:** The latest integration check has not run.\n- **Durable record:** Record the 6 PM decision and its reason alongside the acceptance criteria in the task or brief.\n- **Links:** No task, brief, or PR link was supplied."
+    },
+    {
+      "case": 1,
+      "variant": "candidate",
+      "agent": "/root/eval_1_b",
+      "response": "**Checkpoint**\n\n- **Objective:** Complete the digest.\n- **Acceptance criteria:** Deliver the digest at 6 PM. Other acceptance criteria need to be confirmed in the task or brief.\n- **Confirmed decision:** The owner approved 6 PM, replacing the initial 9 AM proposal, because both operators can review it after their workday.\n- **Source:** The decision’s source link and authorized private evidence location were not supplied. Locate them in the existing task, brief, or private records; do not copy client data into Git.\n- **Branch and revision:** `test/desk` at `abc1234`. The base revision and worktree location are not supplied.\n- **Completed work and checks:** Not supplied. The latest integration check has not run.\n- **Hold:** Commercial email remains held until an address is approved.\n- **Next safe action:** Reread and reconcile the current task, source, worktree, and approvals; confirm remaining acceptance criteria and completed work; then continue the digest and run the integration check. This checkpoint does not grant new permission."
+    },
+    {
+      "case": 2,
+      "variant": "baseline",
+      "agent": "/root/eval_2_a",
+      "response": "The account allowance is 72% used, with 28% remaining. That does not indicate how much of the current context window is available; the client does not expose context usage or the compaction threshold.\n\nKeep important decisions and acceptance criteria current in the existing task or brief. If a handoff becomes necessary, use a shared document naming the task, acceptance criteria, relevant links, and branch or PR, without duplicating the full transcript."
+    },
+    {
+      "case": 2,
+      "variant": "candidate",
+      "agent": "/root/eval_2_b",
+      "response": "The 72% figure is account usage, not current context-window usage. This client does not expose the current context percentage or compaction threshold, so neither can be determined.\n\nDuring the long task, record confirmed decisions and their reasons as they occur, and save a concise checkpoint at meaningful milestones and before a known handoff. A checkpoint in the same chat does not reset context."
+    },
+    {
+      "case": 3,
+      "variant": "baseline",
+      "agent": "/root/eval_3_a",
+      "response": "Review the identified base and proposed head in two distinguishable passes:\n\n1. **Requirements reviewer:** Compare the change with the task and brief, checking for missing, incorrect, or unrequested approval and delivery behavior. Confirm findings with concrete scenarios.\n2. **Engineering reviewer:** Check correctness, affected callers, maintainability, security, and relevant test quality, including scenarios involving persisted approvals and outbound delivery.\n\nOne reviewer may perform both passes while keeping their results separate. Because the change is consequential, an additional independent reviewer would be useful if available and authorized.\n\nAfter fixes, identify the new head and reassess the affected findings and checks. Report verification against the revision actually reviewed."
+    },
+    {
+      "case": 3,
+      "variant": "candidate",
+      "agent": "/root/eval_3_b",
+      "response": "1. Have two distinct reviewers independent of the implementer review the same identified base/head change. Start each without the author’s conversation history when supported, and provide the original requirements, constraints, sources, and exact revisions.\n2. The **requirements reviewer** checks the approval flow against the task and brief for missing, incorrect, or unrequested behavior. The **engineering reviewer** checks correctness, affected callers, maintainability, security, accessibility, and test quality as relevant, including persisted approvals and outbound delivery. Both confirm findings with concrete scenarios.\n3. Record each reviewer, scope, reviewed revision, findings, and checks. After fixes, reconsider the changed revision through the affected reviews and checks. If either independent reviewer is unavailable, report the missing review and leave that gate incomplete."
+    },
+    {
+      "case": 4,
+      "variant": "baseline",
+      "agent": "/root/eval_4_a",
+      "response": "Surface the three examples and suggest a narrow change to the existing skill description. Check that the proposed wording distinguishes the intended cases before adopting it; three occurrences alone do not establish a good rule. Do not rewrite the skill or broaden client preferences automatically."
+    },
+    {
+      "case": 4,
+      "variant": "candidate",
+      "agent": "/root/eval_4_b",
+      "response": "Inspect the existing skill and record the three incorrect activations as evidence. Make a narrow update to its description that clarifies when it should activate and excludes the unrelated request type. State the intended trigger, exclusions, scope, and why the skill remains useful.\n\nBefore relying on the revision, compare it with the original using fictional examples: an explicit trigger, a natural trigger, and a nearby request that should not trigger it. Check the actual decisions and artifacts against expectations specified independently. Have an independent reviewer examine the exact revision, its permissions and dependencies, and the observed test evidence. Until those checks are complete, the revision’s behavior and review remain unverified."
+    },
+    {
+      "case": 5,
+      "variant": "baseline",
+      "agent": "/root/eval_5_a",
+      "response": "I would read the current brief, tasks, and affected README, then correct the misspelled word. I would consult the relevant toolkit task when choosing capabilities.\n\nI would review the change in separate requirements and engineering-quality passes, which could be done by the same reviewer, and check the document and diff. No application test run or unrelated tool installation is needed."
+    },
+    {
+      "case": 5,
+      "variant": "candidate",
+      "agent": "/root/eval_5_b",
+      "response": "I would read the brief, tasks, and affected README, then correct the misspelled word. I would check the document and diff in separate, proportionate requirements and quality passes.\n\nThis routine documentation change does not require independent reviewers, an application test run, or tool installation."
+    },
+    {
+      "case": 6,
+      "variant": "baseline",
+      "agent": "/root/eval_6_a",
+      "response": "Report **structural validation passed**. The scenario does not establish that requirements or engineering reviews were completed, so report those separately as pending or unverified. An additional independent review was unavailable; the supplied policy does not make it mandatory."
+    },
+    {
+      "case": 6,
+      "variant": "candidate",
+      "agent": "/root/eval_6_b",
+      "response": "Independent review is missing, so the review gate remains incomplete. Structural validation passed, but it does not establish that the skill improved. Behavior and discovery remain unverified unless the required fictional examples were tested and reviewed."
+    }
+  ],
+  "skill_comparison_v2": {
+    "description": "Fictional fixture runs; file lists and lack of network/user prompts are evaluator self-reports, not independently retained tool traces.",
+    "baseline_revision": "5e327ecfce7f1f29741fa732a7e2b09f3c27b21d",
+    "baseline_skill_sha256": "4fe123a80a965a54821563a276f1008daddd0233ca55cef92f8c11e85889ba1c",
+    "candidate_skill_sha256": "0399f9f7dddb8147a06ddb70eaa18e2aebb6231f83a408a4434d645824ea5664",
+    "candidate_skill_git_blob": "5f5728bde3363a16e404560fc1c84e16224e732f",
+    "results": [
+      {
+        "case": "explicit",
+        "variant": "baseline",
+        "agent": "/root/skill_v2_baseline_explicit",
+        "response": "Who should be able to see assignments, and who should be able to change them?\n\nI recommend letting volunteers see the full schedule while a coordinator makes changes. That would help volunteers coordinate while keeping one person responsible for maintaining the schedule. Other options are to show each volunteer only their own assignments, or to let volunteers edit their own assignments. Which arrangement fits your group, and are there other roles to include?\n\nOne constraint to keep in mind: local-only data does not automatically appear in other people’s browsers, and someone with access to the same browser profile may be able to read or change its stored data. We can decide how to share the schedule after settling who needs access.\n\nSeparately, the existing shift-filter skill was incorrectly activated for a paper signup sheet, a thank-you note, and counting donated items. I suggest narrowing its description to filtering shifts by availability or role, and using those three examples as negative checks."
+      },
+      {
+        "case": "explicit",
+        "variant": "candidate",
+        "agent": "/root/skill_v2_candidate_explicit",
+        "response": "The browser interface and local-only data are settled. The open decision is who can see and change assignments.\n\nI recommend that a coordinator can see and edit the full schedule, while each volunteer can see their own assignments. This limits unnecessary access and accidental changes. If volunteers need to coordinate directly, showing everyone the full schedule may be more useful.\n\nWhich arrangement fits your team?\n\n- **Coordinator edits; volunteers see their own assignments.**\n- **Coordinator edits; volunteers see the full schedule.**\n- **Volunteers can see and edit the full schedule.**\n- **Another arrangement**, such as separate permissions for team leaders.\n\nLocal-only data will need a way to reach volunteers on separate devices. Also, if a device stores the full schedule, a display filter alone cannot reliably prevent its user from accessing the other assignments. We can decide how to handle that once the intended access is clear."
+      },
+      {
+        "case": "natural",
+        "variant": "baseline",
+        "agent": "/root/skill_v2_baseline_natural",
+        "response": "I recommend that coordinators edit assignments and volunteers see only their own, as a starting point. That limits accidental changes and exposure of personal details.\n\nLocal browser data is tied to a browser profile and device, so separate devices won’t automatically share updates. A shared browser profile also can’t reliably enforce different permissions for different people.\n\nTo settle the access requirements:\n\n- Who should see assignments: coordinators only, each volunteer’s own assignments, or all volunteers’ assignments?\n- Who should be able to edit them: coordinators only, or volunteers too?\n- Will people use their own devices or a shared device?\n\nSeparately, the existing shift-filter skill appears too broadly described. I suggest narrowing it to filtering shifts by availability or role, then checking that it activates for filtering but not for the signup sheet, thank-you note, or donated-item count."
+      },
+      {
+        "case": "natural",
+        "variant": "candidate",
+        "agent": "/root/skill_v2_candidate_natural",
+        "response": "A sensible starting point is for **coordinators to see and edit all assignments**, while volunteers can view the full schedule but can’t change it. That keeps changes controlled and helps volunteers coordinate.\n\nTwo other options are to show volunteers only their own assignments for more privacy, or let them edit their own shifts for more flexibility. Which arrangement fits your team?\n\nWill people use one shared device or their own devices? With local-only data, separate devices would need a way to keep their copies in sync; a shared device affects how access restrictions can be enforced."
+      },
+      {
+        "case": "negative",
+        "variant": "baseline",
+        "agent": "/root/skill_v2_baseline_negative",
+        "response": "**voluntees** → **volunteers**"
+      },
+      {
+        "case": "negative",
+        "variant": "candidate",
+        "agent": "/root/skill_v2_candidate_negative",
+        "response": "**voluntees** → **volunteers**"
+      },
+      {
+        "case": "improvement",
+        "variant": "baseline",
+        "agent": "/root/skill_v2_baseline_improvement",
+        "response": "The three recorded misfires are consistent with the existing shift-filter skill’s broad description: it claims any task involving volunteers or their schedule. The fixture contains no activation logs or test runner, so the cause is plausible but unverified.\n\nI recommend narrowing the existing skill’s description to:\n\n> Filter volunteer shifts when the user asks to narrow or match them by availability or role. Do not activate solely because a task mentions volunteers or a schedule.\n\nA future activation test should reject the three recorded requests: printing a paper signup sheet, writing a volunteer thank-you note, and counting donated items. It should accept filtering shifts by availability or role, including a request that filters shifts and then prints the result. This scope does not overlap with the fixture’s studio-grilling skill, which handles consequential planning decisions.\n\nI inspected the fixture’s instructions and both skills and manually assessed these examples. **No files were changed and no automated tests were run.** The workflow calls for a narrow improvement proposal and says not to rewrite skills automatically. No independent review was performed because no reviewer was available."
+      },
+      {
+        "case": "improvement",
+        "variant": "candidate",
+        "agent": "/root/skill_v2_candidate_improvement",
+        "response": "Prepared a [held shift-filter candidate](<fixture>/docs/shift-filter-review/SKILL.candidate.md) that narrows activation to filtering volunteer shifts by availability or role. The active skill remains unchanged, so its broad description may still cause misfires.\n\nThe task records three false activations, but supplies no exact prompts or traces. I created [fictional test expectations](<fixture>/docs/shift-filter-review/expectations.md) and a [review record](<fixture>/docs/shift-filter-review/review-record.md). A static text and structure check passed; I did not run skill-discovery or behavior tests.\n\nThe candidate remains **unreviewed and unverified**. The fictional [studio workflow](<fixture>/docs/studio-workflow.md) requires a baseline comparison and independent review before reliance, and no independent reviewer is available. The schedule’s access decision also remains open.",
+        "note": "The absolute fixture directory was replaced by <fixture> in retained links; the response wording is otherwise preserved."
+      }
+    ],
+    "candidate_improvement_artifacts": {
+      "SKILL.candidate.md": "---\nname: shift-filter\ndescription: Filter or find volunteer shifts that match availability, a role, or both. Use when the user asks to narrow volunteer shifts by those criteria. Do not use for general volunteer or schedule work, such as paper signup sheets, thank-you notes, or donation counts, unless the request also asks for shift filtering.\n---\n\nFilter volunteer shifts by availability and/or role.\n",
+      "expectations.md": "# Shift-filter review: expected behavior\n\nThese expectations are derived from the existing skill's stated purpose and the three misfires recorded in TASKS.md. They were written before the candidate revision, but by the same agent; they are not independent review. Exact misfire prompts and activation traces were not supplied, so these examples are fictional reproductions, not captured logs.\n\nThe original scope is filtering volunteer shifts by availability and role. Explicit and natural requests to do that should activate the skill; other volunteer tasks should not. A request containing both filtering and another task may activate it for the filtering part. Single-criterion matching is a proposed interpretation of the original scope, pending review.\n\nUse this fictional table for the positive examples:\n\n| ID | Shift | Role |\n| --- | --- | --- |\n| A | Tuesday 09:00–11:00 | setup |\n| B | Tuesday 10:00–12:00 | greeter |\n| C | Tuesday 13:00–15:00 | setup |\n\n| Case | Prompt | Expected activation and artifact |\n| --- | --- | --- |\n| Explicit | \"Use shift-filter to find the setup shifts I can work Tuesday 09:00–12:00 from this table.\" | Activate; return A and explain B fails the role and C fails the time. |\n| Natural | \"I'm free Tuesday from nine to noon and can do setup. Which of these volunteer shifts fit?\" | Activate; return A, without B or C. |\n| One criterion | \"Show the greeter volunteer shifts in this table.\" | Proposed: activate; return B. |\n| Paper | \"Make a printable paper signup sheet for the volunteers.\" | Do not activate; produce a signup-sheet template, not a filtered-shift list. |\n| Note | \"Write a short thank-you note to the volunteers.\" | Do not activate; produce a thank-you note. |\n| Donations | \"Count the donated items: 3 blankets and 4 coats.\" | Do not activate; answer 7 items. |\n| Adjacent schedule | \"Put the volunteer shifts in date order.\" | Do not activate; order the shifts without treating this as availability or role filtering. |\n\nRun both exact revisions in equivalent fresh contexts, supplying the table where relevant. Capture actual activation decisions and artifacts, false positives and misses, execution time and available usage. Compare actual results with this table; inspect skill discovery separately. Do not count these expectations as execution results.\n",
+      "review-record.md": "# Shift-filter candidate review record\n\nStatus: held candidate; behavior, discovery and independent review are unverified. The active `.agents/skills/shift-filter/SKILL.md` has not been changed. Do not rely on or promote the candidate until the checks below are complete.\n\n## Evidence and scope\n\nTASKS.md records three false activations: making a paper signup sheet, writing a volunteer thank-you note, and counting donated items. It does not contain exact prompts, traces, a total number of opportunities, runtime costs, or other evaluation results. The active description says to help with any task involving volunteers or their schedule, while its body is restricted to shift filtering. The broad description is a plausible cause for at least some misfires, but the provided record cannot establish the cause of each one.\n\nThe candidate proposes a narrow discovery boundary: activate for finding or narrowing volunteer shifts by availability and/or role; exclude general signup-sheet, thank-you-note, donation-count and scheduling work unless shift filtering is also requested. It preserves the existing skill's shift-filtering purpose and does not turn this client's project preference into a studio-wide design decision. A skill is useful here because this is an existing reusable capability with repeated reported misfires; a description change targets its discovery boundary without adding an external dependency. Whether matching on only one criterion is intended remains a proposed interpretation, not a confirmed requirement.\n\n## Exact revisions and checks performed\n\n- Baseline SHA-256: `C79E7CC2AF1636E8EF2C0F80A5AD8AA026F84EB042520A7D8C663955EFD10055`.\n- Candidate SHA-256: `44BB13BA2579D102A5C43C4D0E07E7CD04866734911032640253C814718A370C`.\n- Expectations SHA-256: `ABF168ED0B29523792B785C5C5DEE8A35FA1A6B5FCCE410F82F0FD9B244C95C8`.\n- A local static check verified the inspected baseline text, candidate front-matter shape, and presence of the intended scope and exclusion wording. It passed in approximately 40 ms. This was a text check, not skill loading, discovery, activation, or behavior testing.\n- The candidate declares no tools, permissions, scripts, or dependencies; the actual host discovery and permission behavior were not tested.\n\nThe recorded baseline evidence is three reported false activations, with unknown denominator and misses. The candidate has no observed activation decisions, output artifacts, false-positive or miss counts, execution time, or usage measurements. The examples in `expectations.md` were specified before the candidate but were authored by the same agent. They are a test plan, not independent review or observed behavior.\n\n## Required follow-up before reliance\n\n1. In equivalent fresh contexts, run the exact baseline and candidate against the explicit, natural, one-criterion and adjacent negative examples in `expectations.md`. Record actual activation decisions and artifacts, any false positives or misses, usage and elapsed time, and discovery behavior.\n2. Have an independent reviewer inspect the exact candidate revision, intended permissions and dependencies, and the observed comparison evidence. Resolve any reported problems and repeat checks for any changed revision.\n3. Only then decide whether to replace the active skill; retain or revise the candidate as the evidence warrants.\n\nThe volunteer schedule's access decision remains open; no owner answer or approval has been inferred.\n"
+    },
+    "reported_reads": "In explicit and natural planning runs both evaluators reported reading the supplied studio-grilling skill; in both typo runs evaluators reported reading no skill. Both improvement evaluators reported reading studio-grilling, shift-filter and the fictional studio workflow. All reported no network or user-input request. Only the candidate improvement evaluator reported creating files; direct fixture inspection confirmed the listed three candidate artifacts and identical active shift-filter bytes in both variants."
+  }
+}
