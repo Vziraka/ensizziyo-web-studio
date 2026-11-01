@@ -14,6 +14,8 @@ The build emits a scheduled function only with `CONTEXT=production`, `EVZ_MAILBO
 
 Measure actual store/provider latency and included Netlify usage before choosing a production cadence. The current workspace is roughly 12 MB; repeated whole-workspace reads and writes are material. The finite fictional proof cannot establish sustained affordability or 100-business/day capacity. A paused scheduler still incurs invocation/validation work, so disabling its build/runtime is the operational stop for hosting usage.
 
+The host validates one canonical envelope before returning a paused/expired hold. An active invocation retains fresh conditional guards. Instrumented empty-history fixtures require 13 workspace reads and three writes; paused/expired invocations require one read, and duplicates four. These counts measure internal storage operations, not billable bandwidth. A finite provider-read allowance does not bound scheduled hosting overhead. The first hosted proof must use one total read and disable its schedule after readback.
+
 ## Verification
 
 Run `node --test mailbox-clock.test.mjs mailbox-clock-host.test.mjs mailbox-intake.test.mjs mailbox-work-service.test.mjs shared-manual-records.test.mjs` from `pipeline`, then syntax/build checks and required CI. Integration tests retain actual conditional storage/replay and Gmail transport, substituting only the network/token boundary. They exercise duplicate ticks, late responses, pause during a read, exact lost-ack reconciliation, old-profile denial and default-disabled builds.

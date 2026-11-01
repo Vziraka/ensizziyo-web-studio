@@ -3,7 +3,7 @@ import {z} from 'zod';
 
 const id=z.string().regex(/^[A-Za-z0-9_-]{1,100}$/),sha=z.string().regex(/^[a-f0-9]{64}$/);
 const lease={task_id:id,lease:sha};
-const result=z.strictObject({body:z.string().min(1).max(3000),source_ids:z.array(z.string().min(1).max(200)).min(1).max(30),uncertainties:z.array(z.string().min(1).max(500)).max(20),attachments:z.array(z.strictObject({asset_id:id,version_id:id,sha256:sha})).max(2).optional(),execution:z.strictObject({provider:z.string().min(1).max(100),model:z.string().min(1).max(100),duration_ms:z.number().int().min(0).max(1800000),input_tokens:z.number().int().nonnegative().nullable(),output_tokens:z.number().int().nonnegative().nullable()})});
+const result=z.strictObject({body:z.string().min(1).max(3000).describe('Message body only. Omit the desk-managed signature, sender name, email and phone block; the desk adds it separately.'),source_ids:z.array(z.string().min(1).max(200)).min(1).max(30),uncertainties:z.array(z.string().min(1).max(500)).max(20),attachments:z.array(z.strictObject({asset_id:id,version_id:id,sha256:sha})).max(2).optional(),execution:z.strictObject({provider:z.string().min(1).max(100),model:z.string().min(1).max(100),duration_ms:z.number().int().min(0).max(1800000),input_tokens:z.number().int().nonnegative().nullable(),output_tokens:z.number().int().nonnegative().nullable()})});
 const reply=(status,error)=>Response.json({error},{status,headers:{'Cache-Control':'no-store','Netlify-CDN-Cache-Control':'no-store'}});
 const structured=value=>({structuredContent:value,content:[{type:'text',text:JSON.stringify(value)}]});
 async function body(request){

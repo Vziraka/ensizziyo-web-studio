@@ -631,6 +631,12 @@ export class StudioLifecycle {
             if(attachments.length){check(!this.store||sharedReview,'Shared profiles do not authorize attached reply drafts');currentReplyAttachments(state,r.id,attachments);}
             const boundContext=mailboxWorkReview?hash(emailDraftSource(r,this.config,state)):data.agent_context_sha256||(sharedReview||r.reply_draft?.agent_context_sha256||r.conversation_histories?hash(emailDraftSource(r,this.config,state)):null);
             const content=replyDraftContent(r,data.body,actor,this.config,Boolean(boundContext)||['shared-mailbox-review-v1','shared-mailbox-work-v1','shared-mailbox-clock-v1'].includes(this.config.shared_capability));
+            if(mailboxWorkReview&&data.agent_task_id){
+              const normalized=content.body.replaceAll('\r\n','\n'),suffix='\n\n'+content.signature;
+              check(normalized!==content.signature,'Write a reply body beyond the managed signature');
+              if(normalized.endsWith(suffix))content.body=normalized.slice(0,-suffix.length).trimEnd();
+              check(text(content.body),'Write a reply body beyond the managed signature');
+            }
             if(attachments.length)content.attachments=structuredClone(attachments);
             if(sharedReview){content.review_binding_sha256=emailDraftReviewBinding(this.config);const origin=agentDraft?{task_id:agentDraft.id,result_sha256:agentDraft.result_sha256,context_sha256:agentDraft.context_sha256,source_ids:agentDraft.result.source_ids,uncertainties:agentDraft.result.uncertainties}:r.reply_draft?.content.agent_origin;if(origin)content.agent_origin=structuredClone(origin);}
             if(r.reply_draft){r.reply_draft_history??=[];r.reply_draft_history.push({...r.reply_draft,status:'Superseded'});}
