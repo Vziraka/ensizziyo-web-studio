@@ -119,4 +119,3 @@ test('new unclassified mail invalidates an adopted reply and prevents exact appr
  await assert.rejects(app.apply({id:'stale-approval',type:'reply_draft_approved',prospect_id:'project',at:time,data:{sha256:state.prospects.project.reply_draft.sha256,approved:true,facts_checked:true}},{actor:'owner',expectedRevision:state.revision,manualRecording:true}),/exact current reply/);
  assert.equal((await f.store.snapshot()).prospects.project.reply_draft.status,'Draft');
 });
-
