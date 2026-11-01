@@ -41,7 +41,7 @@ export async function dispatchMailboxDelivery(app,approvalId,{transport,actor,de
  await guard();const identity=await transport.preflight({guard,signal:b.signal}),p=c.mailbox_delivery;
  check(identity?.account===p.account&&identity.from===p.from&&identity.grant_id===p.grant_id,'Exact sender grant differs');
  const source=(await app.snapshot()).prospects[a.package.project_id];
- await transport.freshSource({...a.package,...(a.package.kind==='reply'?{reply_source:source.reply}:{})},{guard,signal:b.signal});await guard();
+ await transport.freshSource({...a.package,...(a.package.kind==='reply'?{reply_source:source.reply}:a.package.kind==='requested-information'?{requested_source_at:source.calls[source.requested_information.requests[a.package.source.request_id].call_id].performed_at}:{})},{guard,signal:b.signal});await guard();
  const originals=blobProjectOriginalStore(app.store.store),attachments=[];
  for(const part of a.package.attachments){await guard();attachments.push(await originals.get({sha256:part.sha256,bytes:part.bytes}));await guard();}
  const reservedAt=app.now().toISOString(),wire=composeExactMail(a.package,id,reservedAt,attachments),mime=await mailboxMimeStore(app.store.store).put(wire.raw,{guard});

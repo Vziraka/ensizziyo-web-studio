@@ -71,7 +71,7 @@ export async function mailPreflight(request,account){
  return profile;
 }
 export async function mailFreshSource(request,p){
- if(!p.reply_source){const result=await request('messages?'+new URLSearchParams({q:'from:'+p.to,maxResults:'10'}));check(!result.nextPageToken&&(!result.messages||Array.isArray(result.messages)&&result.messages.length===0),'Mailbox contains an unbound prior reply; import and review it before dispatch');return {no_prior_incoming:true};}
+ if(!p.reply_source){const suffix=p.kind==='requested-information'?(check(Number.isFinite(Date.parse(p.requested_source_at)),'Exact requested source time required'),' after:'+Math.floor(Date.parse(p.requested_source_at)/1000)):'';const result=await request('messages?'+new URLSearchParams({q:'from:'+p.to+suffix,maxResults:'10'}));check(!result.nextPageToken&&(!result.messages||Array.isArray(result.messages)&&result.messages.length===0),'Mailbox contains an unbound prior reply; import and review it before dispatch');return {no_prior_incoming:true};}
  check(p.reply_source?.content?.status==='Complete','Complete prior reply provenance is required');const c=p.reply_source.content;
  const thread=await request('threads/'+encodeURIComponent(c.thread_id)+'?format=full',{max:2_000_000});
  check(thread.id===c.thread_id&&Array.isArray(thread.messages)&&thread.messages.length>0&&thread.messages.length<20&&!thread.nextPageToken,'Missing, truncated or excessive current reply thread');

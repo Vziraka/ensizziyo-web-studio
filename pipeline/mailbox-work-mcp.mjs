@@ -27,10 +27,10 @@ export function createMailboxWorkMcp({openWorker}){
     try{return structured(await run(input));}catch{return {isError:true,content:[{type:'text',text:'Worker operation held. Read the saved receipt or ask the assigned operator to review the task. Do not retry a conflicting write or bypass the hold.'}]};}
    });
   }
-  register('evz_claim_prepared_task','Claim one prepared reply task',{request_id:id},false,i=>worker.claim(i));
+  register('evz_claim_prepared_task','Claim one prepared message task',{request_id:id},false,i=>worker.claim(i));
   register('evz_read_work_context','Read current task evidence',lease,true,i=>worker.context(i.task_id,i.lease));
   register('evz_read_work_pdf_segment','Read an exact offered PDF segment',{...lease,asset_id:id,version_id:id,sha256:sha,offset:z.number().int().nonnegative()},true,({task_id,...i})=>worker.pdf({id:task_id,...i}));
-  register('evz_submit_work_proposal','Save an unapproved reply proposal',{...lease,context_sha256:sha,result},false,({task_id,...i})=>worker.submit({id:task_id,...i}));
+  register('evz_submit_work_proposal','Save an unapproved message proposal',{...lease,context_sha256:sha,result},false,({task_id,...i})=>worker.submit({id:task_id,...i}));
   register('evz_record_work_failure','Record a held task failure',{...lease,reason:z.string().min(1).max(500)},false,({task_id,...i})=>worker.fail({id:task_id,...i}));
   register('evz_read_work_receipt','Read durable task result and status',lease,true,i=>worker.receipt(i.task_id,i.lease));
   const transport=new WebStandardStreamableHTTPServerTransport({sessionIdGenerator:undefined,enableJsonResponse:true});

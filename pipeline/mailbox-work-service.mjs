@@ -1,3 +1,4 @@
+import {applyRequestedInformationTransition,requestedInformationSource} from './requested-information.mjs';
 import {createHmac,timingSafeEqual} from 'node:crypto';
 import {StudioLifecycle,check,hash} from './lifecycle.mjs';
 import {mailboxWorkCapability,validateMailboxWorkState,applyMailboxWorkTransition,mailboxWorkContext,mailboxWorkReceipt,mailboxWorkAdoption} from './mailbox-work.mjs';
@@ -16,9 +17,10 @@ export function applyMailboxWorkChange(state,config,transition){
  const {input,actor,at}=transition,t=state.email_draft_tasks?.[input.id];
  validateMailboxWorkState(state,config);
  if(t?.status==='Adopted'){
-  const e=state.events[t.adoption_event];check(t.adopted_by===actor&&t.result_sha256===input.result_sha256&&e?.actor===actor&&e.type==='reply_draft_saved'&&e.data?.agent_result_sha256===t.result_sha256,'Adoption receipt conflicts');return {id:t.id,event_id:e.id,duplicate:true,revision:state.revision};
+  const e=state.events[t.adoption_event];check(t.adopted_by===actor&&t.result_sha256===input.result_sha256&&e?.actor===actor&&e.type===(t.kind==='requested_information_draft'?'requested_information_draft':'reply_draft_saved')&&e.data?.agent_result_sha256===t.result_sha256,'Adoption receipt conflicts');return {id:t.id,event_id:e.id,duplicate:true,revision:state.revision};
  }
  mailboxWorkAdoption(state,config,input,actor,at);
+ if(t.kind==='requested_information_draft'){const id='work-adopt-'+hash({id:t.id,result:t.result_sha256}).slice(0,32),source=requestedInformationSource(state,config,t.project_id,at);const result=applyRequestedInformationTransition(state,config,{type:'draft',actor,at,input:{revision:input.revision,id,project_id:t.project_id,source_sha256:source.sha256,subject:'Requested information',body:t.result.body,attachments:t.result.attachments??[],agent_task_id:t.id,agent_result_sha256:t.result_sha256}});const saved=state.email_draft_tasks[t.id];Object.assign(saved,{status:'Adopted',adoption_event:id,adopted_by:actor,adopted_at:at,adoption_binding_sha256:hash(config.mailbox_delivery)});validateMailboxWorkState(state,config);return {...result,id:t.id,event_id:id};}
  const r=state.prospects[t.project_id],event={id:'work-adopt-'+hash({id:t.id,result:t.result_sha256}).slice(0,32),prospect_id:r.id,type:'reply_draft_saved',at,data:{source_id:r.reply.source_id,reply_sha256:hash(r.reply),source_sha256:r.reply.content.source_sha256,body:t.result.body,agent_task_id:t.id,agent_result_sha256:t.result_sha256,agent_context_sha256:t.context_sha256,attachments:t.result.attachments??[]}};
  const reducer=new StudioLifecycle(null,()=>new Date(at));reducer.config=config;
  const result=reducer.reduceEvent(state,event,{actor,expectedRevision:input.revision,manualRecording:true,agentDraft:t});
@@ -31,7 +33,7 @@ async function settings(app){
 }
 export async function mailboxWorkCommand(app,type,input,actor){
  check(['create','cancel','adopt'].includes(type)&&['owner','friend'].includes(actor),'Signed operator task command required');
- const fingerprint=await settings(app),transition={type,actor,input,at:app.now().toISOString()};
+ const invocationDeadline=+app.now()+25000;const fingerprint=await settings(app),transition={type,actor,input,at:app.now().toISOString()};
  if(type==='adopt'){
   const state=await app.snapshot(),t=state.email_draft_tasks?.[input.id];
   if(t?.status!=='Adopted'){
@@ -39,7 +41,7 @@ export async function mailboxWorkCommand(app,type,input,actor){
    for(const part of t.result.attachments??[]){const read=await readProjectAsset(app,t.project_id,part.asset_id,part.version_id);check(read.original.sha256===part.sha256&&originalDigest(read.bytes)===part.sha256,'Approved PDF changed before draft adoption');}
   }
  }
- return app.change((state,config)=>applyMailboxWorkChange(state,config,transition),{configFingerprint:fingerprint,mailboxWork:transition});
+ return app.change((state,config)=>applyMailboxWorkChange(state,config,transition),{configFingerprint:fingerprint,mailboxWork:transition,mailboxWorkDeadline:invocationDeadline});
 }
 
 // Only the gateway calls this interface. Its credential never grants an operator session.
