@@ -1,0 +1,35 @@
+# Shared mailbox cloud proposals
+
+The approved operations release needs on-demand AI replies without keeping either operator's computer awake. `shared-mailbox-work-v1` extends the shared mailbox review authority with prepared reply tasks, not provider execution. It retains the existing conditional `workspace` object, historical tasks, incoming evidence, manual calling and exact human approvals. Old capabilities cannot gain worker access through an environment switch.
+
+## One authority, separate callers
+
+The immutable manual manifest binds `config.mailbox_work`: exact worker and gateway deployment, credential digest, recovery generation, expiry, retention ceiling, daily claim ceiling and lease duration. New entries use `schema_version: 2` in `state.email_draft_tasks`; legacy entries remain unchanged. Drafts require a currently assigned verified reply, completed mailbox coverage and no relevant unresolved/newer incoming source. Ownership, source, style, draft baseline and offered PDFs form the context fingerprint.
+
+Signed desk commands create, cancel and adopt tasks. A separate API-only gateway authenticates a workspace worker and exposes only claim, context, bounded original segments, proposal, failure and receipt operations. It cannot create arbitrary tasks, adopt, approve, send, read Gmail credentials or choose arbitrary URLs/storage keys. Public discovery and recurring execution are not implemented by this reply-only increment.
+
+A stable worker credential identifies the connection; each claim receives a separate short-lived lease. Claim request IDs reconcile lost acknowledgements, lease fencing increases monotonically, and expired attempts cannot silently reclaim work. Credential/policy/recovery changes revoke old authority. Retained receipts remain readable after task or policy expiry under the unchanged worker identity; expiry never permits another mutation. Conditional replay independently reproduces each transition and rejects unrelated state changes. Failed or uncertain attempts continue to consume their claim allowance.
+
+An assigned operator adopts an exact proposal into an **unapproved** reply draft. The source, catalogue and actual selected PDF bytes are checked before adoption; fresh conditional replay checks them again where applicable. Existing exact-content approval remains separate. Edits, ownership changes and changed source/baselines invalidate the relevant context. There is no outgoing transport in this capability.
+
+## Original bytes
+
+The existing immutable original store keeps its 1,000,000-byte storage chunks. The task transport returns at most 262,144 bytes per segment, with offset, segment digest, total length and whole-file digest. A segment may end at a storage-chunk boundary. Workers follow the returned next offset, reconstruct the entire file, verify its whole-file digest and inspect the actual PDF before proposing it. Metadata or extracted text alone does not prove visual inspection. Existing limits remain two selected PDFs and 20,000,000 combined attachment bytes; oversized originals are not silently compressed or represented as complete.
+
+## Gateway configuration and hosting
+
+The desk remains private. The proposed API gateway uses a separate Netlify project, without desk assets or anonymous business-data responses. Netlify's project-protection gate precedes application authentication, so placing this endpoint behind the existing private desk gate would not make it callable by Work. Cross-project Blobs access uses an explicitly authorized server-side storage token; it must never be sent to the cloud worker. Its actual scope must be reviewed before deployment—do not describe an account token as store-scoped.
+
+The gateway entry point is `/desk-work/mcp`, disabled unless `EVZ_MAILBOX_WORK_GATEWAY=scoped-reply-worker-v1`. Private environment configuration also supplies `EVZ_MAILBOX_WORK_SOURCE_BINDING`, `EVZ_MAILBOX_WORK_SOURCE_BLOBS_TOKEN`, `EVZ_MAILBOX_WORK_CREDENTIAL_SHA256` and a separate random `EVZ_MAILBOX_WORK_LEASE_SECRET`. Invalid worker credentials reject before source storage access. Actual trusted gateway site/deploy/origin must match the source policy; never spoof the desk's metadata. Deploying source does not create a connection or run a task.
+
+Included Work usage was observed on the actual account, but no authoritative automatic allowance reader has been established. Finite claims do not prove a percentage reserve, especially while other chats use the same subscription. No purchase, overage, paid API or paid-provider fallback is authorized by this implementation. Sustainable 100-business/day research and unattended usage-reserve enforcement remain separate release gates.
+
+## Verification and rollback
+
+From `pipeline`, run `node --test mailbox-work.test.mjs mailbox-work-service.test.mjs shared-manual-records.test.mjs`, `npm run check`, then required full CI. Pure tests cover retained-state corruption, source/ownership/classification changes, lease expiry, revocation, fencing, claim limits and replay. Integration tests use the actual MCP SDK, conditional store and signed desk handler to reconstruct a multi-chunk PDF, reconcile a lost claim acknowledgement, save a proposal, adopt it as a draft and separately approve it with sending held. External services are substituted at their boundaries.
+
+Browser recipe: use a synthetic production-shaped mailbox with completed intake, an assigned reply and approved original. In Call & reply reviews, request a proposal; have the synthetic worker claim/read/submit; refresh the task; inspect sources, uncertainty and PDFs; adopt the proposal and verify Draft; approve its exact revision and reload to verify Approved; sending held. Check other-operator denial and narrow layout. Stop the fixture server and retain evidence outside Git.
+
+Before claiming native cloud acceptance, verify the authenticated deployed endpoint, install the exact connection, execute one finite fictional Work task, inspect its actual PDF reconstruction, read the result independently in the desk and test interrupted/replayed claims. Actual computer-off operation and independent teammate identity remain separate checks. Rollback disables the gateway flag and revokes/replaces its worker policy; preserve task and result history. Existing private desk access must remain unchanged.
+
+Primary hosting references: [Netlify request chain](https://docs.netlify.com/resources/troubleshooting/request-chain/) and [cross-project Blobs configuration](https://docs.netlify.com/build/data-and-storage/netlify-blobs/), checked November 1, 2026.

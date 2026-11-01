@@ -1,4 +1,5 @@
-import {mailboxCapability,mailboxProfile,syncMailboxStep} from './mailbox-intake.mjs';
+import {mailboxCapability,isMailboxCapability,mailboxProfile,syncMailboxStep} from './mailbox-intake.mjs';
+import {mailboxWorkCommand} from './mailbox-work-service.mjs';
 import {googleHostedTransport} from './google-hosted-transport.mjs';
 import {sharedDispatchEmailTasks,dispatchEmailTaskPolicy} from './email-draft-policy.mjs';
 import {operationsPDFMailCapability,operationsMailCapability,operationsMailProfile,mailRecordEvents,newThreadMailHold,assertSharedMailAction,mailStatus} from './shared-operations-exact-mail.mjs';
@@ -117,7 +118,7 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
   const mailOAuth=url.pathname.startsWith(operationsMailOAuthPath+'/')||path==='/operations-exact-mail-oauth-callback.js';
   const calendarOAuth=url.pathname.startsWith(calendarOAuthPath+'/')||path==='/google-calendar-oauth-callback.js';
   const internalOAuth=url.pathname.startsWith(dispatchOAuthPath+'/')||path==='/internal-google-oauth-callback.js';
-  const mailboxOAuth=settings.manualBinding?.scope.capability===mailboxCapability&&(url.pathname.startsWith(googleOAuthPath+'/')||path==='/google-oauth-callback.js');
+  const mailboxOAuth=isMailboxCapability(settings.manualBinding?.scope.capability)&&(url.pathname.startsWith(googleOAuthPath+'/')||path==='/google-oauth-callback.js');
   const selectedProfile=mailboxOAuth?{profile:mailboxProfile}:mailOAuth?{profile:operationsMailProfile}:internalOAuth?{profile:dispatchOAuthProfile}:calendarOAuth?{profile:calendarOAuthProfile}:{};
   const driveOAuth=url.pathname.startsWith(driveOAuthPath+'/')||path==='/google-drive-oauth-callback.js',oauthPath=mailOAuth?operationsMailOAuthPath:internalOAuth?dispatchOAuthPath:driveOAuth?driveOAuthPath:calendarOAuth?calendarOAuthPath:googleOAuthPath;
   const oauthLanding=request.method==='GET'&&url.pathname===oauthPath+'/callback';
@@ -189,13 +190,14 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    }
    if(settings.inertBinding||settings.manualBinding){
     const reads=request.method==='GET'&&(path==='/api/state'||path==='/api/project-resolve'||/^\/api\/project-context\//.test(path)||/^\/api\/events\//.test(path)||/^\/retained-source\//.test(path)||/^\/follow-up(?:-draft|-history)?\//.test(path)||/^\/api\/project-original\//.test(path));
-    if(!reads&&!(post&&(path==='/api/event'||settings.manualBinding?.scope.capability===mailboxCapability&&path==='/api/mailbox/sync')))return json(409,{error:settings.manualBinding?'Manual workspace supports saved reads and signed manual records only; execution, audio, authoring, transfer writes and hosted backup are disabled':'Inert workspace supports saved reads and signed private notes only; execution, authoring, transfer writes and hosted backup are disabled'});
+    if(!reads&&!(post&&(path==='/api/event'||isMailboxCapability(settings.manualBinding?.scope.capability)&&path==='/api/mailbox/sync'||settings.manualBinding?.scope.capability==='shared-mailbox-work-v1'&&/^\/api\/mailbox-work\/(create|cancel|adopt)$/.test(path))))return json(409,{error:settings.manualBinding?'Manual workspace supports saved reads and signed manual records only; execution, audio, authoring, transfer writes and hosted backup are disabled':'Inert workspace supports saved reads and signed private notes only; execution, authoring, transfer writes and hosted backup are disabled'});
    }
    if(path.startsWith('/api/project-original/')&&!settings.emailTaskBinding&&!settings.inertBinding&&!settings.manualBinding&&!settings.projectBinding&&!settings.dispatchBinding&&env.EVZ_OPERATIONS_SHARED_ORIGINALS!=='fictional-chunks-v1')return json(503,{error:'Shared original transfer is not configured'});
    if(path.startsWith('/api/project-author/')&&!settings.dispatchBinding&&settings.projectBinding?.scope.capability!==researchCapability&&!(settings.projectBinding?env.EVZ_OPERATIONS_PROJECT_AUTHORING==='shared-project-node-v1':env.EVZ_OPERATIONS_PROJECT_AUTHORING==='fictional-node-v1'))return json(503,{error:'Hosted authoring is disabled'});
    let app,raw;try{raw=await storeFactory(env.EVZ_OPERATIONS_BLOB_NAMESPACE);app=await openApp(raw,now,settings.inertBinding,settings.manualBinding,settings.projectBinding,settings.dispatchBinding,env,context);}catch{return json(503,{error:'Private shared storage is unavailable; no execution was started'});}
-   if(post&&path==='/api/mailbox/sync'){
-    check(settings.manualBinding?.scope.capability===mailboxCapability,'Exact shared mailbox required');const input=await inputBody(request);check(input&&typeof input==='object'&&!Array.isArray(input)&&Object.keys(input).length===0,'Mailbox sync uses its saved source only');
+    if(post&&/^\/api\/mailbox-work\/(create|cancel|adopt)$/.test(path))return json(200,await mailboxWorkCommand(app,path.split('/').at(-1),await inputBody(request),actor));
+    if(post&&path==='/api/mailbox/sync'){
+    check(isMailboxCapability(settings.manualBinding?.scope.capability),'Exact shared mailbox required');const input=await inputBody(request);check(input&&typeof input==='object'&&!Array.isArray(input)&&Object.keys(input).length===0,'Mailbox sync uses its saved source only');
     const read=getAccessToken=>syncMailboxStep(app,{transport:googleHostedTransport({...googleIncomingOptions,getAccessToken,account:app.config.mailbox.account,grantId:app.config.mailbox.grant_id,requiredProfile:mailboxProfile,now})});
      const result=googleIncomingOptions.getAccessToken?await read(googleIncomingOptions.getAccessToken):await createGoogleOAuth({...googleOAuthOptions,env,now:()=>+now(),profile:mailboxProfile,dispatchApp:app,grantId:app.config.mailbox.grant_id}).withMailboxRead(read);
      return json(200,result);

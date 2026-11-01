@@ -4,6 +4,7 @@ import {applyLocalInquiry} from './local-inquiry-intake.mjs';
 import {mailObservationJSON,gmailScopes} from './google-hosted-transport.mjs';
 
 export const mailboxCapability='shared-mailbox-review-v1';
+export const isMailboxCapability=value=>[mailboxCapability,'shared-mailbox-work-v1'].includes(value);
 export const mailboxProfile='shared-mailbox-gmail-v1';
 export const mailboxReviewEvents=['conversation_claimed','inquiry_classification_reviewed','inquiry_identity_resolved','reply_reviewed','reply_draft_saved','reply_draft_approved'];
 const key=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(v)&&!['constructor','prototype','__proto__'].includes(v);
@@ -44,7 +45,7 @@ function adoptMessage(state,config,m,at){
  for(const [id,a] of Object.entries(state.actions))if(!oldActions.has(id))a.execution_hold='Incoming review only; provider execution disabled';
 }
 export function applyMailboxObservation(state,config,o){
- check(config.shared_capability===mailboxCapability&&config.outreach_enabled===false,'Exact read-only mailbox workspace required');const policy=validateMailboxPolicy(config.mailbox);
+ check(isMailboxCapability(config.shared_capability)&&config.outreach_enabled===false,'Exact read-only mailbox workspace required');const policy=validateMailboxPolicy(config.mailbox);
  exact(o,'operation,input,before_sha256,policy_sha256,at,value,grant');
  check(utc(o.at)&&o.policy_sha256===hash(policy)&&o.before_sha256===hash(state.mailbox_sync??null),'Mailbox policy or cursor changed');
  check(!state.mailbox_sync||state.mailbox_sync.policy_sha256===hash(policy),'Mailbox state belongs to another policy');
@@ -73,13 +74,13 @@ export function applyMailboxObservation(state,config,o){
  delete state.mailbox_failure;state.revision++;state.updated_at=o.at;return {operation:o.operation,pending:state.mailbox_sync.pending.length,checked_at:state.mailbox_sync.checked_at};
 }
 export function applyMailboxFailure(state,config,f){
- check(config.shared_capability===mailboxCapability&&config.outreach_enabled===false,'Exact read-only mailbox workspace required');
+ check(isMailboxCapability(config.shared_capability)&&config.outreach_enabled===false,'Exact read-only mailbox workspace required');
  exact(f,'before_sha256,policy_sha256,at,operation,reason');
  check(utc(f.at)&&f.before_sha256===hash(state.mailbox_sync??null)&&f.policy_sha256===hash(validateMailboxPolicy(config.mailbox))&&f.operation===expected(state.mailbox_sync).operation&&['Source unavailable','History expired; full recovery required','Message unavailable; original review required','Capacity reached'].includes(f.reason),'Invalid mailbox failure evidence');
  state.mailbox_failure=structuredClone(f);state.revision++;state.updated_at=f.at;return {held:true,reason:f.reason};
 }
 export async function syncMailboxStep(app,{transport}={}){
- check(app.store?.manualBinding?.scope.capability===mailboxCapability,'Exact shared mailbox store required');
+ check(isMailboxCapability(app.store?.manualBinding?.scope.capability),'Exact shared mailbox store required');
  const config=await app.loadConfig(),policy=validateMailboxPolicy(config.mailbox),state=await app.snapshot(),sync=state.mailbox_sync??null;
  const request=expected(sync),before=hash(sync),configuration=hash(config),guard=async()=>check(hash(await app.loadConfig())===configuration&&hash((await app.snapshot()).mailbox_sync??null)===before,'Mailbox source changed during provider read');
  const hold=reason=>{const mailboxFailure={before_sha256:before,policy_sha256:hash(policy),at:app.now().toISOString(),operation:request.operation,reason};return app.change((s,c)=>applyMailboxFailure(s,c,mailboxFailure),{configFingerprint:configuration,mailboxFailure});};

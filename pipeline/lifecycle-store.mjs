@@ -39,7 +39,7 @@ export class ConditionalLifecycleStore {
     if(options.configFingerprint)check(hash(data.config)===options.configFingerprint,'Incoming configuration changed during read; no cursor or effects committed');
     if(this.emailTaskBinding)check(options.emailTask,'Fictional task storage requires a typed task transition');
     if(this.inertBinding)check(options.inertNote,'Inert storage rejects worker and provider mutations');
-    if(this.manualBinding)check(options.manualRecord||this.manualBinding.scope.capability==='shared-mailbox-review-v1'&&(options.mailboxObservation||options.mailboxFailure),'Manual storage rejects worker and provider mutations');
+    if(this.manualBinding)check(options.manualRecord||['shared-mailbox-review-v1','shared-mailbox-work-v1'].includes(this.manualBinding.scope.capability)&&(options.mailboxObservation||options.mailboxFailure)||this.manualBinding.scope.capability==='shared-mailbox-work-v1'&&options.mailboxWork,'Manual storage rejects worker and provider mutations');
     if(this.projectBinding)check(options.projectResearch&&this.projectBinding.scope.capability==='shared-known-identity-research-v1'||options.projectRecord||options.projectAuthoring||options.projectReconcile||options.projectGeneration&&this.projectBinding.scope.capability==='shared-refinement-generation-v1','Shared project storage rejects untyped worker and provider mutations');
     if(this.dispatchBinding)validateDispatchOptions(this.dispatchBinding.scope.capability,options);
     const result=await fn(data.state,data.config);this.validate(data);
@@ -62,7 +62,7 @@ export class ConditionalLifecycleStore {
     try {const written=await this.store.setJSON(this.key,data,{onlyIfMatch:etag});check(typeof written?.modified==='boolean'&&(!written.modified||typeof written.etag==='string'&&written.etag.length>0),'Conditional write result is unavailable');modified=written.modified;}
     catch {uncertain=true;}
     if(modified===true)return result;
-    if(this.emailTaskBinding||options.emailTask&&this.dispatchBinding){try{const saved=await this.envelope();if(hash(saved.data)===hash(data))return {...result,reconciled:true};}catch{}}
+    if(this.emailTaskBinding||options.emailTask&&this.dispatchBinding||options.mailboxWork&&this.manualBinding?.scope.capability==='shared-mailbox-work-v1'){try{const saved=await this.envelope();if(hash(saved.data)===hash(data))return {...result,reconciled:true};}catch{}}
     if(eventId&&eventFingerprint){
       try {const current=await this.snapshot();if(current.events[eventId]?.fingerprint===eventFingerprint)return {...result,reconciled:true};}catch {}
     }
