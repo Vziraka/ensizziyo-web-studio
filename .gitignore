@@ -15,6 +15,7 @@ test-results/
 pipeline/hosted-assets.mjs
 pipeline/netlify-functions/notification-clock.mjs
 pipeline/netlify-functions/internal-dispatch-clock.mjs
+pipeline/netlify-functions/mailbox-clock.mjs
 CLAUDE-SECURITY-*/
 *.credentials.json
 *.service-account.json

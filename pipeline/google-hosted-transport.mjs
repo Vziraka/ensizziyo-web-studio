@@ -99,10 +99,10 @@ export async function mailSentReadback(request,expected,known=null,max=mailLimit
  return receipt;
 }
 // Credentials exist only in this server-owned closure; the owner grant supplies them.
-export function googleHostedTransport({getAccessToken,fetcher=fetch,account,grantId,requiredProfile=null,observations=null,rawResponseMax=mailLimits.response,now=()=>new Date()}={}){
+export function googleHostedTransport({getAccessToken,fetcher=fetch,account,grantId,requiredProfile=null,observations=null,rawResponseMax=mailLimits.response,now=()=>new Date(),signal:sessionSignal}={}){
  let observedGrant=null;
  async function request(path,{method='GET',body,max=120_000,guard=async()=>{},signal:operationSignal,onPost=()=>{}}={}){
-  const signal=operationSignal?AbortSignal.any([operationSignal,AbortSignal.timeout(25_000)]):AbortSignal.timeout(25_000);
+  const signal=AbortSignal.any([operationSignal,sessionSignal,AbortSignal.timeout(25_000)].filter(Boolean));
   const alive=()=>check(!signal.aborted,'Gmail request deadline expired; retain the original intent');
   async function bounded(start){alive();let abort;const expired=new Promise((_,reject)=>{abort=()=>reject(Error('Gmail request deadline expired; retain the original intent'));signal.addEventListener('abort',abort,{once:true});});try{const result=await Promise.race([start(),expired]);alive();return result;}finally{signal.removeEventListener('abort',abort);}}
   let token,response,requestGrant=null,size=0,chunks=[],failure='NETWORK',recorded=false;

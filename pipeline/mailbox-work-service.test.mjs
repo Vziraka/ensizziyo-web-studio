@@ -39,6 +39,18 @@ async function fixture(t,clock=()=>new Date(at)){
 }
 function result(context){return {body:'Thanks for your inquiry. Which customer process should we discuss first?',source_ids:context.source_ids,uncertainties:['Scope needs discussion.'],attachments:[{asset_id:'asset',version_id:'v1',sha256:context.attachment_catalogue.items[0].sha256}],execution:{provider:'synthetic Work',model:'fixture',duration_ms:100,input_tokens:null,output_tokens:null}};}
 
+test('adoption removes only an exact trailing managed signature and retains raw proposal provenance',async t=>{
+ const signature='EVZ Digital Team\nhello@evzdigital.studio\n571-752-9610',body='Thanks for asking. Which examples would help?';
+ for(const [input,expected] of [[body+'\n\n'+signature,body],[(body+'\n\n'+signature).replaceAll('\n','\r\n'),body],[body,body],[signature+'\n\n'+body,signature+'\n\n'+body],[body+'\n\n'+signature+' extension',body+'\n\n'+signature+' extension'],[signature,null]]){
+  const f=await fixture(t);await f.create();const worker=await f.worker(),claim=await worker.claim({request_id:'signature-proof'}),packet=await worker.context('task-one',claim.lease),proposal={...result(packet),body:input};
+  await worker.submit({id:'task-one',lease:claim.lease,context_sha256:packet.task.context_sha256,result:proposal});
+  const adopt=async()=>mailboxWorkCommand(await f.app(),'adopt',{id:'task-one',revision:(await f.store.snapshot()).revision,result_sha256:hash(proposal)},'owner');
+  if(expected===null){await assert.rejects(adopt(),/body beyond the managed signature/);continue;}
+  await adopt();const saved=await f.store.snapshot(),draft=saved.prospects.project.reply_draft;
+  assert.equal(draft.body,expected);assert.equal(draft.content.signature,signature);assert.equal(draft.status,'Draft');assert.equal(draft.agent_result_sha256,hash(proposal));assert.equal(saved.email_draft_tasks['task-one'].result.body,input);
+ }
+});
+
 test('actual SDK worker claims, reconstructs exact PDF, saves proposal and signed adoption remains unapproved',async t=>{
  const f=await fixture(t);await assert.rejects(f.create('friend'),/Assigned/);await f.create();
  const fetcher=async(input,init)=>createMailboxWorkMcp({openWorker:async({credential:given,context:trusted,origin:host})=>createMailboxWorker(await f.app(),{credential:given,leaseSecret,context:trusted,origin:host})})(new Request(input,init),context);

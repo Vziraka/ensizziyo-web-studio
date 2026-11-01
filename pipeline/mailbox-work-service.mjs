@@ -26,8 +26,8 @@ export function applyMailboxWorkChange(state,config,transition){
  validateMailboxWorkState(state,config);return {...result,id:t.id,event_id:event.id};
 }
 async function settings(app){
- check(app.store?.key==='workspace'&&app.store.manualBinding?.scope.capability===mailboxWorkCapability,'Exact mailbox worker store required');
- const c=await app.loadConfig();check(c.shared_capability===mailboxWorkCapability,'Exact mailbox worker configuration required');app.config=c;app.originalStore=blobProjectOriginalStore(app.store.store);return hash(c);
+ check(app.store?.key==='workspace'&&[mailboxWorkCapability,'shared-mailbox-clock-v1'].includes(app.store.manualBinding?.scope.capability),'Exact mailbox worker store required');
+ const c=await app.loadConfig();check([mailboxWorkCapability,'shared-mailbox-clock-v1'].includes(c.shared_capability),'Exact mailbox worker configuration required');app.config=c;app.originalStore=blobProjectOriginalStore(app.store.store);return hash(c);
 }
 export async function mailboxWorkCommand(app,type,input,actor){
  check(['create','cancel','adopt'].includes(type)&&['owner','friend'].includes(actor),'Signed operator task command required');

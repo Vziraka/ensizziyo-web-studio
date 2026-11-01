@@ -2,9 +2,10 @@ import {StudioLifecycle,check,hash,pauseCold} from './lifecycle.mjs';
 import {replyContent,replyHeader,replySender} from './reply-content.mjs';
 import {applyLocalInquiry} from './local-inquiry-intake.mjs';
 import {mailObservationJSON,gmailScopes} from './google-hosted-transport.mjs';
+import {assertMailboxClockStep,applyMailboxClockTransition} from './mailbox-clock.mjs';
 
 export const mailboxCapability='shared-mailbox-review-v1';
-export const isMailboxCapability=value=>[mailboxCapability,'shared-mailbox-work-v1'].includes(value);
+export const isMailboxCapability=value=>[mailboxCapability,'shared-mailbox-work-v1','shared-mailbox-clock-v1'].includes(value);
 export const mailboxProfile='shared-mailbox-gmail-v1';
 export const mailboxReviewEvents=['conversation_claimed','inquiry_classification_reviewed','inquiry_identity_resolved','reply_reviewed','reply_draft_saved','reply_draft_approved'];
 const key=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(v)&&!['constructor','prototype','__proto__'].includes(v);
@@ -79,11 +80,22 @@ export function applyMailboxFailure(state,config,f){
  check(utc(f.at)&&f.before_sha256===hash(state.mailbox_sync??null)&&f.policy_sha256===hash(validateMailboxPolicy(config.mailbox))&&f.operation===expected(state.mailbox_sync).operation&&['Source unavailable','History expired; full recovery required','Message unavailable; original review required','Capacity reached'].includes(f.reason),'Invalid mailbox failure evidence');
  state.mailbox_failure=structuredClone(f);state.revision++;state.updated_at=f.at;return {held:true,reason:f.reason};
 }
-export async function syncMailboxStep(app,{transport}={}){
+export function mailboxCoverageComplete(state){const s=state.mailbox_sync;return Boolean(s?.phase==='history'&&s.checked_at&&s.pending.length===0&&s.page===null&&s.next_cursor===null&&!s.hold&&!state.mailbox_failure);}
+export async function syncMailboxStep(app,{transport,clockStep}={}){
  check(isMailboxCapability(app.store?.manualBinding?.scope.capability),'Exact shared mailbox store required');
  const config=await app.loadConfig(),policy=validateMailboxPolicy(config.mailbox),state=await app.snapshot(),sync=state.mailbox_sync??null;
- const request=expected(sync),before=hash(sync),configuration=hash(config),guard=async()=>check(hash(await app.loadConfig())===configuration&&hash((await app.snapshot()).mailbox_sync??null)===before,'Mailbox source changed during provider read');
- const hold=reason=>{const mailboxFailure={before_sha256:before,policy_sha256:hash(policy),at:app.now().toISOString(),operation:request.operation,reason};return app.change((s,c)=>applyMailboxFailure(s,c,mailboxFailure),{configFingerprint:configuration,mailboxFailure});};
+ const request=expected(sync),before=hash(sync),configuration=hash(config),guard=async()=>{const current=await app.snapshot();check(hash(await app.loadConfig())===configuration&&hash(current.mailbox_sync??null)===before,'Mailbox source changed during provider read');if(clockStep)assertMailboxClockStep(current,config,clockStep,app.now().toISOString());};
+ const commit=(kind,evidence)=>{
+  const options={configFingerprint:configuration,[kind]:evidence};
+  if(clockStep){options.mailboxClockStep=clockStep;options.mailboxClock={type:'settle',actor:'clock',at:evidence.at,input:{...clockStep,outcome:'Held'}};}
+  return app.change((s,c)=>{
+   if(clockStep)assertMailboxClockStep(s,c,clockStep,app.now().toISOString());
+   const result=kind==='mailboxFailure'?applyMailboxFailure(s,c,evidence):applyMailboxObservation(s,c,evidence);
+   if(clockStep){options.mailboxClock.input.outcome=result.held?'Held':mailboxCoverageComplete(s)?'Caught up':'Continue';applyMailboxClockTransition(s,c,options.mailboxClock);}
+   return result;
+  },options);
+ };
+ const hold=reason=>commit('mailboxFailure',{before_sha256:before,policy_sha256:hash(policy),at:app.now().toISOString(),operation:request.operation,reason});
  if(Buffer.byteLength(JSON.stringify(state))>=18_500_000)return hold('Capacity reached');
  if(state.mailbox_failure?.reason==='History expired; full recovery required')return {held:true,reason:state.mailbox_failure.reason};
  await guard();let value;
@@ -94,7 +106,7 @@ export async function syncMailboxStep(app,{transport}={}){
  else value=await transport.mailboxMessage(request.input.id);
  await guard();
  const observation={...request,before_sha256:before,policy_sha256:hash(policy),at:app.now().toISOString(),value,grant:transport.grant()};
- return await app.change((s,c)=>applyMailboxObservation(s,c,observation),{configFingerprint:configuration,mailboxObservation:observation});
+ return await commit('mailboxObservation',observation);
  }catch(error){
   if(['STATE_CONFLICT','STATE_UNCERTAIN'].includes(error.code))throw error;
   await guard();return hold(error.status===404&&request.operation==='history'?'History expired; full recovery required':error.status===404&&request.operation==='message'?'Message unavailable; original review required':'Source unavailable');

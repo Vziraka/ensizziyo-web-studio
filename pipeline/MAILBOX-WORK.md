@@ -12,6 +12,8 @@ A stable worker credential identifies the connection; each claim receives a sepa
 
 An assigned operator adopts an exact proposal into an **unapproved** reply draft. The source, catalogue and actual selected PDF bytes are checked before adoption; fresh conditional replay checks them again where applicable. Existing exact-content approval remains separate. A relevant newer or unresolved mailbox source also invalidates the adopted draft and prevents its approval. Signed operators can inspect only the exact saved attachment bytes through the existing PDF preview/download route. Edits, ownership changes and changed source/baselines invalidate the relevant context. There is no outgoing transport in this capability.
 
+The worker returns body text without the desk-managed signature. During mailbox-task adoption, one exact trailing copy of that signature is removed before composing the unapproved draft; a signature-only body is rejected. The raw proposal, its hash and adoption-event input remain unchanged. Quoted, middle and near-match text is not stripped. No historical approval or sending-time content is rewritten.
+
 ## Original bytes
 
 The existing immutable original store keeps its 1,000,000-byte storage chunks. The task transport returns at most 262,144 bytes per segment, with offset, segment digest, total length and whole-file digest. A segment may end at a storage-chunk boundary. Workers follow the returned next offset, reconstruct the entire file, verify its whole-file digest and inspect the actual PDF before proposing it. Metadata or extracted text alone does not prove visual inspection. Existing limits remain two selected PDFs and 20,000,000 combined attachment bytes; oversized originals are not silently compressed or represented as complete.
