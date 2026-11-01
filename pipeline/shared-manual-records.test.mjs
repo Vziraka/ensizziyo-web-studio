@@ -20,10 +20,11 @@ function sdkMemory(){
   return new Response(null,{headers:{etag}});
  }});return control;
 }
-async function fixture(t){
+async function fixture(t,capability=scope.capability){
  const directory=await mkdtemp(join(tmpdir(),'evz-inert-'));t.after(()=>rm(directory,{recursive:true,force:true}));
  const app=await StudioLifecycle.initialize({directory:join(directory,'source'),config:structuredClone(initialConfig),now:()=>new Date(at)});await app.apply(fixtureProspect('synthetic-project',at));
  const state=await app.snapshot();state.mode='production';state.run_id=scope.run_id;delete state.prospects['synthetic-project'].controlled;
+ if(capability==='shared-outreach-review-v1')Object.assign(state.prospects['synthetic-project'],{follow_up_owner:'owner',qualification:{verdict:'Research-qualified',independent_review:'Accepted'},call_prep:{observations:[{fact:'Synthetic verified research'}]}});
  const pdf=Buffer.from('%PDF-1.4\n% new synthetic original\n'+('new fictional original bytes\n'.repeat(45000))+'%%EOF\n'),digest=originalDigest(pdf),path=`project-originals/${digest}.pdf`;
  await mkdir(join(app.directory,'project-originals'));await writeFile(join(app.directory,path),pdf);
  state.asset_index={design:{id:'design',name:'Synthetic approved original',scope:'project',project_id:'synthetic-project',baseline_version:'v1',choices:{owner:'v1',friend:'v1'},versions:{v1:{id:'v1',reference:'private-path:synthetic-original.pdf',verified_original:{reference:'private-path:synthetic-original.pdf',sha256:digest,bytes:pdf.length,mime_type:'application/pdf',name:'synthetic.pdf'},registered_by:'owner',registered_at:at}}}};
@@ -33,13 +34,13 @@ async function fixture(t){
  state.runtime={status:'Running',transport:'historical-host'};state.ai_attempts={immutable:{status:'Uncertain',reserved_microcredits:1900,receipt:'retained original attempt'}};
  const backup=join(directory,'source.backup.json');await writeLifecycleBackup(app.directory,state,backup,at);
  const sourceConfig={...structuredClone(initialConfig),mode:'production',run_id:scope.run_id,calls_enabled:true,outreach_enabled:true,connector_writes_enabled:true,transcript_ai:{...initialConfig.transcript_ai,enabled:true,daily_calls:100},runtime:{enabled:true},release:{approved:true,fingerprint:'old'},call_release:{approved:true},sender:{operator_names:{owner:'Synthetic Owner',friend:'Synthetic Friend'},secret:'NEVER_COPY'}};
- const packet=await prepareManualWorkspace({backup,sourceConfig,scope}),sdk=sdkMemory(),store=new ConditionalLifecycleStore(sdk.raw,{manualBinding:packet.binding});
+ const packet=await prepareManualWorkspace({backup,sourceConfig,scope:{...scope,capability}}),sdk=sdkMemory(),store=new ConditionalLifecycleStore(sdk.raw,{manualBinding:packet.binding});
  return {directory,local:app.directory,state,pdf,path,packet,sdk,store,sourceConfig};
 }
 const note=id=>({id,prospect_id:'synthetic-project',type:'note_added',at,data:{note:`Private note ${id}`}});
 const cookie=r=>r.headers.get('set-cookie')?.split(';',1)[0];
 async function client(f,actor,overrides={}){
- const env={CONTEXT:'deploy-preview',SITE_ID:scope.site_id,DEPLOY_ID:scope.deploy_id,EVZ_OPERATIONS_DESK_ENABLED:'shared-manual-records-v1',EVZ_OPERATIONS_MANUAL_BINDING:JSON.stringify(f.packet.binding),EVZ_OPERATIONS_ORIGIN:origin,EVZ_OPERATIONS_BLOB_NAMESPACE:scope.namespace,EVZ_OPERATIONS_OWNER_KEY:'o'.repeat(43),EVZ_OPERATIONS_FRIEND_KEY:'f'.repeat(43),EVZ_OPERATIONS_SESSION_SECRET:'s'.repeat(43),...overrides};
+ const env={CONTEXT:'deploy-preview',SITE_ID:scope.site_id,DEPLOY_ID:scope.deploy_id,EVZ_OPERATIONS_DESK_ENABLED:f.packet.binding.scope.capability,EVZ_OPERATIONS_MANUAL_BINDING:JSON.stringify(f.packet.binding),EVZ_OPERATIONS_ORIGIN:origin,EVZ_OPERATIONS_BLOB_NAMESPACE:scope.namespace,EVZ_OPERATIONS_OWNER_KEY:'o'.repeat(43),EVZ_OPERATIONS_FRIEND_KEY:'f'.repeat(43),EVZ_OPERATIONS_SESSION_SECRET:'s'.repeat(43),...overrides};
  const request=(path,{method='GET',headers={},body}={})=>new Request(origin+'/desk'+path,{method,headers,body:body?JSON.stringify(body):undefined});
  const handler=createHostedDesk({env,storeFactory:namespace=>{assert.equal(namespace,scope.namespace);return f.sdk.raw;},now:()=>new Date(at)});
  const boot=await handler(request('/api/bootstrap'));if(boot.status!==200)return {handler,request,boot};const csrf=(await boot.json()).csrf,initial=cookie(boot),login=await handler(request('/api/login',{method:'POST',headers:{cookie:initial,'content-type':'application/json','x-studio-token':csrf,origin},body:{key:env[actor==='owner'?'EVZ_OPERATIONS_OWNER_KEY':'EVZ_OPERATIONS_FRIEND_KEY']}}));assert.equal(login.status,200);
@@ -117,4 +118,26 @@ test('manual setup remains validation-only by default, never seeds missing recor
  assert.equal(f.sdk.writes,0);
  await installManualWorkspace(f.store,f.packet,{commit:true});await assert.rejects(installManualWorkspace(f.store,f.packet,{commit:true}),/already exists/);
  const app=await StudioLifecycle.fromStore({store:f.store,now:()=>new Date(at)});await writeFile(join(f.local,f.path),Buffer.from('%PDF-corrupt'));await assert.rejects(exportManualBackup(app,f.local,join(f.directory,'corrupt.backup.json')),/checksum/);
+});
+
+test('shared outreach review saves exact production-shaped drafts and approvals without enabling delivery',async t=>{
+ const f=await fixture(t,'shared-outreach-review-v1');await installManualWorkspace(f.store,f.packet,{commit:true});
+ const app=await StudioLifecycle.fromStore({store:f.store,now:()=>new Date(at)}),before=await app.snapshot(),owner=await client(f,'owner'),friend=await client(f,'friend');
+ const draft={id:'shared-draft',prospect_id:'synthetic-project',type:'outreach_draft_saved',at,data:{lane:'email-first',timezone:'America/New_York',subject:'Synthetic question',body:'Synthetic complete message.'}};
+ await assert.rejects(app.apply(draft,{actor:'friend',expectedRevision:before.revision}),/Assigned/);
+ const response=await owner.call('/api/event',{event:draft,revision:before.revision});assert.equal(response.status,200,await response.text());
+ assert.equal((await friend.read()).outreach_review.enabled,true);
+ const saved=await app.snapshot(),sha256=saved.outreach_review.drafts['synthetic-project'].sha256;
+ await app.apply({id:'shared-approve',prospect_id:'outreach-batches',type:'outreach_batch_approved',at,data:{items:[{project_id:'synthetic-project',sha256}],facts_checked:true}},{actor:'owner',expectedRevision:saved.revision});
+ const result=await app.dashboard();assert.equal(result.outreach_review.enabled,true);assert.equal(result.outreach_review.items[0].schedule.approved_by,'owner');assert.equal(result.controls.outreach_paused,true);assert.deepEqual(result.actions,before.actions);
+ await assert.rejects(f.store.change(s=>{s.outreach_review.drafts['synthetic-project'].body='unreviewed';},{manualRecord:{event:draft,actor:'owner',revision:before.revision}}));
+ await assert.rejects(f.store.change((s,c)=>{c.outreach_enabled=true;},{manualRecord:{event:draft,actor:'owner',revision:before.revision}}));
+});
+
+test('old manual bindings cannot acquire shared outreach review through an environment flag',async t=>{
+ const f=await fixture(t),before=f.sdk.writes;
+ const mismatched=await client(f,'owner',{EVZ_OPERATIONS_DESK_ENABLED:'shared-outreach-review-v1'});
+ assert.equal(mismatched.boot.status,503);assert.equal(f.sdk.writes,before);
+ await installManualWorkspace(f.store,f.packet,{commit:true});const app=await StudioLifecycle.fromStore({store:f.store,now:()=>new Date(at)});
+ await assert.rejects(app.apply({id:'unauthorized-review',prospect_id:'outreach-batches',type:'outreach_batch_paused',at,data:{reason:'Synthetic rejection'}},{actor:'owner',expectedRevision:(await app.snapshot()).revision}),/declared/);
 });

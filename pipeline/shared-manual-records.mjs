@@ -5,11 +5,14 @@ import {blobProjectOriginalStore,originalDigest} from './shared-project-original
 import {rejectPartialOriginalImport} from './original-recovery.mjs';
 
 import {manualRecordEvents} from './manual-record-events.mjs';
+import {outreachReviewEvents,applyOutreachReview} from './outreach-review.mjs';
 export {manualRecordEvents} from './manual-record-events.mjs';
+export const manualCapabilities=['shared-manual-records-v1','shared-outreach-review-v1'];
+export const manualAllowedEvents=capability=>capability==='shared-outreach-review-v1'?[...manualRecordEvents,...outreachReviewEvents]:manualRecordEvents;
 const key=v=>typeof v==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(v);
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 export function validateManualBinding(b){
- check(b?.schema_version===1&&b.capability==='shared-manual-records-v1'&&b.mode==='production'&&b.state_schema===1&&[b.workspace_id,b.run_id,b.site_id,b.deploy_id].every(key),'Invalid manual-record workspace binding');
+ check(b?.schema_version===1&&manualCapabilities.includes(b.capability)&&b.mode==='production'&&b.state_schema===1&&[b.workspace_id,b.run_id,b.site_id,b.deploy_id].every(key),'Invalid manual-record workspace binding');
  const origin=new URL(b.origin);check(origin.protocol==='https:'&&origin.origin===b.origin&&/^evz-manual-shared-[a-z0-9-]{8,40}$/.test(b.namespace),'Invalid manual-record origin or separate namespace');
  check(Object.keys(b).sort().join(',')==='capability,deploy_id,mode,namespace,origin,run_id,schema_version,site_id,state_schema,workspace_id','Unknown manual-record binding fields');return b;
 }
@@ -17,7 +20,7 @@ export function validateManualEnvelope(data,binding){
  validateManualBinding(binding.scope);const m=data.manual_source;
  check(!data.inert_source&&data?.schema_version===1&&data.config?.schema_version===1&&data.state?.schema_version===1,'Unknown manual-record format');
  check(sha(binding.manifest_sha256)&&m?.kind==='shared-manual-record-source-v1'&&m.schema_version===1&&hash(m)===binding.manifest_sha256&&hash(m.binding)===hash(binding.scope),'Manual-record manifest or deployment binding changed');
- check(hash(data.config)===m.config_sha256&&data.config.shared_capability==='shared-manual-records-v1'&&data.config.mode==='production'&&data.config.run_id===binding.scope.run_id,'Manual-record configuration changed; prepare a new reviewed binding');
+ check(hash(data.config)===m.config_sha256&&data.config.shared_capability===binding.scope.capability&&data.config.mode==='production'&&data.config.run_id===binding.scope.run_id,'Manual-record configuration changed; prepare a new reviewed binding');
  check(data.state.mode===binding.scope.mode&&data.state.run_id===binding.scope.run_id,'Manual-record identity changed');
  for(const flag of ['research_enabled','outreach_enabled','connector_writes_enabled','calls_enabled'])check(data.config[flag]===false,'Manual recording cannot enable execution');
  check(data.config.runtime?.enabled===false&&data.config.operations?.enabled===false&&data.config.transcript_ai?.enabled===false&&data.config.release?.approved===false&&data.config.call_release?.approved===false,'Manual recording cannot release execution');
@@ -26,8 +29,8 @@ export function validateManualEnvelope(data,binding){
 export async function prepareManualWorkspace({backup,sourceConfig,scope}){
  validateManualBinding(scope);
  const inertScope={...scope,capability:'inert-shared-v1',namespace:scope.namespace.replace('evz-manual-shared-','evz-inert-shared-')};
- const packet=await prepareInertWorkspace({backup,sourceConfig,scope:inertScope}),config={...packet.envelope.config,shared_capability:'shared-manual-records-v1',follow_up:{...packet.envelope.config.follow_up,enabled:true}};
- const manifest={...packet.envelope.inert_source,kind:'shared-manual-record-source-v1',binding:structuredClone(scope),config_sha256:hash(config),allowed_events:[...manualRecordEvents],attestation:'Human-reported completed call; no call authorization or independent provider proof'};
+ const packet=await prepareInertWorkspace({backup,sourceConfig,scope:inertScope}),config={...packet.envelope.config,shared_capability:scope.capability,follow_up:{...packet.envelope.config.follow_up,enabled:true}};
+ const manifest={...packet.envelope.inert_source,kind:'shared-manual-record-source-v1',binding:structuredClone(scope),config_sha256:hash(config),allowed_events:[...manualAllowedEvents(scope.capability)],attestation:'Human-reported completed call; no call authorization or independent provider proof'};
  const envelope={schema_version:1,config,state:packet.envelope.state,manual_source:manifest},binding={scope:structuredClone(scope),manifest_sha256:hash(manifest)};
  validateManualEnvelope(envelope,binding);return {envelope,binding,files:packet.files};
 }
@@ -45,10 +48,11 @@ export async function installManualWorkspace(store,packet,{commit=false}={}){
  check(result?.modified===true,'Manual-record destination changed; inspect before retrying');check(hash((await store.envelope()).data)===hash(envelope),'Manual-record readback changed');return {dry_run:false,execution:'disabled'};
 }
 export function applyManualRecord(state,event,actor,revision,now,config){
- check(['owner','friend'].includes(actor)&&manualRecordEvents.includes(event.type),'Manual workspace permits signed notes, completed-call records, claims, handoffs and stops only');
+ check(['owner','friend'].includes(actor)&&manualAllowedEvents(config.shared_capability).includes(event.type),'Manual workspace permits only its declared signed records');
  check(key(event?.id)&&key(event.prospect_id)&&typeof event.at==='string'&&/Z$|[+-]\d\d:\d\d$/.test(event.at)&&Number.isFinite(Date.parse(event.at))&&Date.parse(event.at)<=+now+60_000,'Manual event needs stable IDs and an explicit nonfuture timestamp');
  check(Object.keys(event).every(k=>['id','prospect_id','type','at','data'].includes(k)),'Manual event contains unknown fields');
  check(Number.isSafeInteger(revision),'Manual recording requires the exact current revision');
+ if(config.shared_capability==='shared-outreach-review-v1'&&outreachReviewEvents.includes(event.type))return applyOutreachReview({config,now:()=>new Date(now)},state,event,actor,revision,{shared:true});
  check(Object.hasOwn(state.prospects,event.prospect_id),'Choose an existing manual record');
  const fields={note_added:['note'],call_logged:['call_id','outcome','performed_at','simulated','desk','note','focus','intent','callback_at','manual_attested'],call_claimed:[],follow_up_handed_off:['to'],contact_stopped:['reason']}[event.type];
  check(event.data&&typeof event.data==='object'&&!Array.isArray(event.data)&&Object.keys(event.data).every(k=>fields.includes(k)),'Manual event contains unsupported data');

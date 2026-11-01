@@ -36,8 +36,8 @@ function eligibility(r,d,actor){
 }
 function kind(r){return Object.keys(r.calls??{}).length||(r.attempts??[]).length?'previously-called':'new-business';}
 function identity(r){return {company_id:r.company_id??r.id,email:r.contact.email.toLowerCase()};}
-export function applyOutreachReview(app,state,event,actor,revision){
- check(!app.store&&app.config.mode==='controlled'&&roles.includes(actor),'Outreach review is an execution-disabled rehearsal');
+export function applyOutreachReview(app,state,event,actor,revision,{shared=false}={}){
+ check(!app.store&&roles.includes(actor)&&(shared?app.config.shared_capability==='shared-outreach-review-v1'&&app.config.mode==='production'&&app.config.outreach_enabled===false:app.config.mode==='controlled'),'Outreach review requires its exact review authority');
  check(safeId(event.id)&&safeId(event.prospect_id)&&outreachReviewEvents.includes(event.type),'Stable outreach event identity required');
  const fingerprint=hash({event,actor}),prior=state.events[event.id];
  if(prior){check(prior.fingerprint===fingerprint,'Event ID conflicts with saved evidence');return {duplicate:true,revision:state.revision};}
@@ -46,7 +46,7 @@ export function applyOutreachReview(app,state,event,actor,revision){
  if(event.type==='outreach_draft_saved'){
   exact(data,Object.hasOwn(data,'kind')?'lane,timezone,subject,body,kind':'lane,timezone,subject,body');const r=state.prospects[event.prospect_id];
   check(data.kind===undefined||['introduction','follow-up'].includes(data.kind),'Choose introduction or one follow-up');
-  check(r?.controlled===true&&r.contact?.email?.endsWith('@example.invalid'),'Fictional research contact required');
+  check(shared||r?.controlled===true&&r.contact?.email?.endsWith('@example.invalid'),'Fictional research contact required');
   const cadence=outreachCadence(state,now).find(c=>c.project_id===r.id),follow=data.kind==='follow-up';
   check(follow||!Object.values(state.outreach_delivery?.intents??{}).some(i=>i.project_id===r.id),'An original introduction is reserved; reconcile it or prepare the single follow-up after verified sending');
   check(!follow||cadence?.follow_up_available,'One follow-up requires a verified original send without a reply, stop or previous follow-up');
