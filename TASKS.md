@@ -43,6 +43,8 @@ Fresh browser inventory now works, resolving the old tool-access blocker for thi
 
 Next dependency: finish workspace/connector verification, then run the agreed fictional Sites proof before selecting migration or new storage. Do not weaken existing production holds or merely raise the discovery limit to claim 100 approved first sends/day.
 
+Connection follow-up: owner confirmed Gmail and Drive connected after selecting the business Google account separately from the ChatGPT login. Fresh Sites eligibility now returns Gmail and Google Drive as allowed (Calendar is also present); this supersedes the earlier absent/uninstalled checkpoint. This chat's callable tool catalog still exposes no Gmail/Drive profile or action tools, so exact connected identity, alias sending and provider reads are not yet verified. Native settings inspection was interrupted by concurrent user input; no settings or permissions were changed. Do not ask the owner to reinstall already connected plugins. Next verify profile/action availability and the hello sender alias before integrating actual provider actions.
+
 ## Studio workflow implementation — October 28, 2026
 
 Owner authorized implementation after the design interview. Latest selection: references and saved client preferences are consulted only when requested. Model reviews are weekly and before substantial work; defaults never switch automatically. Preserve the separate staging checkout and all client/provider state.
