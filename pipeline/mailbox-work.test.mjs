@@ -1,0 +1,64 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {hash,initialConfig} from './lifecycle.mjs';
+import {fixtureReply} from './lifecycle-fixtures.mjs';
+import {mailboxWorkCapability,validateMailboxWorkPolicy,applyMailboxWorkTransition,mailboxWorkContext,mailboxWorkReceipt} from './mailbox-work.mjs';
+
+const at='2026-11-02T14:00:00.000Z',secret='ab'.repeat(32),lease={worker_id:'worker-one',token:secret};
+function fixture(){
+ const c={...structuredClone(initialConfig),mode:'production',outreach_enabled:false,shared_capability:mailboxWorkCapability,mailbox:{schema_version:1,account:'ensizziyo@evzdigital.studio',grant_id:'fixture-grant',after:'2026-11-01T00:00:00.000Z'},mailbox_work:{schema_version:1,worker_id:lease.worker_id,gateway_site_id:'gateway',gateway_deploy_id:'deploy',gateway_origin:'https://gateway.example.invalid',recovery_generation:'recovery-one',credential_sha256:hash('fixture-stable-credential'),max_tasks:100,max_claims_per_day:2,lease_minutes:20,expires_at:'2026-11-03T00:00:00.000Z'}};
+ const s={schema_version:1,mode:'production',run_id:c.run_id,revision:0,updated_at:at,prospects:{p:{id:'p',name:'Fixture business',controlled:false,stage:'Reply review',follow_up_owner:'owner',contact:{email:'customer@example.org',verified:true},reply:fixtureReply('reply','thread','customer@example.org')}},events:{},actions:{},mailbox_sync:{policy_sha256:hash(c.mailbox),phase:'history',checked_at:at,pending:[],page:null,next_cursor:null,hold:null,held_sources:{}},email_draft_tasks:{legacy:{id:'legacy',status:'Review',result:{body:'Retain this historical result'}}}};
+ const transition=(type,input,actor='worker',time=at)=>applyMailboxWorkTransition(s,c,{type,input,actor,at:time});
+ const create=(id='draft',replace=null)=>transition('create',{id,project_id:'p',revision:s.revision,replace_task_id:replace,studio_asset_ids:[]},'owner');
+ const claim=(id='draft',request='claim-one',token=secret)=>transition('claim',{id,request_id:request,worker_id:lease.worker_id,lease_sha256:hash(token)});
+ return {s,c,transition,create,claim};
+}
+const result={body:'Thanks for asking. Which customer journey should we focus on?',source_ids:['reply:reply'],uncertainties:['Scope is unconfirmed.'],execution:{provider:'synthetic Work',model:'fixture',duration_ms:100,input_tokens:null,output_tokens:null}};
+const submit=f=>f.transition('result',{id:'draft',worker_id:lease.worker_id,lease:secret,context_sha256:f.s.email_draft_tasks.draft.context_sha256,result});
+
+test('production reply, one fenced lease and exact unapproved result retain legacy and protected state',()=>{
+ const f=fixture(),legacy=structuredClone(f.s.email_draft_tasks.legacy),prospect=structuredClone(f.s.prospects.p);f.create();const claim=f.claim();assert.equal(claim.lease.fence,1);assert.equal(claim.lease.secret_sha256,undefined);
+ const context=mailboxWorkContext(f.s,f.c,'draft',lease,at);assert.deepEqual(context.source_ids,['reply:reply']);assert.equal(context.context.project_id,'p');assert.doesNotMatch(JSON.stringify(context),new RegExp(secret));
+ const revision=f.s.revision;assert.equal(f.claim().duplicate,true);assert.equal(f.s.revision,revision);assert.equal(submit(f).status,'Review');const saved=f.s.revision;assert.equal(submit(f).duplicate,true);assert.equal(f.s.revision,saved);
+ assert.deepEqual(f.s.email_draft_tasks.legacy,legacy);assert.deepEqual(f.s.prospects.p,{...prospect,email_draft_task_id:'draft'});assert.deepEqual(f.s.events,{});assert.deepEqual(f.s.actions,{});
+ assert.equal(mailboxWorkReceipt(f.s,f.c,'draft',lease,'2026-11-04T00:00:00.000Z').result.body,result.body);
+});
+test('all source and authority changes reject writes without partial mutation',()=>{
+ const changes={owner:f=>f.s.prospects.p.follow_up_owner='friend',reply:f=>f.s.prospects.p.reply=fixtureReply('new','thread','customer@example.org'),stop:f=>f.s.prospects.p.restriction='stopped',draft:f=>f.s.prospects.p.reply_draft={sha256:hash('edited')},quote:f=>f.s.prospects.p.quote={scope:'Changed'},pending:f=>f.s.mailbox_sync.pending.push({id:'new'}),page:f=>f.s.mailbox_sync.page='page',failure:f=>f.s.mailbox_failure={reason:'Unavailable'},held:f=>f.s.mailbox_sync.held_sources.x={thread_id:'thread'},recovery:f=>f.c.mailbox_work.recovery_generation='recovery-two',credential:f=>f.c.mailbox_work.credential_sha256=hash('rotated'),worker:f=>f.c.mailbox_work.worker_id='other'};
+ for(const [name,change]of Object.entries(changes)){const f=fixture();f.create();f.claim();change(f);const before=structuredClone(f.s);assert.throws(()=>submit(f),undefined,name);assert.deepEqual(f.s,before,name);}
+});
+test('ownership, mailbox catch-up and exact policy are required before creation',()=>{
+ for(const change of [f=>f.s.prospects.p.follow_up_owner=null,f=>f.s.prospects.p.contact.verified=false,f=>f.s.mailbox_sync.checked_at=null,f=>f.s.mailbox_sync.phase='bootstrap',f=>f.s.mailbox_sync.next_cursor='200',f=>f.s.mailbox_sync.policy_sha256=hash('wrong'),f=>f.c.shared_capability='shared-mailbox-review-v1']){const f=fixture();change(f);const before=structuredClone(f.s);assert.throws(()=>f.create());assert.deepEqual(f.s,before);}
+ const f=fixture();assert.throws(()=>f.transition('create',{id:'draft',project_id:'p',revision:0,replace_task_id:null,studio_asset_ids:[]},'friend'));assert.throws(()=>validateMailboxWorkPolicy({...f.c.mailbox_work,lease_minutes:31}));assert.throws(()=>validateMailboxWorkPolicy({...f.c.mailbox_work,max_tasks:101}));
+});
+test('expired leases never reclaim or write; durable receipt survives while revocation denies it',()=>{
+ const f=fixture();f.create();f.claim();const later='2026-11-02T14:21:00.000Z',before=structuredClone(f.s);
+ assert.throws(()=>mailboxWorkContext(f.s,f.c,'draft',lease,later),/expired/);
+ assert.throws(()=>f.transition('claim',{id:'draft',request_id:'claim-two',worker_id:lease.worker_id,lease_sha256:hash('cd'.repeat(32))},'worker',later));
+ assert.throws(()=>f.transition('result',{id:'draft',worker_id:lease.worker_id,lease:secret,context_sha256:f.s.email_draft_tasks.draft.context_sha256,result},'worker',later),/expired/);
+ assert.deepEqual(f.s,before);assert.equal(mailboxWorkReceipt(f.s,f.c,'draft',lease,later).status,'Claimed');f.c.mailbox_work.recovery_generation='changed';assert.throws(()=>mailboxWorkReceipt(f.s,f.c,'draft',lease,later));
+});
+test('request reuse, duplicate tokens, budget and replacement preserve fencing and all attempts',()=>{
+ const f=fixture();f.create();f.claim();f.create('next','draft');assert.throws(()=>f.claim('next','claim-one','cd'.repeat(32)),/Duplicate/);assert.throws(()=>f.claim('next','claim-two',secret),/Duplicate/);assert.equal(f.claim('next','claim-two','cd'.repeat(32)).lease.fence,2);
+ f.create('third','next');const before=structuredClone(f.s);assert.throws(()=>f.claim('third','claim-three','ef'.repeat(32)),/budget/);assert.deepEqual(f.s,before);assert.equal(f.s.email_draft_tasks.draft.status,'Superseded');assert.throws(()=>submit(f));
+});
+test('malformed or conflicting results, foreign PDFs and secrets cannot change state',()=>{
+ const bad=[{...result,approved:true},{...result,source_ids:['reply:foreign']},{...result,body:secret},{...result,attachments:[{asset_id:'foreign',version_id:'v1',sha256:hash('x')}]},{...result,execution:{...result.execution,duration_ms:-1}}];
+ const f=fixture();f.create();f.claim();for(const r of bad){const before=structuredClone(f.s);assert.throws(()=>f.transition('result',{id:'draft',worker_id:lease.worker_id,lease:secret,context_sha256:f.s.email_draft_tasks.draft.context_sha256,result:r}));assert.deepEqual(f.s,before);}
+ submit(f);const before=structuredClone(f.s);assert.throws(()=>f.transition('result',{id:'draft',worker_id:lease.worker_id,lease:secret,context_sha256:f.s.email_draft_tasks.draft.context_sha256,result:{...result,body:'Different second result'}}),/Conflicting/);assert.deepEqual(f.s,before);
+});
+test('failure and cancellation close task, never refund claim capacity or touch approvals',()=>{
+ const f=fixture();f.create();f.claim();f.transition('failure',{id:'draft',worker_id:lease.worker_id,lease:secret,reason:'Source unavailable'});assert.equal(mailboxWorkReceipt(f.s,f.c,'draft',lease,at).status,'Failed');assert.throws(()=>submit(f));
+ const input={id:'draft',revision:f.s.revision,reason:'Operator closes failed task'};f.transition('cancel',input,'owner');assert.equal(f.transition('cancel',input,'owner').duplicate,true);assert.equal(f.s.email_draft_tasks.draft.lease.request_id,'claim-one');assert.deepEqual(f.s.actions,{});
+});
+test('unrelated note updates preserve context and unknown task kinds remain unsupported',()=>{
+ const f=fixture();f.create();f.claim();f.s.prospects.p.note='Private operator note';assert.doesNotMatch(JSON.stringify(mailboxWorkContext(f.s,f.c,'draft',lease,at)),/Private operator/);const before=structuredClone(f.s);assert.throws(()=>f.transition('public_discovery',{id:'draft',worker_id:lease.worker_id}));assert.deepEqual(f.s,before);
+});
+test('exact offered PDFs retain the existing two-file combined 20MB limit',()=>{
+ function pdf(f,id,bytes){const event='approval-'+id;f.s.events[event]={id:event,actor:'owner',type:'asset_version_selected',prospect_id:'studio-assets',data:{asset_id:id,version_id:'v1'}};f.s.asset_index??={};f.s.asset_index[id]={id,name:id+'.pdf',scope:'project',project_id:'p',baseline_version:'v1',baseline_approval_event:event,versions:{v1:{id:'v1',label:'Approved version',reference:'fixture:'+id,verified_original:{reference:'fixture:'+id,mime_type:'application/pdf',sha256:hash(id),bytes}}}};return {asset_id:id,version_id:'v1',sha256:hash(id)};}
+ const f=fixture(),one=pdf(f,'one',10000000),two=pdf(f,'two',10000000);f.create();f.claim();const context=mailboxWorkContext(f.s,f.c,'draft',lease,at);assert.equal(context.attachment_catalogue.items.length,2);f.transition('result',{id:'draft',worker_id:lease.worker_id,lease:secret,context_sha256:context.task.context_sha256,result:{...result,attachments:[one,two]}});assert.equal(f.s.email_draft_tasks.draft.result.attachments.length,2);
+ const g=fixture(),a=pdf(g,'a',10000001),b=pdf(g,'b',10000000);g.create();g.claim();const before=structuredClone(g.s);assert.throws(()=>g.transition('result',{id:'draft',worker_id:lease.worker_id,lease:secret,context_sha256:g.s.email_draft_tasks.draft.context_sha256,result:{...result,attachments:[a,b]}}),/20,000,000/);assert.deepEqual(g.s,before);
+});
+test('unsettled historical delivery fences drafting without legacy incoming route configuration',()=>{
+ const f=fixture();f.s.outreach_delivery={intents:{out:{project_id:'p',status:'Uncertain'}}};assert.throws(()=>f.create(),/outgoing intent/);f.s.outreach_delivery.intents.out.status='Verified';f.create();f.claim();f.s.actions.old={id:'old',prospect_id:'p',payload:{exact_mail:true}};f.s.operations={requests:{'old-intent':{dispatch_started_at:at,status:'Uncertain'}}};assert.throws(()=>submit(f),/outgoing intent/);
+});
