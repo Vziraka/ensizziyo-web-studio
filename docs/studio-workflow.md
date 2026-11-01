@@ -2,6 +2,31 @@
 
 October 28, 2026. The owner authorized implementation after selecting these defaults: interview substantial planning/design changes; save confirmed project decisions and confirm wider preferences; consult references and saved design preferences only on request; research public sources before evaluating Apollo; review releases weekly and before substantial work without automatically switching models. These choices supersede the earlier automatic design-retrieval suggestion.
 
+## Task flow
+
+This is the intended workflow in a supported host, not proof that every client exposes the same tools or enforced gates. Categories can overlap; [WORKFLOW.md](../WORKFLOW.md) owns the detailed review requirements.
+
+```mermaid
+flowchart TD
+    A["Owner request"] --> B["Read applicable instructions and current task context"]
+    B --> C["Match the task to toolkit guidance and available skills/tools"]
+    C --> D["Lead agent works; delegate bounded independent tasks when useful"]
+    D --> E{"Substantial operations change or broad audit?"}
+    E -- "Yes" --> F["Require both independent reviewers: requirements and engineering"]
+    E -- "No" --> G{"Skill change?"}
+    F --> G
+    G -- "Yes" --> H["Test examples and obtain independent skill review"]
+    G -- "No" --> I["Proportionate requirements and engineering checks; reuse completed passes"]
+    H --> I
+    I --> J["Reconcile findings and recheck affected changes"]
+    J --> K{"Meaningful milestone or known handoff?"}
+    K -- "Yes" --> L["Checkpoint decisions, reasons, evidence and next action"]
+    K -- "No" --> M["Report result or reviewed PR"]
+    L --> M
+    N["Actual context signal, if available"] -.-> L
+    J -. "When an improvement is warranted" .-> O["Compare skill or workflow changes with a baseline"]
+```
+
 ## Interviews and persistent decisions
 
 `.agents/skills/studio-grilling/SKILL.md` owns the interview method. It is an EVZ adaptation rather than a vendored upstream skill. Read it automatically for substantial planning/design changes, or on an explicit grilling request. Direct small changes proceed normally. Confirmed implementation decisions belong in BRIEF.md/TASKS.md; private client decisions belong in that client's existing notes/work/asset feedback, never a new public client folder. Save the reason and the deciding answer alongside acceptance criteria. Chat summaries are not the durable record.
@@ -49,7 +74,11 @@ Historical starting evidence in OWNER-CONTACTS.md: the 151-card public pass foun
 
 `.agents/skills/studio-model-review/SKILL.md` owns weekly and substantial-work checks; `docs/model-review.md` holds dated public recommendations. Monday 9 AM America/New_York is the chosen implementation default for the requested weekly check. Notify only for a relevant change, failure or needed decision. No model change, new inference allowance or purchase is automatic.
 
-At a task's normal review, consider recurring successful procedures and repeated failures. Suggest a skill/test improvement with actual examples, scope and overlap; do not create a skill for every repeated prompt or auto-promote client tastes. Keep one owner for a shared-file change and let that owner integrate fixes. Discussion/read-only work can reuse the current checkout. Use a separate existing suitable worktree for independent concurrent edits when needed; a new chat alone is not a reason to create one. Archive only worktrees created for the task once needed work is preserved.
+During authorized work, agents may create or improve an EVZ skill and test it with independent review. Start with a concrete repeated success, failure, or explicit request; inspect existing skills and prefer a narrow update or executable check when it fits. State the intended trigger, exclusions, evidence, scope, and why a skill is useful. A one-off client preference stays project-scoped and does not automatically become a studio rule. Use the installed `skill-creator` when available; its structural validator checks packaging, not whether the skill improves outcomes. If unavailable, use the [Agent Skills specification](https://agentskills.io/specification) and inspect names, descriptions, references and any scripts directly.
+
+Before relying on a new or changed skill, compare realistic fictional examples with the relevant baseline, including an explicit trigger, a natural trigger, and a nearby case that should not trigger. Check actual decisions and artifacts against independently specified expectations; note false positives, misses, available usage and time. Keep candidate and baseline conditions comparable and use held-out cases when practical. An independent reviewer examines the exact skill revision, permissions, dependencies and observed evidence; see [WORKFLOW.md](../WORKFLOW.md#review-and-pr-evidence). Record what was changed, why, the reviewed revision, results and limitations in the existing task/PR or private client record. If behavior, discovery or independent review is unverified, say so; structural validation alone is not proof of improvement. Recheck on a relevant upstream or environment change and retain a rollback path. [Evaluation cases and recipe](agent-workflow-evaluation.md) provide the initial fictional baseline.
+
+Keep one owner for a shared-file change and let that owner integrate fixes. Discussion/read-only work can reuse the current checkout. Use a separate existing suitable worktree for independent concurrent edits when needed; a new chat alone is not a reason to create one. Archive only worktrees created for the task once needed work is preserved.
 
 ## Adoption and verification
 
