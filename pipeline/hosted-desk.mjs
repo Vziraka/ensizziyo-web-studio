@@ -196,9 +196,9 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
    let app,raw;try{raw=await storeFactory(env.EVZ_OPERATIONS_BLOB_NAMESPACE);app=await openApp(raw,now,settings.inertBinding,settings.manualBinding,settings.projectBinding,settings.dispatchBinding,env,context);}catch{return json(503,{error:'Private shared storage is unavailable; no execution was started'});}
    if(post&&path==='/api/mailbox/sync'){
     check(settings.manualBinding?.scope.capability===mailboxCapability,'Exact shared mailbox required');const input=await inputBody(request);check(input&&typeof input==='object'&&!Array.isArray(input)&&Object.keys(input).length===0,'Mailbox sync uses its saved source only');
-    const getAccessToken=googleIncomingOptions.getAccessToken??createGoogleOAuth({...googleOAuthOptions,env,now:()=>+now(),profile:mailboxProfile,dispatchApp:app,grantId:app.config.mailbox.grant_id}).getAccessToken;
-    const transport=googleHostedTransport({...googleIncomingOptions,getAccessToken,account:app.config.mailbox.account,grantId:app.config.mailbox.grant_id,requiredProfile:mailboxProfile,now});
-    return json(200,await syncMailboxStep(app,{transport}));
+    const read=getAccessToken=>syncMailboxStep(app,{transport:googleHostedTransport({...googleIncomingOptions,getAccessToken,account:app.config.mailbox.account,grantId:app.config.mailbox.grant_id,requiredProfile:mailboxProfile,now})});
+     const result=googleIncomingOptions.getAccessToken?await read(googleIncomingOptions.getAccessToken):await createGoogleOAuth({...googleOAuthOptions,env,now:()=>+now(),profile:mailboxProfile,dispatchApp:app,grantId:app.config.mailbox.grant_id}).withMailboxRead(read);
+     return json(200,result);
    }
    if(post&&path==='/api/email-draft-tasks/create'){check(settings.emailTaskBinding||sharedDispatchEmailTasks(app),'Hosted email tasks require their exact task authority');return json(200,await createEmailDraftTask(app,await inputBody(request),actor));}
    if(post&&path==='/api/email-draft-tasks/adopt'){check(draftReview||sharedDispatchEmailTasks(app),'Shared task adoption requires its exact review authority');return json(200,await adoptEmailDraftResult(app,await inputBody(request),actor));}

@@ -183,6 +183,17 @@ test('mailbox OAuth uses a separate encrypted grant bound to the exact shared so
  const oauth=make(),session='synthetic-owner-session'.repeat(4);await assert.rejects(oauth.start('friend',session),/signed owner/);
  const started=await oauth.start('owner',session),url=new URL(started.authorization_url);nonce=url.searchParams.get('nonce');const connected=await oauth.callback('owner',session,{state:url.searchParams.get('state'),code:'synthetic-code'});assert.equal(connected.status,'Connected');assert.equal(connected.grant_id,'synthetic-mailbox');
  const token=await make().getAccessToken();assert.equal(token.profile,'shared-mailbox-gmail-v1');assert.doesNotMatch(JSON.stringify(saved),/synthetic-mailbox-access|synthetic-mailbox-refresh/);
+ let sourceReads=0;const envelope=f.store.envelope.bind(f.store);f.store.envelope=async()=>{sourceReads++;return envelope();};
+ await oauth.withMailboxRead(async getToken=>{const current=await getToken();for(let i=0;i<5;i++){await getToken.assertCurrent(current);await getToken.assertGrant();}});
+ assert.equal(sourceReads,2,'one fresh source check at each boundary, not once per credential check');
+ await assert.rejects(oauth.withMailboxRead(async()=>{await assert.rejects(oauth.withMailboxRead(async()=>{}),/One mailbox/);throw Error('synthetic callback failure');}),/synthetic callback failure/);
+ await oauth.withMailboxRead(async getToken=>assert.equal((await getToken()).account,binding.account));
+ await oauth.withMailboxRead(async getToken=>{await getToken();const prior=saved;saved=null;await assert.rejects(getToken.assertGrant(),/current/);saved=prior;});
+ f.store.envelope=async()=>{throw Error('source unavailable');};
+ await assert.rejects(oauth.withMailboxRead(async()=>assert.fail('missing source must not start a read')),/source unavailable/);
+ f.store.envelope=envelope;
+ await assert.rejects(oauth.withMailboxRead(async()=>{f.store.envelope=async()=>{throw Error('source replaced during read');};}),/source replaced/);
+ f.store.envelope=envelope;await oauth.withMailboxRead(async getToken=>getToken());
  assert.throws(()=>make({EVZ_GOOGLE_CREDENTIAL_NAMESPACE:'evz-google-credentials-synthetic-test'}),/Separate/);
  assert.throws(()=>make({EVZ_GOOGLE_OAUTH_BINDING:JSON.stringify({...binding,source_policy_sha256:'0'.repeat(64)})}),/source binding/);
  await oauth.disconnect('owner');await assert.rejects(make().getAccessToken(),/unavailable/);
