@@ -1,0 +1,206 @@
+{
+  "frozen_pre_run_document_sha256": "464d80f14fdf6f6ea7cefa055a0fa0ddae98c595fc4ff5f0f3708f803c48562d",
+  "evidence_notes": [
+    "Fictional task prompts and rubric were written before candidate runs.",
+    "Answers and token counts were extracted from local child-session records; input includes cached input and reasoning output is part of output.",
+    "The stored parent dispatch argument text is encrypted, so exact prompt equality was not independently checked from that log.",
+    "Candidate order was not randomized; two repetitions for each candidate task, one baseline per task, and one Astra comparison on task 3.",
+    "No candidate tool call was observed in its stored response-item records.",
+    "Independent grader scored blind IDs against the frozen rubric; a second independent grader agreed on task 3.",
+    "Task 3 rubric omitted an ambiguous but supported edit-and-revert approval edge identified only in R09; the other answers were not retroactively penalized.",
+    "Task 2 rubric required a specific test order that the original prompt did not require.",
+    "Token records do not establish per-task subscription cost or general model quality."
+  ],
+  "records": [
+    {
+      "blind_id": "R01",
+      "case": 2,
+      "name": "code_sol_1",
+      "model": "gpt-6.1-sol",
+      "effort": "medium",
+      "tool_calls": [],
+      "elapsed_seconds": 12.12,
+      "usage": {
+        "input_tokens": 24693,
+        "cached_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 613,
+        "reasoning_output_tokens": 76,
+        "total_tokens": 25306
+      },
+      "answer": "Two writes violate the contract because they lack the request-number check:\n\n- **Stale failure changes `error`:** Start A, start B, reject A while B remains pending. A’s `catch` sets `\"Search failed\"` even though B is current.\n- **Stale completion changes `loading`:** Start A, start B, resolve A while B remains pending. A returns from `try`, but `finally` still runs and sets `loading: false`. Rejecting A produces this violation too.\n\nThe success-path guard already prevents stale results from changing `rows`. Guard the other writes as well:\n\n```ts\nasync function runSearch(text: string): Promise<void> {\n  const mine = ++requestNo;\n  setState({ query: text, rows: [], error: null, loading: true });\n\n  try {\n    const rows = await api.search(text);\n    if (mine !== requestNo) return;\n    setState({ rows });\n  } catch {\n    if (mine === requestNo) {\n      setState({ error: \"Search failed\" });\n    }\n  } finally {\n    if (mine === requestNo) {\n      setState({ loading: false });\n    }\n  }\n}\n```\n\nFor each deterministic test, start with fresh state and `requestNo = 0`. Stub `api.search` to return separately controllable promises A and B.\n\n**Test 1 — stale success preserves current loading**\n\n1. Call `runSearch(\"A\")`, saving its returned promise as `doneA`.\n2. Call `runSearch(\"B\")`, saving `doneB`.\n3. Resolve A with `[\"old\"]`; await `doneA`.\n4. Assert `rows` is `[]`, `error` is `null`, and `loading` is `true`.\n5. Resolve B with `[\"new\"]`; await `doneB`.\n6. Assert `rows` is `[\"new\"]`, `error` is `null`, and `loading` is `false`.\n\n**Test 2 — stale failure preserves current error and loading**\n\n1. Start A and then B, saving `doneA` and `doneB`.\n2. Reject A; await `doneA`.\n3. Assert `rows` is `[]`, `error` is `null`, and `loading` is `true`.\n4. Reject B; await `doneB`.\n5. Assert `rows` is `[]`, `error` is `\"Search failed\"`, and `loading` is `false`.\n\nAwaiting each returned `runSearch` promise ensures its `catch` and `finally` have finished before assertions.",
+      "frozen_rubric_score": 9
+    },
+    {
+      "blind_id": "R02",
+      "case": 1,
+      "name": "triage_luna_2",
+      "model": "gpt-6-luna",
+      "effort": "high",
+      "tool_calls": [],
+      "elapsed_seconds": 3.03,
+      "usage": {
+        "input_tokens": 22204,
+        "cached_input_tokens": 12160,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 240,
+        "reasoning_output_tokens": 93,
+        "total_tokens": 22444
+      },
+      "answer": "| Release | Status | Evidence IDs | Explanation |\n|---|---|---|---|\n| Atlas | READY | R1, R2 | Both suites passed on A-2. R3 is still running and does not replace R2. |\n| Birch | HOLD | R4, R5 | Unit passed on B-2; R5 is for B-1. Still needed: a completed e2e PASS on B-2. |\n| Cove | HOLD | R6, R7, R8 | The latest completed e2e result on C-1 is FAIL; R8 is still running. Still needed: a completed e2e PASS on C-1. |",
+      "frozen_rubric_score": 10
+    },
+    {
+      "blind_id": "R03",
+      "case": 3,
+      "name": "risk_astra",
+      "model": "gpt-6-astra",
+      "effort": "medium",
+      "tool_calls": [],
+      "elapsed_seconds": 22.44,
+      "usage": {
+        "input_tokens": 23183,
+        "cached_input_tokens": 12800,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 699,
+        "reasoning_output_tokens": 143,
+        "total_tokens": 23882
+      },
+      "answer": "1. **Cross-tenant enqueue and delivery — property 1**\n\n   **Execution:** Tenant B owns draft `D` and approves it. An actor with the queue role in tenant A knows `D`’s globally unique ID and calls `enqueue(actor, D)`. The role check succeeds for A, and the job is inserted without checking draft ownership. The worker fetches B’s draft by global ID, finds B’s matching approval, and sends it.\n\n   **Smallest sufficient fix:** Before inserting a job, load the draft using `getInTenant(actor.tenantId, draftId)` and reject if absent. Insert the verified draft ID and tenant. Scoping the worker lookup to `job.tenantId` also prevents already-queued mismatched jobs from delivering; a worker-only fix would still permit unauthorized enqueueing.\n\n   **Additional assumptions:** None.\n\n2. **An approval permits an unapproved recipient — property 2**\n\n   **Execution:** A tenant owner approves draft `D` addressed to recipient R1. An authorized edit changes only `to` to R2. The draft is enqueued and processed. Because `approvalDigest` omits `to`, the digest still matches the original approval, and the worker delivers to R2 without approval of that recipient.\n\n   **Smallest sufficient fix:** Include `d.to` in the canonical digest:\n   ```js\n   return hash(canonical([\n     d.tenantId, d.id, d.to,\n     d.subject, d.body, d.attachmentIds\n   ]));\n   ```\n   Existing approvals must not be treated as approvals under the corrected scheme; require fresh approvals for them.\n\n   **Additional assumptions:** None.\n\n3. **A crash permits duplicate delivery — property 3**\n\n   **Execution:** A worker claims an approved job and calls `provider.send`, which delivers. The worker crashes before `markDelivered`. Its lease releases, another worker claims the same job, finds the unchanged matching approval, and calls `provider.send` again. The provider delivers a second time.\n\n   **Smallest sufficient fix:** Pass a stable idempotency key uniquely identifying the job on every send attempt, such as `idempotencyKey: job.id`. Every retry must reuse that key. The provider’s 24-hour deduplication period covers the job’s maximum 12-hour retry window; fresh job IDs separate distinct jobs.\n\n   **Additional assumptions:** None.\n\nThere is no additional demonstrated edit-between-check-and-send violation: the worker checks and sends from the same immutable draft snapshot. Likewise, omitting an explicit tenant predicate from the approval lookup is not a separate bypass here: the digest includes the tenant and draft ID, and draft IDs are globally unique.",
+      "frozen_rubric_score": 10
+    },
+    {
+      "blind_id": "R04",
+      "case": 1,
+      "name": "triage_luna_1",
+      "model": "gpt-6-luna",
+      "effort": "high",
+      "tool_calls": [],
+      "elapsed_seconds": 4.26,
+      "usage": {
+        "input_tokens": 22204,
+        "cached_input_tokens": 12160,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 261,
+        "reasoning_output_tokens": 108,
+        "total_tokens": 22465
+      },
+      "answer": "| Release | Status | Evidence IDs | Explanation |\n|---|---|---|---|\n| Atlas | READY | R1, R2 | A-2 has completed PASS results for unit and e2e. R3 is still running and does not replace R2. |\n| Birch | HOLD | R4, R5 | B-2 has a unit PASS, but R5 is for B-1. Needed: a completed e2e PASS for B-2. |\n| Cove | HOLD | R6, R7, R8 | C-1’s latest completed e2e result is FAIL; R8 is still running. Needed: a later completed e2e PASS for C-1. |",
+      "frozen_rubric_score": 10
+    },
+    {
+      "blind_id": "R05",
+      "case": 3,
+      "name": "risk_sol_1",
+      "model": "gpt-6.1-sol",
+      "effort": "high",
+      "tool_calls": [],
+      "elapsed_seconds": 31.2,
+      "usage": {
+        "input_tokens": 25106,
+        "cached_input_tokens": 23168,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 1060,
+        "reasoning_output_tokens": 509,
+        "total_tokens": 26166
+      },
+      "answer": "1. **Cross-tenant drafts can be queued and delivered.**\n\n   **Execution:** Tenant B owns draft `D` and approves it. An actor in tenant A knows `D`’s globally unique ID and has A’s queue role. They call `enqueue(actorA, D)`, which inserts a job without checking draft ownership. The worker loads B’s draft globally, finds B’s matching approval, and sends it.\n\n   **Violated property:** 1 — a user may enqueue only drafts belonging to their tenant.\n\n   **Smallest sufficient fix:** Before inserting the job, load the draft using `getInTenant(actor.tenantId, draftId)` and reject if absent. Store the verified draft ID. Tenant-scoping the worker’s lookup would additionally prevent delivery of previously queued cross-tenant jobs, but does not replace the enqueue check.\n\n   **Additional assumptions:** None.\n\n2. **Approval does not authorize the recipient.**\n\n   **Execution:** An owner approves a draft addressed to recipient X. A tenant-authorized editor changes only `to` to recipient Y. The digest remains unchanged because it excludes `to`. A queued job therefore finds the old approval and delivers to Y without a matching new approval.\n\n   **Violated property:** 2 — approval must authorize exactly `(tenantId, draftId, to, subject, body, attachmentIds)`.\n\n   **Smallest sufficient fix:** Include `d.to` in `approvalDigest`, consistently in approval creation and worker verification. Require approvals generated with the corrected digest before sending; existing approvals must not be treated as authorizing the newly covered field.\n\n   **Additional assumptions:** None.\n\n3. **A crash can cause duplicate delivery for one job.**\n\n   **Execution:** The worker sends a job successfully. It crashes after provider delivery but before `markDelivered`. The lease is released, and another worker retries the same job. It calls `provider.send` again without an idempotency key, producing a second delivery.\n\n   **Violated property:** 3 — each job must cause at most one provider delivery, including crash retries.\n\n   **Smallest sufficient fix:** Pass a stable, unique per-job `idempotencyKey`, such as `job.id`, on every provider call for that job. Keep the same key across retries. The provider’s 24-hour protection covers the established maximum 12-hour retry window.\n\n   **Additional assumptions:** None.\n\nThe separate draft and approval reads do not establish another content race: the worker sends the same immutable draft snapshot whose digest it checked. Also, omitting a tenant filter from the approval query is not independently exploitable here because the digest already binds the tenant and globally unique draft ID.",
+      "frozen_rubric_score": 10
+    },
+    {
+      "blind_id": "R06",
+      "case": 1,
+      "name": "triage_terra",
+      "model": "gpt-6.1-terra",
+      "effort": "max",
+      "tool_calls": [],
+      "elapsed_seconds": 2.84,
+      "usage": {
+        "input_tokens": 24685,
+        "cached_input_tokens": 0,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 211,
+        "reasoning_output_tokens": 78,
+        "total_tokens": 24896
+      },
+      "answer": "| Release | Status | Evidence IDs | Explanation |\n|---|---|---|---|\n| Atlas | READY | R1, R2, R3 | A-2 has completed passes for both suites; R3 is still running. |\n| Birch | HOLD | R4, R5 | Needs a completed e2e PASS for B-2. R5 is for B-1. |\n| Cove | HOLD | R6, R7, R8 | Needs a newer completed e2e PASS for C-1. R7 is the latest completed e2e result; R8 is still running. |",
+      "frozen_rubric_score": 10
+    },
+    {
+      "blind_id": "R07",
+      "case": 2,
+      "name": "code_terra",
+      "model": "gpt-6.1-terra",
+      "effort": "max",
+      "tool_calls": [],
+      "elapsed_seconds": 11.94,
+      "usage": {
+        "input_tokens": 24627,
+        "cached_input_tokens": 23040,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 1111,
+        "reasoning_output_tokens": 696,
+        "total_tokens": 25738
+      },
+      "answer": "There are two contract violations:\n\n1. Start A, start B, then resolve A while B is pending. A returns from `try` because it is stale, but its `finally` still sets `loading` to `false`.\n2. Start A, start B, resolve B, then reject A. A’s `catch` sets `error` to `\"Search failed\"`, even though B is the latest search.\n\nGuard the two remaining state updates:\n\n```ts\ntry {\n  const rows = await api.search(text);\n  if (mine !== requestNo) return;\n  setState({ rows });\n} catch {\n  if (mine === requestNo) setState({ error: \"Search failed\" });\n} finally {\n  if (mine === requestNo) setState({ loading: false });\n}\n```\n\nTwo deterministic tests, each using a fresh controller state and deferred promises returned by `api.search`:\n\n```ts\n// 1. An older success must not stop the current loading indicator.\nconst a = deferred();\nconst b = deferred();\napi.search = text => text === \"A\" ? a.promise : b.promise;\n\nconst searchA = runSearch(\"A\");\nconst searchB = runSearch(\"B\");\na.resolve([\"old\"]);\nawait searchA;\nassertState({ query: \"B\", rows: [], error: null, loading: true });\n\nb.resolve([\"new\"]);\nawait searchB;\nassertState({ query: \"B\", rows: [\"new\"], error: null, loading: false });\n```\n\n```ts\n// 2. An older failure must not overwrite the current result.\nconst a = deferred();\nconst b = deferred();\napi.search = text => text === \"A\" ? a.promise : b.promise;\n\nconst searchA = runSearch(\"A\");\nconst searchB = runSearch(\"B\");\nb.resolve([\"new\"]);\nawait searchB;\na.reject(new Error());\nawait searchA;\n\nassertState({ query: \"B\", rows: [\"new\"], error: null, loading: false });\n```",
+      "frozen_rubric_score": 10
+    },
+    {
+      "blind_id": "R08",
+      "case": 2,
+      "name": "code_sol_2",
+      "model": "gpt-6.1-sol",
+      "effort": "medium",
+      "tool_calls": [],
+      "elapsed_seconds": 16.35,
+      "usage": {
+        "input_tokens": 24693,
+        "cached_input_tokens": 23168,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 757,
+        "reasoning_output_tokens": 288,
+        "total_tokens": 25450
+      },
+      "answer": "Two contract violations:\n\n- **Stale rejection changes `error`:** Start A, then B. Reject A while B is pending. A’s unguarded `catch` sets `\"Search failed\"`, although only B may change `error`.\n- **Stale completion changes `loading`:** Start A, then B. Resolve A while B is pending. A returns from `try`, but its `finally` still runs and sets `loading: false`. B is still pending. A rejection causes the same loading violation.\n\nThe success guard already protects `rows`. The smallest sufficient correction is to guard both remaining state updates:\n\n```ts\ntry {\n  const rows = await api.search(text);\n  if (mine !== requestNo) return;\n  setState({ rows });\n} catch {\n  if (mine === requestNo) {\n    setState({ error: \"Search failed\" });\n  }\n} finally {\n  if (mine === requestNo) {\n    setState({ loading: false });\n  }\n}\n```\n\nTwo deterministic tests, each using fresh state and controllable promises `a` and `b`. Configure `api.search` to return `a.promise` for A and `b.promise` for B:\n\n```ts\n// Test 1: stale rejection cannot affect the pending current search.\nconst runA = runSearch(\"A\");\nconst runB = runSearch(\"B\");\n\na.reject(new Error(\"failure\"));\nawait runA;\n\nexpect(state).toEqual({\n  query: \"B\", rows: [], error: null, loading: true\n});\n\nb.resolve([\"B result\"]);\nawait runB;\n\nexpect(state).toEqual({\n  query: \"B\", rows: [\"B result\"], error: null, loading: false\n});\n```\n\n```ts\n// Test 2: stale success cannot end loading; current failure is shown.\nconst runA = runSearch(\"A\");\nconst runB = runSearch(\"B\");\n\na.resolve([\"A result\"]);\nawait runA;\n\nexpect(state).toEqual({\n  query: \"B\", rows: [], error: null, loading: true\n});\n\nb.reject(new Error(\"failure\"));\nawait runB;\n\nexpect(state).toEqual({\n  query: \"B\", rows: [], error: \"Search failed\", loading: false\n});\n```",
+      "frozen_rubric_score": 9
+    },
+    {
+      "blind_id": "R09",
+      "case": 3,
+      "name": "risk_terra",
+      "model": "gpt-6.1-terra",
+      "effort": "max",
+      "tool_calls": [],
+      "elapsed_seconds": 27.64,
+      "usage": {
+        "input_tokens": 25040,
+        "cached_input_tokens": 23040,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 2347,
+        "reasoning_output_tokens": 1945,
+        "total_tokens": 27387
+      },
+      "answer": "1. **Cross-tenant enqueue and delivery.** A user with the queue role in tenant A enqueues a known draft ID belonging to tenant B. The worker loads B’s draft globally, finds B’s approval, and sends it. This violates property 1. Validate the draft with `getInTenant(actor.tenantId, draftId)` before inserting the job, and have the worker load it with `getInTenant(job.tenantId, job.draftId)` so existing invalid jobs are held.\n\n2. **Recipient changes bypass approval.** An owner approves a draft addressed to Alice. An authorized editor changes `to` to Bob. Because `to` is absent from the digest, the worker finds the old approval and sends to Bob. This violates property 2. Include `to` in `approvalDigest`; the changed tuple then requires a matching approval.\n\n3. **A reverted edit can reuse an old approval.** An owner approves body A, an editor changes it to B, then changes it back to A. The worker finds the original approval and sends, although no new approval followed the changes. This violates property 2’s explicit requirement for a **new** approval after a change. Increment a draft revision atomically with each approved-field edit, record that revision on approval, and require it to match during processing.\n\n4. **A crash can duplicate delivery.** The worker sends a job, crashes before `markDelivered`, and retries after its lease is released. The second `provider.send` call delivers again, violating property 3. Pass the stable job ID as `idempotencyKey` on every attempt. The 24-hour provider guarantee covers the job’s maximum 12-hour retry window.\n\nNone of these sequences requires an assumption beyond the supplied facts. The reverted-edit finding follows the stated requirement for a *new* approval after a change; a rule permitting reuse whenever content returns to a previously approved tuple would have a different result.",
+      "frozen_rubric_score": 10
+    },
+    {
+      "blind_id": "R10",
+      "case": 3,
+      "name": "risk_sol_2",
+      "model": "gpt-6.1-sol",
+      "effort": "high",
+      "tool_calls": [],
+      "elapsed_seconds": 21.89,
+      "usage": {
+        "input_tokens": 25106,
+        "cached_input_tokens": 23168,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 824,
+        "reasoning_output_tokens": 319,
+        "total_tokens": 25930
+      },
+      "answer": "1. **Cross-tenant drafts can be queued and delivered.**\n\n   **Sequence:** A draft belonging to tenant B has a matching approval. A user with the queue role in tenant A calls `enqueue` with B’s known draft ID. The job is created under A, but the worker loads B’s draft using `getById`, finds B’s approval, and sends it.\n\n   **Violated property:** 1. Queue-role authorization does not establish that the draft belongs to the actor’s tenant.\n\n   **Smallest sufficient fix:** In `enqueue`, load the draft with `getInTenant(actor.tenantId, draftId)` and reject a missing result before inserting the job. Use the validated draft’s ID. This closes the unauthorized enqueue; adding only a worker check would leave property 1 violated.\n\n2. **Approval does not bind the recipient.**\n\n   **Sequence:** An owner approves a draft addressed to recipient X. An authorized editor changes only `to` to recipient Y. The digest remains unchanged because it excludes `to`. The worker finds the original approval and delivers to Y without approval of that recipient.\n\n   **Violated property:** 2. Approval must authorize the exact tuple, including `to`.\n\n   **Smallest sufficient fix:** Include `d.to` in `approvalDigest`:\n   ```js\n   return hash(canonical([\n     d.tenantId, d.id, d.to,\n     d.subject, d.body, d.attachmentIds\n   ]));\n   ```\n   Both approval creation and worker verification must use this corrected digest.\n\n3. **A crash after delivery can cause duplicate delivery.**\n\n   **Sequence:** The worker sends an approved draft, and the provider delivers it. The worker crashes before `markDelivered`. Its lease releases. A retry claims the job and calls `provider.send` again, producing a second delivery.\n\n   **Violated property:** 3. One job can cause multiple provider deliveries.\n\n   **Smallest sufficient fix:** Pass a stable idempotency key derived from the job’s globally fresh ID on every attempt, for example:\n   ```js\n   idempotencyKey: job.id\n   ```\n   The provider’s 24-hour deduplication period covers the job’s maximum 12-hour retry window.\n\nAll three findings follow directly from the supplied facts; none requires an additional assumption. The immutable draft snapshot means an edit after the worker’s read does not independently create an approval-check/send race.",
+      "frozen_rubric_score": 9
+    }
+  ]
+}
