@@ -7,6 +7,7 @@ test('hosted module includes exact allowlisted UI bytes and no runtime state',as
  const assets=await deskAssets();
  assert.deepEqual(Buffer.from(assets['index.html'],'base64'),await readFile(new URL('../pipeline/lifecycle-ui/index.html',import.meta.url)));
  assert.deepEqual(Buffer.from(assets['assets/evz-wordmark.png'],'base64'),await readFile(new URL('../pipeline/lifecycle-ui/assets/evz-wordmark.png',import.meta.url)));
+ assert.deepEqual(Buffer.from(assets['operations-pdf.js'],'base64'),await readFile(new URL('../pipeline/lifecycle-ui/operations-pdf.js',import.meta.url)));
  assert.equal(assets['preview.html'],undefined);assert.equal(assets['state.json'],undefined);assert.equal(assets['config.json'],undefined);
  assert.ok(Object.keys(assets).every(name=>!name.includes('..')||['../follow-up-template.mjs','../business-types.mjs'].includes(name)));
 });

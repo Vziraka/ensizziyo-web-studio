@@ -78,3 +78,5 @@ audio{display:block;width:100%;max-width:100%;margin-block:12px}.audio-controls{
 
 .mailbox-work-proposal { min-width: 0; overflow-wrap: anywhere; }
 .mailbox-work-proposal pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.operations-pdfs{min-width:0}.operations-pdfs p,.operations-pdfs a{overflow-wrap:anywhere}.operations-pdfs details{margin:20px 0}.pdf-metadata{white-space:pre-wrap;font-size:14px}.pdf-preview{display:block;width:100%;height:560px;margin:16px 0;border:1px solid var(--line)}

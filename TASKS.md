@@ -44,6 +44,9 @@ Owner approved the interview conclusions and workflow, then said "ok looks good 
 
 ### Completion gates
 
+- [x] Implement the [bounded existing-PDF source contract](pipeline/OPERATIONS-EXISTING-PDFS.md): explicit immutable binding, signed registration/upload/inspection/baseline review, typed replay/current CAS fences, retained attachment limits and complete G1 export/restore. Synthetic signed HTTP, conditional-store failures, owner/friend desktop/400px UI, real PDF raster and disabled ZIP/import checks pass. Partial transfers remain held/resumable.
+- [ ] Obtain independent requirements/engineering reviews and final CI for the frozen PDF increment; perform real deployment/device/state-size latency acceptance separately. No real client PDF baseline approval, provider freshness or deployment follows from source tests.
+
 - [x] Record approved scope and inspect the prior chat/current source checkouts; preserve the hybrid checkout's uncommitted work.
 - [x] Reconcile inherited changes into the release branch with source hashes and affected checks; map reusable code, repairs and deferred features.
 - [ ] Verify Sites versus current hosting: fictional shared record, two actual signed-in operators, exact draft approval, durable reload and fresh unattended update with desktop closed. Verify source access separately from Site write access, account limits and costs. Do not select migration from documentation alone.

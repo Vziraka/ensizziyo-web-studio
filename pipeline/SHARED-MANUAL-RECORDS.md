@@ -1,5 +1,7 @@
 # Shared manual call records
 
+The explicitly prepared operations-desk [existing-PDF opt-in](OPERATIONS-EXISTING-PDFS.md) adds only signed source registration, exact retained-original transfer/inspection and baseline review on its new immutable manual binding. Earlier profiles and operations manifests without that declaration keep transfer denial. Complete exports for this opt-in read verified originals from canonical chunks; partial transfers remain held and resumable.
+
 This is a separately disabled source capability for signed owner/friend collaboration on production-shaped saved records. It records the operator's attestation of a completed human call, not authorization to place a call or independent evidence that one occurred. It introduces no provider, microphone, model, scheduler or email-send route. Original `inert-shared-v1` remains read/private-notes only; the default fictional preview keeps its existing contract.
 
 ## Exact binding and caller

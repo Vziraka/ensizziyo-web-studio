@@ -1,3 +1,4 @@
+import {operationsPdfCapability,operationsPdfSchema,validateOperationsPdfPolicy,validateOperationsPdfState,replayOperationsPdfTransition} from './operations-pdf.mjs';
 import {applyRequestedInformationTransition,validateRequestedInformationState} from './requested-information.mjs';
 import {applyOperationsNotificationTransition,validateOperationsNotificationsState} from './operations-notifications.mjs';
 import {check,hash,StudioLifecycle} from './lifecycle.mjs';
@@ -39,6 +40,10 @@ export function validateManualEnvelope(data,binding){
  else check(!data.config.mailbox_clock&&!data.state.mailbox_clock,'Clock state and policy require their separate capability');
  if(isMailboxDeliveryCapability(binding.scope.capability)){validateMailboxDeliveryPolicy(data.config.mailbox_delivery);validateMailboxDeliveryState(data.state,data.config);const p=data.config.mailbox_delivery;check(p.site_id===binding.scope.site_id&&p.deploy_id===binding.scope.deploy_id&&p.origin===binding.scope.origin,'Mailbox delivery deployment differs');}
  else check(!data.config.mailbox_delivery&&!data.state.mailbox_delivery,'Delivery state and policy require their separate capability');
+ if(data.config.operations_pdf){
+  check(binding.scope.capability===operationsPdfCapability,'PDF policy requires its exact operations capability');validateOperationsPdfPolicy(data.config.operations_pdf);validateOperationsPdfState(data.state,data.config);
+  check(hash(m.operations_pdf)===hash({schema_version:1,policy_sha256:hash(data.config.operations_pdf),transitions:operationsPdfSchema.transitions}),'Original transfer declaration changed; prepare a new binding');
+ }else check(!m.operations_pdf,'Original transfer declaration requires explicit policy');
  validateOperationsNotificationsState(data.state,data.config);validateRequestedInformationState(data.state,data.config);
  check(!data.config.mailbox_delivery?.kinds?.includes('requested-information')||binding.scope.capability==='shared-operations-desk-v1','Requested information requires operations capability');
  if(binding.scope.capability===cloudDiscoveryCapability){validateCloudDiscoveryPolicy(data.config.cloud_discovery);validateCloudDiscoveryState(data.state,data.config);const p=data.config.cloud_discovery;check(p.site_id===binding.scope.site_id&&p.deploy_id===binding.scope.deploy_id&&p.origin===binding.scope.origin,'Discovery policy deployment differs');}
@@ -47,7 +52,7 @@ export function validateManualEnvelope(data,binding){
  check(data.config.runtime?.enabled===false&&data.config.operations?.enabled===false&&data.config.transcript_ai?.enabled===false&&data.config.release?.approved===false&&data.config.call_release?.approved===false,'Manual recording cannot release execution');
 }
 // Local preparation only. A new manifest/capability is required; an old inert binding cannot gain write authority.
-export async function prepareManualWorkspace({backup,sourceConfig,scope,mailbox,mailboxWork,mailboxClock,mailboxDelivery,cloudDiscovery}){
+export async function prepareManualWorkspace({backup,sourceConfig,scope,mailbox,mailboxWork,mailboxClock,mailboxDelivery,cloudDiscovery,operationsPdf}){
  validateManualBinding(scope);
  if(isMailboxCapability(scope.capability))validateMailboxPolicy(mailbox);else check(mailbox===undefined,'Mailbox policy requires its separate capability');
  const inertScope={...scope,capability:'inert-shared-v1',namespace:scope.namespace.replace('evz-manual-shared-','evz-inert-shared-')};
@@ -65,7 +70,9 @@ export async function prepareManualWorkspace({backup,sourceConfig,scope,mailbox,
  else check(mailboxDelivery===undefined,'Delivery policy requires its separate capability');
  if(scope.capability===cloudDiscoveryCapability)config.cloud_discovery=structuredClone(validateCloudDiscoveryPolicy(cloudDiscovery));
  else check(cloudDiscovery===undefined,'Discovery policy requires its separate capability');
+ if(operationsPdf!==undefined){check(scope.capability===operationsPdfCapability,'PDF policy requires its exact operations capability');config.operations_pdf=structuredClone(validateOperationsPdfPolicy(operationsPdf));}
  const manifest={...packet.envelope.inert_source,kind:'shared-manual-record-source-v1',binding:structuredClone(scope),config_sha256:hash(config),allowed_events:[...manualAllowedEvents(scope.capability)],attestation:'Human-reported completed call; no call authorization or independent provider proof'};
+ if(config.operations_pdf)manifest.operations_pdf={schema_version:1,policy_sha256:hash(config.operations_pdf),transitions:operationsPdfSchema.transitions};
  const envelope={schema_version:1,config,state:packet.envelope.state,manual_source:manifest},binding={scope:structuredClone(scope),manifest_sha256:hash(manifest)};
  validateManualEnvelope(envelope,binding);return {envelope,binding,files:packet.files};
 }
@@ -115,7 +122,13 @@ export function applyManualRecord(state,event,actor,revision,now,config){
  }
  return {...result,execution:'disabled',external_suppression:'unverified'};
 }
-export function validateManualChange(before,after,{manualRecord,mailboxObservation,mailboxFailure,mailboxWork,mailboxClock,mailboxClockStep,mailboxDelivery,cloudDiscovery,operationsNotifications,requestedInformation}={}){
+export function validateManualChange(before,after,options={},pdfContext={}){
+ const {manualRecord,mailboxObservation,mailboxFailure,mailboxWork,mailboxClock,mailboxClockStep,mailboxDelivery,cloudDiscovery,operationsNotifications,requestedInformation,operationsPdf}=options;
+ if(operationsPdf){
+  check(before.config.operations_pdf&&before.config.shared_capability===operationsPdfCapability&&Object.keys(options).every(k=>['operationsPdf','operationsPdfDeadline','configFingerprint'].includes(k)),'Exclusive typed PDF transition required');
+  check(hash(before.manual_source)===hash(after.manual_source),'PDF transition cannot change the source binding');
+  return replayOperationsPdfTransition(before,after,operationsPdf,pdfContext);
+ }
  if(requestedInformation){check(before.config.shared_capability===cloudDiscoveryCapability&&![manualRecord,mailboxObservation,mailboxFailure,mailboxWork,mailboxClock,mailboxClockStep,mailboxDelivery,cloudDiscovery,operationsNotifications].some(Boolean),'Exclusive requested-information transition required');const expected=structuredClone(before.state);applyRequestedInformationTransition(expected,before.config,requestedInformation);check(hash(expected)===hash(after.state)&&hash(before.config)===hash(after.config)&&hash(before.manual_source)===hash(after.manual_source),'Requested-information transition changed unrelated records');return;}
  if(operationsNotifications){
   check(before.config.shared_capability===cloudDiscoveryCapability&&![manualRecord,mailboxObservation,mailboxFailure,mailboxWork,mailboxClock,mailboxClockStep,mailboxDelivery,cloudDiscovery,requestedInformation].some(Boolean),'Exclusive typed notification transition required');
