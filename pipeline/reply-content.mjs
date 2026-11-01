@@ -107,7 +107,7 @@ export function emailDraftSource(r,config,state){
  return {project_id:r.id,company:r.name,reply:r.reply,contact:r.contact,owner:r.follow_up_owner??null,stage:r.stage,restriction:r.restriction??null,facts,reply_review:review,discovery,quote:r.quote??null,sender:{email:config.sender?.email,signature:'EVZ Digital Team\nhello@evzdigital.studio\n571-752-9610'},...(r.conversation_histories?{conversation_history:state?retainedConversationContext(state,config,r.id):{status:'Held',hold:'Complete retained source state is required',messages:[]}}:{})};
 }
 export function replyDraftCurrent(record,draft,config,state){
- if(['shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1'].includes(config?.shared_capability)){try{assertMailboxWorkReplySource(state,config,record.id);}catch{return false;}}
+ if(['shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(config?.shared_capability)){try{assertMailboxWorkReplySource(state,config,record.id);}catch{return false;}}
  if((emailDraftReviewBinding(config)||draft?.content?.review_binding_sha256)&&draft?.content?.review_binding_sha256!==emailDraftReviewBinding(config))return false;
  try{if(draft?.content&&Object.hasOwn(draft.content,'attachments')){if(!state)return false;currentReplyAttachments(state,record.id,draft.content.attachments);}}catch{return false;}
  if(record.conversation_histories){const history=state&&config?retainedConversationContext(state,config,record.id):null;if(history?.status!=='Current'||!draft?.agent_context_sha256)return false;}

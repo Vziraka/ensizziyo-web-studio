@@ -426,3 +426,8 @@ A configured mailing address and opt-out footer are included in the saved draft 
 Shared review profile: `shared-outreach-review-v1` uses `prepareManualWorkspace` with the new explicit scope capability and a fresh namespace. It retains the existing signed manual-event boundary and adds exact outreach review events through independent store replay. Configure `EVZ_OPERATIONS_DESK_ENABLED` to the exact binding capability. Older manual bindings cannot acquire review permission. This profile has no provider or scheduled routes: reviewed schedules remain held until a separately implemented delivery release. Never install over an existing namespace or turn imported history into new campaign enrollment.
 
 Shared business mailbox review: [source, limits, configuration and verification](MAILBOX-INTAKE.md). The new explicit profile supports incoming review only; live connection and cloud scheduling are separate release checks.
+
+
+### Bounded cloud discovery
+
+[Cloud discovery](CLOUD-DISCOVERY.md) adds the explicit shared operations capability for independent public research and review, separate email-qualified/call-first supply, durable evidence and default-disabled coordination. Run `node --test cloud-discovery*.test.mjs lifecycle-backup.discovery.test.mjs` from this directory. This does not enable a model schedule or sending; current cloud allowance is below the reserve, and sustained daily capacity remains unverified.

@@ -38,7 +38,7 @@ function eligibility(r,d,actor){
 function kind(r){return Object.keys(r.calls??{}).length||(r.attempts??[]).length?'previously-called':'new-business';}
 function identity(r){return {company_id:r.company_id??r.id,email:r.contact.email.toLowerCase()};}
 export function applyOutreachReview(app,state,event,actor,revision,{shared=false}={}){
- check(!app.store&&roles.includes(actor)&&(shared?['shared-outreach-review-v1','shared-mailbox-review-v1','shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1'].includes(app.config.shared_capability)&&app.config.mode==='production'&&app.config.outreach_enabled===false:app.config.mode==='controlled'),'Outreach review requires its exact review authority');
+ check(!app.store&&roles.includes(actor)&&(shared?['shared-outreach-review-v1','shared-mailbox-review-v1','shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(app.config.shared_capability)&&app.config.mode==='production'&&app.config.outreach_enabled===false:app.config.mode==='controlled'),'Outreach review requires its exact review authority');
  check(safeId(event.id)&&safeId(event.prospect_id)&&outreachReviewEvents.includes(event.type),'Stable outreach event identity required');
  const fingerprint=hash({event,actor}),prior=state.events[event.id];
  if(prior){check(prior.fingerprint===fingerprint,'Event ID conflicts with saved evidence');return {duplicate:true,revision:state.revision};}

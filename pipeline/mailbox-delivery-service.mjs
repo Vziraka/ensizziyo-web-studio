@@ -1,10 +1,10 @@
 import {check,hash} from './lifecycle.mjs';
-import {mailboxDeliveryCapability,mailboxDeliveryPackage,mailboxDeliveryIntentId,applyMailboxDeliveryTransition,assertMailboxDeliveryCurrent} from './mailbox-delivery.mjs';
+import {mailboxDeliveryCapability,isMailboxDeliveryCapability,mailboxDeliveryPackage,mailboxDeliveryIntentId,applyMailboxDeliveryTransition,assertMailboxDeliveryCurrent} from './mailbox-delivery.mjs';
 import {mailboxMimeStore} from './mailbox-mime-store.mjs';
 import {composeExactMail} from './google-hosted-transport.mjs';
 import {blobProjectOriginalStore} from './shared-project-originals.mjs';
 
-function boundary(app){check(app.store?.key==='workspace'&&app.store.manualBinding?.scope.capability===mailboxDeliveryCapability,'Exact shared mailbox delivery store required');}
+function boundary(app){check(app.store?.key==='workspace'&&isMailboxDeliveryCapability(app.store.manualBinding?.scope.capability),'Exact shared mailbox delivery store required');}
 async function change(app,type,input,actor,config,deadline){
  boundary(app);const mailboxDelivery={type,actor,input,at:app.now().toISOString()};
  return app.change((s,c)=>applyMailboxDeliveryTransition(s,c,mailboxDelivery),{configFingerprint:hash(config),mailboxDelivery,...(deadline===undefined?{}:{mailboxDeliveryDeadline:deadline})});

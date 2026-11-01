@@ -1,3 +1,4 @@
+import {cloudDiscoveryClockEntry} from '../pipeline/cloud-discovery-host.mjs';
 import {readFile,writeFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
@@ -17,6 +18,7 @@ export async function deskAssets(){
   return assets;
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
+  await writeFile(new URL('../pipeline/netlify-functions/cloud-discovery-clock.mjs',import.meta.url),cloudDiscoveryClockEntry(process.env));
   await writeFile(new URL('../pipeline/netlify-functions/notification-clock.mjs',import.meta.url),notificationClockEntry(process.env));
   await writeFile(new URL('../pipeline/netlify-functions/internal-dispatch-clock.mjs',import.meta.url),internalDispatchClockEntry(process.env));
   await writeFile(new URL('../pipeline/netlify-functions/mailbox-delivery-clock.mjs',import.meta.url),mailboxDeliveryClockEntry(process.env));
