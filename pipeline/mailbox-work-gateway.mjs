@@ -10,7 +10,7 @@ export async function openMailboxWorker({env=process.env,credential,context,orig
  const digest=env.EVZ_MAILBOX_WORK_CREDENTIAL_SHA256;
  check(/^[a-f0-9]{64}$/.test(credential??'')&&/^[a-f0-9]{64}$/.test(digest??'')&&timingSafeEqual(Buffer.from(hash(credential),'hex'),Buffer.from(digest,'hex')),'Worker credential unavailable');
  const binding=JSON.parse(env.EVZ_MAILBOX_WORK_SOURCE_BINDING??'null');validateManualBinding(binding?.scope);
- check(['shared-mailbox-work-v1','shared-mailbox-clock-v1'].includes(binding.scope.capability)&&context?.site?.id!==binding.scope.site_id,'Separate worker gateway and source authority required');
+ check(['shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1'].includes(binding.scope.capability)&&context?.site?.id!==binding.scope.site_id,'Separate worker gateway and source authority required');
  check(typeof env.EVZ_MAILBOX_WORK_SOURCE_BLOBS_TOKEN==='string'&&env.EVZ_MAILBOX_WORK_SOURCE_BLOBS_TOKEN.length>=20,'Authorized source storage credential required');
  const raw=await storeFactory(binding.scope,env.EVZ_MAILBOX_WORK_SOURCE_BLOBS_TOKEN),store=new ConditionalLifecycleStore(raw,{manualBinding:binding,now}),app=await StudioLifecycle.fromStore({store,now});
  const worker=createMailboxWorker(app,{credential,leaseSecret:env.EVZ_MAILBOX_WORK_LEASE_SECRET,context,origin});await worker.authenticate();return worker;

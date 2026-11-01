@@ -2,6 +2,7 @@ import {check,hash} from './lifecycle.mjs';
 import {validateMailboxPolicy} from './mailbox-intake.mjs';
 
 export const mailboxClockCapability='shared-mailbox-clock-v1';
+export const isMailboxClockCapability=value=>[mailboxClockCapability,'shared-mailbox-delivery-v1'].includes(value);
 const utc=v=>typeof v==='string'&&Number.isFinite(Date.parse(v))&&new Date(v).toISOString()===v;
 const key=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(v)&&!['constructor','prototype','__proto__'].includes(v);
 const digest=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
@@ -16,7 +17,7 @@ export function validateMailboxClockPolicy(p){
  check([5,15,30,60].includes(p.interval_minutes)&&integer(p.max_steps_per_tick,3)&&p.max_steps_per_tick>0&&integer(p.max_steps_per_day,1000)&&p.max_steps_per_day>=p.max_steps_per_tick&&integer(p.deadline_ms,25000)&&p.deadline_ms>0,'Finite mailbox clock bounds required');return p;
 }
 function policy(config,now,live=true){
- check(config.shared_capability===mailboxClockCapability&&config.mode==='production'&&config.outreach_enabled===false,'Exact review-only mailbox clock capability required');
+ check(isMailboxClockCapability(config.shared_capability)&&config.mode==='production'&&config.outreach_enabled===false,'Exact review-only mailbox clock capability required');
  validateMailboxPolicy(config.mailbox);const p=validateMailboxClockPolicy(config.mailbox_clock);
  check(utc(now)&&(!live||Date.parse(now)<Date.parse(p.expires_at)),'Mailbox clock policy expired');return p;
 }

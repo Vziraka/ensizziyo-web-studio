@@ -61,3 +61,13 @@ test('interrupted writes roll back owned paths; abrupt exits never publish a usa
   assert.deepEqual((await readProjectAsset(f.app,'project','original','v1')).bytes,f.bytes);
  }
 });
+
+test('manual MIME overlay preserves local renderer evidence and external original image backup derivation',async t=>{
+ const f=await fixture(t),image=Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),Buffer.from('fictional retained image')]),imagePath=join(f.root,'source-image.png');await writeFile(imagePath,image);
+ const a=await authored(f,{images:{illustration:{path:imagePath,sha256:sha(image),project_id:'project'}}});const state=await f.app.snapshot();
+ await f.app.backup(f.output);const {hostedManualBackupInventory,writePortableLifecycleBackup,readLifecycleBackup}=await import('./lifecycle-backup.mjs');
+ const original=await readLifecycleBackup(f.output),app={store:{manualBinding:{scope:{capability:'shared-manual-records-v1'}},store:{getWithMetadata(){assert.fail('No MIME referenced; no blob read expected');}},async envelope(){return {data:{state:structuredClone(state),config:{}}};}}};
+ const result=await hostedManualBackupInventory(app,f.directory);assert.deepEqual([...result.files.keys()].sort(),[...original.files.keys()].sort());for(const [name,bytes]of original.files)assert.deepEqual(result.files.get(name),bytes,name);
+ assert.ok(result.files.has('project-authored/'+a.job.id+'/renderer-evidence.json'));assert.deepEqual(result.files.get('project-authored/'+a.job.id+'/image-illustration.png'),image);
+ await writePortableLifecycleBackup(result.state,result.files,join(f.root,'manual-export.json'),at);await missing(join(a.job.directory,'renderer-evidence.json'));await missing(join(a.job.directory,'image-illustration.png'));
+});
