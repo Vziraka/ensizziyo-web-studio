@@ -6,7 +6,7 @@ The [current private desk](https://6ae7759e28691a3a46a1ae62--evz-hybrid-fictiona
 
 Private `operations/release-20261101/historical-backup` contains the downloaded original-account tracker, October 17 portable checkpoint, current 272-record lifecycle backup, disabled restore and verification receipts. Current prospect/event/action sections restore exactly; 965 retained capture occurrences were also preserved in the capacity rehearsal. External Drive file bytes have not been migrated. The business Drive connector cannot see the older personal-account files, but browser access under their original account is verified; they are not missing or deleted.
 
-MX and SPF are present. DMARC was absent at the November 1 DNS check; DKIM administration awaits Google's personal reauthentication step. Google Admin is not yet verified. Live intake/delivery/cadence, sustained research capacity, hosted migration, actual teammate/computer-off checks and the unresolved commercial mailing address remain release gates in TASKS.md.
+MX and SPF are present. Google Admin access and DKIM activation passed on November 1. The existing Google public key is published at `google._domainkey.evzdigital.studio`; exact joined TXT readback passed on all four Name.com nameservers and Google/Cloudflare resolvers. Private `operations/release-20261101/sender-authentication` retains the pre-change DNS export, public key and verification receipt. Received-message authentication and DMARC remain open; the rollout interval ends no earlier than November 3 at 17:53 UTC. Live intake/delivery/cadence, sustained research capacity, hosted migration, actual teammate/computer-off checks and the unresolved commercial mailing address remain release gates in TASKS.md.
 
 ## Earlier source checkpoints
 
