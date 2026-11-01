@@ -13,7 +13,7 @@ Keep a running distinction between settled decisions, open decisions and proposa
 
 Record confirmed project decisions, reasons and acceptance checks in the existing task/brief or authenticated private client record. Quote or accurately attribute the deciding answer. Client information stays outside Git; client-specific decisions never become studio defaults. Propose a wider preference and obtain explicit scope confirmation before saving it as studio-wide. Do not create a glossary or architectural decision record unless WORKFLOW.md's criteria apply.
 
-When a repeated successful procedure or recurring failure suggests a skill improvement, surface the examples and suggest a narrow change. Prefer updating an existing skill, test or validator over another skill. Frequency alone does not prove a good rule. Do not rewrite skills or broaden client preferences automatically.
+When a repeated successful procedure or recurring failure suggests a skill improvement, follow the evidence, testing and independent-review lifecycle in `docs/studio-workflow.md`. Within authorized work, agents may create or update a suitably scoped skill and test it; prefer improving an existing skill, test or validator when it fits. Frequency alone does not prove a good rule, and client preferences do not become studio-wide automatically.
 
 Do not search the design vault or retrieve optional saved design preferences unless requested. Current task requirements, approved baselines and safety restrictions remain binding. See docs/studio-workflow.md for the implemented routes.
 
