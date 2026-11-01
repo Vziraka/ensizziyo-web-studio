@@ -1,4 +1,4 @@
-import {check,hash} from './lifecycle.mjs';
+import {check,hash,pauseCold} from './lifecycle.mjs';
 import {validReplySource} from './reply-content.mjs';
 
 // Deliberately local and fictional. Classification is a reviewed input, not an AI claim.
@@ -48,6 +48,10 @@ export function applyLocalInquiry(app,state,event,actor,revision){
   }
   check(revision===undefined||revision===state.revision,'Record changed; refresh before reviewing inquiry');
   check(Object.keys(intake.sources).length<1000&&Object.keys(state.events).length<19998,'Local inquiry proof limit reached');
+  // Source identity can stop outreach before classification or client assignment is resolved.
+  // A matching business name alone cannot associate a reply with an existing conversation.
+  receipt.paused_projects=Object.values(state.prospects).filter(r=>r.contact?.email?.toLowerCase()===receipt.source.content.from.toLowerCase()||r.reply?.thread_id===receipt.source.thread_id||r.conversation_histories?.[receipt.source.thread_id]||Object.values(intake.sources).some(s=>s.project_id===r.id&&s.source.thread_id===receipt.source.thread_id)).map(r=>r.id);
+  for(const id of receipt.paused_projects)pauseCold(state,state.prospects[id],event.id,'Incoming reply awaits review');
   if(receipt.status==='Assigned new inquiry'){
     check(!state.prospects[receipt.project_id],'Existing inquiry identity must be matched before rotation');
     state.prospects[receipt.project_id]={id:receipt.project_id,company_id:receipt.project_id,name:data.company_name,category:'Inbound inquiry',origin:'inquiry',idea:'Review the incoming client request; no researched sales opening is implied.',controlled:true,stage:'Reply review',cold_paused:true,follow_up_owner:receipt.assigned_to,contact:{email:data.reply.content.from,verified:true,source:'fixture:reviewed incoming source'},attempts:[],calls:{},transcripts:{},proposals:{},approved_calls:{},payments:[],invoices:[],materials:[],tasks:[],revisions:[],tickets:[]};

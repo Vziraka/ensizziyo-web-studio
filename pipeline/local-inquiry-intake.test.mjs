@@ -63,3 +63,20 @@ test('new source invalidates old reply while preserving restrictions, and produc
  assert.throws(()=>app.reduceEvent(s,inquiry('production'),{actor:'owner'}),/local fictional/);assert.deepEqual(s,before);
  app.config={...app.config,mode:'controlled'};app.store={};assert.throws(()=>app.reduceEvent(s,inquiry('hosted'),{actor:'owner'}),/local fictional/);assert.deepEqual(s,before);
 });
+
+test('an unclassified reply pauses every exact sender match before identity review without assigning or resuming outreach',async()=>{
+ const app=await fixture();
+ for(const id of ['one','two','unrelated']){const p=fixtureProspect(id,at,'STUDIO TEST Same Name');if(id!=='unrelated')p.data.contact.email='shared@example.invalid';await app.apply(p);}
+ const source=inquiry('unclassified','Same Name','shared@example.invalid','uncertain');
+ await app.apply(source,{actor:'friend'});
+ let s=await app.snapshot();
+ for(const id of ['one','two']){assert.equal(s.prospects[id].cold_paused,true);assert.ok(Object.values(s.actions).filter(a=>a.prospect_id===id&&a.type==='call_task').every(a=>a.status==='Cancelled'));}
+ assert.equal(s.prospects.unrelated.cold_paused,false);
+ assert.equal(s.inquiry_intake.sources['source-unclassified'].status,'Identity review');
+ assert.equal(s.inquiry_intake.sources['source-unclassified'].project_id,null);
+ assert.deepEqual(s.inquiry_intake.sources['source-unclassified'].paused_projects,['one','two']);
+ assert.equal(s.inquiry_intake.next_owner,'owner');
+ const before=structuredClone(s);assert.equal((await app.apply({...source,id:'redelivery'})).duplicate,true);assert.deepEqual(await app.snapshot(),before);
+ await app.apply({id:'exclude',prospect_id:'inquiry-intake',type:'inquiry_classification_reviewed',at,data:{source_id:'source-unclassified',classification:'automatic_reply',reason:'Reviewed as an automated reply.'}});
+ s=await app.snapshot();assert.equal(s.prospects.one.cold_paused,true);assert.equal(s.prospects.two.cold_paused,true);assert.equal(s.inquiry_intake.next_owner,'owner');
+});
