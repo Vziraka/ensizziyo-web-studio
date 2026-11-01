@@ -20,7 +20,8 @@ import {prepareNotificationsInState,digestTime,notificationTemplates,notificatio
 import {syncIncomingMail,syncPDFIncoming,registeredIncomingDisposition,validatePDFObservation,pdfIncomingTarget,pdfIncomingRequest,incomingScopeCurrent,incomingRoutes,validateIncomingImport} from './google-incoming-mail.mjs';
 import {validateIncomingGrant} from './shared-operations-exact-mail.mjs';
 import {composeExactMail,byteHash,mailMessageId,verifySentRaw,mailObservationJSON} from './google-hosted-transport.mjs';
-import {applyManualRecord,manualRecordEvents} from './shared-manual-records.mjs';
+import {applyManualRecord} from './shared-manual-records.mjs';
+import {manualRecordEvents} from './manual-record-events.mjs';
 import {operationsRefinementCapability,generationTransitionSchema,validateRefinementPolicy,validatePreparedRefinement,validateGenerationTransition,applyGenerationTransition} from './refinement-generation.mjs';
 export {operationsRefinementCapability} from './refinement-generation.mjs';
 

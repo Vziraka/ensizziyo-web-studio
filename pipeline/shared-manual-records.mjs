@@ -4,7 +4,8 @@ import {validateBackupDependencies,writeLifecycleBackup} from './lifecycle-backu
 import {blobProjectOriginalStore,originalDigest} from './shared-project-originals.mjs';
 import {rejectPartialOriginalImport} from './original-recovery.mjs';
 
-export const manualRecordEvents=Object.freeze(['note_added','call_logged','call_claimed','follow_up_handed_off','contact_stopped']);
+import {manualRecordEvents} from './manual-record-events.mjs';
+export {manualRecordEvents} from './manual-record-events.mjs';
 const key=v=>typeof v==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(v);
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 export function validateManualBinding(b){

@@ -86,7 +86,7 @@ export function mailObservationJSON(value){
  const pending=[value];let count=0;while(pending.length){const next=pending.pop();if(!next||typeof next!=='object')continue;check(++count<=200000,'Gmail JSON exceeds bounded structure');for(const [key,v]of Object.entries(next)){check(!['accesstoken','refreshtoken','idtoken','clientsecret','credentialkey','authorization','error','errordescription','errormessage'].includes(key.replaceAll('_','').toLowerCase()),'Credential or error response is not Gmail success evidence');if(v&&typeof v==='object')pending.push(v);}}return value;
 }
 export function mailSendResponse(sent,expected){check(id(sent?.id)&&id(sent.threadId)&&(!expected.thread_id||sent.threadId===expected.thread_id),'Send identity incomplete; reconcile only');return {id:sent.id,thread_id:sent.threadId};}
-export async function mailSentReadback(request,expected,known=null,max=mailLimits.response){
+export async function mailSentReadback(request,expected,known=null,max=mailLimits.response,sentTimestamp=false){
  let ids=[];
  if(known)ids=[known];else{let page;const seen=new Set();for(let n=0;n<3;n++){
   const query=new URLSearchParams({q:'in:sent rfc822msgid:'+expected.message_id,maxResults:'10',...(page?{pageToken:page}:{})}),result=await request('messages?'+query);
@@ -94,7 +94,9 @@ export async function mailSentReadback(request,expected,known=null,max=mailLimit
   check(ids.every(id)&&new Set(ids).size===ids.length&&ids.length<=10,'Ambiguous Sent Message-ID search');page=result.nextPageToken;if(!page)break;check(typeof page==='string'&&page.length<=500&&!seen.has(page)&&n<2,'Truncated or looping Sent search');seen.add(page);
  }}
  check(ids.length===1,'Sent search empty or ambiguous; uncertain intent must never resend');
- const raw=await request('messages/'+encodeURIComponent(ids[0])+'?format=raw',{max});check(raw.id===ids[0],'Sent readback identity changed');return verifySentRaw(raw,expected);
+ const raw=await request('messages/'+encodeURIComponent(ids[0])+'?format=raw',{max});check(raw.id===ids[0],'Sent readback identity changed');const receipt=verifySentRaw(raw,expected);
+ if(sentTimestamp){const time=Number(raw.internalDate);check(Number.isSafeInteger(time)&&time>0&&Number.isFinite(+new Date(time)),'Actual provider send timestamp required');receipt.sent_at=new Date(time).toISOString();}
+ return receipt;
 }
 // Credentials exist only in this server-owned closure; the owner grant supplies them.
 export function googleHostedTransport({getAccessToken,fetcher=fetch,account,grantId,requiredProfile=null,observations=null,rawResponseMax=mailLimits.response,now=()=>new Date()}={}){
@@ -132,6 +134,6 @@ export function googleHostedTransport({getAccessToken,fetcher=fetch,account,gran
   async preflight(options={}){await mailPreflight((path,more)=>request(path,{...options,...more}),account);return {account,from:'hello@evzdigital.studio',grant_id:grantId};},
   freshSource:(p,options={})=>mailFreshSource((path,more)=>request(path,{...options,...more}),p),
   async send(expected,options={}){return mailSendResponse(await request('messages/send',{...options,method:'POST',body:mailSendBody(expected)}),expected);},
-  reconcileSent:(expected,known=null,options={})=>mailSentReadback((path,more)=>request(path,{...options,...more}),expected,known,typeof rawResponseMax==='function'?rawResponseMax():rawResponseMax)
+  reconcileSent:(expected,known=null,options={})=>mailSentReadback((path,more)=>request(path,{...options,...more}),expected,known,typeof rawResponseMax==='function'?rawResponseMax():rawResponseMax,options.sentTimestamp===true)
  };
 }

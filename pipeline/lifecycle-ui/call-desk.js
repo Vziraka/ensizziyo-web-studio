@@ -21,6 +21,7 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty,
   const shared=Boolean(state.shared_workspace),manual=['shared-manual-records-v1','shared-manual-internal-dispatch-v1','shared-operations-records-v1','shared-operations-authoring-v1','shared-operations-calendar-v1','shared-operations-exact-mail-v1','shared-operations-pdf-mail-v1'].includes(state.shared_workspace?.capability);
   const records=state.supply.queue.map(a=>state.prospects[a.prospect_id]);
   const {commitments,matching:visible}=deskQueues(state,{category,subtypes,lane,history:showHistory,allBusinesses,assignment:workView,operator:state.current_operator});
+  const emailCallDue=new Set((state.outreach_review?.cadence??[]).filter(c=>c.call_due).map(c=>c.project_id));
   if(!(selected===lastSaved&&state.prospects[selected])&&![...commitments,...visible].some(r=>r.id===selected))selected=commitments[0]?.id??visible[0]?.id;
   const run=async fn=>{try{await fn();}catch(e){tell(e.message,true);}};
   const event=async(r,type,data)=>{await api('/api/event',{revision:state.revision,event:{id:crypto.randomUUID(),prospect_id:r.id,type,at:new Date().toISOString(),data}});clearDirty();await refresh();};
@@ -49,7 +50,7 @@ export function renderCallDesk(root,state,{api,refresh,tell,evidence,clearDirty,
   if(!shared&&state.controls.mode==='production')for(const [v,label] of [['research','Resume approved research'],['website','Website priority'],['client','Client priority']])progress.append(btn(label,()=>run(async()=>{await api('/api/research-priority',{priority:v});await refresh();})));
   background.append(disclosure('Background research and held work',progress));
   const due=el('details',undefined,'commitments');due.append(el('summary',`Due callbacks and promised follow-ups (${commitments.length})`));due.open=commitments.length>0;due.setAttribute('aria-label','Due Today / Promised Follow-ups');due.append(el('h2','Due Today / Promised Follow-ups'),el('p','All business categories. Due callbacks and agreed next steps stay visible.','muted'));
-  for(const r of commitments){const b=btn('',()=>{selected=r.id;clearDirty();refresh();},`record${selected===r.id?' selected':''}`);b.append(el('strong',r.name),el('span',r.stage==='Callback'?callbackLabel(r):r.stage==='Information requested'?'Information promised':'Discovery next step','badge'));b.setAttribute('aria-pressed',String(selected===r.id));due.append(b);}
+  for(const r of commitments){const b=btn('',()=>{selected=r.id;clearDirty();refresh();},`record${selected===r.id?' selected':''}`);b.append(el('strong',r.name),el('span',r.stage==='Callback'?callbackLabel(r):emailCallDue.has(r.id)?'Email unanswered after three business days':r.stage==='Information requested'?'Information promised':'Discovery next step','badge'));b.setAttribute('aria-pressed',String(selected===r.id));due.append(b);}
   if(!commitments.length)due.append(el('p','No due callbacks or promised next steps.','muted'));
   const focus=el('div',undefined,'business-focus');
   const group=select(focus,'Business category',[['all','All business categories'],...businessTypes.map(t=>[t.id,`${t.label} (${Object.values(state.prospects).filter(r=>businessType(r).category===t.id).length} saved)`])],category);
