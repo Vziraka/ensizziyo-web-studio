@@ -2,7 +2,7 @@
 
 ## Operations release — November 1, 2026
 
-Owner approved the interview conclusions and workflow, then said "ok looks good go ahead". This task supersedes earlier proposed launch scope where explicitly different; historical evidence and contact restrictions remain intact. Enterprise with two Premium seats is owner-reported current context, not independently verified entitlement.
+Owner approved the interview conclusions and workflow, then said "ok looks good go ahead". This task supersedes earlier proposed launch scope where explicitly different; historical evidence and contact restrictions remain intact. The selected workspace's billing/member pages verify Business with two active Premium seats; the earlier Enterprise description was owner-reported.
 
 ### Agreed behavior
 
@@ -22,7 +22,7 @@ Owner approved the interview conclusions and workflow, then said "ok looks good 
 ### Completion gates
 
 - [x] Record approved scope and inspect the prior chat/current source checkouts; preserve the hybrid checkout's uncommitted work.
-- [ ] Reconcile inherited changes into the release branch with source hashes and affected checks; map reusable code, repairs and deferred features.
+- [x] Reconcile inherited changes into the release branch with source hashes and affected checks; map reusable code, repairs and deferred features.
 - [ ] Verify Sites versus current hosting: fictional shared record, two actual signed-in operators, exact draft approval, durable reload and fresh unattended update with desktop closed. Verify source access separately from Site write access, account limits and costs. Do not select migration from documentation alone.
 - [ ] Complete shared records/intake/assignment, existing-PDF and on-demand draft journey with approved in-desk sending; verify default holds and disabled integrations.
 - [ ] Replace active Apollo dependencies without losing historical tasks/receipts; verify public research and call workflow without Apollo access.
@@ -41,9 +41,28 @@ Removed discovery's unconditional Apollo identity lookup after a regression repr
 
 Fresh browser inventory now works, resolving the old tool-access blocker for this chat. Read-only workspace member and billing pages verify two active Premium members and a Business plan; the user's earlier Enterprise description is not reflected in the selected workspace. Await the pending workspace choice before creating hosted resources. Gmail/Drive installation/connection remains unconfirmed. No teammate invitation, billing change, production deployment or contact was performed. Private account/member details are excluded from this task record.
 
-Next dependency: finish workspace/connector verification, then run the agreed fictional Sites proof before selecting migration or new storage. Do not weaken existing production holds or merely raise the discovery limit to claim 100 approved first sends/day.
+Next dependency: finish the fictional Sites proof before selecting migration or new storage. Do not weaken existing production holds or merely raise the discovery limit to claim 100 approved first sends/day.
 
 Connection follow-up: owner confirmed Gmail and Drive connected after selecting the business Google account separately from the ChatGPT login. Fresh Sites eligibility now returns Gmail and Google Drive as allowed (Calendar is also present); this supersedes the earlier absent/uninstalled checkpoint. This chat's callable tool catalog still exposes no Gmail/Drive profile or action tools, so exact connected identity, alias sending and provider reads are not yet verified. Native settings inspection was interrupted by concurrent user input; no settings or permissions were changed. Do not ask the owner to reinstall already connected plugins. Next verify profile/action availability and the hello sender alias before integrating actual provider actions.
+
+Latest platform checkpoint: the owner confirmed the existing workspace and authorized continued work. Created the isolated [fictional Sites proof](https://evz-operations-proof.the-wizness-8869.chatgpt.site), project `appgprj_6ae6dfc694bc81918352c39a215455d7`, source `bdb878831ffdbee1182304922db4a05f1f967177`. Access is restricted to the two intended existing workspace members. The proof contains one reserved-address fictional record and no email-delivery route or real client data. Three actual SQLite/migration tests, TypeScript and production build passed. Hosted owner sign-in, saved exact approval, reload persistence, edit invalidation and desktop/390px mobile inspection passed. Its connected MCP tool read the same record and recorded a tick while the page was closed; reopening showed revision 5 and one tick with approval still cleared. This is not actual powered-off or second-user proof. A finite cloud check is saved for November 1 at 05:00 America/New_York (`Automation_1d1fa915d4c88191a9a6efe01a655198`); creation is not execution evidence. The local proof dev server was stopped.
+
+Fresh native Gmail and Drive profile calls now both verify the business account. A bounded sent-message metadata read confirms a historical From header of `hello@evzdigital.studio`; current send-as configuration and new delivery remain unverified. No mail was sent or modified. The previous unavailable-tool checkpoint above is superseded. Remaining platform gates include Eugene's actual independent sign-in/handoff, fresh cloud-run readback, actual computer-off operation, connected-app access inside Sites, existing-PDF access, cost/allowance evidence and sustainable capacity. No production migration or commercial activation has occurred.
+
+Cloud proof readback subsequently found `cloud-proof-20261101-once` at revision 6, timestamp `2026-11-01T09:58:49.310Z`, with the draft unchanged and approval null. This establishes the fresh cloud writer's persisted result, not precise scheduled-time delivery or a powered-off test. The owner deferred Eugene's sign-in check and asked to proceed with independent work; do not repeatedly request that check. Business Drive can discover existing client PDFs, but the historical workspace folder and tracker return NOT_FOUND through this connection; their access/location needs reconciliation before migration.
+
+Apollo decoupling increment: extracted the unchanged provider-independent daily queue selector into `pipeline/call-queue.mjs`; call-desk and lifecycle consumers no longer import the legacy Apollo queue just for sorting. The historical module re-exports the helper for compatibility. All 60 affected call-desk, production, legacy-queue and signed manual-record tests passed. Requirements review: callbacks, deduplication, stops, historical receipts and explicit ownership remain intact; this does not remove the separate legacy native planner's Apollo requirement. Engineering review: pure helper is unchanged, both active imports use it directly, and old imports remain supported. No production configuration or provider execution was changed.
+
+Reusable source map for the remaining release:
+
+| Journey | Reuse | Remaining work |
+| --- | --- | --- |
+| Call preparation and outcomes | call-desk, call-prep, shared-manual-records | Compose with selected hosted authority; preserve manual attribution and explicit handoff without enabling legacy Apollo/transcript execution. |
+| Incoming mail | google-incoming-mail, conversation-records, local-inquiry-intake | Actual business source grant, new-inquiry classification/assignment and durable automatic ingestion. |
+| Draft and approval | email-draft-tasks, shared-email-draft-tasks, exact-mail | Sites/provider bridge and exact reviewed outbound batch; existing declared-thread scope does not authorize cold outreach. |
+| Existing PDFs | project-assets, shared-operations-originals, google-drive-originals | Resolve original Drive access, then verify actual hosted reads; preserve hashes and versions. |
+| Research | discovery-batches, owner-contacts, research-profile | Replace remaining launch dependencies, implement approved seven-day supply/cadence and verify 100/day capacity. |
+| Restore and migration | lifecycle-backup and conditional shared store | Backed-up inert rehearsal, source/readback reconciliation, two-user and computer-off acceptance before cutover. |
 
 ## Studio workflow implementation — October 28, 2026
 

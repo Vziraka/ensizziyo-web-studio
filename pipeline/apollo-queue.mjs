@@ -1,4 +1,6 @@
 import { ApolloTestConnection, apolloHash, unwrapApollo } from './apollo.mjs';
+import { dailyCallQueue } from './call-queue.mjs';
+export { dailyCallQueue } from './call-queue.mjs';
 
 const check = (condition, message) => { if (!condition) throw Error(message); };
 const id = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{8,100}$/.test(value);
@@ -16,14 +18,6 @@ export function callOutcomeRoute(event, stopped = false) {
   if (event?.verified !== true) return { action: 'hold' };
   return { action: ({ no_answer: 'email', busy: 'email', voicemail: 'email', callback: 'callback',
     interested: 'discovery', requested_info: 'information', bad_number: 'hold', skipped: 'hold' })[event.outcome] ?? 'hold' };
-}
-
-export function dailyCallQueue(records, now = new Date()) {
-  const rank = { callback: 0, follow_up: 1, 'follow-up': 1, new: 2 }, selected = new Map();
-  for (const record of [...records].sort((a, b) => (rank[a.kind] ?? 3) - (rank[b.kind] ?? 3) || Date.parse(a.due_at) - Date.parse(b.due_at))) {
-    if (record.company_id && !record.stopped && record.status === 'scheduled' && Number.isFinite(Date.parse(record.due_at)) && Date.parse(record.due_at) <= +now && !selected.has(record.company_id)) selected.set(record.company_id, record);
-  }
-  return [...selected.values()];
 }
 
 // Shares the existing private ledger/lock; the connected app remains the only executor.

@@ -19,7 +19,7 @@ import { join } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { acquireLock, privateStateDirectory, readJson, saveJson } from './engine.mjs';
-import { dailyCallQueue } from './apollo-queue.mjs';
+import { dailyCallQueue } from './call-queue.mjs';
 import { verificationLane, verificationData, validateVerificationRecord, verificationFresh, callStages } from './verification-calls.mjs';
 import { verifySupplementalReviewLedger } from './supplemental-reviews.mjs';
 import { callSupply } from './call-desk.mjs';
