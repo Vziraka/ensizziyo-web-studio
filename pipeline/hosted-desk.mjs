@@ -12,7 +12,7 @@ import {validateProjectBinding} from './shared-project-continuation.mjs';
 import {refinementCapability,refinementWorkerPath,generateRefinement,executeRefinement,verifyRefinementDispatch,refinementStatus,authorizeRefinement,pauseRefinement,continueRefinementRender,refinementRuntimeEnabled,refinementPolicyProjection,refinementStatusText} from './refinement-generation.mjs';
 import {blobProjectOriginalStore,reserveSharedOriginal,uploadSharedOriginalChunk,completeSharedOriginal,sharedOriginalManifest,readSharedOriginalChunk,originalChunkRequest,originalDigest,observeOriginalRecovery,reconcileOriginalRecovery} from './shared-project-originals.mjs';
 import {validateInertBinding} from './inert-shared-workspace.mjs';
-import {validateManualBinding,manualRecordEvents} from './shared-manual-records.mjs';
+import {validateManualBinding,manualRecordEvents,manualCapabilities} from './shared-manual-records.mjs';
 import {gatewayProofView,configureGatewayProof,runGatewayProof,pauseGatewayProof,reviewGatewayProof} from './gateway-proof.mjs';
 import {callTranscriptionView,approveCallTranscription,runCallTranscription,pauseCallTranscription} from './call-transcription.mjs';
 import {fullCallView,approveFullCall,runFullCall,pauseFullCall,fullCallWorkerPath} from './full-call-transcription.mjs';
@@ -52,7 +52,7 @@ function configured(env,now){
   const b=JSON.parse(env.EVZ_STAGING_RECORD_BINDING),projected=stagingEnvironment(env,{site:{id:env.SITE_ID},deploy:{id:env.DEPLOY_ID,context:env.CONTEXT}},b);
   check(b.recording===true&&env.EVZ_OPERATIONS_DESK_ENABLED==='fictional-preview'&&env.EVZ_OPERATIONS_ORIGIN===projected.EVZ_OPERATIONS_ORIGIN&&env.EVZ_OPERATIONS_BLOB_NAMESPACE===projected.EVZ_OPERATIONS_BLOB_NAMESPACE&&!env.EVZ_OPERATIONS_EMAIL_TASK_BINDING,'Exact fictional staging recording binding required');
  }
- check((env.CONTEXT==='production'&&isDispatchCapability(env.EVZ_OPERATIONS_DESK_ENABLED)||env.CONTEXT==='deploy-preview')&&[dispatchCapability,manualDispatchCapability,operationsRecordsCapability,operationsAuthoringCapability,operationsRefinementCapability,operationsOriginalsCapability,operationsCalendarCapability,operationsMailCapability,operationsPDFMailCapability,'fictional-preview','inert-shared-v1','shared-manual-records-v1','shared-project-continuation-v1',refinementCapability,researchCapability].includes(env.EVZ_OPERATIONS_DESK_ENABLED),'Private desk is not configured');
+ check((env.CONTEXT==='production'&&isDispatchCapability(env.EVZ_OPERATIONS_DESK_ENABLED)||env.CONTEXT==='deploy-preview')&&[dispatchCapability,manualDispatchCapability,operationsRecordsCapability,operationsAuthoringCapability,operationsRefinementCapability,operationsOriginalsCapability,operationsCalendarCapability,operationsMailCapability,operationsPDFMailCapability,'fictional-preview','inert-shared-v1',...manualCapabilities,'shared-project-continuation-v1',refinementCapability,researchCapability].includes(env.EVZ_OPERATIONS_DESK_ENABLED),'Private desk is not configured');
  const origin=new URL(env.EVZ_OPERATIONS_ORIGIN);check(origin.protocol==='https:'&&origin.origin===env.EVZ_OPERATIONS_ORIGIN,'Private desk is not configured');
  let inertBinding=null,manualBinding=null,projectBinding=null,dispatchBinding=null;
  if(isDispatchCapability(env.EVZ_OPERATIONS_DESK_ENABLED)){
@@ -61,9 +61,9 @@ function configured(env,now){
  }else if(env.EVZ_OPERATIONS_DESK_ENABLED==='inert-shared-v1'){
   inertBinding=JSON.parse(env.EVZ_OPERATIONS_INERT_BINDING);validateInertBinding(inertBinding.scope);
   const b=inertBinding.scope;check(b.namespace===env.EVZ_OPERATIONS_BLOB_NAMESPACE&&b.origin===origin.origin&&b.site_id===env.SITE_ID&&b.deploy_id===env.DEPLOY_ID,'Private desk binding does not match this deployment');
- }else if(env.EVZ_OPERATIONS_DESK_ENABLED==='shared-manual-records-v1'){
+ }else if(manualCapabilities.includes(env.EVZ_OPERATIONS_DESK_ENABLED)){
   manualBinding=JSON.parse(env.EVZ_OPERATIONS_MANUAL_BINDING);validateManualBinding(manualBinding.scope);
-  const b=manualBinding.scope;check(b.namespace===env.EVZ_OPERATIONS_BLOB_NAMESPACE&&b.origin===origin.origin&&b.site_id===env.SITE_ID&&b.deploy_id===env.DEPLOY_ID,'Manual desk binding does not match this deployment');
+  const b=manualBinding.scope;check(b.capability===env.EVZ_OPERATIONS_DESK_ENABLED&&b.namespace===env.EVZ_OPERATIONS_BLOB_NAMESPACE&&b.origin===origin.origin&&b.site_id===env.SITE_ID&&b.deploy_id===env.DEPLOY_ID,'Manual desk binding does not match this deployment');
  }else if(['shared-project-continuation-v1',refinementCapability,researchCapability].includes(env.EVZ_OPERATIONS_DESK_ENABLED)){
   projectBinding=JSON.parse(env.EVZ_OPERATIONS_PROJECT_BINDING);validateProjectBinding(projectBinding.scope);
   const b=projectBinding.scope;check(b.namespace===env.EVZ_OPERATIONS_BLOB_NAMESPACE&&b.origin===origin.origin&&b.site_id===env.SITE_ID&&b.deploy_id===env.DEPLOY_ID,'Shared project binding does not match this deployment');
