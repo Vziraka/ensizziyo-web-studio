@@ -6,7 +6,10 @@ The owner approved evaluating and implementing proportional subagent model choic
 
 - [x] Compare available model/effort candidates on fictional prompts against expectations written before the runs; record misses, false positives, observed token usage, latency and limitations.
 - [x] Record a provisional model/effort route and escalation/fallback rules. Add project-scoped roles, verify their CLI discovery, and record the unverified nested-child execution. Keep other projects, main-agent settings and paid overage unchanged.
-- [ ] Verify configuration resolution and affected documentation; obtain separate independent requirements and engineering reviews of the exact change and complete required CI.
+- [x] Verify role schemas, installed CLI discovery and affected documentation; retain the independent review and CI evidence in the PR.
+- [ ] In a clean supported session, verify actual named-role-to-child execution; extend adoption beyond this repository only after checking the other client or project.
+
+Record separate independent requirements and engineering reviews and required CI for the final head in the PR before merge.
 
 ## Agent workflow reliability — November 1, 2026
 
