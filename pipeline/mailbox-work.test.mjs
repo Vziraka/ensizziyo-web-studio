@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {hash,initialConfig} from './lifecycle.mjs';
 import {fixtureReply} from './lifecycle-fixtures.mjs';
-import {mailboxWorkCapability,validateMailboxWorkPolicy,applyMailboxWorkTransition,mailboxWorkContext,mailboxWorkReceipt} from './mailbox-work.mjs';
+import {mailboxWorkCapability,validateMailboxWorkPolicy,validateMailboxWorkState,applyMailboxWorkTransition,mailboxWorkContext,mailboxWorkReceipt,mailboxWorkAdoption} from './mailbox-work.mjs';
 
 const at='2026-11-02T14:00:00.000Z',secret='ab'.repeat(32),lease={worker_id:'worker-one',token:secret};
 function fixture(){
@@ -61,4 +61,16 @@ test('exact offered PDFs retain the existing two-file combined 20MB limit',()=>{
 });
 test('unsettled historical delivery fences drafting without legacy incoming route configuration',()=>{
  const f=fixture();f.s.outreach_delivery={intents:{out:{project_id:'p',status:'Uncertain'}}};assert.throws(()=>f.create(),/outgoing intent/);f.s.outreach_delivery.intents.out.status='Verified';f.create();f.claim();f.s.actions.old={id:'old',prospect_id:'p',payload:{exact_mail:true}};f.s.operations={requests:{'old-intent':{dispatch_started_at:at,status:'Uncertain'}}};assert.throws(()=>submit(f),/outgoing intent/);
+});
+test('retained corruption rejects context, receipt and transitions without exposing result bytes',()=>{
+ const changes=[t=>t.schema_version=3,t=>delete t.schema_version,t=>t.id='wrong',t=>t.kind='public_discovery',t=>t.status='Sending',t=>t.lease.fence=0,t=>t.lease.secret_sha256='bad',t=>t.lease.expires_at='2026-11-02T15:00:00.000Z',t=>t.result.body='Tampered',t=>{t.result.body='x'.repeat(3001);t.result_sha256=hash(t.result);},t=>{t.result.attachments=[{asset_id:'a',version_id:'v',sha256:'bad'}];t.result_sha256=hash(t.result);},t=>delete t.result,t=>t.attempts=[{status:'Approved'}],t=>t.adopted_by='owner'];
+ for(const change of changes){const f=fixture();f.create();f.claim();submit(f);change(f.s.email_draft_tasks.draft);const before=structuredClone(f.s);assert.throws(()=>validateMailboxWorkState(f.s,f.c));assert.throws(()=>mailboxWorkReceipt(f.s,f.c,'draft',lease,at));assert.throws(()=>mailboxWorkContext(f.s,f.c,'draft',lease,at));assert.throws(()=>submit(f));assert.deepEqual(f.s,before);}
+});
+test('historical generations remain inert and claim collisions cannot hide in retained tasks',()=>{
+ const f=fixture();f.create();f.claim();submit(f);const legacy=structuredClone(f.s.email_draft_tasks.legacy),old=structuredClone(f.s.email_draft_tasks.draft);f.c.mailbox_work.recovery_generation='next-generation';f.c.mailbox_work.worker_id='new-worker';f.c.mailbox_work.lease_minutes=1;assert.doesNotThrow(()=>validateMailboxWorkState(f.s,f.c));assert.deepEqual(f.s.email_draft_tasks.draft,old);assert.deepEqual(f.s.email_draft_tasks.legacy,legacy);assert.throws(()=>mailboxWorkReceipt(f.s,f.c,'draft',lease,at));
+ f.s.email_draft_tasks.copy={...structuredClone(old),id:'copy'};assert.throws(()=>validateMailboxWorkState(f.s,f.c),/Reused/);
+});
+test('signed adoption validation survives lease expiry but rejects changed material and owner',()=>{
+ const f=fixture();f.create();f.claim();submit(f);const input={id:'draft',revision:f.s.revision,result_sha256:hash(result)},before=structuredClone(f.s),later='2026-11-04T00:00:00.000Z';
+ const packet=mailboxWorkAdoption(f.s,f.c,input,'owner',later);assert.equal(packet.task.result.body,result.body);assert.equal(packet.context.project_id,'p');assert.deepEqual(f.s,before);assert.throws(()=>mailboxWorkAdoption(f.s,f.c,input,'friend',later),/Assigned/);f.s.prospects.p.quote={scope:'New scope'};assert.throws(()=>mailboxWorkAdoption(f.s,f.c,input,'owner',later),/changed/);
 });
