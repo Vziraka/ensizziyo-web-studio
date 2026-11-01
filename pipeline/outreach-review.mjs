@@ -1,4 +1,6 @@
 import {check,hash} from './lifecycle.mjs';
+import {outreachCadence,outreachDailySummary} from './outreach-cadence.mjs';
+import {outreachFooter} from './outreach-content.mjs';
 
 export const outreachReviewEvents=['outreach_draft_saved','outreach_batch_approved','outreach_batch_paused'];
 const roles=['owner','friend'],safeId=v=>typeof v==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(v)&&!['__proto__','constructor','prototype'].includes(v);
@@ -29,7 +31,7 @@ function eligibility(r,d,actor){
  const calls=Object.values(r.calls??{});
  if(calls.some(c=>!['no_answer','voicemail'].includes(c.outcome)))return 'Recorded conversation needs individual handling';
  if(d?.lane==='call-first'&&!calls.length)return 'Call first; record the outcome before email approval';
- if((r.attempts??[]).some(a=>a.channel==='email'))return 'Prior email requires its separate follow-up review';
+ if(d?.kind!=='follow-up'&&(r.attempts??[]).some(a=>a.channel==='email'))return 'Prior email requires its separate follow-up review';
  return null;
 }
 function kind(r){return Object.keys(r.calls??{}).length||(r.attempts??[]).length?'previously-called':'new-business';}
@@ -42,14 +44,20 @@ export function applyOutreachReview(app,state,event,actor,revision){
  check(revision===state.revision,'Workspace changed; refresh before review');
  const now=app.now(),review=structuredClone(state.outreach_review??{paused:false,drafts:{}}),data=event.data;
  if(event.type==='outreach_draft_saved'){
-  exact(data,'lane,timezone,subject,body');const r=state.prospects[event.prospect_id];
+  exact(data,Object.hasOwn(data,'kind')?'lane,timezone,subject,body,kind':'lane,timezone,subject,body');const r=state.prospects[event.prospect_id];
+  check(data.kind===undefined||['introduction','follow-up'].includes(data.kind),'Choose introduction or one follow-up');
   check(r?.controlled===true&&r.contact?.email?.endsWith('@example.invalid'),'Fictional research contact required');
-  check(!eligibility(r,null,actor),eligibility(r,null,actor));
+  const cadence=outreachCadence(state,now).find(c=>c.project_id===r.id),follow=data.kind==='follow-up';
+  check(follow||!Object.values(state.outreach_delivery?.intents??{}).some(i=>i.project_id===r.id),'An original introduction is reserved; reconcile it or prepare the single follow-up after verified sending');
+  check(!follow||cadence?.follow_up_available,'One follow-up requires a verified original send without a reply, stop or previous follow-up');
+  check(!eligibility(r,follow?{kind:'follow-up',source_sha256:hash(evidence(r))}:null,actor),eligibility(r,follow?{kind:'follow-up',source_sha256:hash(evidence(r))}:null,actor));
   check(['call-first','email-first','hold'].includes(data.lane),'Choose call first, email first or hold');
   check(typeof data.timezone==='string'&&data.timezone.length<=80,'Recipient timezone required');parts(now,data.timezone);
   check(typeof data.subject==='string'&&data.subject.trim()&&data.subject.length<=200&&!/[\r\n\x00-\x1f]/.test(data.subject),'Safe exact subject required');
   check(typeof data.body==='string'&&data.body.trim()&&data.body.length<=8000&&!/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(data.body),'Exact message body required');
-  const packet={project_id:r.id,...identity(r),owner:actor,from:'hello@evzdigital.studio',to:r.contact.email,subject:data.subject,body:data.body,lane:data.lane,timezone:data.timezone,kind:kind(r),source_sha256:hash(evidence(r))};
+  const footer=outreachFooter(app.config.sender?.postal_address),body=footer&&!data.body.endsWith(footer)?data.body+'\n\n'+footer:data.body;
+  check(body.length<=8000,'Complete message including its footer exceeds the draft limit');
+  const packet={project_id:r.id,...identity(r),owner:actor,from:'hello@evzdigital.studio',to:r.contact.email,subject:data.subject,body,lane:data.lane,timezone:data.timezone,kind:follow?'follow-up':kind(r),...(follow?{first_intent:cadence.first_intent,not_before:cadence.follow_up_due_at}:{}),source_sha256:hash(evidence(r))};
   review.drafts[r.id]={...packet,sha256:hash(packet),saved_at:now.toISOString(),schedule:null};
  }else if(event.type==='outreach_batch_paused'){
   exact(data,'reason');check(event.prospect_id==='outreach-batches'&&typeof data.reason==='string'&&data.reason.trim()&&data.reason.length<=500,'Record why the batch was paused');review.paused=true;
@@ -63,7 +71,9 @@ export function applyOutreachReview(app,state,event,actor,revision){
    check(d&&d.sha256===item.sha256&&!eligibility(r,d,actor),eligibility(r,d,actor)||'Exact draft changed');
    check(!d.schedule||day(now,d.timezone)>d.schedule.day,'Message already scheduled; do not duplicate approval');
    const who=identity(r);check(!occupied.some(o=>o.company_id===who.company_id||o.email===who.email),'Business or recipient already scheduled');
-   const schedule=recipientSlot(now,d.timezone,occupied,d.kind!=='new-business');
+   const cadence=outreachCadence(state,now).find(c=>c.project_id===r.id);
+   check(d.kind!=='follow-up'||cadence?.follow_up_available&&cadence.first_intent===d.first_intent&&cadence.follow_up_due_at===d.not_before,'Original follow-up eligibility changed');
+   const schedule=recipientSlot(d.kind==='follow-up'&&Date.parse(d.not_before)>+now?new Date(d.not_before):now,d.timezone,occupied,d.kind!=='new-business');
    check(d.kind!=='new-business'||occupied.filter(o=>o.kind==='new-business'&&o.day===schedule.day).length<100,'Daily first-email target is full');
    d.schedule={...schedule,approval_event:event.id,approved_by:actor,approved_at:now.toISOString(),execution:'Held: provider and commercial release required'};
    occupied.push({...schedule,kind:d.kind,...who});
@@ -74,7 +84,9 @@ export function applyOutreachReview(app,state,event,actor,revision){
 }
 export function outreachReviewView(state,_unused,now=new Date()){
  const review=state.outreach_review??{paused:false,drafts:{}},today=day(now,'America/New_York');
- const items=Object.values(review.drafts).map(d=>{const reason=eligibility(state.prospects[d.project_id],d),missed=d.schedule&&day(now,d.timezone)>d.schedule.day;return {...d,name:state.prospects[d.project_id]?.name,eligible:!reason&&!missed&&!review.paused,approvable:!reason&&(!d.schedule||Boolean(missed)),status:reason||(missed?'Missed day; review again':review.paused?'Paused':d.schedule?'Approved; sending held':'Awaiting exact review')};});
+ const intents=Object.values(state.outreach_delivery?.intents??{}),cadence=outreachCadence(state,now);
+ const items=Object.values(review.drafts).map(d=>{const sent=intents.find(i=>i.project_id===d.project_id&&i.package_sha256===d.sha256),follow=cadence.find(c=>c.project_id===d.project_id);const reason=eligibility(state.prospects[d.project_id],d)||(d.kind==='follow-up'&&(!follow||!follow.follow_up_available&&!sent||follow.first_intent!==d.first_intent)?'Follow-up stopped or already reserved':null),missed=d.schedule&&day(now,d.timezone)>d.schedule.day;return {...d,name:state.prospects[d.project_id]?.name,eligible:!reason&&!missed&&!review.paused,approvable:!sent&&!reason&&(!d.schedule||Boolean(missed)),status:sent?sent.status==='Verified'?'Sender verified; inbox delivery unverified':sent.status+'; reconcile original':reason||(missed?'Missed day; review again':review.paused?'Paused':d.schedule?'Approved; sending held':'Awaiting exact review')};});
  const scheduled=items.filter(d=>d.eligible&&d.kind==='new-business'&&d.schedule?.day===today).length;
- return {enabled:true,execution:'Review only; live sending is disabled',paused:review.paused,date:today,target:100,scheduled_new:scheduled,sent_new:0,shortfall:100,approval_shortfall:Math.max(0,100-scheduled),items};
+ const sentNew=intents.filter(i=>i.kind==='new-business'&&i.status==='Verified'&&i.receipt?.sent_at&&day(new Date(i.receipt.sent_at),'America/New_York')===today).length;
+ return {enabled:true,execution:'Review only; live sending is disabled',paused:review.paused,date:today,target:100,scheduled_new:scheduled,sent_new:sentNew,shortfall:Math.max(0,100-sentNew),approval_shortfall:Math.max(0,100-scheduled),items,cadence,summary:outreachDailySummary(state,now),saved_summaries:Object.values(state.outreach_delivery?.summaries??{}).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,7),alert:state.outreach_delivery?.alert??null};
 }

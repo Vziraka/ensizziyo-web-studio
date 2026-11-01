@@ -93,21 +93,25 @@ function outreachReviewPanel(){
  const review=state.outreach_review,node=panel('Review outreach batches');
  node.dataset.exactReplyReview='active';node.classList.add('outreach-review');
  node.append(el('p',review.execution,'notice'),el('p',`${review.scheduled_new} new-business messages scheduled for ${review.date} · ${review.approval_shortfall} still need approval toward the 100/day target. ${review.sent_new} sent; delivery shortfall ${review.shortfall}. Previously called businesses are additional.`));
+ if(review.alert)node.append(el('p',review.alert.message,'notice'));
+ for(const summary of review.saved_summaries??[])node.append(el('p',`${summary.date} · ${summary.sender_verified} sender-verified emails (${summary.new_businesses} new, ${summary.follow_ups} follow-ups) · ${summary.replies} replies · ${summary.calls} calls · ${summary.call_due} calls due · ${summary.shortfall} shortfall · ${summary.still_scheduled} still scheduled · ${summary.uncertain} uncertain.`));
  const eligible=Object.values(state.prospects).filter(r=>r.controlled&&r.contact?.verified&&!r.restriction&&!r.cold_paused&&r.qualification?.verdict==='Research-qualified');
  const choose=el('details');choose.append(el('summary','Prepare or edit a message'));
  for(const r of eligible){
   if(!r.follow_up_owner){choose.append(eventForm(r,r.name,'call_claimed',[],{},'Assign to me'));continue;}
   if(r.follow_up_owner!==state.current_operator)continue;
-  const saved=review.items.find(d=>d.project_id===r.id),box=el('details');box.append(el('summary',r.name));
+  const saved=review.items.find(d=>d.project_id===r.id),followUp=review.cadence?.some(c=>c.project_id===r.id&&c.follow_up_available),box=el('details');box.append(el('summary',r.name));
   for(const observation of r.call_prep?.observations??[]){box.append(el('p',observation.fact));for(const source of observation.sources??[])box.append(link(`${source.excerpt} · checked ${source.checked_at}`,source.url));}
-  box.append(eventForm(r,'Exact introduction','outreach_draft_saved',[
-   ['Contact approach','lane',saved?.lane??'call-first','text',[{value:'call-first',label:'Call first'},{value:'email-first',label:'Email first'},{value:'hold',label:'Hold'}]],
+  box.append(eventForm(r,'Exact message','outreach_draft_saved',[
+   ['Message purpose','kind',saved?.kind==='follow-up'||!saved&&followUp?'follow-up':'introduction','text',[{value:'introduction',label:'First introduction'},{value:'follow-up',label:'One follow-up after seven days'}]],
+   ['Contact approach','lane',saved?.lane??(followUp?'email-first':'call-first'),'text',[{value:'call-first',label:'Call first'},{value:'email-first',label:'Email first'},{value:'hold',label:'Hold'}]],
    ['Recipient timezone','timezone',saved?.timezone??'America/New_York'],['Subject','subject',saved?.subject??''],['Complete message including signature','body',saved?.body??'','textarea']
   ],{},'Save exact draft'));
   choose.append(box);
  }
  if(!eligible.length)choose.append(el('p','Reviewed research and a verified contact are required before a draft can enter this queue.'));
  node.append(choose);
+ for(const c of review.cadence??[])node.append(el('p',`${c.name}: ${c.stopped?'Outreach stopped for human handling':`call ${c.call_due?'due now':new Date(c.call_due_at).toLocaleString()} · follow-up ${c.follow_up_due?'due for exact review':new Date(c.follow_up_due_at).toLocaleString()} · ${c.follow_up_status}`}`));
  const form=el('form'),selected=new Map();
  for(const d of review.items){
   const box=el('fieldset'),legend=el('legend',d.name??d.project_id),label=el('label',undefined,'checkbox'),select=document.createElement('input');select.type='checkbox';select.disabled=!d.approvable||d.owner!==state.current_operator;selected.set(d.project_id,{select,draft:d});

@@ -50,3 +50,10 @@ test('an exact callback later today stays future until its agreed time',()=>{
  state.supply.checked_at='2026-10-27T18:00:00Z';assert.equal(deskQueues(state).commitments[0].id,'future');
 });
 test('an unspecified callback becomes a due reminder on its Eastern task day',()=>{const record={id:'callback-reminder',category:'Food bakery',stage:'Callback',callback_at:null,callback_due_at:'2026-10-20T13:00:00Z',calls:{},contact:{}};const state={prospects:{'callback-reminder':record},supply:{checked_at:'2026-10-19T15:00:00Z',queue:[]}};assert.deepEqual(deskQueues(state).commitments,[]);state.supply.checked_at='2026-10-20T12:00:00Z';assert.deepEqual(deskQueues(state).commitments.map(r=>r.id),['callback-reminder']);});
+
+test('unanswered-email calls remain visible across category filters and respect operator assignment',()=>{
+ const state={prospects:{a:{id:'a',category:'Food bakery',follow_up_owner:'friend',stage:'Contacting',calls:{}}},supply:{queue:[],checked_at:'2026-11-10T16:00:00Z'},outreach_review:{cadence:[{project_id:'a',call_due:true}]}};
+ assert.deepEqual(deskQueues(state,{category:'home-services',assignment:'friend'}).commitments.map(r=>r.id),['a']);
+ assert.deepEqual(deskQueues(state,{assignment:'owner'}).commitments,[]);
+ state.prospects.a.cold_paused=true;assert.deepEqual(deskQueues(state).commitments,[]);
+});
