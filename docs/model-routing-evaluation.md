@@ -157,7 +157,7 @@ Rubric (10 points): for each of cross-tenant queueing/send, omitted recipient in
 
 Pending.
 
-The preceding “Pending” was frozen before any candidate run. The results below supersede that status. The SHA-256 of the complete pre-run file was `464d80f14fdf6f6ea7cefa055a0fa0ddae98c595fc4ff5f0f3708f803c48562d`; that exact prefix is retained above.
+The preceding “Pending” was frozen before any candidate run. The results below supersede that status. The SHA-256 of the complete pre-run file was `464d80f14fdf6f6ea7cefa055a0fa0ddae98c595fc4ff5f0f3708f803c48562d`; the exact LF-normalized prefix is retained in Git. Its “no ... paid overage” wording states the intended authorization boundary, not a verified billing outcome: no purchase or overage-setting change was made for these tests, but actual charges were not independently established.
 
 Ten fresh-context runs completed with the planned model/effort choices. The [sanitized answers and observed usage](model-routing-evaluation-results.json) retain all ten responses, anonymized grading IDs, model/effort, elapsed time and token records. An independent grader scored the blinded answers against the frozen rubric; a second independent grader checked task 3 and agreed on its scores.
 
