@@ -5,7 +5,7 @@ import {mailObservationJSON,gmailScopes} from './google-hosted-transport.mjs';
 import {assertMailboxClockStep,applyMailboxClockTransition} from './mailbox-clock.mjs';
 
 export const mailboxCapability='shared-mailbox-review-v1';
-export const isMailboxCapability=value=>[mailboxCapability,'shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1'].includes(value);
+export const isMailboxCapability=value=>[mailboxCapability,'shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(value);
 export const mailboxProfile='shared-mailbox-gmail-v1';
 export const mailboxReviewEvents=['conversation_claimed','inquiry_classification_reviewed','inquiry_identity_resolved','reply_reviewed','reply_draft_saved','reply_draft_approved'];
 const key=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(v)&&!['constructor','prototype','__proto__'].includes(v);

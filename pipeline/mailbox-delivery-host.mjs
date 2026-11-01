@@ -1,7 +1,7 @@
 import {StudioLifecycle,check} from './lifecycle.mjs';
 import {ConditionalLifecycleStore} from './lifecycle-store.mjs';
 import {validateManualBinding} from './shared-manual-records.mjs';
-import {mailboxDeliveryCapability,mailboxDeliveryStatus,mailboxDeliveryPackage,mailboxDeliveryIntentId} from './mailbox-delivery.mjs';
+import {mailboxDeliveryCapability,isMailboxDeliveryCapability,mailboxDeliveryStatus,mailboxDeliveryPackage,mailboxDeliveryIntentId} from './mailbox-delivery.mjs';
 import {dispatchMailboxDelivery} from './mailbox-delivery-service.mjs';
 import {googleHostedTransport} from './google-hosted-transport.mjs';
 import {createGoogleOAuth} from './google-oauth.mjs';
@@ -20,11 +20,11 @@ async function scheduledEnvelope(request,deadline,now){
 export function createMailboxDeliveryClock({env=process.env,storeFactory=defaultStore,now=()=>new Date(),googleMailOptions={},googleOAuthOptions={}}={}){
  return async(request,context)=>{
   const deadline=+now()+25000;
-  if(env.EVZ_MAILBOX_DELIVERY_CLOCK_RUNTIME!==mailboxDeliveryCapability||env.EVZ_MAILBOX_DELIVERY_RUNTIME!==mailboxDeliveryCapability||env.EVZ_OPERATIONS_DESK_ENABLED!==mailboxDeliveryCapability||context?.deploy?.context!=='production'||context.deploy.published!==true||request.method!=='POST')return response(503,{held:true,attempted:0});
+  if(env.EVZ_MAILBOX_DELIVERY_CLOCK_RUNTIME!==env.EVZ_OPERATIONS_DESK_ENABLED||env.EVZ_MAILBOX_DELIVERY_RUNTIME!==env.EVZ_OPERATIONS_DESK_ENABLED||!isMailboxDeliveryCapability(env.EVZ_OPERATIONS_DESK_ENABLED)||context?.deploy?.context!=='production'||context.deploy.published!==true||request.method!=='POST')return response(503,{held:true,attempted:0});
   let binding;
   try{
    binding=JSON.parse(env.EVZ_OPERATIONS_MANUAL_BINDING);validateManualBinding(binding.scope);const b=binding.scope;
-   check(b.capability===mailboxDeliveryCapability&&context.site?.id===b.site_id&&context.deploy.id===b.deploy_id&&env.SITE_ID===b.site_id&&env.DEPLOY_ID===b.deploy_id&&env.EVZ_OPERATIONS_ORIGIN===b.origin&&env.EVZ_OPERATIONS_BLOB_NAMESPACE===b.namespace,'Exact published delivery clock authority required');
+   check(isMailboxDeliveryCapability(b.capability)&&b.capability===env.EVZ_OPERATIONS_DESK_ENABLED&&context.site?.id===b.site_id&&context.deploy.id===b.deploy_id&&env.SITE_ID===b.site_id&&env.DEPLOY_ID===b.deploy_id&&env.EVZ_OPERATIONS_ORIGIN===b.origin&&env.EVZ_OPERATIONS_BLOB_NAMESPACE===b.namespace,'Exact published delivery clock authority required');
    await scheduledEnvelope(request,deadline,now);
   }catch{return response(400,{held:true,attempted:0});}
   try{
@@ -45,6 +45,6 @@ export function createMailboxDeliveryClock({env=process.env,storeFactory=default
  };
 }
 export function mailboxDeliveryClockEntry(env={}){
- if(env.CONTEXT!=='production'||env.EVZ_MAILBOX_DELIVERY_CLOCK_BUILD!==mailboxDeliveryCapability)return '// Generated: scheduled delivery is disabled.\nexport default async()=>Response.json({held:true,attempted:0},{status:503});\n';
+ if(env.CONTEXT!=='production'||!isMailboxDeliveryCapability(env.EVZ_MAILBOX_DELIVERY_CLOCK_BUILD))return '// Generated: scheduled delivery is disabled.\nexport default async()=>Response.json({held:true,attempted:0},{status:503});\n';
  return `// Generated: exact published, separately approved mailbox delivery only.\nimport {createMailboxDeliveryClock} from '../mailbox-delivery-host.mjs';\nexport default (request,context)=>createMailboxDeliveryClock({env:{...process.env,CONTEXT:context.deploy?.context??'',SITE_ID:context.site?.id??'',DEPLOY_ID:context.deploy?.id??''}})(request,context);\nexport const config={schedule:'* * * * *'};\n`;
 }

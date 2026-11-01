@@ -2,7 +2,7 @@ import {check,hash} from './lifecycle.mjs';
 import {validateMailboxPolicy} from './mailbox-intake.mjs';
 
 export const mailboxClockCapability='shared-mailbox-clock-v1';
-export const isMailboxClockCapability=value=>[mailboxClockCapability,'shared-mailbox-delivery-v1'].includes(value);
+export const isMailboxClockCapability=value=>[mailboxClockCapability,'shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(value);
 const utc=v=>typeof v==='string'&&Number.isFinite(Date.parse(v))&&new Date(v).toISOString()===v;
 const key=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(v)&&!['constructor','prototype','__proto__'].includes(v);
 const digest=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);

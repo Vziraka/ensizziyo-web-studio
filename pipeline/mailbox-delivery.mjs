@@ -7,6 +7,7 @@ import {outreachFooter} from './outreach-content.mjs';
 import {mailMessageId} from './google-hosted-transport.mjs';
 
 export const mailboxDeliveryCapability='shared-mailbox-delivery-v1';
+export const isMailboxDeliveryCapability=value=>[mailboxDeliveryCapability,'shared-operations-desk-v1'].includes(value);
 const key=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,100}$/.test(v)&&!['__proto__','constructor','prototype'].includes(v);
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 const utc=v=>typeof v==='string'&&Number.isFinite(Date.parse(v))&&new Date(v).toISOString()===v;
@@ -22,7 +23,7 @@ export function validateMailboxDeliveryPolicy(p){
  check(count(p.max_intents,10000)&&p.max_intents>0&&count(p.max_per_day,500)&&p.max_per_day>0&&hash(p.kinds)===hash(['reply','outreach'])&&typeof p.sender_ready==='boolean'&&typeof p.postal_address_verified==='boolean','Finite closed delivery policy required');return p;
 }
 function policy(c,now,live=true){
- check(c.shared_capability===mailboxDeliveryCapability&&c.mode==='production'&&c.outreach_enabled===false,'Exact mailbox delivery capability required');
+ check(isMailboxDeliveryCapability(c.shared_capability)&&c.mode==='production'&&c.outreach_enabled===false,'Exact mailbox delivery capability required');
  const p=validateMailboxDeliveryPolicy(c.mailbox_delivery);check(utc(now)&&(!live||Date.parse(now)<Date.parse(p.expires_at)),'Mailbox delivery policy expired');
  check(c.mailbox?.account===p.account&&c.mailbox?.grant_id===p.grant_id&&c.sender?.email===p.from,'Delivery account differs from canonical mailbox');return p;
 }
