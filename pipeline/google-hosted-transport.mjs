@@ -131,6 +131,8 @@ export function googleHostedTransport({getAccessToken,fetcher=fetch,account,gran
   incomingProfile:()=>request('profile'),
   incomingHistory:(cursor,page)=>request('history?'+new URLSearchParams({startHistoryId:cursor,maxResults:'50',...(page?{pageToken:page}:{})}),{max:250_000}),
   incomingThread:thread=>request('threads/'+encodeURIComponent(thread)+'?format=full',{max:2_000_000}),
+  mailboxList:(after,page)=>{check(typeof after==='string'&&Number.isFinite(Date.parse(after))&&(!page||typeof page==='string'&&page.length<=500),'Bounded mailbox search required');return request('messages?'+new URLSearchParams({q:'after:'+Math.floor(Date.parse(after)/1000)+' -in:sent -in:drafts -in:spam -in:trash',maxResults:'50',...(page?{pageToken:page}:{})}),{max:250_000});},
+  mailboxMessage:message=>{check(id(message),'Exact Gmail message ID required');return request('messages/'+encodeURIComponent(message)+'?format=full',{max:2_000_000});},
   async preflight(options={}){await mailPreflight((path,more)=>request(path,{...options,...more}),account);return {account,from:'hello@evzdigital.studio',grant_id:grantId};},
   freshSource:(p,options={})=>mailFreshSource((path,more)=>request(path,{...options,...more}),p),
   async send(expected,options={}){return mailSendResponse(await request('messages/send',{...options,method:'POST',body:mailSendBody(expected)}),expected);},

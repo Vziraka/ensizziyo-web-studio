@@ -27,7 +27,7 @@ export function validateWritingProfiles(state){
 }
 export function conversationPolicy(config){return config.internal_dispatch?.conversation_records;}
 export function requireConversationPolicy(config){check(hash(conversationPolicy(config)??null)===hash(conversationSchema),'This shared binding does not authorize conversation ownership or personal writing styles');}
-export function applyConversationRecord(state,event,actor,revision,now){
+export function applyConversationRecord(state,event,actor,revision,now,{manualRecording=false}={}){
  check(roles.includes(actor)&&conversationEvents.includes(event?.type),'Signed operator conversation record required');exact(event,'id,prospect_id,type,at,data');
  check(typeof event.id==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(event.id)&&!['__proto__','constructor','prototype'].includes(event.id)&&typeof event.at==='string'&&Number.isFinite(Date.parse(event.at))&&Date.parse(event.at)<=+now+60000,'Stable event identity and nonfuture timestamp required');
  const fingerprint=hash({event,actor}),prior=state.events[event.id];if(prior){check(prior.fingerprint===fingerprint,'Event ID conflicts with saved evidence');return {duplicate:true,revision:state.revision};}
@@ -38,8 +38,8 @@ export function applyConversationRecord(state,event,actor,revision,now){
   r.follow_up_owner=actor;r.conversation_claims??=[];r.conversation_claims.push({event_id:event.id,actor,at:event.at,reason:event.data.reason});r.updated_at=event.at;
   for(const work of Object.values(r.project_work??{}))if(work.status==='Ready')work.assigned_to=actor;
   for(const action of Object.values(state.actions))if(action.prospect_id===r.id&&['call_task','callback_task'].includes(action.type)&&action.status==='Queued')action.assigned_to=actor;
-  prepareNotificationsInState(state,now,{origin:event.id,includeDigest:false});
-  const cycle=state.operations?.cycle;if(cycle&&!cycle.completed_at){cycle.completed_records=(cycle.completed_records??[]).filter(id=>id!==r.id);cycle.completed_bookings=[];}
+  if(!manualRecording)prepareNotificationsInState(state,now,{origin:event.id,includeDigest:false});
+  const cycle=manualRecording?null:state.operations?.cycle;if(cycle&&!cycle.completed_at){cycle.completed_records=(cycle.completed_records??[]).filter(id=>id!==r.id);cycle.completed_bookings=[];}
  }else{
   const d=styleFields(event,actor);state.operator_writing_styles??={};const old=state.operator_writing_styles[actor];check((old?.sha256??null)===d.expected_style_sha256,'Personal writing style changed; reload your current version');const profile=profileFor(event,actor,(old?.version??0)+1);
   state.operator_writing_style_history??=[];check(state.operator_writing_style_history.length<500,'Writing style history limit reached');if(old)state.operator_writing_style_history.push(old);state.operator_writing_styles[actor]=profile;
