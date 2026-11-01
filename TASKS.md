@@ -7,8 +7,10 @@ The owner selected “All EVZ projects, starting here,” “Create and test cha
 - [x] Make the task router findable without loading the full historical catalog; preserve the existing adoption policy and installed/linked distinction.
 - [x] Record decisions, reasons and checkpoints in existing project/private records; use real context signals where exposed and mark unknown otherwise.
 - [x] Require separate independent requirements and engineering reviewers for substantial operations changes and broad audits; require independent review of skill changes. Preserve proportional handling for routine work and report an unavailable review honestly.
-- [ ] Enable evidenced creation and improvement of EVZ skills, with relevant behavior checks, independent review, traceable results and rollback; preserve client privacy and existing model, spending and provider boundaries.
+- [x] Enable evidenced creation and improvement of EVZ skills, with relevant behavior checks, independent review, traceable results and rollback; preserve client privacy and existing model, spending and provider boundaries.
 - [ ] Run fictional baseline/candidate comparisons and document actual observations, isolation limitations, final-revision reviews and relevant checks.
+
+The [fictional evaluation](docs/agent-workflow-evaluation.md) records six policy pairs and four revised-skill pairs, including retained inputs, responses, exact artifact bytes and limitations. Independent requirements and engineering reviewers found and verified corrections to the skill reference and evidence binding; both reported no remaining findings on `efcf84f`. Final-head review and CI remain to be checked.
 
 ## Operations release — November 1, 2026
 
