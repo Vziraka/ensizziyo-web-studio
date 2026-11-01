@@ -9,6 +9,7 @@ import {readDeskSnapshot} from './snapshot-read.js';
 import {audioBusy,stopAudioCapture} from './call-audio.js';
 let state, csrf, operatorAuthRequired = false, view = 'today', selected = 'juniper', lane = 'all', assetProject = '', dirty = false, refreshAfter = 0;
 let eventRequest,loadedWorkspaceContext;
+let googleConnectionPanel,googleConnectionActor;
 const emailTaskHandoffs=new Map();
 const content = document.querySelector('#content'), message = document.querySelector('#message');
 const titles = { today: ['Your calling desk', 'Your work today.', 'Prepared leads, clear next steps and your notes in one place.'], reviews: ['Evidence → operator decision', 'Review calls and replies.', 'Connected calls and verified replies wait for an operator decision.'], clients: ['From scope to support', 'Deliver what you agreed.', 'Track materials, payment evidence, delivery checks and open requests.'], exceptions: ['Bounded recovery', 'Handle the exceptions.', 'Held work stays visible while unrelated records continue.'], launch: ['Before the first real contact', 'Approve a working system.', 'These gates stay closed until their evidence and your final approval are recorded.'] };
@@ -20,7 +21,7 @@ function tell(text, error = false) { message.textContent = text; message.classNa
 async function api(path, input) {
   if (eventRequest && path === '/api/event') return eventRequest.send(input);
   if (eventRequest?.pending && !['/api/login','/api/logout','/api/pause'].includes(path)) throw Error('Resolve the pending saved action before making another change.');
-  const read=['/api/calendar/availability','/api/google-calendar-oauth/status'].includes(path);
+  const read=['/api/calendar/availability','/api/google-calendar-oauth/status','/api/google-oauth/status'].includes(path);
   const response = await fetch(deskPath(path), { method: read?'GET':'POST', headers: { 'Content-Type': 'application/json', 'X-Studio-Token': csrf }, ...(read?{}:{body:JSON.stringify(input)}) });
   if (response.status === 401 && operatorAuthRequired) { showOperatorLogin(); throw Error('Sign in with your operator key to continue'); }
   const data = await response.json(); if (!response.ok){const error=Error(data.error);error.status=response.status;throw error;} return data;
@@ -45,6 +46,7 @@ function showPendingEvent() {
   message.after(notice);
 }
 function showOperatorLogin(error = '') {
+  googleConnectionPanel=null;googleConnectionActor=null;
   state = null; document.querySelector('nav').hidden = true; document.querySelector('.aside-foot').hidden = true;
   document.querySelector('#mode-banner').hidden = true; document.querySelector('#backup').hidden = true;
   document.querySelector('#pause').hidden = true; document.querySelector('#operator-label').hidden = true; document.querySelector('#sign-out').hidden = true;
@@ -642,6 +644,26 @@ function render() {
     node.append(notices,el('p',standingInternal?'Bounded ticks and pending digests stay visible in policy status. Exhausted limits never grant extra sends or backfill.':'Routine checks stay in private logs. The earlier test monitor stays paused; no external delivery is enabled by these prepared messages.','muted'));content.append(node);return;
   }
   if (view === 'launch') {
+    if(state.hosted_preview&&(!googleConnectionPanel||googleConnectionActor!==state.current_operator)){
+      const connection=panel('Business Gmail connection'),status=el('p','Check the connection before requesting owner consent. Connecting does not enable sending or mailbox synchronization.','muted'),actions=el('div',undefined,'actions');
+      const inspect=async()=>{
+        actions.replaceChildren();checkConnection.disabled=true;
+        try{
+          const saved=await api('/api/google-oauth/status');status.textContent=`${saved.status}${saved.account?' · '+saved.account:''}`;
+          if(saved.enabled&&state.current_operator==='owner'){
+            actions.append(button(saved.status==='Connected'?'Reconnect business Gmail':'Connect business Gmail',async()=>{
+              actions.replaceChildren();checkConnection.disabled=true;
+              try{const result=await api('/api/google-oauth/start',{}),target=new URL(result.authorization_url);if(target.origin!=='https://accounts.google.com'||target.pathname!=='/o/oauth2/v2/auth')throw Error('Unexpected Google authorization destination');window.location.assign(target.href);}
+              catch(error){tell(error.message,true);await inspect();}
+            }));
+            if(saved.status==='Connected')actions.append(button('Disconnect from this desk',async()=>{actions.replaceChildren();checkConnection.disabled=true;try{await api('/api/google-oauth/disconnect',{});tell('Disconnected locally. Remove the app in your Google account if you also want to revoke its Google grant.');}catch(error){tell(error.message,true);}await inspect();}));
+          }
+        }catch(error){status.textContent=error.status===403?'Google connection is not enabled for this deployment.':error.message;}finally{checkConnection.disabled=false;}
+      };
+      const checkConnection=button('Check Gmail connection',inspect);
+      connection.append(status,checkConnection,actions);googleConnectionPanel=connection;googleConnectionActor=state.current_operator;
+    }
+    if(state.hosted_preview)content.append(googleConnectionPanel);
     if(state.hosted_preview&&!state.shared_workspace)content.append(gatewayProofPanel(state,{el,button,api,tell,refresh,clearDirty:()=>{dirty=false;}}));
     if (state.controls.mode === 'production') {
       const calls = panel('Calls-only final review'), review = state.controls.final_review.calls;

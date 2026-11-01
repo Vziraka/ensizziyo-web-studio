@@ -7,12 +7,52 @@ import {createOperatorAuth} from './operators.mjs';
 const binding={site_id:'d7840f1d-c0e6-4f87-a41f-e34f53c81625',deploy_id:'abc123',origin:'https://abc123--evz-hybrid-fictional-20261027.netlify.app',namespace:'evz-redesign-proof-staging-1234567890abcdef'};
 const context={site:{id:binding.site_id},deploy:{id:binding.deploy_id,context:'deploy-preview',published:false}};
 const env={EVZ_OPERATIONS_OWNER_KEY:'o'.repeat(43),EVZ_OPERATIONS_FRIEND_KEY:'f'.repeat(43),EVZ_OPERATIONS_SESSION_SECRET:'s'.repeat(43),EVZ_OPERATIONS_DESK_ENABLED:'shared-operations-pdf-mail-v1',EVZ_INTERNAL_DISPATCH_BINDING:'poison',OPENAI_API_KEY:'not-forwarded'};
+test('owner connection opt-in forwards only its credential configuration and closed routes',async()=>{
+ const supplied={...env,EVZ_OPERATIONS_GOOGLE_OAUTH:'owner-code-v1',EVZ_GOOGLE_OAUTH_BINDING:'bound-by-existing-oauth-validator',EVZ_GOOGLE_CREDENTIAL_NAMESPACE:'separate-namespace',EVZ_GOOGLE_CREDENTIAL_KEY_ID:'key-id',EVZ_GOOGLE_CREDENTIAL_KEY:'test-key',EVZ_GOOGLE_CLIENT_SECRET:'test-secret',EVZ_OPERATIONS_GOOGLE_EXACT_MAIL:'shared-operations-exact-mail-v1',EVZ_OPERATIONS_GOOGLE_INCOMING:'enabled'};
+ const ordinary=stagingEnvironment(supplied,context,binding);
+ assert.equal(ordinary.EVZ_OPERATIONS_GOOGLE_OAUTH,undefined);
+ assert.equal(ordinary.EVZ_GOOGLE_CLIENT_SECRET,undefined);
+ const opted={...binding,google_connection:true},projected=stagingEnvironment(supplied,context,opted);
+ assert.equal(projected.EVZ_OPERATIONS_GOOGLE_OAUTH,'owner-code-v1');
+ assert.equal(projected.EVZ_GOOGLE_CLIENT_SECRET,'test-secret');
+ assert.equal(projected.EVZ_OPERATIONS_GOOGLE_EXACT_MAIL,undefined);
+ assert.equal(projected.EVZ_OPERATIONS_GOOGLE_INCOMING,undefined);
+ let calls=0;const handle=createStagingBoundary({env:supplied,binding:opted,handlerFactory:()=>{calls++;return ()=>new Response('delegated');}});
+ for(const [method,path] of [['GET','/desk/api/google-oauth/status'],['GET','/desk/api/google-oauth/callback'],['GET','/desk/google-oauth-callback.js'],['POST','/desk/api/google-oauth/start'],['POST','/desk/api/google-oauth/callback'],['POST','/desk/api/google-oauth/disconnect']])assert.equal((await handle(new Request(binding.origin+path,{method}),context)).status,200,path);
+ assert.equal(calls,6);
+ for(const [method,path] of [['GET','/desk/api/google-oauth/start'],['POST','/desk/api/google-oauth/status'],['POST','/desk/api/google-oauth/start/'],['POST','/desk/api/google-drive-oauth/start'],['POST','/desk/api/exact-mail/dispatch'],['POST','/desk/api/incoming-mail/sync'],['POST','/desk/api/internal-dispatch-background']])assert.equal((await handle(new Request(binding.origin+path,{method}),context)).status,403,path);
+ assert.equal(calls,6);
+});
 test('staging sessions are revoked by operator-key rotation and deployment replacement',()=>{
  const original=createOperatorAuth(stagingEnvironment(env,context,binding));
  const cookie='evz_operator_session='+original.issue('owner');assert.equal(original.actorFromCookie(cookie),'owner');
  const rotated=createOperatorAuth(stagingEnvironment({...env,EVZ_OPERATIONS_FRIEND_KEY:'r'.repeat(43)},context,binding));assert.equal(rotated.actorFromCookie(cookie),null);
  const replacement={...binding,deploy_id:'replacement',origin:'https://replacement--evz-hybrid-fictional-20261027.netlify.app'};
  const next=createOperatorAuth(stagingEnvironment(env,{...context,deploy:{...context.deploy,id:'replacement'}},replacement));assert.equal(next.actorFromCookie(cookie),null);
+});
+test('opted staging preserves signed owner-only OAuth and never opens business records',async()=>{
+ const oauthBinding={site_id:binding.site_id,deploy_id:binding.deploy_id,origin:binding.origin,redirect_uri:binding.origin+'/desk/api/google-oauth/callback',tenant_id:'fictional-business',client_id:'fictional-client.apps.googleusercontent.com',account:'ensizziyo@evzdigital.studio',audience:'internal'};
+ const settings={...env,EVZ_OPERATIONS_GOOGLE_OAUTH:'owner-code-v1',EVZ_GOOGLE_OAUTH_BINDING:JSON.stringify(oauthBinding),EVZ_GOOGLE_CREDENTIAL_NAMESPACE:'evz-google-credentials-staging-fictional',EVZ_GOOGLE_CREDENTIAL_KEY_ID:'fictional-key',EVZ_GOOGLE_CREDENTIAL_KEY:Buffer.alloc(32,7).toString('base64url'),EVZ_GOOGLE_CLIENT_SECRET:'fictional-client-secret'};
+ let saved=null,version=0;
+ const raw={async getWithMetadata(){return saved?{data:structuredClone(saved),etag:String(version)}:null;},async setJSON(key,data,options){assert.equal(key,'credential');if(options.onlyIfNew&&saved||options.onlyIfMatch!==undefined&&options.onlyIfMatch!==String(version))return {modified:false};saved=structuredClone(data);return {modified:true,etag:String(++version)};}};
+ const handle=createStagingBoundary({env:settings,binding:{...binding,google_connection:true},handlerFactory:projected=>createHostedDesk({env:projected,storeFactory:()=>{throw Error('Business records must stay unopened');},googleOAuthOptions:{storeFactory:namespace=>{assert.equal(namespace,settings.EVZ_GOOGLE_CREDENTIAL_NAMESPACE);return raw;},fetcher:()=>{throw Error('No Google requests before owner consent');}}})});
+ const call=(path,options={})=>handle(new Request(binding.origin+'/desk'+path,options),context);
+ assert.equal((await call('/api/google-oauth/status')).status,401);
+ const sessions={};
+ for(const role of ['OWNER','FRIEND']){
+  const boot=await call('/api/bootstrap'),csrf=(await boot.json()).csrf,headers={cookie:boot.headers.get('set-cookie').split(';')[0],origin:binding.origin,'content-type':'application/json','x-studio-token':csrf};
+  const login=await call('/api/login',{method:'POST',headers,body:JSON.stringify({key:settings['EVZ_OPERATIONS_'+role+'_KEY']})});assert.equal(login.status,200);headers.cookie+='; '+login.headers.get('set-cookie').split(';')[0];sessions[role]=headers;
+ }
+ assert.equal((await call('/api/google-oauth/start',{method:'POST',headers:sessions.FRIEND,body:'{}'})).status,400);
+ assert.equal((await call('/api/google-oauth/start',{method:'POST',headers:{...sessions.OWNER,'x-studio-token':'wrong'},body:'{}'})).status,403);
+ assert.equal(saved,null);
+ const started=await call('/api/google-oauth/start',{method:'POST',headers:sessions.OWNER,body:'{}'});assert.equal(started.status,200);
+ const url=new URL((await started.json()).authorization_url);assert.equal(url.searchParams.get('redirect_uri'),oauthBinding.redirect_uri);assert.equal(url.searchParams.get('login_hint'),oauthBinding.account);
+ const status=await(await call('/api/google-oauth/status',{headers:sessions.FRIEND})).json();assert.equal(status.status,'Awaiting owner authorization');assert.doesNotMatch(JSON.stringify(status),/fictional-client-secret|verifier|nonce/);
+ const landing=await call('/api/google-oauth/callback?code=fictional-code&state=fictional-state');assert.equal(landing.status,200);assert.doesNotMatch(await landing.text(),/fictional-code|fictional-state/);
+ assert.equal((await call('/api/exact-mail/dispatch',{method:'POST',headers:sessions.OWNER,body:'{}'})).status,403);
+ assert.equal((await call('/api/google-oauth/disconnect',{method:'POST',headers:sessions.OWNER,body:'{}'})).status,200);
+ assert.equal((await(await call('/api/google-oauth/status',{headers:sessions.FRIEND})).json()).status,'Disconnected');
 });
 test('staging uses exact isolated deployment and excludes inherited provider capabilities',()=>{
  const projected=stagingEnvironment(env,context,binding);

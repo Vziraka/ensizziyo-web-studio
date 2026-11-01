@@ -5,6 +5,7 @@ import {createHash,randomBytes} from 'node:crypto';
 import {lifecycleAssets} from '../pipeline/lifecycle-assets.mjs';
 const repo=fileURLToPath(new URL('../',import.meta.url)), output=process.argv[2];
 const recording=process.argv.includes('--recording');
+const googleConnection=process.argv.includes('--google-connection');
 if(!output)throw Error('Provide a new private staging source directory');
 const target=resolve(output);
 await mkdir(target); // Never overwrite an existing staged artifact.
@@ -38,8 +39,8 @@ const namespace='evz-redesign-proof-staging-'+randomBytes(12).toString('hex');
 await put('staging-build.mjs',`import {writeFile} from 'node:fs/promises';
 const {SITE_ID,DEPLOY_ID,DEPLOY_URL,CONTEXT}=process.env;
 if(SITE_ID!=='d7840f1d-c0e6-4f87-a41f-e34f53c81625'||CONTEXT!=='deploy-preview'||!DEPLOY_ID||DEPLOY_URL!=='https://'+DEPLOY_ID+'--evz-hybrid-fictional-20261027.netlify.app')throw Error('Exact staging build metadata required');
-await writeFile('pipeline/staging.generated.mjs','export default '+JSON.stringify({site_id:SITE_ID,deploy_id:DEPLOY_ID,origin:DEPLOY_URL,namespace:${JSON.stringify(namespace)},recording:${recording}})+';');\n`);
+await writeFile('pipeline/staging.generated.mjs','export default '+JSON.stringify({site_id:SITE_ID,deploy_id:DEPLOY_ID,origin:DEPLOY_URL,namespace:${JSON.stringify(namespace)},recording:${recording},google_connection:${googleConnection}})+';');\n`);
 await put('public/index.html','<!doctype html><html lang="en"><meta charset="utf-8"><meta name="robots" content="noindex,nofollow"><title>EVZ protected staging</title><h1>EVZ fictional staging</h1><p>Live sending and publication are OFF. '+(recording?'Workflow records and release receipts are simulations.':'Inspection only; workflow edits are disabled.')+'</p><a href="/desk/">Sign in to the desk</a></html>');
 await put('netlify.toml','[build]\ncommand = "npm ci --ignore-scripts --omit=dev && node staging-build.mjs"\npublish = "public"\n[build.environment]\nNODE_VERSION = "24"\n[functions]\ndirectory = "functions"\nnode_bundler = "esbuild"\n');
-await put('staging-manifest.json',JSON.stringify({prepared_at:new Date().toISOString(),site_id:'d7840f1d-c0e6-4f87-a41f-e34f53c81625',namespace,mode:recording?'fictional-recording':'fictional-inspection-only',source_hashes:hashes,limits:['Only explicitly bound fictional records; no real client data','No provider or scheduled function entrypoints','Operator keys supplied separately at runtime','Protection and hosted verification required before acceptance']},null,2));
+await put('staging-manifest.json',JSON.stringify({prepared_at:new Date().toISOString(),site_id:'d7840f1d-c0e6-4f87-a41f-e34f53c81625',namespace,mode:recording?'fictional-recording':'fictional-inspection-only',google_connection:googleConnection,source_hashes:hashes,limits:['Only explicitly bound fictional records; no real client data',googleConnection?'Owner Google connection only; no mailbox sync, send or scheduled entrypoints':'No provider or scheduled function entrypoints','Operator keys supplied separately at runtime','Protection and hosted verification required before acceptance']},null,2));
 console.log(JSON.stringify({directory:target,files:Object.keys(hashes).length,namespace,uploaded:false}));

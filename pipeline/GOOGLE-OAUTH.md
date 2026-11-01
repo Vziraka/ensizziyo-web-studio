@@ -40,6 +40,8 @@ These bounded one-object CAS claims reuse the repository's reviewed conditional 
 
 ## Future owner setup — reviewable placeholders only
 
+November 1 preparation: the business-owned Google project and Internal app identity now exist, and Gmail API is enabled. No client credential or mailbox grant exists yet. The release adds `--google-connection` to `scripts/prepare-protected-staging.mjs` for the existing protected preview. It explicitly permits only this default owner's start/status/callback/disconnect routes and callback script; it forwards only the six existing OAuth configuration variables. Omitting the option retains the previous provider denials. Runtime credentials remain separate and unset in generated source. Exact OAuth deployment/account/namespace validation and owner-session/CSRF checks are unchanged. Setup offers an explicit status check and owner connect/local-disconnect controls; ordinary desk refresh preserves the checked panel, and sign-out clears it. Sending, synchronization, other grant profiles and scheduled entrypoints remain denied by the staging boundary even after connection. This is a connection rehearsal, not a production grant migration.
+
 These are later actions, not permission requests or actions performed here:
 
 1. Verify business-owned Google Cloud organization eligibility, admin policy and actual no-new-charge service limits. Enable only Gmail API. Prefer **Internal** only for an eligible organization-owned project and member account; eligibility is unverified. Otherwise External **Testing** with only the business owner as test user is a bounded trial. Gmail readonly is restricted; external production verification/security-assessment obligations need separate review.
