@@ -17,6 +17,7 @@ export function validateDispatchEmailPolicy(p){
 export function dispatchTaskScope(c){const p=c.internal_dispatch;return {...p.binding,schema_version:1,capability:p.capability,mode:'production',state_schema:1,policy_sha256:hash(p)};}
 export const sharedDispatchEmailTasks=app=>app.store?.key==='workspace'&&Boolean(app.store.dispatchBinding)&&Boolean(dispatchEmailTaskPolicy(app.config))&&app.config.shared_capability==='shared-operations-exact-mail-v1'&&hash(app.store.dispatchBinding?.scope)===hash(dispatchTaskScope(app.config));
 export function emailDraftReviewBinding(c){
+ if(c?.shared_capability==='shared-mailbox-work-v1')return hash({capability:c.shared_capability,mailbox:c.mailbox,worker:c.mailbox_work});
  if(dispatchEmailTaskPolicy(c))return hash({scope:dispatchTaskScope(c),task_schema:dispatchEmailTaskSchema,reply_bundle:dispatchReplyBundlePolicy(c)});
  return c?.email_task_proof?.schema_version===2?c.email_task_proof.binding_sha256:null;
 }
