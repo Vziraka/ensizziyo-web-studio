@@ -37,12 +37,12 @@ export function deskQueues(state,{category='all',subtypes=[],lane='all',history=
   for(const action of state.supply.queue)if(!byId.has(action.prospect_id))byId.set(action.prospect_id,state.prospects[action.prospect_id]);
   const day=value=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
   const today=day(state.supply.checked_at??new Date());
-  const due=records.filter(r=>{const callbackDue=r.callback_at??r.callback_due_at;return !r.restriction&&r.stage==='Callback'&&(!callbackDue||day(callbackDue)<=today);});
+  const due=records.filter(r=>{const callbackDue=r.callback_at??r.callback_due_at;return !r.restriction&&r.stage==='Callback'&&(!callbackDue||(r.callback_at?Date.parse(callbackDue)<=+new Date(state.supply.checked_at??Date.now()):day(callbackDue)<=today));});
   const promised=records.filter(r=>!r.restriction&&(r.stage==='Discovery'&&!r.meeting||r.stage==='Information requested'&&!['Sent','Verified','Simulated'].includes(r.information_draft?.status)));
   const commitments=[...new Map([...due,...promised].map(r=>[r.id,r])).values()];
   const ids=new Set(commitments.map(r=>r.id));
   const laneMatches=r=>lane==='all'||(lane==='enriched'?r.provider_contact_view?.current:(r.call_lane==='verification'?'verification':'research')===lane);
-  const assignmentMatches=r=>assignment==='team'||(assignment==='my'?r.follow_up_owner===operator:!r.follow_up_owner);
+  const assignmentMatches=r=>assignment==='team'||(assignment==='my'?r.follow_up_owner===operator:['owner','friend'].includes(assignment)?r.follow_up_owner===assignment:!r.follow_up_owner);
   const candidates=history?records.filter(r=>Object.keys(r.calls??{}).length):allBusinesses?records:[...byId.values()].filter(r=>!ids.has(r.id));
   return {commitments:commitments.filter(assignmentMatches),matching:candidates.filter(r=>matchesBusiness(r,category,subtypes)&&laneMatches(r)&&assignmentMatches(r)).sort((a,b)=>Number(Boolean(b.verification?.packet.established_evidence))-Number(Boolean(a.verification?.packet.established_evidence)))};
 }

@@ -36,6 +36,20 @@ test('the campaign stops at 100 new businesses and retains a finite shortfall in
 
 });
 async function seed(app){await startDiscoveryBatch(app,request);await app.change(s=>{const b=s.discovery_batches[request.id];b.searches.forEach(x=>x.status='Complete');b.extraction='Complete';b.candidates=[structuredClone(candidate)];});}
+
+test('public discovery imports a reviewed profile without any Apollo lookup',async t=>{
+ const {app}=await setup(t);
+ app.config.discovery.profile_version=1;
+ await saveJson(join(app.directory,'lifecycle-config.json'),app.config);
+ await seed(app);
+ const calls=[];
+ const connect={call:async name=>{calls.push(name);return {content:[{type:'text',text:'No additional public owner source.'}]};}};
+ await discoveryTick(app,{connect,collect:async()=>sources(),usage,invoke:async options=>({...await review(options),business_email:null,owner_phone:null,social:[]})});
+ assert.deepEqual(calls,['mcp__codex_apps__search_service_web_run']);
+ const b=(await app.snapshot()).discovery_batches[request.id];
+ assert.equal(b.candidates[0].status,'Imported');
+ await assert.rejects(readFile(join(app.directory,'discovery',request.id,'candidate-0-apollo-identities.json')),{code:'ENOENT'});
+});
 const review=async({promptText})=>{
  const packet=JSON.parse(promptText.split('Packet and actual retained source text: ').at(-1).split('\nReturn only one JSON object')[0]),source=packet.sources[0];
  return {schema_version:1,packet_sha256:promptText.match(/packet_sha256=([a-f0-9]{64})/)[1],accepted:true,reason:'First-party identity, exact HVAC offering, Fairfax service and advertised business phone are supported. Owner and needs remain unknown.',pitch_supported:true,pitch_reason:'Emergency enquiries are explicitly routed to voicemail with a next-business-day callback; owner fit remains unknown.',owner:null,

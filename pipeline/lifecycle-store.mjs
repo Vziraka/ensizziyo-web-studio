@@ -4,6 +4,7 @@ import {check,hash} from './lifecycle.mjs';
 import {validateInertEnvelope,validateInertChange} from './inert-shared-workspace.mjs';
 import {validateManualEnvelope,validateManualChange} from './shared-manual-records.mjs';
 import {validateEmailTaskEnvelope,validateEmailTaskChange} from './shared-email-draft-tasks.mjs';
+import {emailDependencyContract,validateEmailDependencyContract} from './email-dependency-contract.mjs';
 
 // Callbacks must reserve local state only: a conflict never reruns a callback or an external effect.
 export class ConditionalLifecycleStore {
@@ -42,6 +43,11 @@ export class ConditionalLifecycleStore {
     if(this.projectBinding)check(options.projectResearch&&this.projectBinding.scope.capability==='shared-known-identity-research-v1'||options.projectRecord||options.projectAuthoring||options.projectReconcile||options.projectGeneration&&this.projectBinding.scope.capability==='shared-refinement-generation-v1','Shared project storage rejects untyped worker and provider mutations');
     if(this.dispatchBinding)validateDispatchOptions(this.dispatchBinding.scope.capability,options);
     const result=await fn(data.state,data.config);this.validate(data);
+    // Mail callers finish their witness inside the callback; bind it to the untouched pre-state.
+    const dependencyBinding=this.emailTaskBinding??this.dispatchBinding;
+    const dependencyBefore=this.emailTaskBinding||this.dispatchBinding&&data.config.internal_dispatch?.email_draft_tasks?JSON.parse(before):null;
+    const dependency=dependencyBefore?emailDependencyContract(dependencyBefore,options,dependencyBinding,etag):null;
+    if(dependency)validateEmailDependencyContract(dependency,dependencyBefore,data,options,dependencyBinding,etag);
     if(this.emailTaskBinding)await validateEmailTaskChange(JSON.parse(before),data,options,this.emailTaskBinding,this.now,this.store);
     if(this.inertBinding)validateInertChange(JSON.parse(before).state,data.state,options);
     if(this.manualBinding)validateManualChange(JSON.parse(before),data,options);

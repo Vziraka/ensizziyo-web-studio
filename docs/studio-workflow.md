@@ -27,6 +27,8 @@ The existing continuation skill still reads current work, original assets and ma
 
 ## Public research and Apollo evaluation
 
+November 1 release update: the owner cancelled the Apollo subscription and approved removing active launch dependencies while preserving historical receipts. New discovery profile capture no longer performs the automatic identity query. The historical evaluation/optional queue instructions below do not authorize new Apollo use for this release. Task/outbound dependencies still need migration; cancellation alone does not complete that work. See the current release task in TASKS.md.
+
 Use existing public search, business-controlled websites/profiles and reviewed directories first. Keep current source dates, business identity, usable general business routes and unknowns explicit. The contact queue reaches review without an Apollo request. An Apollo outage cannot prevent recording that public result. Do not claim that a generic shop number is owner-direct or that missing public evidence proves a business problem.
 
 Apollo remains installed for its existing task/outbound dependencies. Free identity search is optional after an identified public-source gap, not a default stage. To enable one bounded free identity query for an unfinished contact card, first finish its public reads and inspect `queue.json`. Then prepare a private review JSON containing `prospect_id`, `public_evidence_sha256` = lifecycle `hash({pages:item.pages,search:item.search})`, `reviewed_by`, current ISO `reviewed_at`, `gap` (specific missing identity/contact information), and `approval_ref`. Run:

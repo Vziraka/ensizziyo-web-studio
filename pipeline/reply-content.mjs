@@ -78,7 +78,7 @@ export function replySuggestion(record){
   // This only withholds a starter; it never classifies disposition, resumes contact or books a time.
   if(/\b(?:unsubscribe|remove me|stop|not interested|do not contact|undeliver|delivery fail(?:ed|ure)?|out of (?:the )?office|automatic reply|vacation)\b/i.test(text))return {status:'Held',summary,hold:'Possible refusal, delivery issue or automatic reply. Decide the disposition before drafting in the original mailbox.'};
   let next='What would you most like to improve, and which part should we focus on first?';
-  if(/\b(?:busy|call (?:me |us )?back|callback)\b/i.test(text))next='What day, time and time zone would work for a callback?';
+  if(/\b(?:call (?:me |us )?back|(?:request|want|need|arrange|schedule) (?:a )?callback)\b/i.test(text))next='What day, time and time zone would work for a callback?';
   else if(/\b(?:when|tomorrow|next week|monday|tuesday|wednesday|thursday|friday|available|meeting)\b/i.test(text))next='Could you confirm the date, time and time zone you have in mind?';
   else if(/\b(?:price|cost|quote|pricing|budget)\b/i.test(text))next='Which deliverables and main goal should a quote cover?';
   else if(/\bwebsite\b/i.test(text))next='Which website page or customer journey would you most like to focus on?';
