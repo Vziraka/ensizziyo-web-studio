@@ -1,5 +1,6 @@
 import {check,hash} from './lifecycle.mjs';
 import {outreachCadence,outreachDailySummary} from './outreach-cadence.mjs';
+import {mailboxDeliveryOutreachState} from './mailbox-delivery.mjs';
 import {outreachFooter} from './outreach-content.mjs';
 
 export const outreachReviewEvents=['outreach_draft_saved','outreach_batch_approved','outreach_batch_paused'];
@@ -37,7 +38,7 @@ function eligibility(r,d,actor){
 function kind(r){return Object.keys(r.calls??{}).length||(r.attempts??[]).length?'previously-called':'new-business';}
 function identity(r){return {company_id:r.company_id??r.id,email:r.contact.email.toLowerCase()};}
 export function applyOutreachReview(app,state,event,actor,revision,{shared=false}={}){
- check(!app.store&&roles.includes(actor)&&(shared?['shared-outreach-review-v1','shared-mailbox-review-v1','shared-mailbox-work-v1','shared-mailbox-clock-v1'].includes(app.config.shared_capability)&&app.config.mode==='production'&&app.config.outreach_enabled===false:app.config.mode==='controlled'),'Outreach review requires its exact review authority');
+ check(!app.store&&roles.includes(actor)&&(shared?['shared-outreach-review-v1','shared-mailbox-review-v1','shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1'].includes(app.config.shared_capability)&&app.config.mode==='production'&&app.config.outreach_enabled===false:app.config.mode==='controlled'),'Outreach review requires its exact review authority');
  check(safeId(event.id)&&safeId(event.prospect_id)&&outreachReviewEvents.includes(event.type),'Stable outreach event identity required');
  const fingerprint=hash({event,actor}),prior=state.events[event.id];
  if(prior){check(prior.fingerprint===fingerprint,'Event ID conflicts with saved evidence');return {duplicate:true,revision:state.revision};}
@@ -47,8 +48,8 @@ export function applyOutreachReview(app,state,event,actor,revision,{shared=false
   exact(data,Object.hasOwn(data,'kind')?'lane,timezone,subject,body,kind':'lane,timezone,subject,body');const r=state.prospects[event.prospect_id];
   check(data.kind===undefined||['introduction','follow-up'].includes(data.kind),'Choose introduction or one follow-up');
   check(shared||r?.controlled===true&&r.contact?.email?.endsWith('@example.invalid'),'Fictional research contact required');
-  const cadence=outreachCadence(state,now).find(c=>c.project_id===r.id),follow=data.kind==='follow-up';
-  check(follow||!Object.values(state.outreach_delivery?.intents??{}).some(i=>i.project_id===r.id),'An original introduction is reserved; reconcile it or prepare the single follow-up after verified sending');
+  const cadence=outreachCadence(mailboxDeliveryOutreachState(state),now).find(c=>c.project_id===r.id),follow=data.kind==='follow-up';
+  check(follow||!Object.values(mailboxDeliveryOutreachState(state).outreach_delivery?.intents??{}).some(i=>i.project_id===r.id),'An original introduction is reserved; reconcile it or prepare the single follow-up after verified sending');
   check(!follow||cadence?.follow_up_available,'One follow-up requires a verified original send without a reply, stop or previous follow-up');
   check(!eligibility(r,follow?{kind:'follow-up',source_sha256:hash(evidence(r))}:null,actor),eligibility(r,follow?{kind:'follow-up',source_sha256:hash(evidence(r))}:null,actor));
   check(['call-first','email-first','hold'].includes(data.lane),'Choose call first, email first or hold');
@@ -71,7 +72,7 @@ export function applyOutreachReview(app,state,event,actor,revision,{shared=false
    check(d&&d.sha256===item.sha256&&!eligibility(r,d,actor),eligibility(r,d,actor)||'Exact draft changed');
    check(!d.schedule||day(now,d.timezone)>d.schedule.day,'Message already scheduled; do not duplicate approval');
    const who=identity(r);check(!occupied.some(o=>o.company_id===who.company_id||o.email===who.email),'Business or recipient already scheduled');
-   const cadence=outreachCadence(state,now).find(c=>c.project_id===r.id);
+   const cadence=outreachCadence(mailboxDeliveryOutreachState(state),now).find(c=>c.project_id===r.id);
    check(d.kind!=='follow-up'||cadence?.follow_up_available&&cadence.first_intent===d.first_intent&&cadence.follow_up_due_at===d.not_before,'Original follow-up eligibility changed');
    const schedule=recipientSlot(d.kind==='follow-up'&&Date.parse(d.not_before)>+now?new Date(d.not_before):now,d.timezone,occupied,d.kind!=='new-business');
    check(d.kind!=='new-business'||occupied.filter(o=>o.kind==='new-business'&&o.day===schedule.day).length<100,'Daily first-email target is full');
@@ -84,9 +85,9 @@ export function applyOutreachReview(app,state,event,actor,revision,{shared=false
 }
 export function outreachReviewView(state,_unused,now=new Date()){
  const review=state.outreach_review??{paused:false,drafts:{}},today=day(now,'America/New_York');
- const intents=Object.values(state.outreach_delivery?.intents??{}),cadence=outreachCadence(state,now);
+ const intents=Object.values(mailboxDeliveryOutreachState(state).outreach_delivery?.intents??{}),cadence=outreachCadence(mailboxDeliveryOutreachState(state),now);
  const items=Object.values(review.drafts).map(d=>{const sent=intents.find(i=>i.project_id===d.project_id&&i.package_sha256===d.sha256),follow=cadence.find(c=>c.project_id===d.project_id);const reason=eligibility(state.prospects[d.project_id],d)||(d.kind==='follow-up'&&(!follow||!follow.follow_up_available&&!sent||follow.first_intent!==d.first_intent)?'Follow-up stopped or already reserved':null),missed=d.schedule&&day(now,d.timezone)>d.schedule.day;return {...d,name:state.prospects[d.project_id]?.name,eligible:!reason&&!missed&&!review.paused,approvable:!sent&&!reason&&(!d.schedule||Boolean(missed)),status:sent?sent.status==='Verified'?'Sender verified; inbox delivery unverified':sent.status+'; reconcile original':reason||(missed?'Missed day; review again':review.paused?'Paused':d.schedule?'Approved; sending held':'Awaiting exact review')};});
  const scheduled=items.filter(d=>d.eligible&&d.kind==='new-business'&&d.schedule?.day===today).length;
  const sentNew=intents.filter(i=>i.kind==='new-business'&&i.status==='Verified'&&i.receipt?.sent_at&&day(new Date(i.receipt.sent_at),'America/New_York')===today).length;
- return {enabled:true,execution:'Review only; live sending is disabled',paused:review.paused,date:today,target:100,scheduled_new:scheduled,sent_new:sentNew,shortfall:Math.max(0,100-sentNew),approval_shortfall:Math.max(0,100-scheduled),items,cadence,summary:outreachDailySummary(state,now),saved_summaries:Object.values(state.outreach_delivery?.summaries??{}).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,7),alert:state.outreach_delivery?.alert??null};
+ return {enabled:true,execution:state.mailbox_delivery?'Content and schedule review; separate exact send approval and delivery controls apply':'Review only; live sending is disabled',paused:review.paused,date:today,target:100,scheduled_new:scheduled,sent_new:sentNew,shortfall:Math.max(0,100-sentNew),approval_shortfall:Math.max(0,100-scheduled),items,cadence,summary:outreachDailySummary(mailboxDeliveryOutreachState(state),now),saved_summaries:Object.values(state.outreach_delivery?.summaries??{}).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,7),alert:state.outreach_delivery?.alert??null};
 }

@@ -8,7 +8,7 @@ const roles=['owner','friend'];
 const key=value=>typeof value==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(value)&&!['__proto__','constructor','prototype'].includes(value);
 const exact=(value,keys)=>check(value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).sort().join(',')===keys.split(',').sort().join(','),'Use exact inquiry fields');
 export function applyLocalInquiry(app,state,event,actor,revision,{shared=false}={}){
-  check(!app.store&&(shared?app.config.mode==='production'&&['shared-mailbox-review-v1','shared-mailbox-work-v1','shared-mailbox-clock-v1'].includes(app.config.shared_capability):app.config.mode==='controlled'&&roles.includes(actor)),shared?'Inquiry intake requires its exact shared review authority':'Inquiry intake is local fictional operator review only');
+  check(!app.store&&(shared?app.config.mode==='production'&&['shared-mailbox-review-v1','shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1'].includes(app.config.shared_capability):app.config.mode==='controlled'&&roles.includes(actor)),shared?'Inquiry intake requires its exact shared review authority':'Inquiry intake is local fictional operator review only');
   if(shared)check(event.type==='inquiry_recorded'?actor==='provider':roles.includes(actor),'Shared adoption requires the provider; classification requires a signed operator');
   check(event.prospect_id==='inquiry-intake','Use the local inquiry intake record');
   const fingerprint=hash({event,actor}),oldEvent=state.events[event.id];

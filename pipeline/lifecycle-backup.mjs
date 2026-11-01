@@ -11,12 +11,22 @@ import {audioArchiveFiles} from './call-audio.mjs';
 import {nodePDFResources} from './project-authoring-node.mjs';
 import {validateAuthoringRecovery} from './authoring-recovery.mjs';
 import {originalEvidencePattern,validateOriginalDependencies} from './original-recovery.mjs';
+import {mailboxMimeStore,validateMailboxMimeReference} from './mailbox-mime-store.mjs';
 
 const digest=b=>createHash('sha256').update(b).digest('hex'),sha=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 const jobID=v=>typeof v==='string'&&/^author-[a-f0-9]{32}$/.test(v);
 const fileLimit=64_000_000,totalLimit=512_000_000,countLimit=6000,jsonLimit=4_000_000;
+const mimePath=/^mailbox-mime\/[a-f0-9]{64}\/(manifest|(?:0|[1-9]|1[0-9]|2[0-7])-[a-f0-9]{64})$/;
 const authorPath=/^project-authored\/(author-[a-f0-9]{32})\/(context\.json|input\.json|authored\.json|runtime\.json|renderer-evidence\.json|export\.json|output\.pdf|(review-)?page-[1-9][0-9]?\.(png|json)|image-[a-zA-Z0-9_-]{1,100}\.(png|jpg|jpeg|webp)|recovery-[a-f0-9]{64}\.bin)$/;
-function allowed(path){return typeof path==='string'&&(/^(project-originals\/[a-f0-9]{64}\.pdf|call-audio\/[a-zA-Z0-9_-]{1,80})$/.test(path)||originalEvidencePattern.test(path)||authorPath.test(path));}
+function allowed(path){return typeof path==='string'&&(/^(project-originals\/[a-f0-9]{64}\.pdf|call-audio\/[a-zA-Z0-9_-]{1,80})$/.test(path)||originalEvidencePattern.test(path)||authorPath.test(path)||mimePath.test(path));}
+function mimeReferences(state){
+ const intents=state.mailbox_delivery?.intents??{};check(intents&&typeof intents==='object'&&!Array.isArray(intents)&&Object.keys(intents).length<=10000,'Bounded delivery intents required');
+ const refs=new Map();for(const i of Object.values(intents)){
+  const m=i?.mime;check(m&&m.reference==='mailbox-mime/'+m.sha256,'Missing exact delivery MIME dependency');const ref=validateMailboxMimeReference({sha256:m.sha256,bytes:m.bytes});
+  check(!refs.has(ref.sha256)||refs.get(ref.sha256).bytes===ref.bytes,'Conflicting MIME dependency sizes');refs.set(ref.sha256,ref);
+ }return [...refs.values()];
+}
+function mimeReader(read){return mailboxMimeStore({async getWithMetadata(path){check(mimePath.test(path),'Unsafe MIME dependency path');const bytes=await read(path,path.endsWith('/manifest')?5000:1000000);return bytes?{data:bytes}:null;}});}
 
 // Every ancestor is checked: a regular leaf alone does not prevent junction escapes.
 export async function boundedBackupRead(root,path,max=fileLimit,optional=false){
@@ -33,7 +43,7 @@ export async function boundedBackupRead(root,path,max=fileLimit,optional=false){
  }catch(error){if(optional&&error.code==='ENOENT')return null;throw error;}
 }
 function workHistory(state){const pending=Object.values(state.prospects??{}).flatMap(r=>Object.values(r.project_work??{})),result=[];while(pending.length){check(result.length+pending.length<=6000,'Authoring history exceeds its verified bounds');const work=pending.pop();result.push(work);pending.push(...(work.history??[]));}return result;}
-export function hasProjectDependencies(state){return Object.keys(state.drive_original_reads??{}).length>0||Object.values(state.asset_index??{}).some(a=>Object.values(a.versions??{}).some(v=>v.original_transfer||v.verified_original||v.provenance?.source_reference))||workHistory(state).some(w=>w.execution||w.authoring_history?.length)||Object.values(state.prospects??{}).some(r=>r.project_email_drafts?.some(d=>d.attachment));}
+export function hasProjectDependencies(state){return mimeReferences(state).length>0||Object.keys(state.drive_original_reads??{}).length>0||Object.values(state.asset_index??{}).some(a=>Object.values(a.versions??{}).some(v=>v.original_transfer||v.verified_original||v.provenance?.source_reference))||workHistory(state).some(w=>w.execution||w.authoring_history?.length)||Object.values(state.prospects??{}).some(r=>r.project_email_drafts?.some(d=>d.attachment));}
 
 // Resolve a closed allowlist from records, never recurse through the workspace.
 async function inventory(state,read,{restoring=false}={}){
@@ -49,6 +59,7 @@ async function inventory(state,read,{restoring=false}={}){
   check((!expected||digest(bytes)===expected)&&(size===undefined||bytes.length===size),'Backup dependency checksum or size mismatch');return bytes;
  };
  const json=async(path,options={})=>{const bytes=await add(path,{max:jsonLimit,...options});return bytes?JSON.parse(bytes):null;};
+ const mime=mimeReader((path,max)=>add(path,{max}));for(const ref of mimeReferences(state))await mime.get(ref);
  await validateOriginalDependencies(state,(path,expected,size)=>add(path,{max:originalEvidencePattern.test(path)?1_000_000:fileLimit,expected,size}));
  function job(value){check(jobID(value.id)&&sha(value.context_sha256),'Unsafe authoring dependency declaration');const prior=jobs.get(value.id)??{};for(const k of ['context_sha256','source_sha256','runtime_sha256','renderer_sha256','renderer_lock_sha256','export_sha256'])check(!prior[k]||!value[k]||prior[k]===value[k],'Conflicting authoring dependency declarations');jobs.set(value.id,{...prior,...value});}
  for(const work of workHistory(state))for(const value of [...(work.authoring_history??[]),...(work.execution?[work.execution]:[])])job(value);
@@ -107,10 +118,28 @@ async function inventory(state,read,{restoring=false}={}){
  const audio=await audioArchiveFiles(state,{get:id=>add('call-audio/'+id,{max:4_000_000})});
  check(total<=totalLimit&&files.size<=countLimit,'Project backup exceeds its verified bounds');return {files,audio_clips:audio.length};
 }
-async function localInventory(directory,state){
+function localBackupReader(directory){
  const read=(path,max,optional)=>boundedBackupRead(directory,path,max,optional);
  read.renderer=async path=>{check(/^project-authored\/author-[a-f0-9]{32}\/renderer\.(py|mjs)$/.test(path),'Unsafe renderer evidence path');return readRegularExternal(join(directory,...path.split('/')),jsonLimit,directory);};
- read.external=readRegularExternal;return inventory(state,read);
+ read.external=readRegularExternal;return read;
+}
+async function localInventory(directory,state){return inventory(state,localBackupReader(directory));}
+// Shared manual exports read canonical MIME blobs; other retained dependencies keep the existing local path.
+export async function hostedManualBackupInventory(app,localDependencies){
+ check(app.store?.manualBinding,'Exact manual workspace required');const {data}=await app.store.envelope(),state=data.state;
+ check(!state.mailbox_delivery||app.store.manualBinding.scope.capability==='shared-mailbox-delivery-v1','Delivery recovery requires its own capability');
+ const localRead=localBackupReader(localDependencies),read=async(path,max,optional)=>{
+  if(!mimePath.test(path))return localRead(path,max,optional);
+  const entry=await app.store.store.getWithMetadata(path,{type:'arrayBuffer',consistency:'strong'});check(entry?.data,'Missing required MIME backup dependency');const bytes=Buffer.from(entry.data);check(bytes.length<=max,'Oversized MIME backup dependency');return bytes;
+ };
+ read.renderer=localRead.renderer;read.external=localRead.external;
+ const result=await inventory(state,read);
+ const after=await app.store.envelope();check(hash(after.data)===hash(data),'Workspace changed during backup; repeat from a fresh manifest');return {state,...result};
+}
+// Validation is complete before the first write. Content-addressed put reconciles exact existing bytes only.
+export async function installMailboxMimeDependencies(state,files,rawStore){
+ await validateBackupDependencies(state,files);const source=mimeReader(async path=>files.get(path)),destination=mailboxMimeStore(rawStore);
+ for(const ref of mimeReferences(state)){const bytes=await source.get(ref),saved=await destination.put(bytes);check(hash(saved)===hash(ref),'Imported MIME differs');}
 }
 export async function hostedBackupInventory(app,audioStore){
  check(app.authoringStore&&app.originalStore&&app.store&&!app.store.inertBinding&&!app.store.manualBinding&&(app.config.mode==='controlled'||supportsProjectAuthoring(app)||app.store.dispatchBinding||app.store.projectBinding?.scope.capability==='shared-known-identity-research-v1'),'Hosted project backup requires fictional controlled work or an exact shared project binding');
@@ -171,6 +200,12 @@ export async function restoreLifecycleBackup(input,destination){
   for(const a of Object.values(state.actions))if(a.status==='Pending'){a.status='Uncertain';a.hold='Restored pending mutation; read back provider, never resend';}
   for(const r of Object.values(state.operations?.requests??{}))if(r.status==='Pending'&&['draft','send','stop','booking_create','task_create','task_skip','contact_create','personalize','intent'].includes(r.operation))r.status='Uncertain';
   if(state.operations)delete state.operations.lease;delete state.runtime;
+  // Retain permanent dispatch claims and exact MIME for readback, never carry pre-restore send approval.
+  if(state.mailbox_delivery){
+   state.mailbox_delivery.paused=true;
+   check(Number.isSafeInteger(state.mailbox_delivery.epoch)&&state.mailbox_delivery.epoch<Number.MAX_SAFE_INTEGER,'Invalid delivery recovery epoch');state.mailbox_delivery.epoch++;
+   for(const intent of Object.values(state.mailbox_delivery.intents??{}))if(intent.status==='Reserved'){intent.status='Held';intent.hold='Backup restored; original reservation cannot dispatch';}
+  }
   // Recovery retains proposal evidence, never pre-restore worker authority, even at the same path.
   for(const task of Object.values(state.email_draft_tasks??{}))if(['Ready','Review'].includes(task.status)){task.status='Superseded';task.closure_reason='Backup restored; prepare a new task after reviewing current sources';}
   await writeFile(join(destination,'lifecycle-config.json'),JSON.stringify({...initialConfig,run_id:state.run_id,mode:state.mode}),{flag:'wx',mode:0o600,flush:true});

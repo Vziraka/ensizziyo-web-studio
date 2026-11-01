@@ -19,3 +19,5 @@ pipeline/netlify-functions/mailbox-clock.mjs
 CLAUDE-SECURITY-*/
 *.credentials.json
 *.service-account.json
+
+pipeline/netlify-functions/mailbox-delivery-clock.mjs
