@@ -1,5 +1,5 @@
 import {StudioLifecycle,check,hash,pauseCold} from './lifecycle.mjs';
-import {replyContent,replyHeader} from './reply-content.mjs';
+import {replyContent,replyHeader,replySender} from './reply-content.mjs';
 import {applyLocalInquiry} from './local-inquiry-intake.mjs';
 import {mailObservationJSON,gmailScopes} from './google-hosted-transport.mjs';
 
@@ -29,8 +29,9 @@ function adoptMessage(state,config,m,at){
  check(key(m.id)&&key(m.threadId)&&Array.isArray(m.labelIds)&&m.labelIds.every(v=>typeof v==='string')&&Number.isSafeInteger(Number(m.internalDate))&&Number(m.internalDate)>0&&Number(m.internalDate)<=Date.parse(at)+60000,'Complete dated Gmail message required');
  if(m.labelIds.some(l=>['SENT','DRAFT','SPAM','TRASH'].includes(l))||Number(m.internalDate)<Date.parse(sync.after))return;
  if(state.inquiry_intake?.sources?.[m.id]||sync.held_sources[m.id])return;
- const content=replyContent(m,m.threadId);
- const matches=Object.values(state.prospects).filter(r=>Boolean(content.from)&&r.contact?.email?.toLowerCase()===content.from||r.reply?.thread_id===m.threadId||r.conversation_histories?.[m.threadId]||Object.values(state.outreach_delivery?.intents??{}).some(i=>i.project_id===r.id&&i.receipt?.thread_id===m.threadId));
+ let content=replyContent(m,m.threadId),classification='uncertain';const sender=replySender(m);
+ if(content.status==='Complete')try{const list=replyHeader(m,'List-ID')||replyHeader(m,'List-Unsubscribe'),automatic=replyHeader(m,'Auto-Submitted');classification=list?'newsletter':automatic&&automatic.toLowerCase()!=='no'?'automatic_reply':'uncertain';}catch{content={...content,status:'Held',hold:'Ambiguous automated-message headers; review original'};}
+ const matches=Object.values(state.prospects).filter(r=>Boolean(sender)&&r.contact?.email?.toLowerCase()===sender||r.reply?.thread_id===m.threadId||r.conversation_histories?.[m.threadId]||Object.values(state.outreach_delivery?.intents??{}).some(i=>i.project_id===r.id&&i.receipt?.thread_id===m.threadId));
  const eventId='gmail-'+hash(m.id).slice(0,32),oldActions=new Set(Object.keys(state.actions));
  for(const r of matches)pauseCold(state,r,eventId,'Incoming business mail awaits review');
  if(content.status!=='Complete'){
@@ -38,8 +39,6 @@ function adoptMessage(state,config,m,at){
   sync.held_sources[m.id]={id:m.id,thread_id:m.threadId,received_at:new Date(Number(m.internalDate)).toISOString(),source_sha256:hash(m),status:'Original review required',reason:content.hold,matched_projects:matches.map(r=>r.id)};
  }else{
   const app=new StudioLifecycle(null,()=>new Date(at));app.config=config;
-  const list=replyHeader(m,'List-ID')||replyHeader(m,'List-Unsubscribe'),automatic=replyHeader(m,'Auto-Submitted');
-  const classification=list?'newsletter':automatic&&automatic.toLowerCase()!=='no'?'automatic_reply':'uncertain';
   applyLocalInquiry(app,state,{id:eventId,prospect_id:'inquiry-intake',type:'inquiry_recorded',at,data:{company_name:content.from,classification,reply:{source_id:m.id,thread_id:m.threadId,kind:'reply',received_at:new Date(Number(m.internalDate)).toISOString(),content}}},'provider',state.revision,{shared:true});
  }
  for(const [id,a] of Object.entries(state.actions))if(!oldActions.has(id))a.execution_hold='Incoming review only; provider execution disabled';

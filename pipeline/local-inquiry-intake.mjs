@@ -35,7 +35,7 @@ export function applyLocalInquiry(app,state,event,actor,revision,{shared=false}=
     if(data.classification==='uncertain')receipt.status='Identity review';
     if(data.classification==='inquiry'){
       const email=data.reply.content.from.toLowerCase(),thread=data.reply.thread_id;
-      const matches=Object.values(state.prospects).filter(r=>r.contact?.email?.toLowerCase()===email||r.reply?.thread_id===thread||r.conversation_histories?.[thread]||normalize(r.name)===normalize(data.company_name)||Object.values(intake.sources).some(s=>s.project_id===r.id&&s.source.thread_id===thread));
+      const matches=Object.values(state.prospects).filter(r=>r.contact?.email?.toLowerCase()===email||r.reply?.thread_id===thread||r.conversation_histories?.[thread]||Object.values(state.outreach_delivery?.intents??{}).some(i=>i.project_id===r.id&&i.receipt?.thread_id===thread)||normalize(r.name)===normalize(data.company_name)||Object.values(intake.sources).some(s=>s.project_id===r.id&&s.source.thread_id===thread));
       receipt.candidates=matches.map(r=>r.id);
       if(matches.length>1||matches.length===1&&(matches[0].origin==='workspace'||matches[0].contact?.email?.toLowerCase()!==email))receipt.status='Identity review';
       else if(matches.length===1){receipt.project_id=matches[0].id;receipt.assigned_to=matches[0].follow_up_owner??null;receipt.status=matches[0].restriction?'Restricted':receipt.assigned_to?'Matched existing client':'Ownership review';}
@@ -52,7 +52,7 @@ export function applyLocalInquiry(app,state,event,actor,revision,{shared=false}=
   check((intake.sources[receipt.source_id]||Object.keys(intake.sources).length<1000)&&Object.keys(state.events).length<19998,'Inquiry retention limit reached');
   // Source identity can stop outreach before classification or client assignment is resolved.
   // A matching business name alone cannot associate a reply with an existing conversation.
-  receipt.paused_projects=Object.values(state.prospects).filter(r=>r.contact?.email?.toLowerCase()===receipt.source.content.from.toLowerCase()||r.reply?.thread_id===receipt.source.thread_id||r.conversation_histories?.[receipt.source.thread_id]||Object.values(intake.sources).some(s=>s.project_id===r.id&&s.source.thread_id===receipt.source.thread_id)).map(r=>r.id);
+  receipt.paused_projects=Object.values(state.prospects).filter(r=>r.contact?.email?.toLowerCase()===receipt.source.content.from.toLowerCase()||r.reply?.thread_id===receipt.source.thread_id||r.conversation_histories?.[receipt.source.thread_id]||Object.values(state.outreach_delivery?.intents??{}).some(i=>i.project_id===r.id&&i.receipt?.thread_id===receipt.source.thread_id)||Object.values(intake.sources).some(s=>s.project_id===r.id&&s.source.thread_id===receipt.source.thread_id)).map(r=>r.id);
   for(const id of receipt.paused_projects)pauseCold(state,state.prospects[id],event.id,'Incoming reply awaits review');
   if(receipt.status==='Assigned new inquiry'){
     check(!state.prospects[receipt.project_id],'Existing inquiry identity must be matched before rotation');

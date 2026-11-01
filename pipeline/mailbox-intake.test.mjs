@@ -73,3 +73,15 @@ test('late classification of an older message never replaces a newer verified re
 test('a missing sender on malformed mail does not match every record lacking an email',()=>{
  const f=fixture();f.state.prospects.unrelated={id:'unrelated',contact:{phone:'synthetic'},cold_paused:false};start(f);apply(f,'list',{after:f.app.config.mailbox.after,page:null},{messages:[{id:'a',threadId:'thread-a'}]});const m=message();m.payload.headers=m.payload.headers.filter(h=>h.name!=='From');apply(f,'message',{id:'a',threadId:'thread-a'},m);assert.equal(f.state.prospects.unrelated.cold_paused,false);assert.deepEqual(f.state.mailbox_sync.held_sources.a.matched_projects,[]);
 });
+
+
+test('a changed sender in a registered outreach thread stays ambiguous without consuming ownership rotation',()=>{
+ const f=fixture();f.state.prospects.existing={id:'existing',name:'Synthetic existing client',contact:{email:'prior@example.org'},follow_up_owner:'friend',cold_paused:false};f.state.outreach_delivery={intents:{sent:{project_id:'existing',receipt:{thread_id:'thread-a'}}}};start(f);
+ apply(f,'list',{after:f.app.config.mailbox.after,page:null},{messages:[{id:'a',threadId:'thread-a'}]});apply(f,'message',{id:'a',threadId:'thread-a'},message());assert.equal(f.state.prospects.existing.cold_paused,true);
+ const result=applyLocalInquiry(f.app,f.state,classify('classify-changed-sender','a'),'owner',f.state.revision,{shared:true});assert.equal(result.receipt.status,'Identity review');assert.deepEqual(result.receipt.candidates,['existing']);assert.equal(result.receipt.assigned_to,null);assert.equal(Object.keys(f.state.prospects).length,1);assert.equal(f.state.inquiry_intake.next_owner,'owner');
+});
+
+test('ambiguous headers retain an original-review hold and sender pause without blocking the next message',()=>{
+ for(const header of ['List-ID','Subject']){const f=fixture();f.state.prospects.existing={id:'existing',name:'Synthetic existing',contact:{email:'a@example.org'},cold_paused:false};start(f);apply(f,'list',{after:f.app.config.mailbox.after,page:null},{messages:[{id:'a',threadId:'thread-a'},{id:'b',threadId:'thread-b'}]});const m=message();if(header==='List-ID')m.payload.headers.push({name:header,value:'synthetic-list'});m.payload.headers.push({name:header,value:'duplicate'});
+ apply(f,'message',{id:'a',threadId:'thread-a'},m);assert.equal(f.state.prospects.existing.cold_paused,true);assert.deepEqual(f.state.mailbox_sync.held_sources.a.matched_projects,['existing']);assert.deepEqual(f.state.mailbox_sync.pending,[{id:'b',threadId:'thread-b'}]);apply(f,'message',{id:'b',threadId:'thread-b'},message('b'));assert.equal(f.state.inquiry_intake.sources.b.classification,'uncertain');}
+});

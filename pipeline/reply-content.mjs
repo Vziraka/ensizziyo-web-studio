@@ -44,6 +44,8 @@ function extract(payload){
   if(bodies.length!==1)throw Error('Reply has missing or ambiguous text parts');
   return {text:bodies[0].replace(/\r\n?/g,'\n').trim(),format:plain.length?'text/plain':'text/html projection'};
 }
+// A malformed unrelated header must not erase a separately valid sender used only for reply-stop.
+export function replySender(message){try{return address(header(message,'From'));}catch{return null;}}
 export function replyContent(message,threadId){
   let identity={message_id:message.id,thread_id:threadId};
   try{identity={message_id:message.id,thread_id:threadId,message_header_id:header(message,'Message-ID'),in_reply_to:header(message,'In-Reply-To'),from:address(header(message,'From')),to:address(header(message,'To')),subject:header(message,'Subject')};
