@@ -16,15 +16,15 @@ flowchart TD
     E -- "No" --> G{"Skill change?"}
     F --> G
     G -- "Yes" --> H["Test examples and obtain independent skill review"]
-    G -- "No" --> I["Proportionate requirements and engineering checks"]
-    H --> J["Reconcile findings and recheck affected changes"]
-    I --> J
+    G -- "No" --> I["Proportionate requirements and engineering checks; reuse completed passes"]
+    H --> I
+    I --> J["Reconcile findings and recheck affected changes"]
     J --> K{"Meaningful milestone or known handoff?"}
     K -- "Yes" --> L["Checkpoint decisions, reasons, evidence and next action"]
     K -- "No" --> M["Report result or reviewed PR"]
     L --> M
     N["Actual context signal, if available"] -.-> L
-    L -. "When an improvement is warranted" .-> O["Compare skill or workflow changes with a baseline"]
+    J -. "When an improvement is warranted" .-> O["Compare skill or workflow changes with a baseline"]
 ```
 
 ## Interviews and persistent decisions
