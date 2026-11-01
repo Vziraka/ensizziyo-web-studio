@@ -426,7 +426,7 @@ function replyForms(r,node){
     }
   }
   if(state.email_task_proof?.composed_mail&&r.reply_draft&&(!r.reply_draft.current||r.follow_up_owner!==state.current_operator))node.append(exactReplyMailPanel(r));
-  if (!state.email_task_proof&&(!state.shared_workspace?.mail||!r.follow_up_owner||r.follow_up_owner===state.current_operator)&&(r.stage === 'Reply review'||r.reply&&['Discovery','Information requested'].includes(r.stage)&&r.reply_review&&(!r.reply_review.focus||r.reply_review.focus==='unspecified'||r.reply_review.reply_sha256!==r.reply_sha256))) {
+  if (!state.email_task_proof&&(['shared-mailbox-review-v1','shared-mailbox-work-v1'].includes(state.shared_workspace?.capability)?r.follow_up_owner===state.current_operator:!state.shared_workspace?.mail||!r.follow_up_owner||r.follow_up_owner===state.current_operator)&&(r.stage === 'Reply review'||r.reply&&['Discovery','Information requested'].includes(r.stage)&&r.reply_review&&(!r.reply_review.focus||r.reply_review.focus==='unspecified'||r.reply_review.reply_sha256!==r.reply_sha256))) {
     if(r.stage!=='Reply review')node.append(el('p','Confirm which service the business wants before preparing project work.','notice'));
     node.append(eventForm(r, 'Review the verified reply', 'reply_reviewed', [
     ['Next action', 'outcome', r.stage==='Reply review'?'hold':r.reply_review.outcome, 'text', ['discovery', 'requested_info', 'hold', 'decline', 'do_not_contact']],

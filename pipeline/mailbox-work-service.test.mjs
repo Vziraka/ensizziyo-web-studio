@@ -87,6 +87,9 @@ test('signed desk creates and adopts proposals while worker credentials cannot a
  const pdf=await owner('/api/project-asset/project/asset/v1?preview=1',undefined,{},'GET');assert.equal(pdf.status,200);assert.equal(pdf.headers.get('content-type'),'application/pdf');assert.deepEqual(Buffer.from(await pdf.arrayBuffer()),f.pdf);
  const approved=await owner('/api/event',{revision:saved.revision,event:{id:'approve-exact',type:'reply_draft_approved',prospect_id:'project',at,data:{sha256:saved.prospects.project.reply_draft.sha256,approved:true,facts_checked:true}}});assert.equal(approved.status,200,JSON.stringify(await approved.json()));
  assert.equal((await f.store.snapshot()).prospects.project.reply_draft.status,'Approved; sending held');assert.equal((await owner('/api/operations-exact-mail/send',{})).status,409);
+ const approvedState=await f.store.snapshot(),reply=approvedState.prospects.project.reply,remove={revision:approvedState.revision,event:{id:'remove-pdfs',type:'reply_draft_saved',prospect_id:'project',at,data:{source_id:reply.source_id,reply_sha256:hash(reply),source_sha256:reply.content.source_sha256,body:'Keep this owner-reviewed wording.',attachments:[]}}};
+ assert.equal((await owner('/api/event',{...remove,event:{...remove.event,data:{...remove.event.data,attachments:[{asset_id:'asset',version_id:'v1',sha256:f.digest}]}}})).status,400);
+ assert.equal((await owner('/api/event',remove)).status,200);const removed=(await f.store.snapshot()).prospects.project.reply_draft;assert.equal(removed.status,'Draft');assert.equal(removed.content.attachments,undefined);assert.equal(removed.body,'Keep this owner-reviewed wording.');
 });
 
 test('original transport rejects corrupt bytes and a cancellation during a segment read',async t=>{

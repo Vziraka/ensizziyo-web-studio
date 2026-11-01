@@ -72,6 +72,7 @@ export function applyManualRecord(state,event,actor,revision,now,config){
   else{
    check(event.type==='conversation_claimed'||state.prospects[event.prospect_id]?.follow_up_owner===actor,'Assigned operator must review this reply');
    const fields={conversation_claimed:['reason'],reply_reviewed:['source_id','reply_sha256','outcome','focus','note'],reply_draft_saved:['source_id','reply_sha256','source_sha256','body'],reply_draft_approved:['sha256','approved','facts_checked']}[event.type];
+   if(config.shared_capability==='shared-mailbox-work-v1'&&event.type==='reply_draft_saved'&&Object.hasOwn(event.data??{},'attachments')){check(Array.isArray(event.data.attachments)&&event.data.attachments.length===0,'Manual edits may only remove the exact attachment bundle');fields.push('attachments');}
    check(event.data&&Object.keys(event.data).every(k=>fields.includes(k)),'Closed shared reply review fields required');
    result=app.reduceEvent(state,event,{actor,expectedRevision:revision,manualRecording:true});
   }
