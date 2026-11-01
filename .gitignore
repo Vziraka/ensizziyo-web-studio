@@ -23,3 +23,5 @@ CLAUDE-SECURITY-*/
 pipeline/netlify-functions/mailbox-delivery-clock.mjs
 
 pipeline/netlify-functions/cloud-discovery-clock.mjs
+
+pipeline/netlify-functions/operations-notification-clock.mjs

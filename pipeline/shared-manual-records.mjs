@@ -1,3 +1,4 @@
+import {applyOperationsNotificationTransition,validateOperationsNotificationsState} from './operations-notifications.mjs';
 import {check,hash,StudioLifecycle} from './lifecycle.mjs';
 import {prepareInertWorkspace} from './inert-shared-workspace.mjs';
 import {validateBackupDependencies,hostedManualBackupInventory,writePortableLifecycleBackup,installMailboxMimeDependencies,installCloudDiscoveryDependencies} from './lifecycle-backup.mjs';
@@ -37,6 +38,7 @@ export function validateManualEnvelope(data,binding){
  else check(!data.config.mailbox_clock&&!data.state.mailbox_clock,'Clock state and policy require their separate capability');
  if(isMailboxDeliveryCapability(binding.scope.capability)){validateMailboxDeliveryPolicy(data.config.mailbox_delivery);validateMailboxDeliveryState(data.state,data.config);const p=data.config.mailbox_delivery;check(p.site_id===binding.scope.site_id&&p.deploy_id===binding.scope.deploy_id&&p.origin===binding.scope.origin,'Mailbox delivery deployment differs');}
  else check(!data.config.mailbox_delivery&&!data.state.mailbox_delivery,'Delivery state and policy require their separate capability');
+ validateOperationsNotificationsState(data.state,data.config);
  if(binding.scope.capability===cloudDiscoveryCapability){validateCloudDiscoveryPolicy(data.config.cloud_discovery);validateCloudDiscoveryState(data.state,data.config);const p=data.config.cloud_discovery;check(p.site_id===binding.scope.site_id&&p.deploy_id===binding.scope.deploy_id&&p.origin===binding.scope.origin,'Discovery policy deployment differs');}
  else check(!data.config.cloud_discovery&&!data.state.cloud_discovery,'Discovery state and policy require their separate capability');
  for(const flag of ['research_enabled','outreach_enabled','connector_writes_enabled','calls_enabled'])check(data.config[flag]===false,'Manual recording cannot enable execution');
@@ -111,7 +113,12 @@ export function applyManualRecord(state,event,actor,revision,now,config){
  }
  return {...result,execution:'disabled',external_suppression:'unverified'};
 }
-export function validateManualChange(before,after,{manualRecord,mailboxObservation,mailboxFailure,mailboxWork,mailboxClock,mailboxClockStep,mailboxDelivery,cloudDiscovery}={}){
+export function validateManualChange(before,after,{manualRecord,mailboxObservation,mailboxFailure,mailboxWork,mailboxClock,mailboxClockStep,mailboxDelivery,cloudDiscovery,operationsNotifications}={}){
+ if(operationsNotifications){
+  check(before.config.shared_capability===cloudDiscoveryCapability&&![manualRecord,mailboxObservation,mailboxFailure,mailboxWork,mailboxClock,mailboxClockStep,mailboxDelivery,cloudDiscovery].some(Boolean),'Exclusive typed notification transition required');
+  const expected=structuredClone(before.state);applyOperationsNotificationTransition(expected,before.config,operationsNotifications);
+  check(hash(expected)===hash(after.state)&&hash(before.config)===hash(after.config)&&hash(before.manual_source)===hash(after.manual_source),'Notification transition changed unrelated records or policy');return;
+ }
  if(cloudDiscovery){
   check(before.config.shared_capability===cloudDiscoveryCapability&&![manualRecord,mailboxObservation,mailboxFailure,mailboxWork,mailboxClock,mailboxClockStep,mailboxDelivery].some(Boolean),'Exclusive typed discovery transition required');
   const expected=structuredClone(before.state);applyCloudDiscoveryTransition(expected,before.config,cloudDiscovery);

@@ -1,0 +1,72 @@
+import {businessDate,hash,check} from './lifecycle.mjs';
+import {notificationSources} from './team-notifications.mjs';
+import {outreachReviewView} from './outreach-review.mjs';
+import {outreachCadence} from './outreach-cadence.mjs';
+import {mailboxDeliveryOutreachState} from './mailbox-delivery.mjs';
+
+export const operationsNotificationsCapability='shared-operations-desk-v1';
+const capability=operationsNotificationsCapability,roles=['owner','friend'],limit=500;
+const values=v=>Object.values(v??{}),role=r=>r?.follow_up_owner==='friend'?'friend':'owner';
+const date=at=>new Date(at),valid=at=>at&&Number.isFinite(Date.parse(at));
+const sameDay=(at,day)=>valid(at)&&businessDate(at)===day;
+const hour=at=>Number(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',hourCycle:'h23'}).format(date(at)));
+function digestTime(at){const day=businessDate(at);if(hour(at)<18)return null;let due=new Date(day+'T18:00:00.000Z');due.setUTCHours(due.getUTCHours()+18-hour(due));return {day,due_at:due.toISOString(),late_minutes:Math.floor((+date(at)-due)/60000)};}
+function sources(state,config,at){
+ const items=notificationSources({...state,prospects:state.prospects??{},actions:state.actions??{}},date(at)).flatMap(i=>(i.project_id?[i.role]:roles).map(recipient=>({...i,role:recipient,summary:i.kind==='reply'?'A verified reply needs assigned review. Cold follow-ups are paused.':i.kind==='meeting'?'A saved meeting needs review in the private desk.':i.id.startsWith('support:')?'An urgent support request needs assigned review.':'An assigned operation needs review in the private desk.'})));
+ const add=(id,kind='problem',recipient=null,project_id=null)=>{for(const role of recipient?[recipient]:roles)items.push({id,kind,role,project_id,summary:id.startsWith('google-health:')?'Google connection: '+state.operations_notification_health.status+'. Review connection status in Setup.':id.startsWith('mailbox-failure:')?'Mailbox intake failed. Review its saved failure in Needs attention; processing is held.':id.startsWith('mailbox-clock:')?'Automatic mailbox intake is held. Review the saved clock and source status.':id.startsWith('delivery:')?'An exact email send is uncertain. Reconcile its original sender receipt; do not resend.':id.startsWith('discovery-reserve:')?'Research is held at or below the 30% included-usage reserve.':id.startsWith('discovery-budget:')?'Research allowance or policy expired. Fresh included-usage evidence is required.':id.startsWith('discovery-task:')?'A reviewed research packet is held. Review its saved validation reason.':id.startsWith('callback:')?'An assigned callback is due. Open the calling desk.':'An operations incident needs review.'});};
+ const health=state.operations_notification_health;if(health&&health.status!=='Connected')add('google-health:'+hash({status:health.status,policy:health.mailbox_policy_sha256}));
+ if(state.mailbox_failure)add('mailbox-failure:'+hash({operation:state.mailbox_failure.operation,reason:state.mailbox_failure.reason}));
+ const tick=state.mailbox_clock?.tick;if(tick?.status==='Held'&&!state.mailbox_clock.paused)add('mailbox-clock:'+tick.id);
+ for(const i of values(state.mailbox_delivery?.intents))if(i.status==='Uncertain'||i.status==='Held'&&i.claimed_at)add('delivery:'+i.id,'uncertainty',i.package?.owner??'owner',i.package?.project_id??null);
+ const d=state.cloud_discovery,p=config.cloud_discovery,a=d?.allowances?.[d.allowance_id];
+ for(const t of values(d?.tasks))if(t.status==='Held')add('discovery-task:'+t.id,'problem',t.assigned_to);
+ if(a&&a.remaining_percent<=30)add('discovery-reserve:'+a.id);
+ else if(d&&!d.paused&&(!a||a.expires_at<=at||p?.expires_at<=at))add('discovery-budget:'+ (a?.id??'missing'));
+ // Callback sources are task identities, not private call notes or changing counters.
+ for(const action of values(state.actions))if(action.type==='callback_task'&&['Queued','Verified'].includes(action.status)&&!action.cancel_requested&&!action.cancellation&&valid(action.payload?.due_at)&&Date.parse(action.payload.due_at)<=+date(at)&&state.prospects?.[action.prospect_id]&&!state.prospects[action.prospect_id].restriction)add('callback:'+action.id,'callback',role(state.prospects[action.prospect_id]),action.prospect_id);
+ return items;
+}
+export function operationsDailySummary(state,config,at){
+ if(config.shared_capability!==capability)return null;at=date(at).toISOString();const day=businessDate(at),modern=values(state.mailbox_delivery?.intents),modernIds=new Set(modern.map(i=>i.id)),legacy=values(state.outreach_delivery?.intents).filter(i=>!modernIds.has(i.id)).map(i=>({...i,package:{kind:'outreach',project_id:i.project_id,owner:i.owner,source:{kind:i.kind,company_id:i.company_id,draft_sha256:i.package_sha256}}})),intents=[...legacy,...modern],sent=intents.filter(i=>i.status==='Verified'&&i.receipt&&sameDay(i.receipt.sent_at,day));
+ // A duplicated sender receipt is one send, never two successful messages.
+ const unique=[...new Map(sent.map(i=>[i.receipt.message_id??'intent:'+i.id,i])).values()],outreach=unique.filter(i=>i.package.kind==='outreach'),newBusinesses=new Set(outreach.filter(i=>i.package.source.kind==='new-business').map(i=>i.package.source.company_id??i.package.project_id));
+ const replyIds=new Set();const addReply=r=>{if(['reply','decline','do_not_contact'].includes(r?.kind)&&r.source_id&&sameDay(r.received_at??r.at,day))replyIds.add(r.source_id);};
+ for(const r of values(state.prospects)){addReply(r.reply);for(const reply of r.reply_history??[])addReply(reply);}
+ for(const s of values(state.inquiry_intake?.sources))if(s.classification==='inquiry')addReply(s.source);
+ for(const e of values(state.events))if(e.type==='reply_received')addReply({...e.data,at:e.data?.received_at??e.at});
+ const unclassified=new Set(values(state.inquiry_intake?.sources).filter(s=>s.classification==='uncertain'&&s.source?.source_id&&sameDay(s.source.received_at??s.source.at??s.at,day)&&!replyIds.has(s.source.source_id)).map(s=>s.source.source_id));
+ const due=new Set(values(state.actions).filter(a=>a.type==='callback_task'&&['Queued','Verified'].includes(a.status)&&!a.cancel_requested&&!a.cancellation&&valid(a.payload?.due_at)&&Date.parse(a.payload.due_at)<=+date(at)&&state.prospects?.[a.prospect_id]&&!state.prospects[a.prospect_id].restriction).map(a=>a.prospect_id));
+ const cadence=outreachCadence(mailboxDeliveryOutreachState(state),date(at)).filter(c=>c.call_due),calls=values(state.prospects).flatMap(r=>values(r.calls)).filter(c=>!c.undone&&!c.simulated&&c.outcome!=='skipped'&&sameDay(c.performed_at??c.at,day));
+ const scheduled=outreachReviewView(state,null,date(at)).items.filter(d=>d.eligible&&d.schedule&&!intents.some(i=>i.package?.source?.draft_sha256===d.sha256));
+ return {day,generated_at:at,sender_verified:unique.length,new_businesses:newBusinesses.size,follow_ups:outreach.filter(i=>i.package.source.kind==='follow-up').length,reply_sends:unique.filter(i=>i.package.kind==='reply').length,incoming_replies:replyIds.size,incoming_reply_source_ids:[...replyIds].sort().slice(0,limit),source_ids_truncated:replyIds.size>limit,unclassified_incoming:unclassified.size,unclassified_source_ids:[...unclassified].sort().slice(0,limit),unclassified_source_ids_truncated:unclassified.size>limit,calls:calls.length,due_callbacks:due.size,cadence_calls:new Set(cadence.map(c=>c.project_id)).size,due_call_businesses:new Set([...due,...cadence.map(c=>c.project_id)]).size,still_scheduled:scheduled.length,uncertain:intents.filter(i=>i.status==='Uncertain'||i.status==='Held'&&i.claimed_at).length,shortfall:Math.max(0,100-newBusinesses.size)};
+}
+export function prepareOperationsNotifications(state,config,at){
+ if(config.shared_capability!==capability)return false;at=date(at).toISOString();const items=sources(state,config,at),time=digestTime(at);if(!state.team_notifications&&!items.length&&!time)return false;
+ const before=JSON.stringify(state.team_notifications??null),n=state.team_notifications??={messages:{},active:{}};n.messages??={};const active={},previous=n.operations_active??{};let full=false;
+ const add=m=>{if(n.messages[m.id])return true;if(Object.keys(n.messages).length>=limit){full=true;return false;}n.messages[m.id]={...m,status:'Prepared; delivery held',prepared_at:at,delivery_hold:'External notification access, recipients and transport remain unverified'};return true;};
+ for(const i of items){const fingerprint=hash({id:i.id,role:i.role,project_id:i.project_id??null}),occurrence=values(n.messages).filter(m=>m.operations_source===fingerprint).length,id=previous[fingerprint]??'ops-incident-'+hash({fingerprint,occurrence}).slice(0,40);if(add({id,kind:'attention',recipient_role:i.role,source_id:i.id,operations_source:fingerprint,source_sha256:fingerprint,project_id:i.project_id??null,subject:'EVZ operations: '+i.kind+' needs review',body:i.summary,due_at:at}))active[fingerprint]=id;}
+ for(const [fp,id]of Object.entries(previous))if(!active[fp]&&n.messages[id]){n.messages[id].operations_resolved_at??=at;if(n.messages[id].status==='Prepared; delivery held')n.messages[id].status='Resolved or reassigned before delivery';}
+ n.operations_active=active;
+ if(time){const summary=operationsDailySummary(state,config,at);for(const recipient_role of roles)add({id:'ops-digest-'+time.day+'-'+recipient_role,kind:'digest',recipient_role,source_sha256:hash(summary),subject:'EVZ operations summary · '+time.day,body:`18:00 America/New_York summary. Sender-verified: ${summary.sender_verified}; new businesses: ${summary.new_businesses}/100; follow-ups: ${summary.follow_ups}; reply sends: ${summary.reply_sends}; incoming replies: ${summary.incoming_replies}; unclassified incoming: ${summary.unclassified_incoming}; calls: ${summary.calls}; due callbacks: ${summary.due_callbacks}; cadence calls: ${summary.cadence_calls}; still scheduled: ${summary.still_scheduled}; uncertain: ${summary.uncertain}; shortfall: ${summary.shortfall}. Review source evidence in the private desk.`,operations_summary:summary,due_at:time.due_at,late_minutes:time.late_minutes});}
+ if(full)n.operations_hold='Notification history capacity reached; new incidents remain visible in live operations status. No external delivery occurred.';else delete n.operations_hold;
+ return JSON.stringify(n)!==before;
+}
+export function operationsNotificationView(state,config,at){
+ if(config.shared_capability!==capability)return null;const n=state.team_notifications,live=sources(state,config,date(at).toISOString()),unsaved=live.filter(i=>!n?.operations_active?.[hash({id:i.id,role:i.role,project_id:i.project_id??null})]);return {delivery_enabled:false,channel_status:'External delivery held; notification access and recipients are unverified',hold:n?.operations_hold??null,active_incidents:live.length,active_sources:live.slice(0,limit).map(i=>({source_id:i.id,kind:i.kind,recipient_role:i.role,project_id:i.project_id??null,summary:i.summary})),active_sources_truncated:live.length>limit,unsaved_alerts:unsaved.length,messages:values(n?.messages).filter(m=>m.id.startsWith('ops-')).slice(-40).reverse(),summary:operationsDailySummary(state,config,at)};
+}
+
+const healthStatuses=['Connected','Not connected','Disconnected','Reauthorization required','Awaiting owner authorization','Connection in progress','Unavailable'];
+export function validateOperationsNotificationsState(state,config){
+ const h=state.operations_notification_health;if(h){check(config.shared_capability===capability,'Operations health requires its capability');check(Object.keys(h).sort().join(',')==='account,mailbox_policy_sha256,observed_at,status'&&healthStatuses.includes(h.status)&&h.account===config.mailbox.account&&h.mailbox_policy_sha256===hash(config.mailbox)&&valid(h.observed_at),'Exact operations health metadata required');}
+ const n=state.team_notifications;if(n?.operations_active){check(config.shared_capability===capability&&Object.keys(n.operations_active).length<=limit,'Bounded operations notification state required');for(const [fp,id]of Object.entries(n.operations_active))check(/^[a-f0-9]{64}$/.test(fp)&&n.messages?.[id]?.operations_source===fp&&id.startsWith('ops-incident-'),'Original active operations incident required');}
+ return state;
+}
+export function applyOperationsNotificationTransition(state,config,tr){
+ check(config.shared_capability===capability,'Exact operations notification capability required');check(tr&&Object.keys(tr).sort().join(',')==='actor,at,input,type'&&valid(tr.at)&&date(tr.at).toISOString()===tr.at&&tr.input?.revision===state.revision,'Exact current notification transition required');
+ const next=structuredClone(state),before=JSON.stringify(next),{type,actor,at,input}=tr;check(!next.updated_at||at>=next.updated_at,'Notification clock moved backwards');
+ if(type==='prepare')check(roles.includes(actor)||actor==='notification','Signed operator or trusted notification coordinator required');
+ else if(type==='health'){check(actor==='notification','Trusted health observer required');check(Object.keys(input).sort().join(',')==='account,mailbox_policy_sha256,revision,status'&&healthStatuses.includes(input.status)&&input.account===config.mailbox.account&&input.mailbox_policy_sha256===hash(config.mailbox),'Exact bound Google health metadata required');next.operations_notification_health={status:input.status,account:input.account,mailbox_policy_sha256:input.mailbox_policy_sha256,observed_at:at};}
+ else throw Error('Unknown operations notification transition');
+ if(type==='prepare')check(Object.keys(input).join(',')==='revision','Closed notification preparation input required');
+ validateOperationsNotificationsState(next,config);const changed=JSON.stringify(next)!==before;if(changed){next.revision++;next.updated_at=at;Object.assign(state,next);}return {changed,...operationsNotificationView(state,config,at)};
+}
