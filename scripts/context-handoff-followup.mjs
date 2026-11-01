@@ -3,7 +3,7 @@ import {open, readFile, realpath, writeFile} from 'node:fs/promises';
 import {isAbsolute, join, relative, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {cases, candidateChecklist} from './context-handoff-fixtures.mjs';
-import {checkpointPrompt, extractPolicy, followupVersion, runCodex} from './context-handoff-pilot.mjs';
+import {checkpointPrompt, extractPolicy, followupVersion, moduleFileHash, runCodex} from './context-handoff-pilot.mjs';
 
 const hash = text => createHash('sha256').update(text).digest('hex');
 const [which, repetition] = process.argv.slice(2);
@@ -37,7 +37,7 @@ if (typeof input.history !== 'string' || typeof input.task !== 'string') throw n
 const original = cases.find(item => item.id === 'drift_and_receipt');
 const fixture = which === 'holdout' ? {history: `${input.history}\n\nUser task: ${input.task}`} : original;
 const runnerHash = hash(await readFile(new URL('./context-handoff-pilot.mjs', import.meta.url), 'utf8'));
-const scriptHash = hash(await readFile(import.meta.url, 'utf8'));
+const scriptHash = await moduleFileHash(import.meta.url);
 const version = followupVersion({addon, policy, original: original.history, holdoutHash: hash(raw), runnerHash, scriptHash, checklist: candidateChecklist});
 if (prior.some(record => record.version !== version)) throw new Error('Follow-up inputs or runner changed; do not mix results');
 const prompt = checkpointPrompt(fixture, policy, true).replace(candidateChecklist, `${candidateChecklist}\n${addon}`);

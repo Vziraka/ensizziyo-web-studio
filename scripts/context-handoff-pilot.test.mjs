@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {cases} from './context-handoff-fixtures.mjs';
-import {blockingAttempt, checkpointPrompt, continuationPrompt, extractPolicy, followupVersion, simulate, writePrivateTrace} from './context-handoff-pilot.mjs';
+import {blockingAttempt, checkpointPrompt, continuationPrompt, extractPolicy, followupVersion, moduleFileHash, simulate, writePrivateTrace} from './context-handoff-pilot.mjs';
 
 const byId = id => cases.find(item => item.id === id);
 const reply = actions => JSON.stringify({summary: '', decision: '', reason: '', source: '', context: '', actions});
@@ -117,4 +117,10 @@ test('a failed follow-up attempt blocks a later case before inference', async ()
 test('a changed candidate checklist cannot be mixed into an earlier follow-up', () => {
   const inputs = {addon: 'extra', policy: 'policy', original: 'history', holdoutHash: 'held-out', runnerHash: 'runner', scriptHash: 'script', checklist: 'old checklist'};
   assert.notEqual(followupVersion(inputs), followupVersion({...inputs, checklist: 'new checklist'}));
+});
+
+test('module URLs resolve to the actual follow-up file on the current platform', async () => {
+  const url = new URL('./context-handoff-followup.mjs', import.meta.url);
+  const expected = createHash('sha256').update(await readFile(url, 'utf8')).digest('hex');
+  assert.equal(await moduleFileHash(url.href), expected);
 });

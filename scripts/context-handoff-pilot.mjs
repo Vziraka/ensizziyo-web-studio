@@ -14,6 +14,10 @@ export function followupVersion({addon, policy, original, holdoutHash, runnerHas
   return hash(JSON.stringify({addon, policy, original, holdoutHash, runnerHash, scriptHash, checklist}));
 }
 
+export async function moduleFileHash(moduleUrl) {
+  return hash(await readFile(new URL(moduleUrl), 'utf8'));
+}
+
 export function extractPolicy(workflow, workspace) {
   const start = workflow.indexOf('## Context and long-running work');
   const end = workflow.indexOf('\n## ', start + 3);
