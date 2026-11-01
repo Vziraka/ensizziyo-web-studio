@@ -616,6 +616,7 @@ function detail(r) {
   history.append(list); node.append(history); return node;
 }
 function render() {
+  if (!state) return;
   document.body.classList.toggle('desk-view',['today','businesses'].includes(view));
   const attentionCount = Object.keys(state.mailbox_sync?.held_sources??{}).length+(state.mailbox_failure?1:0)+state.exceptions.length + (state.reply_alerts?.length ?? 0) + Object.values(state.inquiry_intake?.sources??{}).filter(s=>s.status==='Identity review').length, attentionNav = document.querySelector('#attention-nav');
   const attentionBadge = document.querySelector('#attention-count');
@@ -691,7 +692,7 @@ function render() {
       box.append(button('Read next mailbox batch',async()=>{try{await api('/api/mailbox/sync',{});await refresh();tell('Mailbox step saved. Review its status and incoming messages.');}catch(error){tell(error.message,true);}}));content.append(box);
     }
     if(state.hosted_preview&&(!googleConnectionPanel||googleConnectionActor!==state.current_operator)){
-      const connection=panel('Business Gmail connection'),status=el('p','Check the connection before requesting owner consent. Connecting does not enable sending or mailbox synchronization.','muted'),actions=el('div',undefined,'actions');
+      const connection=panel('Business Gmail connection'),status=el('p',state.shared_workspace?.capability==='shared-mailbox-review-v1'?'Check the business connection, then read the next mailbox batch. Automatic checks and sending remain paused.':'Check the connection before requesting owner consent. Connecting does not enable sending or mailbox synchronization.','muted'),actions=el('div',undefined,'actions');
       const inspect=async()=>{
         actions.replaceChildren();checkConnection.disabled=true;
         try{
@@ -710,6 +711,7 @@ function render() {
       connection.append(status,checkConnection,actions);googleConnectionPanel=connection;googleConnectionActor=state.current_operator;
     }
     if(state.hosted_preview)content.append(googleConnectionPanel);
+    if(state.shared_workspace?.capability==='shared-mailbox-review-v1')return;
     if(state.hosted_preview&&!state.shared_workspace)content.append(gatewayProofPanel(state,{el,button,api,tell,refresh,clearDirty:()=>{dirty=false;}}));
     if (state.controls.mode === 'production') {
       const calls = panel('Calls-only final review'), review = state.controls.final_review.calls;
