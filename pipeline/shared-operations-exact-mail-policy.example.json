@@ -1,0 +1,25 @@
+{
+  "version": "shared-operations-exact-mail-v1",
+  "status": "UNAPPROVED",
+  "run_id": "",
+  "account_email": "ensizziyo@evzdigital.studio",
+  "from": "hello@evzdigital.studio",
+  "grant_id": "",
+  "grant_profile": "operations-exact-mail-gmail-v1",
+  "approval_mode": "exact-signed-message-only",
+  "kinds": [
+    "reply",
+    "project"
+  ],
+  "operations": [
+    "package",
+    "approve",
+    "dispatch-once",
+    "exact-sent-reconcile"
+  ],
+  "incoming_mode": "declared-existing-thread-only-new-thread-held",
+  "daily_limit": null,
+  "execution_ms": 40000,
+  "request_ms": 25000,
+  "observation_limit": 64
+}

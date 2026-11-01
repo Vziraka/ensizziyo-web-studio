@@ -1,0 +1,53 @@
+{
+  "provenance": "Fictional finite hosted proof at 2ce89fe; real model outputs, no client data. Parent rejected opening and same-model review as solution-presumptive. Dated-only result correctly held; synthetic speech exactly matched.",
+  "policy_sha256": "d6ca357869de08f13408053b15e96513f4c52f58d0609012b9da88812c35107c",
+  "supported_assessment": {
+    "schema_version": 1,
+    "candidates": [
+      {
+        "id": "manual_callback_next_business_day",
+        "service": "systems",
+        "customer_difficulty": "Customers send pickup requests by direct message and wait for a manual callback the next business day.",
+        "source_url": "https://fictional-bakery.example.invalid/contact",
+        "source_sha256": "2bcaa342270733ba7538fcee48d283706d7844f91f19b3af39a4c72a64e0dd3a",
+        "excerpt": "Customers send pickup requests by direct message. Pickup slots are confirmed by a manual callback the next business day.",
+        "hypothesis": "Automating pickup slot confirmation could reduce customer wait times and improve operational efficiency.",
+        "owner_question": "How can we automate the confirmation of pickup slots to reduce customer wait times?",
+        "opening": "Automate pickup slot confirmation."
+      }
+    ],
+    "selected_id": "manual_callback_next_business_day",
+    "reason": "The customer's current process involves manual callbacks for pickup slot confirmations, which can lead to delays. Automating this process is a specific, supported step that addresses this customer difficulty.",
+    "source_review": "Source-reviewed selection; possible benefit remains a hypothesis, not an owner-confirmed need"
+  },
+  "model_review": {
+    "verdict": "Accepted",
+    "reason": "The customer's current process involves manual callbacks for pickup slot confirmations, which can lead to delays. Automating this process is a specific, supported step that addresses this customer difficulty.",
+    "assessment_sha256": "23f6875d74d2dd988c29a78f6effdaa1c0b2478719cb23f6cd55733cb476c384"
+  },
+  "weak_output": {
+    "pitch_supported": true,
+    "opening_candidates": [
+      {
+        "id": "old-looking-site-hypothesis-1",
+        "service": "website",
+        "customer_difficulty": "low",
+        "source_url": "https://fictional-bakery.example.invalid/contact",
+        "source_sha256": "60e6a9870d5cbaaa270f2203c44294820f396253dc89ae61ed80d95b93f690b2",
+        "excerpt": "Our website was launched in 2004. Customers can book and pay online.",
+        "hypothesis": "The website's age (launched in 2004) may contribute to it appearing 'old-looking'.",
+        "owner_question": "Is the website's age a factor in its perceived appearance?",
+        "opening": "The website was launched in 2004, which might be contributing to its dated appearance."
+      }
+    ],
+    "selected_opening_id": "old-looking-site-hypothesis-1",
+    "selection_reason": "The provided text explicitly states the website was launched in 2004, directly supporting the hypothesis that its age could be a reason for it looking old."
+  },
+  "audio_result": {
+    "transcript": "This is a fictional test. We would like a website concept. Please email the bakery.",
+    "uncertain_words": [],
+    "source_sha256": "8de24f36119ca8a556bfd0f8017cec7bc7b707e127419e5f2890a526913efe08",
+    "source": "Synthetic offline speech fixture; not a recorded customer call",
+    "review_status": "Unreviewed transcript; never confirms a customer fact"
+  }
+}

@@ -1,4 +1,85 @@
+October25: [Disabled shared operations Calendar](SHARED-OPERATIONS-CALENDAR.md) composes the repaired exact Calendar caller with originals/authoring/refinement/manual/project/internal dispatch on one actual authority. Run `node --test shared-operations-calendar.test.mjs google-calendar.test.mjs google-oauth.test.mjs`; all real grants/runtime remain default-disabled and activation/provider/host/device/cost acceptance stays open.
+
+The [default-disabled shared operations exact-mail slice](SHARED-OPERATIONS-EXACT-MAIL.md) supports only current declared-thread replies through the actual signed dispatch store. Run `node --test shared-operations-exact-mail.test.mjs` after `npm run check`; the focused proof installs guards before dynamic imports and substitutes every external boundary. All current new-thread PDF companions remain held; full PDF/live operation is unfinished.
+
+October25: [Disabled shared operations originals](SHARED-OPERATIONS-ORIGINALS.md) composes exact Drive reads and inert original recovery on the existing dispatch authority. Run `node --test shared-operations-originals.test.mjs`; independent grants/runtime remain default-disabled and real activation/host/device/cost acceptance stays open.
+
 # Controlled research proof
+
+[Partial-original G1 recovery](GOOGLE-DRIVE-ORIGINALS.md#explicit-incomplete-original-recovery) uses the existing disabled signed D1/Drive caller to retain exact observed chunks and uncertainty as inert evidence. Unresolved backups and unsupported shared imports hold before writes. Run `node --test original-recovery.test.mjs lifecycle-backup.test.mjs shared-project-originals.test.mjs google-drive-originals.test.mjs` from `pipeline`, then the existing full checks. It adds no provider or shared Drive activation.
+
+[Disabled shared operations refinement](REFINEMENT-GENERATION.md#shared-operations-composition-contract--october-25) joins the existing bounded selected-source caller, signed Node authoring/recovery, manual/project records and internal dispatch on one actual dispatch CAS. Internal and generation policies, runtime gates and finite reservations stay independent. Run `node --test pipeline/shared-operations-refinement.test.mjs pipeline/refinement-generation.test.mjs pipeline/shared-operations-authoring.test.mjs` from the repository root, then the existing full pipeline/site checks. No real grant, model/amount approval or activation is included.
+
+[Disabled shared operations authoring](SHARED-OPERATIONS-AUTHORING.md) joins the existing signed interactive Node PDF and observed-evidence recovery caller to the same manual/project/internal dispatch authority. Exact unapproved profile plus a separate unset-by-default gate; all authored output and companion delivery remain held for review. Run `node --test pipeline/shared-operations-authoring.test.mjs pipeline/shared-manual-internal-dispatch.test.mjs` from the repository root.
+
+
+[Disabled shared operations records](SHARED-OPERATIONS-RECORDS.md) adds one exact profile for signed manual records, project feedback/selection/dispute and protected preparation/refinement requests in the same dispatcher CAS workspace. Requests stay held without authoring authority; old profiles retain their gates. Run `node --test pipeline/shared-operations-records.test.mjs pipeline/shared-manual-internal-dispatch.test.mjs` from the repository root.
+
+[Disabled shared manual/internal composition](SHARED-MANUAL-DISPATCH.md) joins the five signed completed-human-call/ownership/note/stop events to the existing registered incoming and finite internal dispatcher on one exact CAS binding. All new prospect follow-ups stay held; default configuration emits no schedule or activation. Run `node --test pipeline/shared-manual-internal-dispatch.test.mjs` from the repository root.
+
+[Disabled hosted known-identity research](KNOWN-IDENTITY-RESEARCH.md): exact existing candidate/approved first-party source collector and one finite authored proposal; actual human source/semantic disposition keeps trusted import and calls held. No search/model activation or new allowance.
+
+
+[Shared manual call records](SHARED-MANUAL-RECORDS.md) is a separately disabled, exactly bound production-shaped source capability. It reuses the existing call/callback/stop and ownership reducer with signed event replay; all execution remains disabled. The original inert note-only capability below is unchanged.
+
+[Disabled persistent hosted authoring](PROJECT-AUTHORING.md#disabled-hosted-authoring-storage-and-caller) connects the signed existing continuation caller to immutable bounded Node-authoring resources and complete G1 workspace packages. Run `node --test hosted-authoring.test.mjs`; the flag remains unset. Missing/corrupt required dependencies hold complete hosted backup; incomplete attempts need [explicit evidence reconciliation](PROJECT-AUTHORING.md#explicit-incomplete-attempt-recovery), which never makes a partial export usable. D2, production, actual remote/cost and computer-off acceptance stay closed/unverified.
+
+[Disabled Gmail incoming synchronization](GOOGLE-INCOMING-MAIL.md) connects signed owner/friend calls to existing registered conversations, durable history/cursor dedup, source-bound reply review, cold stops and held notifications. Run `node --test pipeline/google-incoming-mail.test.mjs pipeline/google-oauth.test.mjs` from repository root for local substituted HTTP/handler/OAuth checks. OAuth connection alone starts no reading; production/D2 and schedules remain closed.
+
+[Disabled owner Google grant](GOOGLE-OAUTH.md) adds owner-only authorization-code start/callback/local disconnect, encrypted separated credentials and serialized server-only tokens for the existing exact-mail caller. Run `node --test pipeline/google-oauth.test.mjs pipeline/exact-mail.test.mjs` from repository root for account-free signature/handler/provider-wire checks. All flags remain unset; no real client, consent, exchange, send, hosted callback or production activation occurred.
+
+[Disabled exact Gmail delivery](GOOGLE-EXACT-MAIL.md) connects current held replies and authored PDF companion packages to a separate signed send approval and the existing lifecycle intent ledger. The separately [disabled exact internal notification caller](TEAM-NOTIFICATIONS.md#disabled-exact-internal-delivery-caller) reuses that authority with exact role recipients, owner policy authorization and separate per-message approval. Run `node --test pipeline/exact-mail.test.mjs pipeline/exact-mail-fences.test.mjs pipeline/exact-team-notifications.test.mjs` from the repository root for account-free caller/MIME/provider-wire checks, actual signed deferred-stop regression and complete request/deadline ownership. The [fresh-source contract](GOOGLE-EXACT-MAIL.md#fresh-source-and-complete-request-ownership) documents the40-second encompassing and25-second request budgets and post-start readback limits. No OAuth grant, real provider request, production capability or scheduler is enabled.
+
+[Inert shared records](HOSTED-DESK.md#inert-shared-record-source) add a separate, deployment-bound production-record source while execution remains disabled. `node --test pipeline/inert-shared-workspace.test.mjs` from the repository root verifies new synthetic 11 MB records, existing backup/original dependencies, signed owner/friend reads and note edits, CAS failure/reconciliation, disabled routes and local export/restore. No remote import or configuration change is performed by that command.
+
+[Fresh project continuation](PROJECT-AUTHORING.md#fresh-project-entry) supplies a callable name-to-originals-to-reviewed-output workflow through the existing CLI and repository-owned skill. The AI client loads the real design/proposal skill and authors/reviews; code verifies identity, current context, originals, rendering, held attachment and same-project readback. Local interactive execution only; fresh-AI validation and unattended/PC-off authoring remain separate.
+
+[Exact project originals](ASSET-RECOVERY.md#disabled-shared-original-candidate) connect the existing asset/version context to a separately disabled shared PDF chunk candidate. Use the supported `shared-original push/pull` CLI to verify transfer and local materialization; no hosted upload, migration or PC-off acceptance is implied.
+
+[Source-bound reply review](REPLIES.md) documents bounded verified MIME retention, extractive clarification starters and exact human approvals held from sending (audit R33).
+
+[Internal alerts and team digest](TEAM-NOTIFICATIONS.md) prepare attributable, source-aware private messages with weekday 9am Eastern timing. UI/API/CLI/local clock are connected, with a separately disabled hosted preparation-clock candidate. Default builds declare no schedule; external recipients, delivery and actual computer-off scheduling remain unconfigured.
+
+[Opening selection](OPENINGS.md) binds new discovery choices to exact sources and keeps weak/unsupported cases held while preserving existing research budgets. Actual provider research quality still needs a representative live proof.
+
+Current [project preparation](PROJECT-WORK.md) connects reviewed interest, approved assets and scoped preferences to attributed workflow tasks and exact output review, with one unpaid focused refinement before scope/price. The [local authoring CLI](PROJECT-AUTHORING.md) renders actual agent-authored PDF output and held companion drafts from [retrieved originals](ASSET-RECOVERY.md); unattended semantic authoring and hosted originals remain separate acceptance items.
+
+The calling card's [desktop recording workflow](CALL-RECORDING.md) saves private call and spoken-note audio separately, with immutable IDs, exact retries, source-linked manual transcripts and audio-inclusive local backup/restore. The [standard lifecycle package](LIFECYCLE.md#complete-local-backup-package) also preserves verified PDF originals and editable authoring dependencies; retain both the JSON file and its `.files/` sibling. Actual microphone and speakerphone quality still require an operator rehearsal; no paid transcription route is connected.
+
+The execution-disabled fictional [shared-host preview](HOSTED-DESK.md) reuses these lifecycle rules through Netlify Functions and strong conditional Blobs writes. It is separate from the loopback rehearsal below; absent configuration fails closed. Its configuration, exact-event retry, test commands, deployment proof limits and rollback live in that contract.
+
+## Local two-operator console rehearsal — October 23
+
+This is a same-computer rehearsal of separate owner/friend sessions on fictional records. It does not establish remote authentication, shared cloud storage, computer-off execution, or production readiness. Keep all state in a new temporary directory outside the Git checkout; never put operator keys in `.env`, source files, or a committed example.
+
+The [private asset index](ASSET-INDEX.md) records studio-wide and stage-independent project file references; it does not fetch files or establish shared remote retrieval.
+
+Follow-up, native and client information email paths use the logged operator's configured name with `hello@evzdigital.studio`; client information drafts record their preparer and approver. Before enabling any commercial email route, set both `sender.operator_names.owner` and `sender.operator_names.friend` in the private lifecycle configuration; the release check stays closed until then. Do not commit personal names. See [local operation notes](PRODUCTION.md#october-23-shared-desk-foundation-and-hosting-limit).
+
+Verified replies pause future cold follow-ups and appear in **Needs attention** and **Call & reply reviews**; a visible navigation count marks open attention items. Either operator can save a draft attributed to them and bound to the exact verified reply. The desk does not copy the original reply into the draft or send it; read the original in the connected mailbox before writing. This is a local alert, not an off-device notification or the requested 9am team digest.
+
+From `pipeline` in PowerShell, create three independent random 32-byte keys and initialize the controlled fixture state:
+
+```powershell
+function New-EvzProofKey {
+  $proofBytes = New-Object byte[] 32
+  $proofRng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+  try { $proofRng.GetBytes($proofBytes) } finally { $proofRng.Dispose() }
+  [Convert]::ToBase64String($proofBytes).TrimEnd('=').Replace('+','-').Replace('/','_')
+}
+$env:STUDIO_LIFECYCLE_STATE_DIR = Join-Path $env:TEMP ('evz-ops-proof-' + [guid]::NewGuid().ToString('N'))
+$env:STUDIO_LIFECYCLE_PORT = '0'
+$env:EVZ_OPERATIONS_OWNER_KEY = New-EvzProofKey
+$env:EVZ_OPERATIONS_FRIEND_KEY = New-EvzProofKey
+$env:EVZ_OPERATIONS_SESSION_SECRET = New-EvzProofKey
+node lifecycle-cli.mjs init
+node lifecycle-cli.mjs seed
+node lifecycle-cli.mjs serve
+```
+
+The readiness line prints the loopback URL and selected port. Open it in two separate browser profiles on this computer. Sign in once with each key, check that both sessions see the same fictional businesses, and explicitly hand off one record. Verify the assigned-work filters and event attribution; use a separate unassigned fixture to exercise claiming. Do not place calls or send test email. A stale-write rejection is covered by `lifecycle-server.test.mjs`.
+
+Stop only the console started above with Ctrl+C. Remove the three `EVZ_OPERATIONS_*` environment variables in that PowerShell session. Delete only the unique `evz-ops-proof-*` directory you created after confirming its resolved path is below `$env:TEMP`; retain it when preserving local QA evidence. The normal account-free checks remain `npm run check` and `node --test --test-concurrency=1`.
 
 October 19 AI operations increment: [AI operations](AI-OPERATIONS.md) owns the approved three-pane desk, saved-call follow-ups/full HTML previews, contact/social provenance, voice demo, booking, sender gates and finite 100-additional-business campaign. Its verification recipe and rollback requirements supersede older no-answer-only wording for workspaces with `follow_up.enabled`. Commercial delivery remains held for the unresolved physical footer and native HTML proof; the business sender is verified, and research and calls retain their independent release.
 
@@ -286,3 +367,13 @@ The HTTP collector supports bounded server-rendered HTML/plain text from the app
 Before recurring unattended operation: verify any selected schedule and meaningful-change health alerts, confirm real provider quota/on-demand behavior, settle automatic discovery/capture and review effort, measure usable capacity and test production account cutover. Active pause, simulated quota/write handling, job restore and a bounded mixed-source quality calibration do not establish unattended production readiness or 200 detailed usable records/week. Measure usable outcomes, retries, quota consumption and review effort before increasing volume.
 
 Ensizziyo owns accounts, runtime availability and business exceptions. Proposed upkeep is a weekly quality/usage review and monthly access/restore check; its real effort remains to measure. After a relevant CLI, Node, Google-library or provider change, rerun one controlled job and the handoff check before increasing volume. Code changes and synthetic tests belong in Git; all real research and credentials remain in private storage/Sheets.
+
+### Disabled direct Drive original reads
+
+[Exact registered Drive PDF reads](GOOGLE-DRIVE-ORIGINALS.md) reuse the existing authenticated original client, D1 chunks/hash authority and portable backup. `connectSharedOriginals(...).readDriveOriginal(ids)` performs one explicit bounded step; `node --test google-drive-originals.test.mjs` checks the injected signed HTTP/OAuth path. Default/production/D2 stay disabled. A separate future read-only owner grant, live provider/hosted proof and cost/latency review remain open.
+
+### Disabled shared project continuation
+
+The [shared project contract](SHARED-PROJECT-CONTINUATION.md) documents the separate default-disabled binding, local verified-package preparation, signed authoring caller, existing feedback/current-context UI, typed whole-state validation and complete backup/restore. Focused verification: `node --test shared-project-continuation.test.mjs hosted-authoring.test.mjs shared-manual-records.test.mjs inert-shared-workspace.test.mjs`. No production configuration, provider execution or real migration is included.
+
+The separately disabled [bounded refinement source-generation candidate](REFINEMENT-GENERATION.md) uses a new exact capability and the same authoring/CAS/recovery authority. Old profiles retain provider denials. Generation stops at Rendered; actual raster and human semantic/design review remain required, and no real policy/model/allowance is approved.

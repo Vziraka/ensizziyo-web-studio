@@ -1,9 +1,10 @@
 import { spawn, execFile } from 'node:child_process';
+import {readFileSync} from 'node:fs';
 import { readFile, writeFile, readdir, appendFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { schemasFor } from './schemas.mjs';
 
-const researchPlaybook = await readFile(new URL('./RESEARCH.md', import.meta.url), 'utf8');
+let researchPlaybook;
 
 export function subscriptionEnvironment(source = process.env) {
   return Object.fromEntries(Object.entries(source).filter(([key]) => !/(API_KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)/i.test(key) && !key.startsWith('STUDIO_') && (!key.startsWith('CODEX_') || key === 'CODEX_HOME')));
@@ -70,6 +71,7 @@ async function workerCommand(worker, schemaPath, resultPath, options) {
 }
 
 export function researchPrompt({ phase, job, checkpoint, snapshots, feedback }) {
+  researchPlaybook ??= readFileSync(new URL('./RESEARCH.md', import.meta.url), 'utf8');
   const quality = [2, 3].includes(job.research_version);
   const detailed = job.research_version === 3;
   const schema = schemasFor(job, snapshots)[phase === 'collect' ? 'checkpoint' : 'report'];

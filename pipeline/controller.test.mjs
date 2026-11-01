@@ -186,10 +186,13 @@ test('the named intake listener preserves the captured date when its first picku
 
 test('website priority interrupts active assessment; a later run resumes without charging a recovery', async () => {
   const f = await fixture(); let stopped = false;
-  const result = await run(f, { controlPollMs: 2, invoke: worker(async o => {
+  const result = await run(f, { invoke: worker(async o => {
     if (o.phase === 'collect') return assessment(o);
-    await saveJson(join(f.directory, 'research-control.json'), { ...control, priority: 'website' });
-    try { await new Promise((resolve, reject) => { o.signal.addEventListener('abort', () => reject(o.signal.reason), { once: true }); }); }
+    try {
+      await saveJson(join(f.directory, 'research-control.json'), { ...control, priority: 'website' });
+      o.signal.throwIfAborted();
+      await new Promise((resolve, reject) => { o.signal.addEventListener('abort', () => reject(o.signal.reason), { once: true }); });
+    }
     finally { stopped = true; }
   }) });
   assert.ok(stopped); assert.equal(result.status, 'Paused'); assert.equal(result.jobs[0].status, 'Deferred');

@@ -1,0 +1,77 @@
+# Disabled hosted business Google owner grant
+
+The [shared operations exact-mail profile](SHARED-OPERATIONS-EXACT-MAIL.md#independent-future-owner-oauth) is `operations-exact-mail-gmail-v1`, with separate `EVZ_OPERATIONS_EXACT_MAIL_` credentials and `/desk/api/operations-exact-mail-oauth` callback. It binds fourteen actual source/deployment fields plus profile in encrypted AAD, requires canonical four scopes and both current/grant assertions. Its owner consent flag and prospect-send grant are independent from internal Gmail, Drive and Calendar. All real flags/grants remain unset.
+
+The exact [shared operations Calendar successor](SHARED-OPERATIONS-CALENDAR.md#future-independent-owner-consent) adds a distinct live-envelope Calendar client/namespace/key/AAD and prebound logical grant under the actual dispatch binding. Its scopes remain `calendar-booking-v1`; transport rereads the current independent grant across provider/replay waits. This future consent capability is separate from Calendar execution and every Gmail/Drive profile. All actual flags/grants remain unset.
+
+The separately disabled [shared internal dispatch profile](SHARED-INTERNAL-DISPATCH.md#separate-future-google-profile) adds a distinct published Gmail-only client/namespace/key binding. It cannot reuse or widen the profiles below; no actual consent/settings change occurred.
+
+The independently disabled [incoming synchronization caller](GOOGLE-INCOMING-MAIL.md) also consumes this exact grant through the server token provider. Connecting OAuth starts no reading; neither incoming scope nor the owner-only grant-management contract is broadened.
+
+`google-oauth.mjs` implements a **new** owner authorization-code/offline grant, encrypted credentials and the server-only `getAccessToken()` contract used by the existing exact-message Gmail transport. This is locally verified source on draft PR123. Independent `EVZ_OPERATIONS_GOOGLE_OAUTH=owner-code-v1` capability is **unset by default**. No real client, consent, Google profile read, exchange, refresh, revocation, send or hosted configuration was performed.
+
+## Supported caller and authority
+
+The existing hosted handler supplies:
+
+- `POST /desk/api/google-oauth/start`, body `{}`: current signed **owner** and existing same-origin CSRF required. Returns a fixed Google authorization URL and ten-minute deadline. A caller navigates there only after an explicit owner connect action. Arbitrary redirect/scope/account input has no effect.
+- `GET /desk/api/google-oauth/callback`: fixed native HTML landing with no credential interpolation, no-store/no-referrer/CSP. Its separate same-origin script immediately removes the query, obtains current CSRF and completes `POST` to the same path. Existing Strict operator cookies return on that same-origin fetch; they need not be sent on Google's top-level cross-site return. No fallback sign-in, friend completion or automatic reconnect exists. A changed/expired owner session needs a fresh start.
+- `POST /desk/api/google-oauth/callback`, body `{state,code}` or `{state,error:true}`: owner/CSRF plus exact original signed session, one-use state and ten-minute expiry. Denial consumes state. Server exchange verifies actual ID-token signature using installed `google-auth-library`11.3.0, RS256, pinned Google keys, issuer, audience/authorized party, issue/expiry, nonce, verified exact business email, Workspace domain and stable subject.
+- `GET /desk/api/google-oauth/status`: either signed operator reads only health/account/grant ID/scopes/access and known refresh expiry/audience. No tokens, code, verifier, subject, signing key, client secret or storage contents. Disabled capability returns Disabled.
+- `POST /desk/api/google-oauth/disconnect`, body `{}`: owner/CSRF replaces local credentials and pending state with a disconnected tombstone. This is **local disconnection**, not provider revocation. Its response directs the owner to remove this app in the business Google account if provider revocation is wanted. No revocation request or silent cross-application/account change occurs.
+
+The account must be `ensizziyo@evzdigital.studio`; personal accounts fail even if Google ignored the login/domain hints. `hello@evzdigital.studio` remains the independently preflighted accepted send-as alias. A valid shared grant supports either signed operator through existing assignment/approval policy. Connection/status/content preparation do not authorize sending. Exact send approval, separate mail capability, finite daily allowance, fictional `.invalid` recipients and D2 notes-only/production execution holds remain unchanged. A later private exact-mail config must explicitly bind its grant ID; connection never copies it there automatically. Hosted token wiring checks that configured grant ID before returning or refreshing a token; the transport then checks account/grant/scopes again.
+
+## Scopes and provider boundary
+
+Request only `openid email https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send`, offline access, explicit consent, S256 PKCE, random nonce/state and `include_granted_scopes=false`. All four returned canonical scopes are required as an exact set. Normalize Google's `email`/`https://www.googleapis.com/auth/userinfo.email` spelling and collapse equivalent repeated scope names; this cannot add a permission. Profile, full-mail, modify, settings, Drive, Calendar, missing/other scopes hold. Existing mail-only transport fixtures remain supported; actual owner grants include precisely the two essential identity scopes.
+
+The current [send-as list contract](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.settings.sendAs/list) accepts readonly. Failure holds without requesting settings. [OIDC](https://developers.google.com/identity/openid-connect/openid-connect) defines identity/nonce validation. Token POST uses only `https://oauth2.googleapis.com/token`; signing keys use only `https://www.googleapis.com/oauth2/v1/certs`. No token-selected URL, discovery redirect, userinfo/profile or arbitrary host is fetched. Responses have streamed100KB token/200KB certificate limits and15s deadlines, without redirects/retries. Provider bodies and SDK errors become fixed redacted errors.
+
+## Storage, concurrency and failure
+
+Fresh private strong-read namespace `evz-google-credentials-<8..40 lowercase letters/digits/hyphens>` is distinct from business records. Only bounded singleton `credential` is read/written; no listing, record backup/import or existing AppConnectors/CLI credential access occurs. AES-256-GCM uses fresh 96-bit IV, fixed 128-bit authentication tag, a new independent 32-byte runtime key and named key ID. Associated data binds format, namespace, key ID, tenant, exact site/deploy/origin/redirect/client/account/audience and grant ID. Encrypted contents include status, original session hash, state hash, nonce/PKCE verifier and then access/refresh grant. Tokens/verifier never enter business records, G1 packages, UI, URLs or application logs. Google's short-lived authorization code necessarily arrives in the callback query; the fixed page scrubs it before fetching, sends no referrer and does not log it. Review host/proxy URL telemetry before a real callback proof.
+
+Start replaces prior credentials with Authorizing. Callback CAS changes Authorizing to Exchanging **before** one token POST; one claimant exchanges once. Verified success CAS replaces that exact version with Active. Disconnect/new start wins against old callbacks/refreshes; old claimants cannot reactivate. Concurrent/uncertain claims never reach the provider. Timeout/process death/uncertain exchange is never retried/reclaimed; owner starts fresh. A response lost after a fully verified Active write can be recovered through status without another exchange.
+
+`getAccessToken()` reads current Active credentials and returns server-only `{account,grant_id,scopes,access_token,expires_at}`. Less than60s remaining causes a durable Refreshing CAS claim; overlapping fresh function instances hold without polling/retry. The winner refreshes once. Invalid_grant, provider error, changed scope, malformed/missing/uncertain response or expired consent blocks new token use and requires owner reauthorization. Exchanging/Refreshing shows in progress for30s, then reauthorization; no automatic reclaim exists. Known consent expiry never extends through rotation. Gmail401 invalidates only the exact rejected Active token and leaves send intent uncertain without SDK resend. External revocation is observed at the next provider401/refresh invalid_grant; there is no push promise. Disconnect cannot atomically cancel an already issued/in-flight request.
+
+These bounded one-object CAS claims reuse the repository's reviewed conditional Blobs authority by explicit task direction; this is not a generic transactional database/queue/counter. Strong reads and confirmed conditional-write responses are required; actual hosted behavior/latency remains unproved. Tamper, missing/wrong key, key-ID drift or changed namespace/binding fails closed. No fallback key or automatic migration exists. Rotation/redeploy requires a separately reviewed owner reconnect in fresh namespace/binding and old-provider-grant revocation if desired. Changing a key alone does not recover credentials. Never copy the envelope/master key into record backups.
+
+## Future owner setup — reviewable placeholders only
+
+These are later actions, not permission requests or actions performed here:
+
+1. Verify business-owned Google Cloud organization eligibility, admin policy and actual no-new-charge service limits. Enable only Gmail API. Prefer **Internal** only for an eligible organization-owned project and member account; eligibility is unverified. Otherwise External **Testing** with only the business owner as test user is a bounded trial. Gmail readonly is restricted; external production verification/security-assessment obligations need separate review.
+2. Create a business-owned **Web application** OAuth client. Authorized redirect must be precisely `https://<reviewed-deployment-host>/desk/api/google-oauth/callback`, bound to exact chosen source/site/deploy. No wildcard, localhost, personal/Playground or alternate return URL. Current production and inert D2 remain unsupported. No JavaScript-origin redirect flow is needed by this server-code design.
+3. Review exact four scopes and business consent identity. Obtain a **new** client ID/secret; never export/reuse existing AppConnectors, CLI, service-account or desktop refresh credentials.
+4. Later provision Functions-only secrets with a fresh isolated namespace, independent random32-byte base64url master key and key ID. Exclude secrets from repository/static bundles/output. The following deliberately invalid disabled placeholders must not be installed as actual configuration:
+
+```text
+EVZ_OPERATIONS_GOOGLE_OAUTH=<unset; later owner-code-v1 only for explicitly approved fictional preview>
+EVZ_GOOGLE_CREDENTIAL_NAMESPACE=evz-google-credentials-<fresh-isolated-suffix>
+EVZ_GOOGLE_CREDENTIAL_KEY_ID=<new-key-id>
+EVZ_GOOGLE_CREDENTIAL_KEY=<new-independent-32-byte-base64url-secret>
+EVZ_GOOGLE_CLIENT_SECRET=<new-web-client-secret>
+EVZ_GOOGLE_OAUTH_BINDING={"tenant_id":"<business-tenant>","site_id":"<exact-site-id>","deploy_id":"<exact-deploy-id>","origin":"https://<reviewed-deployment-host>","redirect_uri":"https://<reviewed-deployment-host>/desk/api/google-oauth/callback","client_id":"<new-client-id>.apps.googleusercontent.com","account":"ensizziyo@evzdigital.studio","audience":"external-testing"}
+```
+
+5. Review deployed callback/headers/logging and signed owner start/status/disconnect caller before a separately authorized consent. Then verify exact business profile/accepted hello alias with existing preflight and no send. Failure does not broaden scopes. Exact-mail grant/run/account config and a finite send proof remain separate; neither follows automatically from connection. This increment provides supported APIs and a callback landing, without adding management controls to the main desk UI.
+
+Google documents [External Testing refresh expiry at7days](https://developers.google.com/identity/protocols/oauth2#expiration) for scopes beyond basic identity, including these Gmail scopes. Code enforces that ceiling from exchange start and any shorter returned lifetime; refreshing cannot extend it. Internal has no assumed durable lifetime and still fails on revocation/password/admin/token/session changes. Actual app classification/lifetime remain to verify. No auto-consent workaround or extra Workspace seat is proposed.
+
+## Verification and rollback
+
+From `pipeline`: `node --test google-oauth.test.mjs exact-mail.test.mjs`, `npm run check`, `node --test --test-concurrency=1`. Tests use in-memory conditional storage, locally signed RSA tokens and injected actual-wire HTTP/certificate responses, including signed hosted callback and both-operator exact-mail wiring. Private intercepted `.invalid` HTTPS browser proof checks cross-site return with Strict cookies, owner success/friend denial, query scrubbing, metadata/DOM redaction, keyboard return, desktop/narrow layout and console health. No live Google, deployed callback, remote-device or computer-off proof.
+
+Rollback removes routes/provider with flags unset. Preserve exact-mail actions/intents/receipts; never run uncertain exact actions through older senders. Provider revocation/private-envelope disposal needs separately chosen owner retention/recovery action. No production/main merge, migration, scheduler, Drive/Calendar, hosted renderer, new allowance or real provider/model call is included.
+
+## Separate future Drive original read profile
+
+The default Gmail grant above stays exact and unchanged. An explicitly selected `drive-originals-readonly-v1` profile reuses the state machine with its own callback, encrypted credential namespace/key and exact OIDC email + Drive read-only scopes. It requires separately reviewed new owner consent and cannot be reused for Gmail. [Drive consent, placeholders and caller](GOOGLE-DRIVE-ORIGINALS.md#future-new-owner-consent-profile) own its contract; this source increment performed no new grant or setup.
+
+## Separate future Calendar booking profile
+
+The explicitly selected `calendar-booking-v1` profile reuses this state machine with a new Calendar-only client/callback, independent credential namespace/key and exact OIDC + FreeBusy/owned-event/calendar-metadata-read-only scopes. Gmail defaults and Drive equality remain unchanged. [Calendar source and future consent contract](GOOGLE-CALENDAR.md) own the scope rationale, disabled placeholders and caller. No real consent or grant was configured.
+
+The exact default-disabled [shared operations originals successor](SHARED-OPERATIONS-ORIGINALS.md#separate-future-owner-drive-consent) has a live-dispatch-validated production-shaped Drive branch, separate credential prefix/namespace/key/client/secret and expanded canonical AAD. Earlier profile AAD and denials remain unchanged; no real grant or setup occurred.

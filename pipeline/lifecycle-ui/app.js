@@ -1,19 +1,79 @@
-import { renderCallDesk } from '/call-desk.js';
-import { centsFromDollars } from '/money.js';
-let state, view = 'today', selected = 'juniper', lane = 'all', dirty = false, refreshAfter = 0;
+import {gatewayProofPanel} from './gateway-proof.js';
+import {renderHostedAssessment} from './transcript-assessment.js';
+import {preparationPanel} from './project-work.js';
+import { renderCallDesk } from './call-desk.js';
+import { centsFromDollars } from './money.js';
+import {deskPath} from './paths.js';
+import {createEventRequest} from './event-request.js';
+import {readDeskSnapshot} from './snapshot-read.js';
+import {audioBusy,stopAudioCapture} from './call-audio.js';
+let state, csrf, operatorAuthRequired = false, view = 'today', selected = 'juniper', lane = 'all', assetProject = '', dirty = false, refreshAfter = 0;
+let eventRequest,loadedWorkspaceContext;
 const content = document.querySelector('#content'), message = document.querySelector('#message');
-const titles = { today: ['Your calling desk', 'Your next conversation.', 'Prepared leads, clear next steps and your notes in one place.'], reviews: ['Evidence → owner decision', 'Review the conversation.', 'A connected call pauses cold follow-ups until you confirm its next action.'], clients: ['From scope to support', 'Deliver what you agreed.', 'Track materials, payment evidence, delivery checks and open requests.'], exceptions: ['Bounded recovery', 'Handle the exceptions.', 'Held work stays visible while unrelated records continue.'], launch: ['Before the first real contact', 'Approve a working system.', 'These gates stay closed until their evidence and your final approval are recorded.'] };
+const titles = { today: ['Your calling desk', 'Your next conversation.', 'Prepared leads, clear next steps and your notes in one place.'], reviews: ['Evidence → operator decision', 'Review calls and replies.', 'Connected calls and verified replies wait for an operator decision.'], clients: ['From scope to support', 'Deliver what you agreed.', 'Track materials, payment evidence, delivery checks and open requests.'], exceptions: ['Bounded recovery', 'Handle the exceptions.', 'Held work stays visible while unrelated records continue.'], launch: ['Before the first real contact', 'Approve a working system.', 'These gates stay closed until their evidence and your final approval are recorded.'] };
 Object.assign(titles,{businesses:['Your business directory','Businesses, with context.','Research, professional contacts, social profiles and saved conversations.'],emails:['After the call','Follow-ups at a glance.','Each performed call owns one message. Held work shows what is missing.'],meetings:['Your conversations','Meetings and next steps.','Booked conversations and invitations awaiting calendar verification.']});
+Object.assign(titles,{assets:['Shared asset index','Keep approved versions easy to find.','Studio files and project references stay organized across every sales stage.']});
 function el(tag, text, className) { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; }
 function button(text, fn, className = 'quiet') { const node = el('button', text, className); node.type = 'button'; node.addEventListener('click', fn); return node; }
 function tell(text, error = false) { message.textContent = text; message.className = error ? 'error' : ''; }
 async function api(path, input) {
-  const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Studio-Token': state.csrf }, body: JSON.stringify(input) });
-  const data = await response.json(); if (!response.ok) throw Error(data.error); return data;
+  if (eventRequest && path === '/api/event') return eventRequest.send(input);
+  if (eventRequest?.pending && !['/api/login','/api/logout','/api/pause'].includes(path)) throw Error('Resolve the pending saved action before making another change.');
+  const read=['/api/calendar/availability','/api/google-calendar-oauth/status'].includes(path);
+  const response = await fetch(deskPath(path), { method: read?'GET':'POST', headers: { 'Content-Type': 'application/json', 'X-Studio-Token': csrf }, ...(read?{}:{body:JSON.stringify(input)}) });
+  if (response.status === 401 && operatorAuthRequired) { showOperatorLogin(); throw Error('Sign in with your operator key to continue'); }
+  const data = await response.json(); if (!response.ok){const error=Error(data.error);error.status=response.status;throw error;} return data;
+}
+async function uploadCallAudio(input,blob) {
+  if(eventRequest?.pending)throw Error('Resolve the pending approval before saving audio.');
+  const response=await fetch(deskPath('/api/call-audio'),{method:'POST',headers:{'Content-Type':blob.type,'X-Studio-Token':csrf,'X-Studio-Audio':JSON.stringify(input)},body:blob});
+  if(response.status===401&&operatorAuthRequired){showOperatorLogin();throw Error('Sign in as the recording operator before retrying this exact clip.');}
+  const result=await response.json();if(!response.ok)throw Error(result.error);
+  const digest=await crypto.subtle.digest('SHA-256',await blob.arrayBuffer()),sha256=[...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,'0')).join('');
+  if(result.status!=='Stored'||result.id!==input.id||result.call_id!==input.call_id||result.kind!==input.kind||result.recorded_by!==input.recorded_by||result.bytes!==blob.size||result.sha256!==sha256)throw Error('The private audio receipt does not match this exact clip.');return result;
+}
+function showPendingEvent() {
+  document.querySelector('#pending-event')?.remove();
+  const pending = eventRequest?.pending; if (!pending) return;
+  const notice = el('section', undefined, 'notice'); notice.id = 'pending-event';
+  notice.append(el('p', `Pending ${pending.type} approval by ${pending.actor} · ${pending.id}. Its exact input is retained in this tab until confirmed or rejected. A second click cannot create a different action.`));
+  for (const [label, action] of [['Check saved action', () => eventRequest.recover()], ['Retry exact pending approval', () => eventRequest.retry()]]) notice.append(button(label, async () => {
+    try { const result = await action(); if (result === false) tell('No saved receipt is visible yet. The approval remains held; retry only the exact pending approval.'); else { await refresh(); tell('Pending action resolved. Review the refreshed record before the next change.'); } }
+    catch (error) { tell(error.message, true); }
+  }));
+  message.after(notice);
+}
+function showOperatorLogin(error = '') {
+  state = null; document.querySelector('nav').hidden = true; document.querySelector('.aside-foot').hidden = true;
+  document.querySelector('#mode-banner').hidden = true; document.querySelector('#backup').hidden = true;
+  document.querySelector('#pause').hidden = true; document.querySelector('#operator-label').hidden = true; document.querySelector('#sign-out').hidden = true;
+  const node = panel('Sign in to EVZ operations'), form = el('form');
+  node.append(el('p', 'Use your individual operator key. Saved decisions show whether you or your friend made them.'));
+  const wrap = el('label', 'Operator access key'), input = el('input'); input.type = 'password'; input.name = 'operator-key'; input.autocomplete = 'current-password'; input.required = true; input.setAttribute('aria-label', 'Operator access key'); wrap.append(input); form.append(wrap);
+  const submit = el('button', 'Sign in', 'primary'); submit.type = 'submit'; form.append(submit); form.addEventListener('submit', async event => {
+    event.preventDefault(); submit.disabled = true;
+    try {
+      const response = await fetch(deskPath('/api/login'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Studio-Token': csrf }, body: JSON.stringify({ key: input.value }) });
+      const result = await response.json(); if (!response.ok) throw Error(result.error);
+      input.value = ''; await refresh();
+    } catch (e) { tell(e.message, true); input.focus(); } finally { submit.disabled = false; }
+  });
+  node.append(form); content.replaceChildren(node); document.querySelector('#view-kicker').textContent = 'Shared company workspace';
+  document.querySelector('#view-title').textContent = 'Sign in to continue.'; document.querySelector('#view-description').textContent = 'Each operator uses a separate key; the workspace records who made each decision.';
+  tell(error, Boolean(error));
 }
 async function refresh() {
-  const response = await fetch('/api/state'); if (!response.ok) throw Error('Private session unavailable. Reload the console.');
-  state = await response.json();
+  const response = await fetch(deskPath('/api/state'));
+  if (response.status === 401 && operatorAuthRequired) { showOperatorLogin(); return; }
+  if (!response.ok) throw Error('Private session unavailable. Reload the console.');
+  state = await readDeskSnapshot(response,{fetch:(...args)=>fetch(...args),path:deskPath('/api/state')});
+  if (state.hosted_preview && !eventRequest) eventRequest = createEventRequest({fetch: (...args) => fetch(...args), storage: sessionStorage, csrf: () => csrf, actor: () => state?.current_operator, changed: showPendingEvent});
+  showPendingEvent();
+  document.querySelector('nav').hidden = false; document.querySelector('.aside-foot').hidden = false;
+  document.querySelector('#mode-banner').hidden = false; document.querySelector('#backup').hidden = Boolean(state.shared_workspace); document.querySelector('#pause').hidden = Boolean(state.shared_workspace);
+  const operatorLabel = document.querySelector('#operator-label'), signOut = document.querySelector('#sign-out');
+  operatorLabel.hidden = !state.operator_auth_enabled; operatorLabel.textContent = state.current_operator === 'friend' ? 'Friend · shared team' : 'Owner · shared team';
+  signOut.hidden = !state.operator_auth_enabled;
   const panel=content.querySelector('.call-desk > .panel');
   const position=panel&&{panel:panel.scrollTop,list:panel.querySelector('.record-list')?.scrollTop??0,page:window.scrollY};
   render();
@@ -26,16 +86,119 @@ async function refresh() {
 }
 function pill(text) { return el('span', text, 'badge'); }
 function panel(title) { const node = el('section', undefined, 'panel'); if (title) node.append(el('h2', title)); return node; }
-function link(label, href) { const node = el('a', label); if (/^https:\/\//i.test(href) || href === '/preview/' || /^\/(?:proposal\/[a-zA-Z0-9_-]+|follow-up\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+)$/.test(href)) { node.href = href; node.target = '_blank'; node.rel = 'noreferrer'; } else node.removeAttribute('href'); return node; }
+function link(label, href) { const node = el('a', label); if (/^https:\/\//i.test(href) || href === '/preview/' || /^\/retained-source\/[a-zA-Z0-9_-]{1,100}\/[a-f0-9]{64}\?url=[^#]+&at=[^#]+$/.test(href) || /^\/(?:proposal\/[a-zA-Z0-9_-]+|follow-up\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+)$/.test(href)) { node.href = deskPath(href); node.target = '_blank'; node.rel = 'noreferrer'; } else node.removeAttribute('href'); return node; }
 function summary(r) {
   const node = button('', () => { selected = r.id; render(); }, `record${selected === r.id ? ' selected' : ''}`);
-  node.append(el('strong', r.name), pill(r.call_lane === 'verification' ? 'Verification call only' : 'Research reviewed'), pill(r.stage), el('small', r.idea)); return node;
+  node.append(el('strong', r.name), pill(r.origin==='workspace'?'Project workspace · no outreach':r.call_lane === 'verification' ? 'Verification call only' : 'Research reviewed'), pill(r.stage), el('small', r.idea)); return node;
 }
 function stats() {
   const row = el('div', undefined, 'stats');
-  for (const [label, value, note] of [['Businesses today', `${state.daily.unique_businesses} / 50`, 'Actual contacts · follow-ups included'], ['Call reviews', Object.values(state.prospects).filter(r => ['Connected review', 'Verification review'].includes(r.stage)).length, 'Held until your decision'], ['Open support', Object.values(state.prospects).flatMap(r => r.tickets).filter(t => t.status === 'Open').length, state.controls.mode === 'controlled' ? 'Fictional projects in this review' : 'Saved client requests'], ['Exceptions', state.exceptions.length, 'Consolidated in the private workspace']]) {
+  for (const [label, value, note] of [['New businesses prepared', `${state.daily.new_researched} / ${state.daily.research_target}`, 'Shared research target · callbacks separate'], ['Call & reply reviews', Object.values(state.prospects).filter(r => ['Connected review', 'Verification review', 'Reply review'].includes(r.stage)).length, 'Held until your decision'], ['Open support', Object.values(state.prospects).flatMap(r => r.tickets).filter(t => t.status === 'Open').length, state.controls.mode === 'controlled' ? 'Fictional projects in this review' : 'Saved client requests'], ['Exceptions', state.exceptions.length + (state.reply_alerts?.length ?? 0), 'Consolidated in the private workspace']]) {
     const card = el('div', undefined, 'stat'); card.append(el('p', label, 'eyebrow'), el('strong', String(value)), el('small', note)); row.append(card);
   } return row;
+}
+function assetRefValue(kind, value) { return kind === 'drive' ? `drive:${value.trim()}` : `private-path:${value.trim()}`; }
+async function saveAssetEvent(type, data) {
+  await api('/api/event', { revision: state.revision, event: { id: crypto.randomUUID(), prospect_id: 'studio-assets', type, at: new Date().toISOString(), data } });
+  dirty = false; tell('Saved in the private shared index.'); await refresh();
+}
+function renderAssets() {
+  const node = panel('Private studio and project assets');
+  node.append(el('p', ['shared-operations-records-v1','shared-operations-authoring-v1','shared-operations-refinement-v1','shared-operations-originals-v1','shared-operations-calendar-v1','shared-operations-exact-mail-v1'].includes(state.shared_workspace?.capability)?(['shared-operations-originals-v1','shared-operations-calendar-v1','shared-operations-exact-mail-v1'].includes(state.shared_workspace.capability)?'Review registered originals, versions and attributed feedback. Exact Drive reads require their independent owner-controlled grant and runtime. New registration and generic uploads remain unavailable.':'Review registered originals, versions and attributed feedback in this current workspace. New asset/version registration and original transfers are unavailable here.'):'Add a Google Drive file ID or a relative path inside private storage. This index saves references only; it does not copy, fetch or verify files. Never paste credentials or file contents.', 'notice'));
+  node.append(el('p', 'Either operator can approve a version as the baseline. If you disagree with a direction, flag an alternative; the last approved baseline stays active until both operators make matching choices to resolve it.', 'muted'));
+  const form = el('form'); form.append(el('h3', 'Add an asset reference'));
+  const scope = inputField(form, 'Asset scope', 'scope', 'studio', 'text', [{ value: 'studio', label: 'Studio-wide' }, { value: 'project', label: 'Project' }]);
+  const projects = Object.values(state.prospects).sort((a, b) => a.name.localeCompare(b.name));
+  const create=el('details');create.append(el('summary','Add an existing company/project workspace'));const workspaceForm=el('form');
+  workspaceForm.append(el('p','Search the existing project list first. This creates private asset context only: no contact routes, call tasks, research qualification, approved scope or client acceptance.','muted'));
+  const workspaceName=inputField(workspaceForm,'Existing company name','workspace_name',state.controls.mode==='controlled'?'STUDIO TEST ':''),purpose=inputField(workspaceForm,'Project purpose','workspace_purpose');
+  const saveWorkspace=el('button','Create private project workspace','primary');saveWorkspace.type='submit';workspaceForm.append(saveWorkspace);create.append(workspaceForm);if(!state.shared_workspace)node.append(create);
+  workspaceForm.onsubmit=async event=>{event.preventDefault();saveWorkspace.disabled=true;try{const id=crypto.randomUUID();await api('/api/event',{revision:state.revision,event:{id:crypto.randomUUID(),prospect_id:id,type:'workspace_project_created',at:new Date().toISOString(),data:{name:workspaceName.value,purpose:purpose.value,controlled:state.controls.mode==='controlled'}}});assetProject=id;tell('Private project workspace saved. Add its source references below; no outreach or approval was created.');dirty=false;await refresh();}catch(error){tell(error.message,true);}finally{saveWorkspace.disabled=false;}};
+
+  const context=el('section');context.append(el('h3','Continue a project'));
+  const contextProject=inputField(context,'Project context','asset_project',assetProject,'text',[{value:'',label:'All studio and project assets'},...projects.map(r=>({value:r.id,label:r.name}))]);
+  const assetCards=[],feedbackRows=[];
+  const relevantFeedback=Object.values(state.asset_index??{}).flatMap(asset=>(asset.feedback??[]).map(f=>({asset,feedback:f})));
+  context.append(el('p','Recorded directions retain their exact source version and operator. Feedback does not approve a changed file or resolve a disagreement; review it alongside the current baseline.','muted'));
+  for(const {asset,feedback:f} of relevantFeedback){const row=el('section');row.append(el('p',`${asset.name} · ${asset.versions[f.version_id]?.label??f.version_id} · ${f.scope==='studio'?'Studio-wide direction':state.prospects[f.project_id]?.name??'Project'} · ${f.actor} · ${new Date(f.at).toLocaleDateString()}`,'muted'),el('blockquote',f.feedback,'quote'),el('p',f.scope_reason??'Saved scope retained; no automatic reinterpretation of earlier feedback.','muted'),el('p',asset.versions[f.version_id]?.reference??'Source reference unavailable','muted'));context.append(row);feedbackRows.push({row,feedback:f});}
+  const emptyFeedback=el('p','No retained feedback for this context yet.','muted');context.append(emptyFeedback);node.append(context);
+  const updateContext=()=>{for(const {card,asset} of assetCards)card.hidden=Boolean(assetProject&&asset.scope!=='studio'&&asset.project_id!==assetProject);for(const {row,feedback:f} of feedbackRows)row.hidden=Boolean(assetProject&&f.scope!=='studio'&&f.project_id!==assetProject);emptyFeedback.hidden=feedbackRows.some(({row})=>!row.hidden);};
+  contextProject.onchange=()=>{assetProject=contextProject.value;updateContext();};
+  const project = inputField(form, 'Project', 'project_id', '', 'text', [{ value: '', label: 'Choose a project' }, ...projects.map(r => ({ value: r.id, label: `${r.name} · ${r.stage}` }))]);
+  project.parentElement.hidden = scope.value !== 'project';
+  scope.addEventListener('change', () => { project.parentElement.hidden = scope.value !== 'project'; });
+  const name = inputField(form, 'Asset name', 'name');
+  const kind = inputField(form, 'Category', 'kind', 'brand', 'text', ['brand', 'template', 'source', 'brief', 'mockup', 'proposal', 'approval', 'delivery', 'other']);
+  const versionLabel = inputField(form, 'Version label', 'version_label', 'v1');
+  const referenceKind = inputField(form, 'Reference type', 'reference_kind', 'drive', 'text', [{ value: 'drive', label: 'Google Drive file ID' }, { value: 'path', label: 'Relative private path' }]);
+  const referenceValue = inputField(form, 'File ID or relative path', 'reference');
+  form.append(el('p', 'Use a separate, immutable file reference for each version. A file ID or path is not a credential.', 'muted'));
+  const submit = el('button', 'Add to index', 'primary'); submit.type = 'submit'; form.append(submit);
+  form.addEventListener('submit', async event => {
+    event.preventDefault(); submit.disabled = true;
+    try {
+      await saveAssetEvent('asset_registered', { asset_id: crypto.randomUUID(), scope: scope.value, ...(scope.value === 'project' ? { project_id: project.value } : {}), name: name.value, kind: kind.value, version_id: crypto.randomUUID(), version_label: versionLabel.value, reference: assetRefValue(referenceKind.value, referenceValue.value) });
+    } catch (error) { tell(error.message, true); } finally { submit.disabled = false; }
+  });
+  if(!state.shared_workspace)node.append(form);
+  const index = Object.values(state.asset_index ?? {});
+  if (!index.length) node.append(el('p', 'No asset references yet. Add a studio file or link an asset to any existing project record.', 'empty'));
+  for (const asset of index.sort((a, b) => a.name.localeCompare(b.name))) {
+    const card = panel(asset.name);
+    assetCards.push({card,asset});
+    const projectName = asset.project_id ? state.prospects[asset.project_id]?.name ?? 'Project record unavailable' : 'Studio-wide';
+    card.append(pill(asset.kind), pill(projectName));
+    const baseline = asset.versions[asset.baseline_version];
+    card.append(el('p', baseline ? `Approved baseline: ${baseline.label}` : 'Approved baseline: not set yet', baseline ? '' : 'muted'));
+    if (asset.dispute) {
+      const choiceLabel = operator => {
+        const choice = asset.dispute.choices[operator];
+        return choice ? asset.versions[choice.version_id]?.label ?? 'unknown version' : 'needs a current choice';
+      };
+      card.append(el('p', `Disagreement open · baseline stays ${baseline?.label ?? 'unset'} · owner: ${choiceLabel('owner')} · friend: ${choiceLabel('friend')}. Both current choices must match to resolve it.`, 'notice'));
+    } else {
+      const approval = asset.baseline_agreement_events?.length ? ' Both operators confirmed this version.' : asset.baseline_approved_by ? ` Last approved by ${asset.baseline_approved_by}.` : '';
+      card.append(el('p', `An individual approval takes effect immediately.${approval} Older selections do not count as objections.`, 'muted'));
+    }
+    for (const version of Object.values(asset.versions).sort((a, b) => a.registered_at.localeCompare(b.registered_at))) {
+      const row = el('section', undefined, 'check-item asset-version');
+      row.append(el('strong', version.label), el('p', version.reference, 'muted'));
+      row.append(el('small', `Added by ${version.registered_by} · ${new Date(version.registered_at).toLocaleDateString()}`));
+      const currentChoices = asset.dispute ? asset.dispute.choices : asset.choices;
+      const mine = currentChoices[state.current_operator]?.version_id === version.id;
+      if (asset.dispute) {
+        row.append(button(mine ? 'Your current resolution choice' : 'Choose to resolve disagreement', async () => { try { await saveAssetEvent('asset_version_selected', { asset_id: asset.id, version_id: version.id }); } catch (error) { tell(error.message, true); } }));
+      } else if (asset.baseline_version === version.id) {
+        row.append(el('small', 'Current approved baseline'));
+      } else {
+        row.append(button('Approve as baseline', async () => { try { await saveAssetEvent('asset_version_selected', { asset_id: asset.id, version_id: version.id }); } catch (error) { tell(error.message, true); } }));
+        if (baseline) row.append(button('Flag disagreement', async () => { try { await saveAssetEvent('asset_version_disputed', { asset_id: asset.id, version_id: version.id }); } catch (error) { tell(error.message, true); } }));
+      }
+      card.append(row);
+    }
+    const feedbackForm=el('form');feedbackForm.append(el('h4','Save design feedback'));
+    const feedbackVersion=inputField(feedbackForm,`Feedback version · ${asset.name}`,'version_id',asset.baseline_version??Object.keys(asset.versions).at(-1),'text',Object.values(asset.versions).map(v=>({value:v.id,label:v.label})));
+    const feedbackScope=inputField(feedbackForm,`Feedback applies to · ${asset.name}`,'feedback_scope','auto','text',[{value:'auto',label:'Automatic'},{value:'project',label:'This project only'},{value:'studio',label:'Explicit studio-wide direction'}]);
+    feedbackForm.append(el('p','Automatic saves current-project feedback by default. Whole sentences such as Always use "Syne" for heading font. or Never use "Manrope" for body font. create shared standards. Only quoted heading font, body font or six-digit page background rules are recognized; other wording needs author review. Choose This project to keep an Always/Never direction local.','muted'));
+    const feedbackProject=inputField(feedbackForm,`Feedback project · ${asset.name}`,'feedback_project',asset.project_id??assetProject,'text',[{value:'',label:'Choose a project'},...projects.filter(r=>!asset.project_id||r.id===asset.project_id).map(r=>({value:r.id,label:r.name}))]);
+    feedbackScope.onchange=()=>{feedbackProject.parentElement.hidden=feedbackScope.value==='studio';};
+    const feedbackText=inputField(feedbackForm,`Operator feedback · ${asset.name}`,'feedback','','textarea');feedbackText.maxLength=2000;
+    const saveFeedback=el('button','Save feedback');saveFeedback.type='submit';feedbackForm.append(saveFeedback);
+    feedbackForm.onsubmit=async event=>{event.preventDefault();saveFeedback.disabled=true;try{await saveAssetEvent('asset_feedback_added',{asset_id:asset.id,version_id:feedbackVersion.value,feedback:feedbackText.value,scope:feedbackScope.value,...(feedbackScope.value!=='studio'&&feedbackProject.value?{project_id:feedbackProject.value}:{})});}catch(error){tell(error.message,true);}finally{saveFeedback.disabled=false;}};
+    card.append(feedbackForm);
+    const addVersion = el('form'); addVersion.append(el('h4', 'Register a new version'));
+    const label = inputField(addVersion, 'Version label', 'version_label');
+    const refKind = inputField(addVersion, 'Reference type', 'reference_kind', 'drive', 'text', [{ value: 'drive', label: 'Google Drive file ID' }, { value: 'path', label: 'Relative private path' }]);
+    const ref = inputField(addVersion, 'File ID or relative path', 'reference');
+    const add = el('button', 'Add version'); add.type = 'submit'; addVersion.append(add);
+    addVersion.addEventListener('submit', async event => {
+      event.preventDefault(); add.disabled = true;
+      try { await saveAssetEvent('asset_version_registered', { asset_id: asset.id, version_id: crypto.randomUUID(), version_label: label.value, reference: assetRefValue(refKind.value, ref.value) }); }
+      catch (error) { tell(error.message, true); } finally { add.disabled = false; }
+    });
+    if(!state.shared_workspace)card.append(addVersion); node.append(card);
+  }
+  updateContext();content.append(node);
 }
 function inputField(form, label, name, value = '', type = 'text', options) {
   const wrap = el('label', label); let input;
@@ -50,6 +213,7 @@ function inputField(form, label, name, value = '', type = 'text', options) {
   form.append(wrap); return input;
 }
 function eventForm(r, title, type, fields, fixed = {}, submitLabel = 'Save reviewed decision') {
+  if(state.shared_workspace&&!state.shared_workspace.allowed_edits.includes(type))return el('p','Saved context · editing unavailable in this workspace','muted');
   const form = el('form'); form.append(el('h3', title));
   const controls = fields.map(f => ({ name: f[1], node: inputField(form, ...f) }));
   const submit = el('button', submitLabel, 'primary'); submit.type = 'submit'; form.append(submit);
@@ -79,10 +243,16 @@ function callPrep(r) {
     card.append(el('p', `Verification call only · current activity and owner fit are unconfirmed. This is not a detailed, independently accepted assessment. ${state.controls.follow_up_enabled?'Eligible saved attempts prepare a follow-up when a verified business email is available; commercial release has separate gates.':'No automatic email follows an unanswered call.'}`, 'notice'));
     for (const [key, title] of [['identity', 'Business identity'], ['location', 'Location'], ['offering', 'Public offering'], ['public_phone', 'Public business phone']]) {
       const proof = packet[key], source = packet.sources.find(s => s.url === proof.url), line = el('p');
-      line.append(el('strong', `${title}: `), document.createTextNode(proof.excerpt), document.createTextNode(' · '), link('Source ↗', proof.url), document.createTextNode(` · checked ${source.fetched_at}`)); card.append(line);
+      line.append(el('strong', `${title}: `), document.createTextNode(proof.excerpt), document.createTextNode(' · '), link('Saved capture ↗', `/retained-source/${r.id}/${source.content_sha256}?url=${encodeURIComponent(source.url)}&at=${encodeURIComponent(source.fetched_at)}`), document.createTextNode(' · '), link('Live source ↗', proof.url), document.createTextNode(` · checked ${source.fetched_at}`)); card.append(line);
     }
-    card.append(el('h4', 'Suggested opening'), el('blockquote', r.verification.opening, 'quote'));
-    card.append(el('h4', 'Then ask'), el('p', r.verification.owner_question ?? 'What would you most like to make easier for customers or for yourself?'), el('p', 'How do customers order or enquire today? Which tools already handle this, and what works well?'), el('p', `Possible enhancement to discuss: ${r.idea}`, 'muted'));
+    const opening=r.opening_view;
+    if(opening?.selected){const c=opening.selected,source=r.verification.packet.sources.find(s=>s.url===c.source_url&&s.content_sha256===c.source_sha256);card.append(el('h4','Strongest source-backed opening'),el('blockquote',c.opening,'quote'),el('p',`Customer step / difficulty: ${c.customer_difficulty}`),el('blockquote',c.excerpt,'quote'),link('Saved capture ↗',`/retained-source/${r.id}/${c.source_sha256}?url=${encodeURIComponent(c.source_url)}&at=${encodeURIComponent(source?.fetched_at??'')}`),link('Live source ↗',c.source_url),el('p',`Possible improvement to discuss: ${c.hypothesis}`),el('p',`${opening.selected_by}: ${opening.reason}`,'muted'));
+      card.append(eventForm(r,'Choose another supported opening','opening_selected',[
+        ['Supported alternative','candidate_id',c.id,'text',opening.candidates.map(option=>({value:option.id,label:`${option.service}: ${option.owner_question}`}))],['Reason for your selection','reason','','textarea']
+      ],{assessment_sha256:opening.assessment_sha256},'Save opening selection'));
+    }else if(opening?.status==='Held')card.append(el('p',opening.reason,'notice'));
+    else card.append(el('h4','Verification question'),el('blockquote',r.verification.opening,'quote'),el('p','An offering/locality check is not a strong pitch. This older verification record has not received the current focused opening assessment.','muted'));
+    if(!opening)card.append(el('h4', 'Then ask'), el('p', r.verification.owner_question ?? 'What would you most like to make easier for customers or for yourself?'), el('p', 'How do customers order or enquire today? Which tools already handle this, and what works well?'), el('p', `Possible enhancement to discuss: ${r.idea}`, 'muted'));
     const unknowns = el('ul'); for (const unknown of packet.unknowns) unknowns.append(el('li', unknown)); card.append(unknowns);
     if (Date.now() - Date.parse(r.contact.checked_at) > 14 * 86400000) card.append(el('p', 'The identity/phone check is stale. Reverify before calling.', 'notice'));
     return card;
@@ -122,6 +292,7 @@ function review(r, node) {
   }
   const detail = el('details'); detail.append(el('summary', 'Read the saved transcript'), el('p', transcript.text, 'quote transcript')); node.append(detail);
   if (!proposal) {
+    if(renderHostedAssessment(node,r,call,state,{api,refresh,tell}))return;
     node.append(el('p', 'The transcript is saved. AI analysis uses the subscription allowance and preserves the website/client reserve.', 'notice'));
     const run = button(state.workers.includes(`${r.id}:${call.call_id}`) ? 'Analysis running…' : 'Request evidence review', async () => {
       try { await api('/api/analyze', { prospect_id: r.id, call_id: call.call_id }); tell('Analysis requested. Any allowance or evidence hold will appear in Exceptions.'); setTimeout(() => refresh().catch(e => tell(e.message, true)), 2500); }
@@ -129,6 +300,7 @@ function review(r, node) {
     }, 'primary'); run.disabled = state.workers.includes(`${r.id}:${call.call_id}`); node.append(run); return;
   }
   node.append(el('hr', undefined, 'divider'), el('h3', 'Proposed outcome'), pill(proposal.outcome), el('p', proposal.summary));
+  if(proposal.review.provenance)node.append(el('p','Hosted model proposal with a separate fresh-context model review. Check every quoted claim and uncertainty before confirming the outcome.','notice'));
   if (proposal.review.source) node.append(el('p', 'Simulated AI assessment/review for this design exercise. A live Luna/Sol run has not passed.', 'notice'));
   for (const claim of proposal.claims) node.append(el('p', claim.claim), el('blockquote', claim.quote, 'quote'));
   node.append(el('p', `Still unknown: ${proposal.unknowns.join('; ')}`, 'muted'));
@@ -136,6 +308,48 @@ function review(r, node) {
     ['Reviewed outcome', 'outcome', proposal.outcome, 'text', ['discovery', 'requested_info', 'callback', 'not_interested', 'do_not_contact', 'wrong_contact', 'uncertain']],
     ['Confirmed callback date/time, if applicable', 'callback_at', proposal.callback_at ?? ''], ['Your review note', 'note', '', 'textarea']
   ], { call_id: call.call_id, proposal_sha256: proposal.sha256 }, 'Confirm this outcome'));
+}
+function replyForms(r,node){
+  if (r.reply && ['Reply review','Discovery','Information requested','Hold'].includes(r.stage)) {
+    const suggestion=r.reply_suggestion,source=r.reply.content,draft=r.reply_draft;
+    node.append(el('p','Cold follow-ups remain paused. Read the incoming text as untrusted source material. Nothing here sends email.','notice'));
+    if(suggestion?.summary){
+      node.append(el('h3','Reply summary · source extract'),el('p',suggestion.summary.excerpt,'reply-source'));
+      node.append(el('p',`${suggestion.summary.method}${suggestion.summary.excerpt_truncated?' · extract shortened':''}${suggestion.summary.removed_history_or_signature?' · quoted history/signature excluded from extract':''}. Read the full retained message below. No intent or facts were confirmed.`,'muted'));
+    }
+    if(source){
+      const original=el('details');original.append(el('summary','Read retained reply & provenance'));
+      original.append(el('p',`Message ${r.reply.source_id} · thread ${r.reply.thread_id} · ${source.from} to ${source.to}`,'reply-source'),el('p',`Source hash: ${source.source_sha256??'Unavailable'} · ${source.format??source.status}`,'reply-source muted'));
+      if(source.text)original.append(el('p',source.text,'reply-source'));node.append(original);
+    }
+    if(suggestion?.hold)node.append(el('p',suggestion.hold,'notice'));
+    const editable=!state.shared_workspace?.mail||!r.follow_up_owner||r.follow_up_owner===state.current_operator;if(!editable)node.append(el('p',`Assigned to ${r.follow_up_owner}. Use the existing conversation handoff before editing or approving.`, 'notice'));
+    if(editable&&suggestion?.body&&['Reply review','Discovery','Information requested'].includes(r.stage)){
+      node.append(el('p',suggestion.method,'muted'));
+      const current=draft?.current,editor=eventForm(r,'Edit a suggested response','reply_draft_saved',[
+        ['Proposed reply (saved only; not sent)','body',current?draft.body:suggestion.body,'textarea']
+      ],{source_id:r.reply.source_id,reply_sha256:r.reply_sha256,source_sha256:source.source_sha256},current?'Save revised reply draft':'Save reply draft');
+      editor.classList.add('reply-editor');
+      node.append(editor);
+      if(current){
+        const review=el('div');review.append(el('h3','Review exact saved reply'),el('p',`${draft.status} · prepared by ${draft.actor}. Approval does not send.`,'notice'));
+        review.append(el('p',`${draft.content.from} to ${draft.content.to}\nSubject: ${draft.content.subject}\nThread: ${draft.content.thread_id} · in reply to ${draft.content.in_reply_to}\n\n${draft.content.body}\n\n${draft.content.signature}`,'reply-source'));
+        if(draft.status==='Draft')review.append(eventForm(r,'Approve this held revision','reply_draft_approved',[
+          ['I checked every statement against the source and corrected unsupported facts, prices, dates, promises and attachments','facts_checked',false,'checkbox'],
+          ['I reviewed the exact recipient, thread, body and signature above','approved',false,'checkbox']
+        ],{sha256:draft.sha256},'Approve exact reply · keep sending held'));
+        else review.append(el('p',`Approved by ${draft.approved_by}. Sending remains held; use a separately authorized exact-message handoff.`,'muted'));
+        editor.addEventListener('input',()=>{review.hidden=true;});node.append(review);
+      }else if(draft)node.append(el('p','The old draft is stale. Save and review a new revision for the current reply and assignment.','notice'));
+    }
+  }
+  if ((!state.shared_workspace?.mail||!r.follow_up_owner||r.follow_up_owner===state.current_operator)&&(r.stage === 'Reply review'||r.reply&&['Discovery','Information requested'].includes(r.stage)&&r.reply_review&&(!r.reply_review.focus||r.reply_review.focus==='unspecified'||r.reply_review.reply_sha256!==r.reply_sha256))) {
+    if(r.stage!=='Reply review')node.append(el('p','Confirm which service the business wants before preparing project work.','notice'));
+    node.append(eventForm(r, 'Review the verified reply', 'reply_reviewed', [
+    ['Next action', 'outcome', r.stage==='Reply review'?'hold':r.reply_review.outcome, 'text', ['discovery', 'requested_info', 'hold', 'decline', 'do_not_contact']],
+    ['Service confirmed in this reply', 'focus', 'unspecified', 'text', [{value:'unspecified',label:'Not confirmed — ask which service'}, {value:'website',label:'Website'}, {value:'systems',label:'Systems'}, {value:'ai',label:'AI'}, {value:'marketing',label:'Marketing'}]],
+    ['Your reply review note', 'note', r.stage==='Reply review'?'':r.reply_review.note??'', 'textarea']
+  ], { source_id: r.reply.source_id, reply_sha256:r.reply_sha256 }, 'Confirm reply outcome'));}
 }
 function nextForm(r, node) {
   const ref = r.controlled ? 'fixture:owner-verified evidence — controlled test only' : '';
@@ -154,10 +368,7 @@ function nextForm(r, node) {
       ['Business email given in this conversation, optional', 'email', ''], ['Exact quote requesting or agreeing to email at this address', 'email_quote', '', 'textarea'], ['I confirmed the owner wants email at this address', 'email_permission_confirmed', false, 'checkbox']
     ], { call_id: callId }, 'Confirm conversation qualification'));
   }
-  if (r.stage === 'Reply review') node.append(eventForm(r, 'Review the verified reply', 'reply_reviewed', [
-    ['Next action', 'outcome', 'hold', 'text', ['discovery', 'requested_info', 'hold', 'decline', 'do_not_contact']],
-    ['Your reply review note', 'note', '', 'textarea']
-  ], { source_id: r.reply.source_id }, 'Confirm reply outcome'));
+  replyForms(r,node);
   if (['Discovery', 'Information requested'].includes(r.stage)) node.append(eventForm(r, 'Confirm qualified discovery', 'discovery_confirmed', [
     ['Owner’s goal', 'goal', r.controlled ? 'Make preorder pickup details clear' : '', 'textarea'], ['Decision-maker', 'decision_maker', r.controlled ? 'Fictional owner' : ''],
     ['Serious interest confirmed in conversation', 'serious_interest', false, 'checkbox'], ['We discussed whether a paid project could fit', 'paid_fit_discussed', false, 'checkbox'],
@@ -223,6 +434,12 @@ function nextForm(r, node) {
   if (['Hold', 'Stopped'].includes(r.stage)) node.append(el('p', r.restriction ? `Contact restriction: ${r.restriction}. Older positive notes cannot restart outreach.` : r.next_check, 'notice'));
 }
 function detail(r) {
+  if(state.shared_workspace?.capability==='shared-known-identity-research-v1'){const node=panel(r.name);node.append(el('p',state.shared_workspace.execution));const link=el('a','Open known business source review');link.href=deskPath('/known-research/');node.append(link);return node;}
+  if(state.shared_workspace){const node=panel(r.name);node.append(el('p',`${r.stage} · saved record · ${['shared-operations-authoring-v1','shared-operations-refinement-v1','shared-operations-originals-v1','shared-operations-calendar-v1','shared-operations-exact-mail-v1'].includes(state.shared_workspace.capability)?'interactive authoring; delivery held':state.shared_workspace.capability==='shared-refinement-generation-v1'?state.shared_workspace.execution:'execution disabled'}`),eventForm(r,'Private business note','note_added',[['Private note','note',r.note??'','textarea']],{},'Save private note'));if(state.shared_workspace.mail){node.append(el('p',`${state.shared_workspace.mail.status}. Reply content and facts approval remains separate from exact send approval.`, 'notice'));replyForms(r,node);}if(['shared-project-continuation-v1','shared-refinement-generation-v1','shared-operations-records-v1','shared-operations-authoring-v1','shared-operations-refinement-v1','shared-operations-originals-v1','shared-operations-calendar-v1','shared-operations-exact-mail-v1'].includes(state.shared_workspace.capability))node.append(preparationPanel(r,state,{el,button,eventForm,tell,api,refresh,csrf:()=>csrf,clearDirty:()=>{dirty=false;}}));return node;}
+  if(r.origin==='workspace'){
+    const node=panel(r.name);node.append(pill('Project workspace · no outreach'),el('p',r.workspace.purpose),el('p',`Created by ${r.workspace.created_by}. Private references and notes do not establish a design selection, approved quote, client acceptance or contact permission.`,'notice'));
+    const packet=el('div');if(loadedWorkspaceContext?.id===r.id&&loadedWorkspaceContext.revision===state.revision)packet.append(el('pre',JSON.stringify(loadedWorkspaceContext.data,null,2)));node.append(button('Load private project context',async()=>{try{const response=await fetch(deskPath(`/api/project-context/${r.id}`)),data=await response.json();if(!response.ok)throw Error(data.error);loadedWorkspaceContext={id:r.id,revision:state.revision,data};packet.replaceChildren(el('pre',JSON.stringify(data,null,2)));}catch(error){tell(error.message,true);}}),packet,eventForm(r,'Private project note','note_added',[['Project note','note',r.note??'','textarea']],{},'Save project note'));return node;
+  }
   const node = panel(); node.append(pill(r.stage), el('h2', r.name, 'detail-title'), el('p', r.idea, 'idea'), el('p', `Evidence: ${r.qualification.evidence_ref}`, 'source'));
   if (!r.controlled) node.append(el('p', `Public business phone: ${r.contact.phone ?? 'awaiting verification'} · Email: ${r.contact.email ?? 'unverified — automatic email blocked'}`, 'source'));
   for (const [actionId, email] of Object.entries(state.operations?.email ?? {})) if (state.actions[actionId]?.prospect_id === r.id) node.append(el('p', `Email: ${email.status}${email.thread ? ' · sender thread verified' : ''}`, 'notice'));
@@ -235,9 +452,11 @@ function detail(r) {
   if (r.quote) node.append(el('p', `${r.controlled ? 'Test quote' : 'Fixed quote'}: $${(r.quote.price_cents / 100).toFixed(2)} · verified payment evidence: $${(r.payments.reduce((n, p) => n + p.amount_cents, 0) / 100).toFixed(2)}`, 'notice'));
   if (r.quote) node.append(link('Open the written project proposal ↗', `/proposal/${r.id}`));
   if (r.stage === 'Callback') {
-    node.append(el('p', r.callback_at ? `Requested callback: ${new Date(r.callback_at).toLocaleString()}. Cold email remains paused.` : 'Callback requested. Check the saved agreed time before calling.', 'notice'));
+    const due=r.callback_at??r.callback_due_at,when=due?new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',dateStyle:'medium',timeStyle:'short'}).format(new Date(due))+' ET':null;
+    node.append(el('p', r.callback_at ? `Requested callback at ${when}. Cold email remains paused.` : when ? `Callback requested without an exact time. Internal reminder set for ${when}; no time was promised. Cold email remains paused.` : 'Callback requested. Check the saved reminder before calling.', 'notice'));
   }
   if (['Ready to contact', 'Contacting', 'Ready to verify', 'Verifying', 'Callback'].includes(r.stage)) node.append(callPrep(r));
+  if(Object.keys(r.project_work??{}).length||['Discovery','Information requested','Preview','Proposal','Agreement'].includes(r.stage))node.append(preparationPanel(r,state,{el,button,eventForm,tell,api,refresh,csrf:()=>csrf,clearDirty:()=>{dirty=false;}}));
   nextForm(r, node);
   const history = el('details'); history.append(el('summary', 'Review the saved event history'));
   const list = el('ol', undefined, 'timeline');
@@ -248,22 +467,52 @@ function detail(r) {
 }
 function render() {
   document.body.classList.toggle('desk-view',['today','businesses'].includes(view));
+  const attentionCount = state.exceptions.length + (state.reply_alerts?.length ?? 0), attentionNav = document.querySelector('#attention-nav');
+  const attentionBadge = document.querySelector('#attention-count');
+  attentionBadge.textContent = attentionCount ? String(attentionCount) : '';
+  attentionBadge.hidden = attentionCount === 0;
+  attentionNav.setAttribute('aria-label', attentionCount ? `Needs attention, ${attentionCount} open items` : 'Needs attention');
   document.querySelector('#mode-banner').textContent = state.controls.mode === 'controlled' ? 'Controlled operations proof · Fictional businesses, simulated calls and payments. Approved test emails go only to owner-controlled inboxes.' : state.controls.calls_paused ? 'Production workspace · Saved research, verification calls and client work. Contact remains paused until final owner release.' : state.controls.outreach_paused ? 'Calling enabled · You place and log calls. Booking requires verified business Calendar setup and your approval of the guest and time. Commercial email remains paused.' : 'Production workspace · Live calls and email operate within the approved campaign rules. Review due work and exceptions before contacting.';
   const discovery=state.discovery_batches?.find(b=>!['Complete','Stopped','Held'].includes(b.status));
+  if(state.shared_workspace)document.querySelector('#mode-banner').textContent=['shared-refinement-generation-v1','shared-known-identity-research-v1'].includes(state.shared_workspace.capability)?`Shared projects · ${state.shared_workspace.execution}`:state.shared_workspace.capability==='shared-project-continuation-v1'?'Shared projects; Save attributed design feedback, inspect current context and request one protected refinement. Interactive PDF authoring stays held for review. External execution is disabled.':state.shared_workspace.capability==='shared-manual-records-v1'?'Shared manual records · Execution disabled. Attest completed human calls, record callbacks, hand off ownership, add notes and stop local future work. This does not authorize placing calls or sending email. External suppression is unverified.':'Shared workspace · Execution disabled. Read saved records and edit private notes. Imported actions, approvals and monitoring are history; external effects require reconciliation. Hosted authoring and backup are unavailable.';
+  if(['shared-refinement-generation-v1','shared-known-identity-research-v1'].includes(state.shared_workspace?.capability))document.querySelector('#workspace-status').textContent=`EVZ Digital · Private shared workspace · ${state.shared_workspace.execution}`;
   document.querySelector('#research-status').textContent = discovery ? `Discovery ${discovery.status.toLowerCase()} · ${discovery.reviewed}/25 checked` : `${state.controls.research_paused ? 'Research paused' : 'Research enabled'}${state.research_runtime ? ` · ${state.research_runtime.status}${state.research_runtime.counts ? ` · ${state.research_runtime.counts.Complete} reviewed` : ''}` : ''}`;
   document.querySelector('#outreach-status').textContent = state.controls.calls_paused ? 'Outreach paused' : state.controls.outreach_paused ? 'Calls only · email paused' : 'Outreach enabled';
+  if(state.shared_workspace?.capability==='shared-known-identity-research-v1'){document.querySelector('#research-status').textContent=`Known-identity ${state.shared_workspace.research.policy} · Runtime ${state.shared_workspace.research.runtime}`;const link=el('a','Open known business source review');link.href=deskPath('/known-research/');document.querySelector('#mode-banner').append(link);}
+  if(['shared-internal-dispatch-v1','shared-manual-internal-dispatch-v1','shared-operations-records-v1','shared-operations-authoring-v1','shared-operations-refinement-v1','shared-operations-originals-v1','shared-operations-calendar-v1','shared-operations-exact-mail-v1'].includes(state.shared_workspace?.capability)){
+    const authoring=['shared-operations-authoring-v1','shared-operations-refinement-v1','shared-operations-originals-v1','shared-operations-calendar-v1','shared-operations-exact-mail-v1'].includes(state.shared_workspace.capability),records=['shared-operations-records-v1','shared-operations-authoring-v1','shared-operations-refinement-v1','shared-operations-originals-v1','shared-operations-calendar-v1','shared-operations-exact-mail-v1'].includes(state.shared_workspace.capability),manual=records||state.shared_workspace.capability==='shared-manual-internal-dispatch-v1',standing=state.shared_workspace.standing,banner=document.querySelector('#mode-banner');banner.replaceChildren(el('p',`Shared ${state.shared_workspace.calendar?'operations · Calendar and internal dispatch':state.shared_workspace.generation?'operations refinement · internal dispatch':authoring?'operations authoring':records?'operations records':manual?'manual records and internal dispatch':'internal dispatch'} · ${standing.status}. Sender verification does not establish inbox delivery.`),el('p','Standing owner policy for registered incoming monitoring and internal attention/team summaries. Each-message approval remains a separate capability. Both operators can inspect and pause this policy.'));
+    if(state.shared_workspace.mail){const mail=state.shared_workspace.mail;banner.append(el('p',`Exact replies: ${mail.status}. Each declared-thread reply needs separate exact signed message approval and its independent Gmail grant/runtime.`, 'notice'),el('p',mail.execution_hold??mail.pdf_hold,'notice'));banner.append(button('Check exact reply connection',async()=>{try{const connection=await api('/api/operations-exact-mail-oauth/status');tell(`Exact reply connection: ${connection.status}. New PDF conversations remain held.`);}catch(error){tell(error.message,true);}}));if(mail.consent_enabled&&state.current_operator==='owner')banner.append(button('Connect exact reply Gmail',async()=>{try{const connection=await api('/api/operations-exact-mail-oauth/start',{});location.assign(connection.authorization_url);}catch(error){tell(error.message,true);}}));}
+    if(state.shared_workspace.calendar){const calendar=state.shared_workspace.calendar;banner.append(el('p',`Calendar policy ${calendar.policy} · runtime ${calendar.runtime_enabled?'enabled':'disabled'} · owner consent controls ${calendar.consent_enabled?'enabled':'disabled'} · ${calendar.account}. Each invitation needs its exact signed guest and time confirmation. Event verification, invitation delivery and guest response are separate. Calendar, Drive, generation and internal dispatch controls are independent.`,'notice'));banner.append(button('Check Calendar connection',async()=>{try{const connection=await api('/api/google-calendar-oauth/status');tell(`Calendar connection: ${connection.status}. Invitation delivery remains unverified.`);}catch(error){tell(error.message,true);}}));if(calendar.consent_enabled&&state.current_operator==='owner')banner.append(button('Connect business Calendar',async()=>{try{const connection=await api('/api/google-calendar-oauth/start',{});location.assign(connection.authorization_url);}catch(error){tell(error.message,true);}}));}
+    if(state.shared_workspace.originals){const originals=state.shared_workspace.originals;banner.append(el('p',`Retained originals: Drive runtime ${originals.runtime_enabled?'enabled':'disabled'}; owner consent controls ${originals.consent_enabled?'enabled':'disabled'}. A separate exact read-only grant is required. Drive reads, refinement generation and internal standing-policy controls are independent. Both operators retain original access after fresh context.`, 'notice'));}
+    if(manual)banner.append(el('p','Record completed human call attestations, callbacks, handoffs, private notes and local stops even while background dispatch is paused. External suppression is unverified.'+(records?' Save attributed feedback, design choices and protected preparation requests with equal owner/friend design authority.'+(authoring?' Interactive Node authoring: '+(state.shared_workspace.authoring.runtime?'enabled':'disabled')+'. Output requires actual PDF raster review; delivery remains held.':' Authoring and delivery remain held.'):' Project design work requires its separate capability.')));
+    document.querySelector('#workspace-status').textContent=`EVZ Digital · Private shared workspace · ${standing.status}`;document.querySelector('#research-status').textContent='Research disabled';document.querySelector('#outreach-status').textContent='Prospect outreach disabled';
+    const details=el('details');details.append(el('summary','Review exact policy, recipients, limits and saved tick status'));const bytes=el('pre',JSON.stringify(standing,null,2));bytes.style.whiteSpace='pre-wrap';bytes.style.overflowWrap='anywhere';details.append(bytes);banner.append(details);
+    if(standing.authorization_event)banner.append(button('Pause internal dispatch',async()=>{try{await api('/api/internal-dispatch/pause',{revision:state.revision,event_id:'dispatch-pause-'+crypto.randomUUID()});await refresh();tell('Standing policy paused. Already-started requests may finish; uncertain intents cannot resend.');}catch(error){tell(error.message,true);}}));
+    if(state.shared_workspace.generation){const generation=state.shared_workspace.generation;banner.append(el('p',state.shared_workspace.execution,'notice'));document.querySelector('#workspace-status').textContent=`EVZ Digital · Internal ${standing.status} · Generation ${generation.policy} · Inference runtime ${generation.runtime}`;if(['Authorized','Expired','Held: binding changed'].includes(generation.policy))banner.append(button('Pause refinement generation',async()=>{try{await api('/api/project-author/generation-pause',{policy_sha256:state.shared_workspace.generation.policy_sha256});await refresh();tell('Generation paused. Already-started requests may finish; retained evidence grants no new publication.');}catch(error){tell(error.message,true);}}));}
+    if(standing.ticks.some(t=>['Reserved','Claimed'].includes(t.status)))banner.append(button('Close incomplete dispatch for recovery',async()=>{try{await api('/api/internal-dispatch/reconcile',{revision:state.revision,event_id:'dispatch-recover-'+crypto.randomUUID(),observed_sha256:standing.observed_sha256});await refresh();tell('Exact observed dispatch retained for recovery. This does not assert process exit or permit replay.');}catch(error){tell(error.message,true);}}));
+  }
+  if(state.shared_workspace){const views=[...(state.shared_workspace.capability==='shared-internal-dispatch-v1'?[]:['today']),'businesses','emails','clients','exceptions',...(state.shared_workspace.calendar?['meetings']:[]),...(state.shared_workspace.mail?['reviews']:[]),...(['shared-project-continuation-v1','shared-refinement-generation-v1','shared-operations-records-v1','shared-operations-authoring-v1','shared-operations-refinement-v1','shared-operations-originals-v1','shared-operations-calendar-v1','shared-operations-exact-mail-v1'].includes(state.shared_workspace.capability)?['assets']:[])];for(const button of document.querySelectorAll('nav button'))button.hidden=!views.includes(button.dataset.view);document.querySelector('.aside-foot').hidden=true;if(!views.includes(view))view='businesses';}
   content.replaceChildren(); const title = titles[view]; document.querySelector('#view-kicker').textContent = title[0]; document.querySelector('#view-title').textContent = title[1]; document.querySelector('#view-description').textContent = title[2];
   document.querySelector('#updated').textContent = `Saved revision ${state.revision} · ${new Date(state.updated_at).toLocaleTimeString()}`;
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  if (view === 'assets') { renderAssets(); return; }
   if (view === 'exceptions') {
     const node = panel('Exception inbox');
     if (state.runtime) node.append(el('p', `Local service: ${state.runtime.status}. Connection: ${state.runtime.transport}. Last check: ${new Date(state.runtime.checked_at).toLocaleString()}. ${state.runtime.last_error ?? ''}`, 'notice'));
     if (state.operations) { const cycle = state.operations.cycle; node.append(el('p', `Monitoring: ${cycle?.completed_cycles ?? 0} completed cycles. Last full cycle: ${cycle?.completed_at ? new Date(cycle.completed_at).toLocaleString() : 'awaiting verification'}. Backup: ${state.operations.maintenance?.backup_date ?? 'awaiting verification'}.`, 'muted')); }
-    if (!state.exceptions.length) node.append(el('p', 'No unresolved exceptions.', 'empty'));
+    if (!state.exceptions.length && !state.reply_alerts?.length) node.append(el('p', 'No unresolved exceptions.', 'empty'));
+    for (const alert of state.reply_alerts ?? []) { const row = el('div', undefined, 'check-item'); row.append(el('span', '!'), el('p', alert.reason), button('Review reply', () => { selected = alert.prospect_id; view = 'reviews'; render(); }, 'primary')); node.append(row); }
     for (const item of state.exceptions) { const row = el('div', undefined, 'check-item'); row.append(el('span', '!'), el('p', item.reason)); node.append(row); }
-    node.append(el('p', 'Routine checks stay in private logs. Notifications are consolidated and sent only for a meaningful change or required decision. The earlier test monitor stays paused.', 'muted')); content.append(node); return;
+    const standingInternal=['shared-internal-dispatch-v1','shared-manual-internal-dispatch-v1','shared-operations-records-v1','shared-operations-authoring-v1','shared-operations-refinement-v1','shared-operations-originals-v1','shared-operations-calendar-v1','shared-operations-exact-mail-v1'].includes(state.shared_workspace?.capability);const notices=el('section');notices.append(el('h3','Owner alerts and team summary'),el('p',standingInternal?'Current attention items and weekday 9am Eastern summaries use only the exact finite standing policy shown above. Read each retained intent; sender verification does not establish inbox delivery.':'Verified attention items prepare private messages for the responsible operator. The team summary becomes due at 9am Eastern on weekdays. External delivery is held until recipients and a supported channel are verified.','notice'));
+    if(!standingInternal)notices.append(button('Check due alerts and team summary',async()=>{try{await api('/api/team-notifications/prepare',{});await refresh();tell('Preparation checked. No external notification was sent.');}catch(error){tell(error.message,true);}}));
+    const preparation=state.notification_preparation;
+    if(preparation?.hold)notices.append(el('p',preparation.hold,'notice'));
+    for(const notice of preparation?.messages??[]){const entry=el('details');entry.append(el('summary',`${notice.recipient_role} · ${notice.subject} · ${notice.status}`),el('p',`Due ${new Date(notice.due_at).toLocaleString('en-US',{timeZone:'America/New_York'})} Eastern${notice.late_minutes?`; prepared ${notice.late_minutes} minutes late`:''}`,'muted'),el('p',`Prepared/as of ${new Date(notice.prepared_at).toLocaleString('en-US',{timeZone:'America/New_York'})} Eastern${notice.kind==='digest'?'; immutable daily snapshot, later changes are not backfilled':''}`,'muted'),el('pre',notice.body),el('p',notice.delivery_hold,'muted'));notices.append(entry);}
+    if(!preparation?.messages?.length)notices.append(el('p','No notification messages prepared yet.','empty'));
+    node.append(notices,el('p',standingInternal?'Bounded ticks and pending digests stay visible in policy status. Exhausted limits never grant extra sends or backfill.':'Routine checks stay in private logs. The earlier test monitor stays paused; no external delivery is enabled by these prepared messages.','muted'));content.append(node);return;
   }
   if (view === 'launch') {
+    if(state.hosted_preview&&!state.shared_workspace)content.append(gatewayProofPanel(state,{el,button,api,tell,refresh,clearDirty:()=>{dirty=false;}}));
     if (state.controls.mode === 'production') {
       const calls = panel('Calls-only final review'), review = state.controls.final_review.calls;
       calls.append(el('p', 'Release your manual calls and Apollo call tasks separately from email. Verification calls confirm activity and goals; they never trigger no-answer email. All real contact stays paused until your final approval.', 'notice'));
@@ -278,16 +527,26 @@ function render() {
       content.append(research);
     }
     const node = panel('Required before live automation'), list = el('div', undefined, 'checklist');
-    const checks = { owner_design_approved: ['Your final design approval', 'Review this console, operating rules and controlled proof.'], business_sender_verified: ['Business sender ready', 'Workspace access, mailbox receipt/send-as and domain authentication checked.'], native_automation_verified: ['Apollo automatic handoff', 'Approved templates, exact intent lists, native workflow triggers and stop rules tested.'], delivery_and_stop_verified: ['Controlled delivery and cancellation', 'One approved owner-only rehearsal of the final native sending route; no blind retries.'], website_inquiry_verified: ['Website and inquiry route', 'Published studio and reachable inquiry destination verified.'], prospect_supply_verified: ['Reviewed local-business prospect supply', 'Resume research only when authorized; do not lower screening quality to fill 50.'], capacity_verified: ['Subscription and operating capacity', 'Live Luna/high + Sol/high compatibility, allowance, source review and upkeep measured.'] };
+    const checks = { owner_design_approved: ['Your final design approval', 'Review this console, operating rules and controlled proof.'], business_sender_verified: ['Business sender ready', 'Workspace access, mailbox receipt/send-as and domain authentication checked.'], native_automation_verified: ['Apollo automatic handoff', 'Approved templates, exact intent lists, native workflow triggers and stop rules tested.'], delivery_and_stop_verified: ['Controlled delivery and cancellation', 'One approved owner-only rehearsal of the final native sending route; no blind retries.'], website_inquiry_verified: ['Website and inquiry route', 'Published studio and reachable inquiry destination verified.'], prospect_supply_verified: ['Reviewed local-business prospect supply', 'Resume research only when authorized; keep the shared 25-new-business target honest when strong evidence is missing.'], capacity_verified: ['Subscription and operating capacity', 'Live Luna/high + Sol/high compatibility, allowance, source review and upkeep measured.'] };
     for (const [key, [label, description]] of Object.entries(checks)) { const row = el('div', undefined, 'check-item'), copy = el('div'), gate = state.controls.final_review?.gates.find(g => g.key === key); copy.append(el('strong', label), el('p', description)); if (gate?.note) copy.append(el('p', gate.note)); const passed = state.controls.final_review ? gate?.passed : state.controls.readiness[key]; row.append(el('span', passed ? '✓' : '·'), copy); list.append(row); }
     if (state.controls.final_review?.verified?.length) { node.append(el('h3', 'Verified so far')); for (const line of state.controls.final_review.verified) node.append(el('p', line, 'muted')); }
     node.append(list, el('p', 'Readiness values are evidence-based gates, not checkboxes that activate sending. No production activation is available from this review screen.', 'muted')); content.append(node); return;
   }
-  if (view === 'emails') {const node=panel('Saved follow-ups');if(state.controls.outreach_paused)node.append(el('p','Commercial sending is held. Messages below are prepared records, not proof of delivery.','notice'));const rows=Object.values(state.prospects).flatMap(r=>Object.values(r.follow_ups??{}).map(f=>({r,f}))).sort((a,b)=>b.f.created_at.localeCompare(a.f.created_at));if(!rows.length)node.append(el('p','Save an eligible call attempt to prepare its follow-up.','empty'));for(const {r,f} of rows){const box=el('details',undefined,'email-row');box.append(el('summary',`${r.name} · ${f.status}`),el('p',f.reason||'Prepared from the saved call'),el('p',`To: ${f.content.to??'Verified address needed'}`),el('strong',f.content.subject),el('p',f.content.body,'email-copy'),link(f.content.demo_label+' ↗',f.content.demo_url),link('Open full email preview ↗',`/follow-up/${r.id}/${f.call_id}`));node.append(box);}content.append(node);return;}
+  if (view === 'emails') {
+    const node=panel('Saved follow-ups');
+    if(state.controls.outreach_paused)node.append(el('p','Commercial sending is held. Messages below are prepared records, not proof of delivery.','notice'));
+    const rows=Object.values(state.prospects).flatMap(r=>Object.values(r.follow_ups??{}).map(f=>({r,f}))).sort((a,b)=>b.f.created_at.localeCompare(a.f.created_at));
+    if(!rows.length)node.append(el('p','Save an eligible call attempt to prepare its follow-up.','empty'));
+    for(const {r,f} of rows){
+      const box=el('details',undefined,'email-row'),due=Date.parse(f.send_after),scheduled=Number.isFinite(due)&&due>Date.now()?` · no earlier than ${new Date(due).toLocaleString('en-US',{timeZone:'America/New_York'})} ET`:'';
+      box.append(el('summary',`${r.name} · ${f.status}${scheduled}`),el('p',f.reason||'Prepared from the saved call'),el('p',`To: ${f.content.to??'Verified address needed'}`),el('strong',f.content.subject),el('p',f.content.body,'email-copy'));if(f.content.demo_url)box.append(link(f.content.demo_label+' ↗',f.content.demo_url));box.append(link('Open full email preview ↗',`/follow-up/${r.id}/${f.call_id}`));node.append(box);
+    }
+    content.append(node);return;
+  }
   if(view==='meetings'){const node=panel('Meetings');const page=state.follow_up_settings?.follow_up?.booking_url;if(page)node.append(link('Open EVZ booking page ↗',page));const meetings=Object.values(state.prospects).filter(r=>r.meeting);for(const r of meetings)node.append(el('h3',r.name),el('p',`${new Date(r.meeting.start).toLocaleString()} · ${r.meeting.current_status??'Verified'}`));for(const b of state.pending_bookings??[])node.append(el('h3',state.prospects[b.prospect_id]?.name??'Pending invitation'),el('p',`${new Date(b.start).toLocaleString()} · ${b.status}`));if(!meetings.length&&!state.pending_bookings?.length)node.append(el('p','No meetings booked yet. You can also book an agreed discovery time from the calling desk.','empty'));content.append(node);return;}
-  if (['today','businesses'].includes(view)) { renderCallDesk(content,state,{api,refresh,tell,evidence:callPrep,clearDirty:()=>{dirty=false;},allBusinesses:view==='businesses'}); return; }
+  if (['today','businesses'].includes(view)) { renderCallDesk(content,state,{api,refresh,tell,evidence:callPrep,clearDirty:()=>{dirty=false;},uploadAudio:uploadCallAudio,allBusinesses:view==='businesses'}); return; }
   if (view === 'today') content.append(stats(), el('p', `Prepared due call cards: ${state.daily.prepared.research} research-reviewed · ${state.daily.prepared.verification} verification only. These are prepared records, not calls made or accepted detailed assessments.`, 'notice'));
-  const grid = el('div', undefined, 'grid'), records = Object.values(state.prospects).filter(r => view === 'reviews' ? ['Connected review', 'Verification review'].includes(r.stage) : view === 'clients' ? r.handover || r.quote || ['Preview', 'Delivery', 'Client review', 'Onboarding'].includes(r.stage) : lane === 'all' || (r.call_lane === 'verification' ? lane === 'verification' : lane === 'research'));
+  const grid = el('div', undefined, 'grid'), records = Object.values(state.prospects).filter(r => view === 'reviews' ? ['Connected review', 'Verification review', 'Reply review'].includes(r.stage)||state.shared_workspace?.mail&&r.reply&&['Discovery','Information requested','Hold'].includes(r.stage) : view === 'clients' ? r.origin==='workspace' || Object.keys(r.project_work??{}).length || r.handover || r.quote || ['Discovery','Information requested','Proposal','Preview', 'Delivery', 'Client review', 'Onboarding'].includes(r.stage) : lane === 'all' || (r.call_lane === 'verification' ? lane === 'verification' : lane === 'research'));
   if (view === 'today') { const order = new Map(state.daily.due.map((a, i) => [a.prospect_id, i])); records.sort((a, b) => (order.get(a.id) ?? 10000) - (order.get(b.id) ?? 10000)); }
   const left = panel(view === 'reviews' ? 'Awaiting your review' : view === 'clients' ? 'Client work' : state.controls.mode === 'controlled' ? 'Controlled working records' : 'Daily call queue & prospects');
   left.append(el('p', view === 'today' ? 'Review the purpose and evidence before calling. Apollo tasks publish after final release; task completion is never call evidence.' : 'Select a record to review its current step.', 'muted'));
@@ -304,10 +563,16 @@ function render() {
 }
 document.addEventListener('input', e => { if (e.target.closest('form')) dirty = true; });
 document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => { dirty = false; view = b.dataset.view; tell(''); render(); }));
-document.querySelector('#pause').addEventListener('click', async () => { try { await api('/api/pause', {}); tell('AI and connector writes paused. Research and outreach remain paused.'); await refresh(); } catch (error) { tell(error.message, true); } });
+document.querySelector('#pause').addEventListener('click', async () => { try { const paused=await api('/api/pause', {}); tell('AI and connector writes paused. Research and outreach remain paused.'+(paused.in_flight_may_complete?' Already-started Gateway usage may still complete; inspect its saved receipt.':'')); await refresh(); } catch (error) { tell(error.message, true); } });
 document.querySelector('#backup').addEventListener('click', async () => { try { const result = await api('/api/backup', {}); tell(`Private backup saved and checksummed (${result.prospects} records).`); } catch (error) { tell(error.message, true); } });
-refresh().catch(error => tell(error.message, true));
+document.querySelector('#sign-out').addEventListener('click', async () => { try { stopAudioCapture(); await api('/api/logout', {}); showOperatorLogin(); } catch (error) { tell(error.message, true); } });
+async function start() {
+  const response = await fetch(deskPath('/api/bootstrap')); if (!response.ok) throw Error('Private session unavailable. Reload the console.');
+  const boot = await response.json(); csrf = boot.csrf; operatorAuthRequired = boot.operator_auth_required;
+  await refresh();
+}
+start().catch(error => tell(error.message, true));
 setInterval(() => {
-  if (dirty || document.querySelector('.desk-next') || document.visibilityState !== 'visible' || Date.now() < refreshAfter || document.activeElement?.closest('form') || document.activeElement?.matches('input,textarea,select')) return;
+  if (audioBusy() || dirty || document.querySelector('.desk-next') || document.visibilityState !== 'visible' || Date.now() < refreshAfter || document.activeElement?.closest('form') || document.activeElement?.matches('input,textarea,select')) return;
   refresh().catch(error => { refreshAfter = Date.now() + 60000; if (message.textContent !== error.message) tell(error.message, true); });
 }, 15000);

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, readFile, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { StudioLifecycle, initialConfig } from './lifecycle.mjs';
+import { StudioLifecycle, initialConfig, hash } from './lifecycle.mjs';
 import { fixtureProspect } from './lifecycle-fixtures.mjs';
 import { saveJson } from './engine.mjs';
 import { productionConfig, releaseFingerprint, requireProductionRelease, approveProductionRelease, approveCallRelease, callReleaseFingerprint, ProductionOperations, NativeProofOperations, operationsFor, importResearch, importVerification, syncResearchImports, queueMeeting, pauseStudio, nativeMessage,nativeProofMessage } from './production.mjs';
@@ -23,6 +23,7 @@ test('the spoken opening preserves the evidence beside it without reciting resea
   const prep = researchCallPrep(f, { opportunity_index: 0, observations: [{ index: 0, supported: true }] }, at);
   assert.equal(prep.observations[0].fact, fact);
   assert.ok(prep.opening.includes('SYNTHETIC Bakery'));
+  assert.ok(prep.opening.includes('Cookies'));
   assert.ok(!prep.opening.includes(fact));
   assert.equal(prep.questions[0], 'Would a gift request help?');
 });
@@ -38,12 +39,17 @@ test('native email introduces the retained enhancement and owner question withou
   assert.ok(message.body.includes('Reply "stop"'));
   assert.throws(() => nativeMessage({ ...record, call_prep: { hypothesis: {}, questions: ['A question?'] } }, 1, c), /reviewed enhancement/);
 });
+test('the legacy native email caller signs with the saved call actor',()=>{
+  const record={name:'SYNTHETIC Bakery',idea:'A fictional enhancement',call_prep:{hypothesis:'A relevant improvement.',questions:['Would this help?']},calls:{'call-one':{actor:'friend'}}};
+  const c={sender:{website:'https://example.com',postal_address:'SYNTHETIC ADDRESS',operator_names:{owner:'Owner Test',friend:'Friend Test'}}};
+  const message=nativeMessage(record,1,c,'call-one');assert.match(message.body,/Best,\nFriend Test\nhello@evzdigital\.studio/);
+});
 
 async function setup(t, released = true, outcome = 'no_answer', followUp = false) {
   const directory = await mkdtemp(join(tmpdir(), 'evz-production-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const config = structuredClone(productionConfig); let now = new Date(at);
   config.calendar = { ...config.calendar, owner_email: owner, calendar_id: 'primary' }; config.apollo.user_id = 'owned-user';
-  config.sender = { email: owner, mailbox_id: 'business-mailbox', postal_address: 'TEST POSTAL ADDRESS — synthetic fixture', website: 'https://example.com', daily_email_limit: 20 };
+  config.sender = { email: 'hello@evzdigital.studio', account_email: owner, mailbox_id: 'business-mailbox', postal_address: 'TEST POSTAL ADDRESS — synthetic fixture', website: 'https://example.com', daily_email_limit: 20, operator_names: { owner: 'Owner Test', friend: 'Friend Test' } };
   config.operations.enabled = true; config.operations.allowlist = ['synthetic-cafe'];
   config.native_email = { enabled: true, rounds: [1, 2].map(round => ({ round, list_id: `list-${round}`, list_name: `EVZ TEST round ${round}`, sequence_id: `sequence-${round}`, sequence_name: `EVZ TEST one-email ${round}`, subject_field_id: `subject-${round}`, body_field_id: `body-${round}`, verified: true })) };
   if(followUp){Object.assign(config.sender,{email:'hello@evzdigital.studio',account_email:owner});config.follow_up={enabled:true,sender_verified:true,demo_verified:true,booking_url:'https://calendar.app.google/synthetic'};Object.assign(config.native_email,{html_verified:true,template_version:'evz-personal-large-demo-v1'});}
@@ -100,11 +106,29 @@ async function drive(app, p, session = 'test-session') {
 
 test('a connected follow-up hands the full branded HTML to one native executor and survives restart without another intent',async t=>{
  const s=await setup(t,true,'connected',true),p=provider(s.config);await drive(s.app,p);
- let state=await s.app.snapshot(),r=state.prospects['synthetic-cafe'];assert.equal(r.follow_ups['call-one'].status,'Sent');assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.match(p.person.typed_custom_fields['body-1'],/voice-demo-preview\.png/);assert.match(p.person.typed_custom_fields['body-1'],/EVZ Digital team/);assert.doesNotMatch(p.person.typed_custom_fields['body-1'],/PRIVATE BUDGET NOTE/);
+ let state=await s.app.snapshot(),r=state.prospects['synthetic-cafe'];assert.equal(r.follow_ups['call-one'].status,'Sent');assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.match(p.person.typed_custom_fields['body-1'],/voice-demo-preview\.png/);assert.match(p.person.typed_custom_fields['body-1'],/Owner Test/);assert.doesNotMatch(p.person.typed_custom_fields['body-1'],/PRIVATE BUDGET NOTE/);
  s.advance();const reopened=await StudioLifecycle.open({directory:s.directory,now:s.app.now});await drive(reopened,p,'followup-restart');assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);
 });
+
+test('an exactly approved call revision reaches the existing native executor once instead of its unreserved predecessor',async t=>{
+ const s=await setup(t,true,'connected',true),text='Customer: Please send the pickup website example.',proposal={schema_version:1,transcript_sha256:hash(text),outcome:'requested_info',summary:'Customer requested the pickup website example.',claims:[{claim:'A pickup website example was requested.',quote:'Please send the pickup website example.'}],unknowns:['Scope and budget'],callback_at:null};
+ await s.app.apply({id:'revision-transcript',prospect_id:'synthetic-cafe',type:'transcript_added',at,data:{call_id:'call-one',text,permission_confirmed:true}});
+ await s.app.apply({id:'revision-assessment',prospect_id:'synthetic-cafe',type:'transcript_assessed',at,data:{call_id:'call-one',proposal,review:{verdict:'Accepted',proposal_sha256:hash(proposal),independent:true}}},{actor:'worker'});
+ let r=(await s.app.snapshot()).prospects['synthetic-cafe'];const original=structuredClone(r.follow_ups['call-one']);
+ await s.app.apply({id:'revision-draft',prospect_id:r.id,type:'follow_up_draft_saved',at,data:{call_id:'call-one',focus:'website',note_sha256:hash(r.calls['call-one'].note),proposal_sha256:r.proposals['call-one'].sha256,claim_indexes:[0],customer_context:'You asked for a pickup website example.',reviewed:true}});
+ r=(await s.app.snapshot()).prospects[r.id];const draft=r.follow_up_drafts[0];await s.app.apply({id:'revision-approval',prospect_id:r.id,type:'follow_up_draft_approved',at,data:{draft_id:draft.id,sha256:draft.sha256,approved:true}},{actor:'friend'});
+ const p=provider(s.config);await drive(s.app,p);let state=await s.app.snapshot();r=state.prospects[r.id];assert.equal(p.calls.filter(c=>c.operation==='intent').length,1);assert.match(p.person.typed_custom_fields['body-1'],/You asked for a pickup website example/);assert.doesNotMatch(p.person.typed_custom_fields['body-1'],/PRIVATE BUDGET NOTE|voice-demo-preview/);assert.deepEqual(r.follow_up_history,[original]);assert.equal(state.actions[original.action_id].status,'Cancelled');assert.equal(r.follow_ups['call-one'].status,'Sent');assert.equal(r.attempts.filter(a=>a.channel==='email').length,1);
+ const reopened=await StudioLifecycle.open({directory:s.directory,now:s.app.now});s.advance();await drive(reopened,p,'revision-restart');assert.equal(p.calls.filter(c=>c.operation==='intent').length,1);
+});
 test('a reply observed in the provider read phase cancels a prepared next follow-up before native release',async t=>{
- const s=await setup(t,true,'no_answer',true),p=provider(s.config);await drive(s.app,p);s.advance();const next=s.app.now().toISOString();await s.app.apply({id:'second-call',prospect_id:'synthetic-cafe',type:'call_logged',at:next,data:{call_id:'second-call',outcome:'voicemail',performed_at:next,simulated:false,desk:true}});assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['second-call'].status,'Prepared');p.addReply();s.advance();await drive(s.app,p,'reply-before-second-release');assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['second-call'].status,'Cancelled');
+ const s=await setup(t,true,'no_answer',true),p=provider(s.config);await drive(s.app,p);s.advance();const next=s.app.now().toISOString();await s.app.apply({id:'second-call',prospect_id:'synthetic-cafe',type:'call_logged',at:next,data:{call_id:'second-call',outcome:'voicemail',performed_at:next,simulated:false,desk:true,focus:'ai',note:'Discuss AI enquiry handling.'}});assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['second-call'].status,'Prepared');p.addReply();s.advance();await drive(s.app,p,'reply-before-second-release');assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['second-call'].status,'Cancelled');
+});
+
+test('production reply body upgrades preserve earlier sources and same-cycle native stops without another send',async t=>{
+ const s=await setup(t,true,'no_answer',true),p=provider(s.config);await drive(s.app,p);const respond=p.respond;let body='Could you share website examples?';
+ p.respond=request=>{const result=respond(request);if(request.operation==='thread')for(const m of result.messages.filter(m=>m.id==='native-reply')){m.payload.mime_type='text/plain';m.payload.headers.push({name:'Message-ID',value:'<native-reply@example.invalid>'});m.payload.body={content:body};}return result;};
+ p.addReply();s.advance();await drive(s.app,p,'body-one');const first=(await s.app.snapshot()).prospects['synthetic-cafe'].reply;assert.equal(first.content.text,body);
+ body='What should a website quote include?';s.advance();await drive(s.app,p,'body-two');const r=(await s.app.snapshot()).prospects['synthetic-cafe'];assert.equal(r.reply.content.text,body);assert.ok(r.reply_history.some(old=>old.content?.source_sha256===first.content.source_sha256));assert.notEqual(r.reply.content.source_sha256,first.content.source_sha256);assert.equal(r.cold_paused,true);assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);
 });
 test('a stop after an uncertain native intent keeps delivery uncertain and reconciles a late sent receipt without resending',async t=>{
  const s=await setup(t,true,'voicemail',true),p=provider(s.config),ops=operationsFor(s.app,'before-lost-handoff');
@@ -112,8 +136,8 @@ test('a stop after an uncertain native intent keeps delivery uncertain and recon
  await s.app.apply({id:'stop-after-handoff',prospect_id:'synthetic-cafe',type:'contact_stopped',at,data:{reason:'do_not_contact'}});assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['call-one'].status,'Uncertain');
  s.advance(91000);await drive(s.app,p,'after-handoff-stop');s.advance();await drive(s.app,p,'after-stop-readback');s.advance();await drive(s.app,p,'after-task-stop-readback');const state=await s.app.snapshot();assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.equal(state.prospects['synthetic-cafe'].stage,'Stopped');assert.equal(state.prospects['synthetic-cafe'].follow_ups['call-one'].status,'Sent',JSON.stringify(state.operations.holds));assert.equal(state.prospects['synthetic-cafe'].attempts.filter(x=>x.channel==='email').length,1);
 });
-test('an owner-requested callback after earlier call history can release its first email within the retained bounds',async t=>{
- const s=await setup(t,true,'callback',true),p=provider(s.config);await s.app.change(state=>{state.prospects['synthetic-cafe'].attempts.unshift(...['old-call-1','old-call-2'].map(id=>({id,channel:'call',at,outcome:'no_answer'})));});await drive(s.app,p);assert.equal(p.calls.filter(x=>x.operation==='intent').length,1);assert.equal((await s.app.snapshot()).prospects['synthetic-cafe'].follow_ups['call-one'].status,'Sent');
+test('an owner-requested callback remains a task and never releases a sales email',async t=>{
+ const s=await setup(t,true,'callback',true),p=provider(s.config);await s.app.change(state=>{state.prospects['synthetic-cafe'].attempts.unshift(...['old-call-1','old-call-2'].map(id=>({id,channel:'call',at,outcome:'no_answer'})));});await drive(s.app,p);const state=await s.app.snapshot();assert.equal(p.calls.filter(x=>x.operation==='intent').length,0);assert.equal(Object.keys(state.prospects['synthetic-cafe'].follow_ups??{}).length,0);assert.ok(Object.values(state.actions).some(a=>a.type==='callback_task'&&['Queued','Verified'].includes(a.status)));
 });
 test('production release binds final approval to exact connections, evidence and campaign rules', async t => {
   const s = await setup(t, false);
@@ -124,6 +148,9 @@ test('production release binds final approval to exact connections, evidence and
   await saveJson(join(s.directory, 'lifecycle-config.json'), s.config);
   await approveProductionRelease(s.app, releaseFingerprint(s.config), 'human-owner-approval');
   const c = structuredClone(s.app.config); c.sender.mailbox_id = 'different-mailbox'; assert.throws(() => requireProductionRelease(c), /must match/);
+  const wrongSender=structuredClone(s.app.config);wrongSender.sender.email='other@example.net';wrongSender.release.fingerprint=releaseFingerprint(wrongSender);assert.throws(()=>requireProductionRelease(wrongSender),/Verify hello@evzdigital\.studio/);
+  const missingName = structuredClone(s.app.config); missingName.sender.operator_names = { owner: 'Owner Test' }; missingName.release.fingerprint = releaseFingerprint(missingName);
+  assert.throws(() => requireProductionRelease(missingName), /both operator display names/);
 });
 test('staging forbids self-qualified imports, mixed fixtures, duplicate contacts and premature actual calls', async t => {
   const s = await setup(t, false);

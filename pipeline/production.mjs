@@ -1,7 +1,8 @@
-import {followUpOutcomes,followUpSetupIssues,renderFollowUpHtml,composeFollowUp} from './follow-up-template.mjs';
+import {followUpOutcomes,followUpSetupIssues,renderFollowUpHtml,composeFollowUp,operatorDisplayName,operatorNamesConfigured,evzIdentity} from './follow-up-template.mjs';
+import {bookingContext,bookingKey,bookingConfirmations} from './calendar-confirmation.mjs';
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { check, hash, initialConfig, businessDate, businessDaysBetween } from './lifecycle.mjs';
+import { check, hash, initialConfig, businessDate, businessDaysBetween, addBusinessDays, currentHostedTranscript } from './lifecycle.mjs';
 import { readJson, saveJson, privateStateDirectory } from './engine.mjs';
 import { reviewFiles, readPrivateJson, validateDecision } from './prospects.mjs';
 import { validateEvidenceReview } from './evidence-review.mjs';
@@ -20,7 +21,7 @@ export const productionConfig = {
   calls_enabled: false, call_release: { approved: false }, call_readiness: {},
   runtime: { enabled: false }, operations: { enabled: false, interval_minutes: 5, allowlist: [], bookings: {}, emails: {} },
   apollo: { user_id: '', bindings: {} },
-  sender: { email: '', mailbox_id: '', postal_address: '', website: 'https://evzdigital.studio/studio/', daily_email_limit: 20 },
+  sender: { email: '', mailbox_id: '', postal_address: '', website: 'https://evzdigital.studio/studio/', daily_email_limit: 20, operator_names: { owner: '', friend: '' } },
   campaign: { category: 'food-and-beverage', area: 'Fairfax / DMV', max_calls: 2, max_emails: 2, business_days: 10 },
   native_email: { enabled: false, rounds: [] }, research: { auto_import: false, supervised: false, source_directory: '' }, release: { approved: false }, readiness_evidence: {}
 };
@@ -36,7 +37,8 @@ export function requireProductionRelease(c) {
   check(c.release?.approved === true && c.release.fingerprint === releaseFingerprint(c) && c.release.approval_ref?.length > 5, 'Final owner approval must match the current production connections and rules');
   check(productionGates(c).every(g => g.passed), 'Launch evidence is incomplete; preserve the production hold');
   check(businessTypes.some(t=>t.id===c.campaign?.category) && c.campaign.max_calls === 2 && c.campaign.max_emails === 2 && c.campaign.business_days === 10, 'Campaign bounds changed');
-  check(email(c.sender?.email) && (c.sender.account_email??c.sender.email) === c.calendar.owner_email && id(c.sender.mailbox_id) && c.sender.postal_address?.trim().length > 10, 'Verified business sender, calendar and postal address required');
+  check(c.sender?.email===evzIdentity.email && email(c.sender.email) && (c.sender.account_email??c.sender.email) === c.calendar.owner_email && id(c.sender.mailbox_id) && c.sender.postal_address?.trim().length > 10, 'Verify hello@evzdigital.studio, its Workspace account, calendar and postal address');
+  check(operatorNamesConfigured(c), 'Set both operator display names before commercial email release');
   if(c.follow_up?.enabled)check(followUpSetupIssues(c).length===0,'Follow-up sender, postal address, demo and booking must be verified');
   if(c.follow_up?.enabled)check(c.native_email?.html_verified===true&&c.native_email.template_version==='evz-personal-large-demo-v1','Verify the branded HTML merge and exact owner-only delivery before commercial release');
   check(!/@(?:gmail|googlemail)\.com$/i.test(c.sender.email), 'Production uses the verified business-domain mailbox');
@@ -166,32 +168,44 @@ async function stageProspect(app, prospectId) {
     app.config = c;
   });
 }
-export async function queueMeeting(app, input) {
-  const path = join(app.directory, 'lifecycle-config.json');
-  return app.change(async state => {
-    const c = await readJson(path);
-    if(c.mode==='production') requireBookingRelease(c);
+export {bookingContext,bookingKey,bookingConfirmations} from './calendar-confirmation.mjs';
+export async function queueMeeting(app, input, {actor='owner',hostedCalendar=false,configFingerprint,calendarPolicy,calendarRecord,calendarSignal}={}) {
+  const path = app.store?null:join(app.directory, 'lifecycle-config.json');
+  return app.change(async (state,sharedConfig) => {
+    const c = sharedConfig??await readJson(path);
+    const shared=['shared-operations-calendar-v1','shared-operations-exact-mail-v1'].includes(c.shared_capability),now=app.now(),bookings=bookingConfirmations(state,c);
+    check(!app.store?.inertBinding,'D2 notes-only authority rejects booking');
+    if(hostedCalendar)check(app.store&&(shared?c.mode==='production'&&app.store.dispatchBinding?.scope.capability===c.shared_capability:c.mode==='controlled')&&['owner','friend'].includes(actor)&&input.revision===state.revision,'Hosted booking requires a current signed confirmation');
+    if(c.mode==='production'&&!shared) requireBookingRelease(c);
     const r = state.prospects[input.prospect_id];
     check(r && !r.restriction && ['Discovery', 'Information requested'].includes(r.stage), 'Review the owner conversation before scheduling');
     check(input.revision===undefined||input.revision===state.revision,'Record changed; review the invitation again');
-    check(input.slot_agreed === true && (email(input.attendee_email)||r.controlled&&input.attendee_email?.endsWith('@example.invalid')) && (input.attendee_email === r.contact.email || input.recipient_confirmed===true), 'Confirm the exact guest agreed to this invitation');
+    check(input.slot_agreed === true && (email(input.attendee_email)||(r.controlled||shared)&&input.attendee_email?.endsWith('@example.invalid')) && (input.attendee_email === r.contact.email || input.recipient_confirmed===true), 'Confirm the exact guest agreed to this invitation');
     check(input.title?.startsWith('EVZ Digital') && input.title.length <= 200 && typeof input.description === 'string' && input.description.length < 1500 && Number.isFinite(Date.parse(input.start)) && Number.isFinite(Date.parse(input.end)), 'Bound the exact meeting title, description and times');
     check(input.mode===undefined||['video','phone'].includes(input.mode),'Choose video or phone');
-    validateBookingSlot({start:input.start,end:input.end,timezone:'America/New_York'},[],c.calendar,app.now().toISOString(),app.now());
-    const key = `meeting-${hash({ prospect_id: r.id, start: input.start, end: input.end, attendee: input.attendee_email }).slice(0, 32)}`;
+    validateBookingSlot({start:input.start,end:input.end,timezone:'America/New_York'},[],c.calendar,now.toISOString(),now);
+    const key = bookingKey({...input,prospect_id:r.id});
     check(!r.meeting||r.meeting.event_id===key,'A meeting already exists; reconcile or reschedule that event instead of creating another');
-    check(!Object.entries(c.operations?.bookings??{}).some(([id,b])=>b.prospect_id===r.id&&id!==key),'An invitation is already reserved for this business; review it before choosing another slot');
-    if(c.mode==='controlled') {r.meeting={event_id:key,start:input.start,end:input.end,mode:input.mode??'video',reference:`fixture:${key}`,current_status:'Simulated',verified_at:app.now().toISOString()};state.revision++;return {simulated:true,booked:false,booking_id:key};}
+    check(!Object.entries(bookings).some(([id,b])=>b.prospect_id===r.id&&id!==key),'An invitation is already reserved for this business; review it before choosing another slot');
+    if(c.mode==='controlled'&&!hostedCalendar) {r.meeting={event_id:key,start:input.start,end:input.end,mode:input.mode??'video',reference:`fixture:${key}`,current_status:'Simulated',verified_at:app.now().toISOString()};state.revision++;return {simulated:true,booked:false,booking_id:key};}
     const booking = { prospect_id: r.id, attendee_email: input.attendee_email, start: input.start, end: input.end, title: input.title, description: input.description,
-      ...(input.mode?{mode:input.mode}:{}), ...(input.recipient_confirmed === true ? { recipient_confirmed: true } : {}), approved: true, approval_ref: `owner-console:${key}` };
-    check(!c.operations.bookings[key] || hash(c.operations.bookings[key]) === hash(booking), 'An existing slot changed; preserve its reservation');
-    c.operations.bookings[key] ??= booking;
-    await saveJson(path, c); app.config = c;
+      ...(input.mode?{mode:input.mode}:{}), ...(input.recipient_confirmed === true ? { recipient_confirmed: true } : {}), approved: true, approval_ref: `owner-console:${key}`,
+      ...(hostedCalendar?{mode:input.mode??'video',location:input.location??'',timezone:'America/New_York',approved_by:actor,source_sha256:bookingContext(r),policy_sha256:calendarPolicy,confirmation_event:key+'-confirmed',transport:'google-calendar-v1'}:{}) };
+    if(hostedCalendar){
+      check((shared||r.controlled&&input.attendee_email.endsWith('@example.invalid'))&&r.contact?.verified&&(!r.follow_up_owner||r.follow_up_owner===actor),'Exact current contact and conversation owner required');
+      check(!Object.entries(bookings).some(([id,b])=>id!==key&&Date.parse(b.start)<Date.parse(input.end)+c.calendar.buffer_minutes*60000&&Date.parse(b.end)>Date.parse(input.start)-c.calendar.buffer_minutes*60000),'Another invitation already reserves this slot or buffer');
+    }
+    check(!bookings[key] || hash(bookings[key]) === hash(booking), 'An existing slot changed; preserve its reservation');
+    if(shared){const o=state.operations??={};o.bookings??={};o.bookings[key]??={confirmation:booking,confirmation_observation:{type:'queue',at:now.toISOString(),grant:structuredClone(calendarRecord.grant),claim:{dispatch_claim:null,read_claim:null},requests:structuredClone(calendarRecord.observations)}};}
+    else c.operations.bookings[key] ??= booking;
+    if(hostedCalendar)state.events[booking.confirmation_event]??={id:booking.confirmation_event,type:'meeting_queued',prospect_id:r.id,actor,at:now.toISOString(),data:{booking_id:key,booking_sha256:hash(booking)}};
+    if(path)await saveJson(path, c); app.config = c;
     if (state.operations?.cycle) { state.operations.cycle.completed_bookings = state.operations.cycle.completed_bookings.filter(id => id !== key); delete state.operations.cycle.completed_at; }
-    state.runtime = { ...state.runtime, wake_requested: true };
-    state.revision++; state.updated_at=app.now().toISOString();
+    if(!shared)state.runtime = { ...state.runtime, wake_requested: true };
+    state.revision++; state.updated_at=now.toISOString();
+    if(calendarRecord){calendarRecord.at=now.toISOString();calendarRecord.confirmation_sha256=hash(booking);}
     return { queued: true, booking_id: key, booked: false };
-  });
+  },calendarRecord?{configFingerprint,projectCalendar:calendarRecord,calendarSignal}:configFingerprint?{configFingerprint}:undefined);
 }
 export async function pauseStudio(app) {
   const c = await app.change(async state => {
@@ -252,11 +266,21 @@ export function nativeMessage(record, round, c,callId) {
   const idea = record.call_prep?.hypothesis ?? record.idea;
   const question = record.call_prep?.questions?.[0] ?? 'Would an improvement like this fit what you want to do next?';
   check(typeof idea === 'string' && idea.trim() && typeof question === 'string' && question.trim(), 'A reviewed enhancement and owner question are required');
-  const body = `Hi,\n\nI tried calling ${record.name} and wanted to share one idea: ${idea}\n\n${question}\n\nI build focused websites and business tools through EVZ Digital.\n${c.sender.website}\n${c.sender.postal_address}\n\nThis is a business introduction and advertisement. Reply "stop" to opt out of all further marketing from EVZ Digital.`;
+  const senderName=operatorDisplayName(record.calls?.[callId]?.actor,c);
+  const body = `Hi,\n\nI tried calling ${record.name} and wanted to share one idea: ${idea}\n\n${question}\n\nI build focused websites and business tools through EVZ Digital.\n${c.sender.website}\n\nBest,\n${senderName}\n${evzIdentity.email}\n${c.sender.postal_address}\n\nThis is a business introduction and advertisement. Reply "stop" to opt out of all further marketing from EVZ Digital.`;
   check(body.length <= 4000 && !/{{|}}|[<>]/.test(subject + body), 'Tailored email exceeds the native field bounds or contains markup/template instructions');
   return { subject, body };
 }
 
+export function reviewedHostedFollowUp(record,action){
+  const follow=record.follow_ups?.[action?.payload?.call_id];
+  if(record.proposals?.[action?.payload?.call_id]?.review?.provenance?.provider==='netlify-gateway'){
+    const draft=record.follow_up_drafts?.find(d=>d.id===follow?.draft_id);
+    if(!draft||draft.status!=='Approved'||draft.approval_event!==follow.approval_event||draft.action_id!==action.id||draft.sha256!==hash(follow.content))return false;
+    try{currentHostedTranscript(record,action.payload.call_id);}catch{return false;}
+  }
+  return true;
+}
 export function approvedFollowUp(record,action,config){
   const follow=record.follow_ups?.[action?.payload?.call_id];
   return Boolean(config.follow_up?.enabled&&action?.payload?.follow_up&&action.prospect_id===record.id&&action.status!=='Cancelled'&&!record.restriction&&!record.reply&&['Prepared','Sending','Awaiting delivery'].includes(follow?.status)&&follow.action_id===action.id&&hash(follow.content)===action.payload.content_sha256&&follow.content.to===record.contact.email&&record.contact.verified&&followUpOutcomes.includes(record.calls[action.payload.call_id]?.outcome));
@@ -311,11 +335,16 @@ export class ProductionOperations extends ControlledOperations {
           const raw = yield request(`${prospectId}-${e.thread.thread_id}-thread`, 'thread', { thread_id: e.thread.thread_id, max_messages: 20 });
           check(!raw.failed, 'Reply monitoring unavailable; hold contact');
           for (const reply of controlledThread(raw, e.thread, now)) {
-            const effectId = `reply-${hash(`${prospectId}:${reply.id}`).slice(0, 32)}`;
-            o.effects[effectId] ??= { event: { id: effectId, prospect_id: prospectId, type: 'reply_received', at: reply.at, data: { source_id: reply.id, kind: reply.kind, thread_id: e.thread.thread_id } } };
+            const effectId = `reply-${hash(`${prospectId}:${reply.id}:${hash(reply.content)}`).slice(0, 32)}`;
+            o.effects[effectId] ??= { event: { id: effectId, prospect_id: prospectId, type: 'reply_received', at: reply.at, data: { source_id: reply.id, kind: reply.kind, thread_id: e.thread.thread_id, content:reply.content } } };
             if (!o.replies.includes(reply.id)) { o.replies.push(reply.id); retain(`${prospectId}-${e.thread.thread_id}-thread`); }
             r.cold_paused = true;
-            r.reply={...reply,at:reply.at};
+            // Keep same-cycle send guards closed before the persisted reply effect is applied.
+            if(!r.reply||Date.parse(r.reply.at)<=Date.parse(reply.at)){
+              const incoming={source_id:reply.id,thread_id:e.thread.thread_id,kind:reply.kind,content:reply.content,at:reply.at};
+              if(r.reply&&hash(r.reply)!==hash(incoming)){r.reply_history??=[];r.reply_history.push(r.reply);}
+              r.reply=incoming;
+            }
           }
         }
         let binding = o.bindings[prospectId];
@@ -370,15 +399,18 @@ export class ProductionOperations extends ControlledOperations {
   }
   *nativeEmails(state, c, r, binding, request, retain, writeReady) {
     const o = state.operations, now = this.app.now();
-    check(c.follow_up?.enabled || !verificationLane(r) || !Object.values(state.actions).some(a => a.prospect_id === r.id && a.type === 'email' && a.status !== 'Cancelled'), 'Verification calls cannot release cold email; qualify the conversation and review its next action');
-    for (const a of Object.values(state.actions).filter(a => a.prospect_id === r.id && a.type === 'email' && a.status !== 'Cancelled')) {
+    check(c.follow_up?.enabled || !verificationLane(r) || !Object.values(state.actions).some(a => a.prospect_id === r.id && a.type === 'email' && !a.payload?.exact_mail && a.status !== 'Cancelled'), 'Verification calls cannot release cold email; qualify the conversation and review its next action');
+    for (const a of Object.values(state.actions).filter(a => a.prospect_id === r.id && a.type === 'email' && !a.payload?.exact_mail && a.status !== 'Cancelled')) {
       const e = o.email[a.id] ??= { prospect_id: r.id, status: 'Awaiting native release' }, intentKey = `${a.id}-intent`;
       if (e.thread) continue;
+      if(a.payload.due_at&&Date.parse(a.payload.due_at)>+now){e.status='Scheduled for follow-up';e.due_at=a.payload.due_at;continue;}
       if (!o.requests[intentKey]) {
+        check(!Object.values(state.actions).some(other=>other.prospect_id===r.id&&other.payload?.exact_mail&&['Queued','Pending','Uncertain'].includes(other.status)),'An exact email already owns this conversation; reconcile before a native intent');
         if (!writeReady || r.restriction||r.reply||r.cold_paused&&!approvedFollowUp(r,a,c)) continue;
+        check(reviewedHostedFollowUp(r,a),'Review and approve the exact hosted transcript email before a new native intent');
         const calls = r.attempts.filter(x => x.channel === 'call'), sent = r.attempts.filter(x => x.channel === 'email');
         const followUp=approvedFollowUp(r,a,c);
-        check((followUp || r.calls[a.payload.call_id]?.outcome === 'no_answer' && calls.length <= 2) && sent.length < 2 && calls.length>0 && businessDaysBetween(calls[0].at, now) < 10, 'An eligible saved call within the two-email, ten-business-day campaign is required');
+        check((followUp || ['no_answer','voicemail'].includes(r.calls[a.payload.call_id]?.outcome) && calls.length <= 2) && sent.length < 2 && calls.length>0 && businessDaysBetween(calls[0].at, now) < 10, 'An eligible saved call within the two-email, ten-business-day campaign is required');
         const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', hourCycle: 'h23' }).formatToParts(now).map(p => [p.type, p.value]));
         check(r.controlled || !['Sat', 'Sun'].includes(parts.weekday) && Number(parts.hour) >= 9 && Number(parts.hour) < 17, 'Email release waits for weekday business hours');
         check(+now - Date.parse(r.qualification.checked_at) <= 30 * 86400000, 'Research is stale; hold email');

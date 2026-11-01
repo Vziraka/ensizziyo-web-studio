@@ -2,10 +2,10 @@ name: Research proof checks
 
 on:
   pull_request:
-    paths: ['pipeline/**', '.github/workflows/research-proof.yml']
+    paths: ['pipeline/**', 'netlify/**', 'netlify.toml', '.github/workflows/research-proof.yml']
   push:
     branches: [main]
-    paths: ['pipeline/**', '.github/workflows/research-proof.yml']
+    paths: ['pipeline/**', 'netlify/**', 'netlify.toml', '.github/workflows/research-proof.yml']
 
 permissions:
   contents: read

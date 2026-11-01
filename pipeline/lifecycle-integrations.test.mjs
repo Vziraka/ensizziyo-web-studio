@@ -42,6 +42,17 @@ test('subscription author and independent reviewer bind exact evidence; restart 
   assert.equal(Object.keys((await restart.snapshot()).ai_attempts).length, 2);
 });
 
+test('transcript assessment after a quick reviewed call preserves its agreed outcome and existing actions',async t=>{
+  const {app}=await setup(t,aiConfig,false);
+  await app.apply({id:'quick-call',prospect_id:id,type:'call_logged',at,data:{call_id:'quick-call',outcome:'connected',performed_at:at,simulated:true,desk:true,intent:'requested_info',note:'Private operator summary.'}});
+  await app.apply({id:'quick-transcript',prospect_id:id,type:'transcript_added',at,data:{call_id:'quick-call',text:fixtureTranscript,permission_confirmed:true}});
+  const before=await app.snapshot();let calls=0;
+  await assessTranscript(app,id,'quick-call',{usage:allowance,invoke:async options=>{calls++;return options.model==='gpt-6-luna'?fixtureProposal:review(fixtureProposal);}});
+  const after=await app.snapshot();assert.equal(calls,2);assert.equal(after.prospects[id].stage,'Information requested');assert.deepEqual(after.prospects[id].approved_calls,before.prospects[id].approved_calls);
+  assert.equal(after.prospects[id].proposals['quick-call'].outcome,fixtureProposal.outcome);
+  assert.deepEqual(Object.values(after.actions).filter(a=>a.type==='email'),Object.values(before.actions).filter(a=>a.type==='email'));
+});
+
 test('the installed Luna/Sol high pair can assess and review while the owner outcome stays pending', async t => {
   const config = { ...aiConfig, transcript_ai: { ...aiConfig.transcript_ai, author_model: 'gpt-5.6-luna', reviewer_model: 'gpt-5.6-sol' } };
   const { app } = await setup(t, config), models = [];
@@ -162,7 +173,7 @@ test('the full saved-email preview requires the private session, escapes copy an
  // Only the next explicitly performed call creates this preview; old calls are not backfilled.
  await app.apply({id:'preview-call',prospect_id:id,type:'call_logged',at,data:{call_id:'preview-call',outcome:'voicemail',performed_at:at,simulated:true,desk:true}});
  const server=await serveLifecycle(app,{port:0,quiet:true});t.after(()=>new Promise(resolve=>server.close(resolve)));const base=`http://127.0.0.1:${server.address().port}`,path=`${base}/follow-up/${id}/preview-call`;
- assert.equal((await fetch(path)).status,400);const page=await fetch(base),cookie=page.headers.get('set-cookie').split(';')[0],response=await fetch(path,{headers:{cookie}}),html=await response.text();assert.equal(response.status,200);assert.match(html,/this page sends nothing/);assert.match(html,/\/assets\/voice-demo-preview.png/);assert.match(html,/EVZ Digital team/);assert.doesNotMatch(response.headers.get('content-security-policy'),/script-src 'unsafe-inline'/);assert.match(response.headers.get('content-security-policy'),/default-src 'none'/);assert.equal((await fetch(`${base}/assets/evz-wordmark.png`)).status,200);
+ assert.equal((await fetch(path)).status,400);const page=await fetch(base),cookie=page.headers.get('set-cookie').split(';')[0],response=await fetch(path,{headers:{cookie}}),html=await response.text();assert.equal(response.status,200);assert.match(html,/this page sends nothing/);assert.match(html,/specific, reviewed service focus/);assert.doesNotMatch(html,/voice-demo-preview\.png|independent demonstrations|Open example/);assert.match(html,/EVZ Digital team/);assert.doesNotMatch(response.headers.get('content-security-policy'),/script-src 'unsafe-inline'/);assert.match(response.headers.get('content-security-policy'),/default-src 'none'/);assert.equal((await fetch(`${base}/assets/evz-wordmark.png`)).status,200);
 });
 test('lost Google write response reconciles once, preserves owner edits and never replays a restarted pending publication', async t => {
   const google = { spreadsheet_id: 'owned-sheet', sheet_id: 123, sheet_title: 'Lifecycle proof' };

@@ -27,6 +27,12 @@ test('the business directory includes untouched and restricted records without e
  assert.deepEqual(deskQueues(state).matching.map(r=>r.id),['fresh']);assert.deepEqual(deskQueues(state,{allBusinesses:true,history:true}).matching.map(r=>r.id),['called']);
  assert.equal(deskQueues(state,{allBusinesses:true,category:'health-wellness'}).matching.length,0);assert.deepEqual(state.supply.queue,[{prospect_id:'fresh'}]);
 });
+test('the shared directory filters assigned work by operator and keeps unassigned work visible to the team',()=>{
+ const record=(id,follow_up_owner)=>({id,follow_up_owner,category:'HVAC contractor',stage:'Ready to verify',calls:{}}),prospects={owner:record('owner','owner'),friend:record('friend','friend'),unassigned:record('unassigned',undefined)},state={prospects,supply:{queue:Object.keys(prospects).map(prospect_id=>({prospect_id}))}};
+ assert.deepEqual(deskQueues(state,{allBusinesses:true,assignment:'my',operator:'friend'}).matching.map(r=>r.id),['friend']);
+ assert.deepEqual(deskQueues(state,{allBusinesses:true,assignment:'unassigned',operator:'friend'}).matching.map(r=>r.id),['unassigned']);
+ assert.deepEqual(deskQueues(state,{allBusinesses:true,assignment:'team',operator:'friend'}).matching.map(r=>r.id),['owner','friend','unassigned']);
+});
 test('approved starting offers and care are suggestions with the agreed prices and finite scope',()=>{
   assert.deepEqual(offers.slice(0,3).map(o=>o.price),[1500,1995,2495]);
   assert.deepEqual([offers[3].price_min,offers[3].price_max],[1500,2500]);
@@ -36,3 +42,4 @@ test('approved starting offers and care are suggestions with the agreed prices a
 test('an agreed systems need or reviewed automation hypothesis can suggest systems-only without inventing a budget',()=>{assert.equal(suggestedOffer({discovery:{service:'systems'}}).id,'systems-only');assert.equal(suggestedOffer({qualification:{verdict:'Research-qualified'},call_prep:{hypothesis:'Lead routing integration alongside the existing website'}}).id,'systems-only');assert.equal(suggestedOffer({qualification:{verdict:'Verification call only'},idea:'Needs automation'}),null);});
 
 test('an overdue promised callback remains visible even when freshness or a provider hold removes it from callable supply',()=>{const record={id:'held-callback',category:'Food bakery',stage:'Callback',callback_at:'2026-10-19T12:00:00Z',calls:{},contact:{}};const state={prospects:{'held-callback':record},supply:{checked_at:'2026-10-19T15:00:00Z',queue:[]}};assert.deepEqual(deskQueues(state,{category:'home-services'}).commitments.map(r=>r.id),['held-callback']);});
+test('an unspecified callback becomes a due reminder on its Eastern task day',()=>{const record={id:'callback-reminder',category:'Food bakery',stage:'Callback',callback_at:null,callback_due_at:'2026-10-20T13:00:00Z',calls:{},contact:{}};const state={prospects:{'callback-reminder':record},supply:{checked_at:'2026-10-19T15:00:00Z',queue:[]}};assert.deepEqual(deskQueues(state).commitments,[]);state.supply.checked_at='2026-10-20T12:00:00Z';assert.deepEqual(deskQueues(state).commitments.map(r=>r.id),['callback-reminder']);});

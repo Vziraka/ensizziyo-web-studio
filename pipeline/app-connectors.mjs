@@ -3,6 +3,7 @@ import { createInterface } from 'node:readline';
 import { subscriptionEnvironment } from './workers.mjs';
 
 const permitted = new Set([
+  'google_drive.get_profile','google_drive.get_file_metadata','google_drive.fetch',
   'search_service.web_run',
   'apollo_io.apollo_users_api_profile', 'apollo_io.apollo_email_accounts_index', 'apollo_io.apollo_contacts_search', 'apollo_io.apollo_mixed_people_api_search',
   'apollo_io.apollo_contacts_create', 'apollo_io.apollo_contacts_update', 'apollo_io.apollo_accounts_search', 'apollo_io.apollo_accounts_create',
@@ -15,7 +16,7 @@ const permitted = new Set([
   'google_calendar.search_events', 'google_calendar.read_event'
 ]);
 export function connectorName(name) {
-  for (const prefix of ['apollo_io', 'google_calendar', 'gmail', 'search_service']) {
+  for (const prefix of ['apollo_io', 'google_calendar', 'google_drive', 'gmail', 'search_service']) {
     const start = `mcp__codex_apps__${prefix}_`;
     if (name?.startsWith(start)) {
       const native = `${prefix}.${name.slice(start.length)}`;
@@ -32,7 +33,7 @@ export class AppConnectors {
     this.launch = launch; this.timeoutMs = timeoutMs; this.cwd = cwd; this.signal = signal; this.conversationRef = conversationRef;
     this.accountLinks = { ...accountLinks };
     for (const [provider, link] of Object.entries(this.accountLinks)) {
-      if (!['gmail', 'google_calendar'].includes(provider) || link !== undefined && (typeof link !== 'string' || !/^link_[a-zA-Z0-9]+$/.test(link)))
+      if (!['gmail', 'google_calendar', 'google_drive'].includes(provider) || link !== undefined && (typeof link !== 'string' || !/^link_[a-zA-Z0-9]+$/.test(link)))
         throw Error('Invalid configured Google account link');
     }
     this.pending = new Map(); this.sequence = 0; this.bytes = 0; this.closed = false;
@@ -103,6 +104,7 @@ export class AppConnectors {
     const args = native.startsWith('apollo_io.') ? { ...input, _conversation_ref: this.conversationRef,
       _rationale: 'Execute the exact authorized studio workflow instruction.' } : { ...input };
     const link = this.accountLinks[native.split('.')[0]];
+    if(native.startsWith('google_drive.')){if(!link)throw Error('Select the authorized Drive account explicitly');if(native==='google_drive.fetch'&&(input.download_raw_file!==true||input.include_base64!==false||!/^https:\/\/drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]{10,256}\/view$/.test(input.url??'')))throw Error('Drive dispatcher supports exact raw originals without inline bytes only');}
     if (Object.hasOwn(input, 'link_id') && input.link_id !== link) throw Error('Requested account differs from the configured connector account');
     if (link) args.link_id = link;
     for (const field of tool.inputSchema.required ?? []) if (!Object.hasOwn(args, field)) throw Error('Connector required fields changed; no operation dispatched');

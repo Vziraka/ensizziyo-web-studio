@@ -1,3 +1,4 @@
+import {validateOpeningAssessment} from './opening-policy.mjs';
 import { check, hash } from './lifecycle.mjs';
 import { validateJob, validateSnapshots } from './sources.mjs';
 import {businessType,validateBusinessType,businessTypes} from './business-types.mjs';
@@ -48,6 +49,9 @@ export function verificationData(packet, now, controlled = false) {
   const checked = packet.sources.map(s => s.fetched_at).sort()[0], evidenceRef = `verification:${packet.id}`, digest = hash(packet);
   if(packet.profile_review)check(hash(packet.profile_review.owner??null)===hash(packet.owner_evidence??null),'Profile owner must match the independently retained owner evidence');
   const profile=packet.profile_version===1?buildResearchProfile(packet.sources,packet.profile_evidence?.sources??[],packet.profile_review??{},now):null;
+  if(packet.opening_assessment)validateOpeningAssessment(packet);
+  const opening=verificationOpening(packet);
+  if(packet.opening!==undefined)check(packet.opening===opening,'Prepared opening must match the retained service, offering and location evidence');
   return { company_id: `verification-${hash(controlled ? packet.id : phoneDigits(packet.phone)).slice(0, 24)}`, name: packet.business_name, category: packet.category, area: packet.area,
     controlled, call_lane: 'verification', idea: packet.topic,
     ...(packet.business_type?{business_type:structuredClone(packet.business_type)}:{}),
@@ -55,7 +59,7 @@ export function verificationData(packet, now, controlled = false) {
     ...(profile?{research_profile:profile}:{}),
     contact: { email: controlled ? `${packet.id}@example.invalid` : profile?.business_email?.email??null, phone: packet.phone ?? null, verified: !controlled&&Boolean(profile?.business_email), phone_verified: true, checked_at: checked, source: packet.public_phone.url,...(profile?.business_email?{email_evidence:profile.business_email.source}: {}) },
     qualification: { verdict: 'Verification call only', independent_review: 'Not a detailed assessment', checked_at: checked, evidence_ref: evidenceRef, packet_sha256: digest },
-    verification: { packet: structuredClone(packet), packet_sha256: digest, reviewed_at: now.toISOString(), current_activity: 'Unconfirmed', owner_goals: 'Unknown', opening: verificationOpening(packet), owner_question: text(packet.owner_question) ? packet.owner_question : 'What would you most like to make easier for customers or for yourself?' } };
+    verification: { packet: structuredClone(packet), packet_sha256: digest, reviewed_at: now.toISOString(), current_activity: 'Unconfirmed', owner_goals: 'Unknown', opening, owner_question: text(packet.owner_question) ? packet.owner_question : 'What would you most like to make easier for customers or for yourself?' } };
 }
 
 export function validateVerificationRecord(r, at) {
@@ -69,6 +73,8 @@ export function verificationFresh(r, at) {
 }
 
 export function verificationOpening(r) {
-  const type=businessType(r),label=businessTypes.find(t=>t.id===type.category).label.toLowerCase();
-  return `Hi, I’m calling from EVZ Digital. Is this ${r.name??r.business_name}? We help ${label} businesses put AI and digital systems to work. Is the owner or operator available for a brief question about how enquiries reach you?`;
+  if(r.opening_assessment){const a=validateOpeningAssessment(r);return a.candidates.find(c=>c.id===a.selected_id).opening;}
+  const type=businessType(r),name=String(r.name??r.business_name).replace(/[\r\n<>]/g,' ').trim().slice(0,120),offering=String(r.offering?.excerpt??'').replace(/[\r\n<>]/g,' ').trim().slice(0,100),location=String(r.location?.excerpt??'').replace(/[\r\n<>]/g,' ').trim().slice(0,70),service=type.subtype.toLowerCase();
+  const proof=offering?`I saw ${name}’s website list ${offering}${location?` and mention ${location}`:''}.`:`I came across ${name}’s website.`;
+  return `Hi, I’m calling from EVZ Digital. ${proof} Is the owner or operator available? I have one quick question about how new ${service} enquiries reach your team today.`;
 }

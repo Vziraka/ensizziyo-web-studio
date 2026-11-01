@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { StudioLifecycle } from './lifecycle.mjs';
 import { fixtureProspect } from './lifecycle-fixtures.mjs';
 import { callSupply, meetingSlots, sessionSummary } from './call-desk.mjs';
+import {saveJson} from './engine.mjs';
 const at = '2026-10-19T15:00:00Z';
 async function setup(t) {
   const directory = await mkdtemp(join(tmpdir(), 'call-desk-'));
@@ -37,10 +38,14 @@ test('interested owner notes progress without recording; email and booking remai
   assert.equal(Object.values(s.actions).filter(a=>a.type==='email').length,0);
   assert.equal(sessionSummary(s,'2026-10-19T14:00:00Z').interested,1);
 });
-test('callback needs a future time and stops cannot be undone into outreach', async t => {
+test('unspecified callback creates an internal reminder and stops cannot be undone into outreach', async t => {
   const {app,call,apply}=await setup(t);
-  await assert.rejects(call('bad','callback'),/exact time/);
-  assert.equal((await app.snapshot()).prospects.bakery.attempts.length,0);
+  await assert.rejects(call('bad','callback',{callback_at:at}),/after the call/);
+  await call('callback','callback');
+  const state=await app.snapshot();
+  assert.equal(state.prospects.bakery.callback_at,null);
+  assert.equal(state.prospects.bakery.callback_due_at,'2026-10-20T13:00:00.000Z');
+  assert.equal(Object.values(state.actions).some(action=>action.type==='email'),false);
   await call('stop','do_not_contact');
   await assert.rejects(apply('undo-stop','call_undone',{call_id:'stop'}),/Restriction/);
   assert.equal(callSupply(await app.snapshot(),new Date(at)).ready,0);
@@ -56,4 +61,22 @@ test('slots use Eastern weekday hours, exact duration and buffers across DST', (
   assert.ok(slots.length); assert.equal(slots[0].start,'2026-11-02T15:15:00.000Z');
   assert.equal(Date.parse(slots[0].end)-Date.parse(slots[0].start),1200000);
   assert.ok(!slots.some(s=>Date.parse(s.start)<Date.parse('2026-11-02T15:15:00Z')&&Date.parse(s.end)>Date.parse('2026-11-02T14:15:00Z')));
+});
+test('research target and new-call buffer exclude callbacks without capping the due queue',async t=>{
+ const {app}=await setup(t),state=await app.snapshot(),base=state.prospects.bakery;
+ state.prospects={};state.actions={};
+ for(let i=0;i<90;i++){
+  const id=`supply-${i}`,callback=i<60;
+  state.prospects[id]={...structuredClone(base),id,company_id:id,stage:callback?'Callback':'Ready to contact',cold_paused:callback};
+  state.actions[id]={id,prospect_id:id,type:callback?'callback_task':'call_task',status:'Queued',payload:{kind:callback?'callback':'new',due_at:at}};
+ }
+ const supply=callSupply(state,new Date(at));assert.equal(supply.ready,90);assert.equal(supply.callback_ready,60);assert.equal(supply.new_ready,30);assert.equal(supply.target,50);assert.equal(supply.new_daily_target,25);assert.equal(supply.low,false);assert.equal(supply.full,false);assert.equal(supply.pitch_full,false);assert.equal(supply.queue[0].kind,'callback');
+ const view=await app.dashboard();assert.equal(view.daily.research_target,25);assert.equal(view.daily.new_researched,1);assert.equal(view.daily.research_shortfall,24);assert.equal(view.daily.minimum,undefined);assert.equal(view.daily.unique_businesses,0);
+});
+test('legacy50 configuration reopens with25-new semantics; callback purpose is derived and simulated calls count zero actual contacts',async t=>{
+ const {app,call}=await setup(t);const legacy={...app.config,daily_target:50};delete legacy.daily_new_research_target;await saveJson(join(app.directory,'lifecycle-config.json'),legacy);
+ const reopened=await StudioLifecycle.open({directory:app.directory,now:app.now});assert.equal((await reopened.dashboard()).daily.research_target,25);
+ await call('request-callback','callback',{purpose:'callback'});await call('performed-callback','no_answer',{purpose:'new'});
+ const state=await app.snapshot();assert.equal(state.prospects.bakery.calls['request-callback'].purpose,'new');assert.equal(state.prospects.bakery.calls['performed-callback'].purpose,'callback');
+ const view=await app.dashboard();assert.equal(view.daily.callback_attempts,0);assert.equal(view.daily.unique_businesses,0);assert.equal(view.daily.new_researched,1);
 });

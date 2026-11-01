@@ -1,5 +1,7 @@
 # Food and beverage call and email workflow
 
+Current October 23–24 redesign supersedes this historical 50-contact daily minimum: 25 newly researched/imported businesses total per Eastern day across both operators, with callbacks separate and no total-call cap from that target. See [current lifecycle rules](LIFECYCLE.md) and [call desk counters](CALL-DESK.md). Current outcome-aware follow-up timing also supersedes older cadence text below; production activation remains off.
+
 The [controlled lifecycle workspace](LIFECYCLE.md) now implements the owner-reviewed transcript and delivery/support path. Its scoped Google projection/direct unsent Apollo task passed; the native workflow task is inconclusive, and live Luna/Sol inference held below reserve. Automated email/cadence, booking, multi-record supervision and production cutover remain launch work.
 
 Owner decisions recorded October 16, 2026. **Controlled connection, reply/cancellation and daily task handoffs are implemented; full integration and activation are not complete.** The [Apollo proof guide](APOLLO.md) owns executed test results and operation. Research, live outreach and schedules remain paused. The [sales kit](https://docs.google.com/document/d/1qybvO__qBf508RGSAnADSBjIhw1G_kIWIflqpF9ikkU) contains the offer, scripts, emails, discovery questions, prototype brief and proposal outline. The [research playbook](RESEARCH.md) owns prospect screening and evidence qualification. This guide owns the full S2 handoff, field ownership, failure behavior and acceptance checks.

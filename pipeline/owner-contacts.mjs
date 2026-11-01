@@ -11,6 +11,28 @@ const fresh = (at,now) => Number.isFinite(Date.parse(at)) && Date.parse(at)<=+no
 const binding = r => hash(r.contact);
 const role = /\b(?:owner|founder|operator|president|ceo|director|principal)\b/i;
 
+export function contactEvidenceView(r,now=new Date()){
+ const c=r.contact??{},maxDays=r.qualification?.verdict==='Verification call only'?14:30;
+ const changed=[r.owner_contact,r.contact_review].some(v=>v&&v.bound_contact_sha256!==binding(r));
+ const packet=r.verification?.packet,invalidPacket=packet&&(r.verification.packet_sha256!==hash(packet)||r.qualification?.packet_sha256!==r.verification.packet_sha256);
+ const wrong=Object.values(r.calls??{}).some(call=>!call.undone&&call.outcome==='wrong_contact');
+ const conversation=r.verification?.conversation,confirmedPhone=conversation?.identity_confirmed===true&&conversation.active_confirmed===true&&conversation.contact_binding?.phone===c.phone&&r.calls?.[conversation.call_id]?.outcome==='connected'&&!r.calls[conversation.call_id].undone;
+ const emailEvidence=c.email_evidence,callId=emailEvidence?.source?.startsWith('call:')?emailEvidence.source.slice(5):null,transcript=r.transcripts?.[callId];
+ const confirmedEmail=emailEvidence?.email===c.email&&transcript&&typeof transcript.text==='string'&&hash(transcript.text)===transcript.sha256&&typeof emailEvidence.quote==='string'&&emailEvidence.quote.includes(c.email)&&transcript.text.includes(emailEvidence.quote)&&r.calls?.[callId]?.outcome==='connected'&&!r.calls[callId].undone;
+ function channel(value,label,checkedAt,source,reason){
+  const valid=Number.isFinite(Date.parse(checkedAt)),current=valid&&Date.parse(checkedAt)<=+now&&+now-Date.parse(checkedAt)<=maxDays*86400000;
+  const why=reason??(invalidPacket?'Retained verification integrity changed':changed?'Contact binding changed':!source?'Source evidence missing':!current?'Source check expired, future-dated or missing':null);
+  return {label,checked_at:checkedAt??null,source:source??null,max_age_days:maxDays,expires_at:valid?new Date(Date.parse(checkedAt)+maxDays*86400000).toISOString():null,reuse_current_evidence:Boolean(value&&!why),status:!value?'No saved route':why?`Recheck: ${why}`:'Reuse retained proof; do not repeat a fresh lookup'};
+ }
+ const publicSource=typeof c.source==='string'&&/^https:\/\//i.test(c.source)?c.source:null;
+ const phoneLabel=!c.phone?'No business number saved':wrong?'Wrong contact reported':confirmedPhone?'Business identity confirmed during conversation':c.phone_verified&&publicSource?'Published business number':c.verified&&publicSource?'Business number · source reviewed':'Number needs source review';
+ const phone=channel(c.phone,phoneLabel,confirmedPhone?conversation.at:c.checked_at,confirmedPhone?`call:${conversation.call_id}`:publicSource,wrong?'Wrong contact outcome; verify the public phone/ownership':!confirmedPhone&&!c.phone_verified&&!c.verified?'Number needs source review':null);
+ const profile=r.research_profile?.business_email,published=Boolean(profile&&c.email&&profile.email===c.email);
+ const emailLabel=!c.email?'No business email saved':r.reply?.kind==='bounce'?'Bounce reported · route held':confirmedEmail?'Email confirmed during conversation':published?`Published ${profile.kind==='Owner/operator business'?'owner':'general'} business email`:c.verified?'Business email · source reviewed':'Email needs source review';
+ const email=channel(c.email,emailLabel,confirmedEmail?emailEvidence.confirmed_at:published?profile.source.checked_at:c.checked_at,confirmedEmail?emailEvidence.source:published?profile.source.url:publicSource,r.reply?.kind==='bounce'?'Provider bounce; review this route without automatic resumption':!confirmedEmail&&!published&&!c.verified?'Email needs source review':null);
+ return {phone,email,limits:'Evidence labels describe saved observations, not guaranteed reachability or delivery. Existing call, email, stop and release rules still apply.'};
+}
+
 export function ownerContactView(r,now=new Date()) {
   const a=r.owner_contact,valid=a&&a.bound_contact_sha256===binding(r)&&fresh(a.reviewed_at,now)&&(!a.person||fresh(a.person.source?.checked_at,now))&&(!a.direct_phone||fresh(a.direct_phone.source?.checked_at,now));
   const published=Boolean(r.contact?.phone&&(r.contact.verified||r.contact.phone_verified===true)&&fresh(r.contact.checked_at,now));
@@ -23,7 +45,7 @@ export function ownerContactView(r,now=new Date()) {
     next_action:direct?'Confirm the person still operates the business and can be reached at this published number.':stale?'Recheck the changed or stale contact evidence before using an owner-direct claim.':valid&&a.person?'Find an explicit public professional number for this person; the shop line alone does not establish direct access.':'Identify the current owner/operator from business-controlled or authoritative professional sources, then verify an explicitly linked business number.'};
 }
 export function ownerContactSummary(state,now=new Date()) {
-  const all=Object.values(state.prospects).map(r=>ownerContactView(r,now));
+  const all=Object.values(state.prospects).filter(r=>r.origin!=='workspace').map(r=>ownerContactView(r,now));
   return {total:all.length,owner_direct:all.filter(a=>a.direct_phone).length,general_business:all.filter(a=>a.classification==='General business line').length,unverified:all.filter(a=>a.classification==='Unverified number').length,identified:all.filter(a=>a.person).length};
 }
 function boundJob(r,job,{source_approvals=[],snapshots}={}) {

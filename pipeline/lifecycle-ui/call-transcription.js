@@ -1,0 +1,34 @@
+import {deskPath} from './paths.js';
+import {renderFullCallTranscription} from './full-call-transcription.js';
+let cached,busy=false;
+export function renderCallTranscription(parent,r,call,state,{api,event,run,tell,refresh,clearDirty}){
+ renderFullCallTranscription(parent,r,call,state,{api,event,run,tell,refresh,clearDirty});
+ if(!r.controlled||r.transcripts[call.call_id])return;
+ const node=document.createElement('section'),el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;},button=(text,action)=>{const n=el('button',text);n.type='button';n.disabled=busy;n.onclick=action;return n;};parent.append(node);
+ if(cached?.revision!==state.revision)cached=null;
+ const read=async()=>{const response=await fetch(deskPath('/api/call-transcription')),data=await response.json();if(!response.ok)throw Error(data.error);cached=data;};
+ const act=action=>run(async()=>{if(busy)return;busy=true;const buttons=[...node.querySelectorAll('button')].map(button=>[button,button.disabled]);for(const [button] of buttons)button.disabled=true;let completed=false;try{await action();await read();completed=true;}finally{busy=false;for(const [button,disabled] of buttons)button.disabled=disabled;if(completed){clearDirty();await refresh();}}});
+ function draw(){
+  node.replaceChildren(el('h3','Short fictional recording rehearsal'),el('p','The synthetic WAV compatibility test is complete. This separate one-clip rehearsal needs its own reviewed allowance. It never reopens that four-job budget or transcribes real client audio.'));
+  if(busy)node.append(el('p','Recording request is in progress. No second inference starts; Pause all prevents later dispatch.'));node.append(button('Read exact recording transcription policy',()=>act(async()=>{})));if(!cached)return;
+  const details=el('details');details.append(el('summary','Exact policy, source and receipt'),el('pre',JSON.stringify(cached,null,2)));node.append(details);
+  if(!cached.capability.ready){node.append(el('p','Matching hosted Gateway access is unavailable. Use the permitted manual transcript path.'));return;}
+  const saved=cached.rehearsal;
+  if(saved){
+   if(saved.scope.prospect_id!==r.id||saved.scope.call_id!==call.call_id){node.append(el('p','The single recording rehearsal belongs to another exact call and cannot be reset.'));return;}
+   node.append(el('p',`Reserved ${saved.reserved_microcredits/1e6} / 1 model credit · ${saved.receipt?.status??'Approved; not started'}${saved.paused_at?' · paused':''}`));
+   if(!saved.receipt){const start=button('Start the approved fictional recording transcription',()=>act(()=>api('/api/call-transcription/run',{operation_id:saved.operation_id,policy_sha256:cached.policy_sha256})));start.disabled=busy||state.current_operator!=='owner'||Boolean(saved.paused_at)||Date.parse(saved.expires_at)<=Date.now();node.append(start);return;}
+   if(saved.receipt.status!=='Draft'){node.append(el('p','Read the saved hold or uncertain receipt. It is never retried or refunded automatically.'));return;}
+   const form=el('form');form.onsubmit=e=>e.preventDefault();const label=el('label','Review and correct machine transcript'),words=el('textarea');words.setAttribute('aria-label','Review and correct machine transcript');words.value=saved.receipt.transcript;words.maxLength=6000;label.append(words);form.append(label,el('p',`Uncertain speech: ${saved.receipt.uncertain_words.join('; ')||'None reported; this does not prove accuracy.'}`));
+   const confirm=el('label','I checked the wording against playback, resolved or retained uncertainty, and have permission to use this fictional transcript.'),checked=el('input');checked.type='checkbox';checked.setAttribute('aria-label','I reviewed machine wording and uncertainty against playback and have transcript permission');confirm.prepend(checked);form.append(confirm,button('Adopt reviewed recording transcript',()=>act(async()=>{if(!checked.checked)throw Error('Review the exact recording, wording, uncertainty and permission first');await event(r,'transcript_added',{call_id:call.call_id,audio_ids:[saved.scope.audio_id],text:words.value,permission_confirmed:true,wording_reviewed:true,uncertainty_reviewed:true,transcription_draft_sha256:saved.receipt_sha256});tell('Reviewed transcript saved. Customer facts, outcome and any email still require their separate reviews.');})));node.append(form,el('p','Adoption saves reviewed wording only. Customer facts, outcome and any email still need their existing separate reviews.'));return;
+  }
+  if(state.current_operator!=='owner'){node.append(el('p','Only the owner may approve this separate one-clip rehearsal.'));return;}
+  const clips=Object.values(r.call_audio??{}).filter(c=>c.call_id===call.call_id&&c.kind==='call');
+  const clip=clips[0],seconds=clip?(Date.parse(clip.ended_at)-Date.parse(clip.started_at))/1000:0;
+  if(clips.length!==1||clip.status!=='Stored'||clip.partial||seconds<=0||seconds>cached.policy.maximum_seconds||clip.bytes>cached.policy.maximum_bytes||!cached.policy.formats.includes(clip.mime)){node.append(el('p','Use one complete saved WAV/WebM/OGG fictional call clip within sixty seconds and 200 KB. Multi-clip, longer or MP4 calls remain manual.'));return;}
+  const form=el('form');form.onsubmit=e=>e.preventDefault();const label=el('label','Freshly verified included Netlify credits'),balance=el('input');balance.type='number';balance.min=String(cached.policy.minimum_observed_credits);balance.step='0.1';balance.setAttribute('aria-label','Freshly verified included Netlify credits');label.append(balance);
+  const consent=el('label','I verified this is fictional speech only, the fresh credit balance, and disabled auto recharge.'),confirmed=el('input');confirmed.type='checkbox';confirmed.setAttribute('aria-label','I verified fictional audio, current credits and disabled auto recharge');consent.prepend(confirmed);
+  form.append(el('p',`Exact clip ${clip.id} · ${clip.sha256}. Approval reserves one separate model credit, expires in fifteen minutes, permits one count and one generation, and cannot be reset. The fresh balance must cover 900 hosting credits, the retained four-credit proof reservation and this one credit; unrelated site usage is not atomically reserved.`),label,consent,button('Approve this one fictional recording rehearsal',()=>act(async()=>{if(!confirmed.checked||!balance.value)throw Error('Review the exact new scope, fictional speech and current included allowance first');await api('/api/call-transcription/approve',{operation_id:'recording-'+clip.sha256.slice(0,24),policy_sha256:cached.policy_sha256,prospect_id:r.id,call_id:call.call_id,audio_id:clip.id,audio_sha256:clip.sha256,remaining_credits:Number(balance.value),observed_at:new Date().toISOString(),auto_recharge_disabled:true,fictional_audio_confirmed:true});})));node.append(form);
+ }
+ draw();
+}

@@ -1,6 +1,8 @@
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { createHash } from 'node:crypto';
+import { request as httpsRequest } from 'node:https';
+import { Readable } from 'node:stream';
 
 const host = value => new URL(value).hostname.replace(/^www\./, '').toLowerCase();
 export function validateJob(job) {
@@ -23,6 +25,25 @@ export function publicAddress(address) {
   }
   // Keep this proof to global IPv6 unicast; reject mapped IPv4 and local/reserved ranges.
   return isIP(address) === 6 && /^[23][0-9a-f]{3}:/i.test(address) && !/^2001:db8:/i.test(address);
+}
+
+// Pin the validated address into the actual TLS connection, retaining hostname/SNI verification.
+async function boundedDNS(name,resolveHost,signal){
+  if(!signal)return resolveHost(name);signal.throwIfAborted();let abort;
+  const cancelled=new Promise((_,reject)=>{abort=()=>reject(signal.reason);signal.addEventListener('abort',abort,{once:true});});
+  try{return await Promise.race([resolveHost(name),cancelled]);}finally{signal.removeEventListener('abort',abort);}
+}
+export async function publicHTTPSRequest(url, options={}, resolveHost=name=>lookup(name,{all:true}), connect=httpsRequest) {
+  const u=new URL(url),addresses=await boundedDNS(u.hostname,resolveHost,options.signal);
+  const publicTarget=address=>{if(!publicAddress(address))return false;if(isIP(address)!==6)return true;const [first,second]=address.split(':').map(v=>parseInt(v||'0',16));return !(first===0x2002||first===0x2001&&second<=0x1ff||first>=0x3ffe);};
+  if(u.protocol!=='https:'||u.username||u.password||u.port||isIP(u.hostname)||!addresses.length||addresses.some(a=>!publicTarget(a.address)))throw Error('Non-public source address');
+  return new Promise((resolve,reject)=>{
+    const pinned=addresses[0],req=connect(u,{method:'GET',headers:options.headers,signal:options.signal,lookup:(_name,opts,done)=>done(null,opts?.all?[{address:pinned.address,family:isIP(pinned.address)}]:pinned.address,isIP(pinned.address))},res=>{
+      try{const headers=new Headers();for(const [k,v] of Object.entries(res.headers))if(v!==undefined)headers.set(k,Array.isArray(v)?v.join(', '):String(v));
+        resolve(new Response([204,205,304].includes(res.statusCode)?null:Readable.toWeb(res),{status:res.statusCode,headers}));if([204,205,304].includes(res.statusCode))res.destroy();
+      }catch(error){res.destroy();reject(error);}
+    });req.on('error',reject);req.end();
+  });
 }
 
 const decode = value => value.replace(/&#(x[0-9a-f]+|\d+);/gi, (match, number) => {
@@ -71,7 +92,7 @@ export function validateSnapshots(snapshot, job) {
   return snapshot;
 }
 
-export async function collectPublicSources(job, { request = fetch, resolveHost = name => lookup(name, { all: true }), now = () => new Date(), signal } = {}) {
+export async function collectPublicSources(job, { request = fetch, resolveHost = name => lookup(name, { all: true }), now = () => new Date(), signal, exactURLs=false } = {}) {
   validateJob(job);
   if ([2, 3].includes(job.research_version) && (!job.website || job.seed_urls.some(url => host(url) !== host(job.website)))) throw Error('External/social sources require explicitly reviewed capture import before execution');
   const fetched_at = now().toISOString();
@@ -79,16 +100,17 @@ export async function collectPublicSources(job, { request = fetch, resolveHost =
   const sources = [], failures = [];
   for (const original of job.seed_urls) {
     try {
+      const pageTimeout=exactURLs?AbortSignal.timeout(20_000):null,pageSignal=pageTimeout?(signal?AbortSignal.any([signal,pageTimeout]):pageTimeout):null;
       let current = original, response;
       for (let redirect = 0; redirect <= 2; redirect++) {
-        const addresses = await resolveHost(new URL(current).hostname);
+        const addresses = await boundedDNS(new URL(current).hostname,resolveHost,pageSignal);
         if (!addresses.length || addresses.some(item => !publicAddress(item.address))) throw Error('Non-public source address');
         const timeout = AbortSignal.timeout(20_000);
-        response = await request(current, { redirect: 'manual', signal: signal ? AbortSignal.any([signal, timeout]) : timeout, headers: { Accept: 'text/html,text/plain' } });
+        response = await request(current, { redirect: 'manual', signal: pageSignal??(signal ? AbortSignal.any([signal, timeout]) : timeout), headers: { Accept: 'text/html,text/plain' } });
         if ([301, 302, 303, 307, 308].includes(response.status)) {
           await response.body?.cancel();
           const target = new URL(response.headers.get('location'), current);
-          if (redirect === 2 || target.protocol !== 'https:' || target.username || target.password || target.port || host(target.href) !== host(job.website)) throw Error('Redirect outside approved source scope');
+          if (redirect === 2 || target.protocol !== 'https:' || target.username || target.password || target.port || host(target.href) !== host(job.website) || exactURLs&&!job.seed_urls.includes(target.href)) throw Error('Redirect outside approved source scope');
           current = target.href;
         } else break;
       }

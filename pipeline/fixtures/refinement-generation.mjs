@@ -1,0 +1,44 @@
+import {makeGatewayClient} from '../gateway-proof.mjs';
+import assert from 'node:assert/strict';
+import {join} from 'node:path';
+import {fixture as projectFixture,name,event,scope,origin,at} from './shared-project-continuation.mjs';
+import {runtime,source,review,substitutedPNG,fictionalBlobs} from './hosted-authoring.mjs';
+import {hash,StudioLifecycle} from '../lifecycle.mjs';
+import {projectWorkContext} from '../project-work.mjs';
+import {refinementCapability,refinementRequest,refinementSchema} from '../refinement-generation.mjs';
+import {prepareProjectWorkspace,installProjectWorkspace} from '../shared-project-continuation.mjs';
+import {ConditionalLifecycleStore} from '../lifecycle-store.mjs';
+import {attachHostedAuthoring} from '../hosted-authoring.mjs';
+import {createHostedDesk} from '../hosted-desk.mjs';
+import {createRefinementBackground} from '../netlify-functions/refinement-generation.mjs';
+import {sharedDeskSession} from '../shared-originals-client.mjs';
+import {connectSharedAuthoring} from '../hosted-authoring-client.mjs';
+export {name,event,origin,at};
+export async function fixture(t,{actor='owner',editOutput,afterPhase,clock,keep=false}={}){
+ const original=await projectFixture(keep?null:t,{actor}),client=await original.connect(actor),seed=await client.begin(name,'website-concepts'),rt=await runtime();
+ await client.render(seed.id,source(seed.context),rt);const receipt=JSON.parse(await client.download(seed.id,'export.json')),rasters=await client.rasters(seed.id,{pdf_sha256:receipt.pdf.sha256,rasterizer:'Fixture seed substitute only',pages:receipt.pages.map(()=>substitutedPNG)});await client.complete(seed.id,review(receipt,rasters));
+ const session=await original.session(actor);async function apply(e){return session.json('/api/event',{method:'POST',body:{event:e,revision:(await original.app.snapshot()).revision}});}
+ await apply(event('baseline','asset_version_selected',{asset_id:seed.id,version_id:seed.id},'studio-assets'));
+ await apply(event('background','asset_feedback_added',{asset_id:seed.id,version_id:seed.id,feedback:'Use "#EDF1E8" for page background.',scope:'project',project_id:'shared-proof'},'studio-assets'));
+ await apply(event('refinement','concept_refinement_requested',{asset_id:seed.id,version_id:seed.id,selected_direction:'d0',feedback:'Keep composition and wording; apply the supported background rules.'}));
+ const model='fictional-refinement-model',state=await original.app.snapshot(),packet=projectWorkContext(state,'shared-proof','website-refinement-1'),selected=JSON.parse(await client.download(seed.id,'authored.json')),request=refinementRequest(packet,selected,rt,{model,maximum_output_tokens:4096}).request;
+ const job_id='author-'+hash({project:'shared-proof',work:'website-refinement-1',event:packet.work.request_event,context:packet.context_sha256,attempt:0}).slice(0,32);
+ const spec={job_id,project_id:'shared-proof',work_id:'website-refinement-1',context_sha256:packet.context_sha256,source_sha256:hash(selected),runtime_sha256:hash(rt),request_sha256:hash(request),schema_sha256:hash(refinementSchema)};
+ const catalog={providers:{gemini:{models:{[model]:{pricing:{input:1,output:1}}}}}};
+ const policy={version:refinementCapability,status:'UNAPPROVED',model,jobs:[spec],catalog_sha256:hash(catalog),maximum_catalog_input_usd_per_million:1,maximum_catalog_output_usd_per_million:1,maximum_input_tokens:8192,maximum_output_tokens:4096,maximum_output_bytes:120000,maximum_request_bytes:300000,maximum_count_attempts:1,maximum_generation_attempts:1,maximum_lifetime_requests:1,maximum_daily_requests:1,maximum_cycle_requests:1,reserved_microcredits_per_job:3_000_000,maximum_microcredits:3_000_000,host_reserve_credits:900,prior_policy_reserve_credits:20,execution_ms:30000,expires_at:'2026-10-24T21:15:00.000Z',cycle:'fictional-only'};
+ const output=join(original.directory,'generation-seed.json');await client.backup(output);
+ const prepared=await prepareProjectWorkspace({backup:output,sourceConfig:original.app.config,scope:{...scope,capability:refinementCapability,policy_sha256:hash(policy),namespace:'evz-project-shared-refinement-20261024'},refinementPolicy:policy}),storage=fictionalBlobs(),store=new ConditionalLifecycleStore(storage.raw,{projectBinding:prepared.binding});await installProjectWorkspace(store,prepared,{commit:true});
+ const env={...original.env,EVZ_OPERATIONS_DESK_ENABLED:refinementCapability,EVZ_OPERATIONS_PROJECT_BINDING:JSON.stringify(prepared.binding),EVZ_OPERATIONS_BLOB_NAMESPACE:prepared.binding.scope.namespace,EVZ_REFINEMENT_GENERATION_ENABLED:refinementCapability,EVZ_REFINEMENT_DISPATCH_SECRET:'h'.repeat(48),NETLIFY_AI_GATEWAY_KEY:'fictional-key',GEMINI_API_KEY:'fictional-key',NETLIFY_AI_GATEWAY_URL:'https://gateway.example.invalid',GOOGLE_GEMINI_BASE_URL:'https://gateway.example.invalid'};
+ const now=clock??(()=>new Date(at)),counts={count:0,generation:0,dispatch:0},tokens=[];
+ const options={env,storeFactory:()=>storage.raw,now,refinementOptions:{catalogRequest:async()=>new Response(JSON.stringify(catalog)),afterPhase,clientFactory:async()=>makeGatewayClient(env,async(url,init)=>{const body=JSON.parse(init.body);assert.deepEqual(body.contents,request.contents);assert.equal(body.tools,undefined);if(!String(url).endsWith(':countTokens')){assert.equal(body.generationConfig.maxOutputTokens,policy.maximum_output_tokens);assert.equal(body.generationConfig.candidateCount,1);assert.equal(body.generationConfig.temperature,0);}if(String(url).endsWith(':countTokens')){counts.count++;return new Response(JSON.stringify({totalTokens:500}));}counts.generation++;const output={schema_version:1,kind:'website-refinement',context_sha256:packet.context_sha256,author:'Injected fictional provider',requirements_review:'Preserve the exact selected source and supported background preference.',visual_premise:'Retained selected direction with supported background change.',limitations:'Injected provider integration proof; semantic quality is unproved.',questions:[],selected_direction:'d0',previous_asset_id:seed.id,previous_version_id:seed.id,feedback:packet.source.request.feedback,preserves_direction:true,pages:[selected.pages[0]],preference_review:[]};const response={text:JSON.stringify(output),usageMetadata:{promptTokenCount:500,candidatesTokenCount:500},modelVersion:model,candidates:[{finishReason:'STOP'}]};const result=editOutput?await editOutput(response,output):response;return new Response(JSON.stringify({...result,text:undefined,candidates:[{finishReason:result.candidates[0].finishReason,content:{role:'model',parts:[{text:result.text}]}}]}));},30000,policy)}};
+ const worker=createRefinementBackground(options),context={deploy:{context:'deploy-preview',id:scope.deploy_id},site:{id:scope.site_id}};
+ const execute=token=>worker(new Request(origin+'/desk/api/project-author/generate-execute',{method:'POST',headers:{'content-type':'application/json','x-evz-refinement-capability':token},body:JSON.stringify({job_id,attempt_id:'refine-'+job_id})}),context);
+ options.refinementOptions.dispatch=async token=>{counts.dispatch++;tokens.push(token);await execute(token);};
+ const make=overrides=>createHostedDesk({...options,env:{...env,...overrides}}),fetcher=(url,init)=>make()(new Request(url,init));
+ const connect=(who=actor)=>connectSharedAuthoring({origin,key:env[who==='owner'?'EVZ_OPERATIONS_OWNER_KEY':'EVZ_OPERATIONS_FRIEND_KEY'],fetcher});
+ const signed=who=>sharedDeskSession({origin,key:env[who==='owner'?'EVZ_OPERATIONS_OWNER_KEY':'EVZ_OPERATIONS_FRIEND_KEY'],fetcher});
+ const app=attachHostedAuthoring(await StudioLifecycle.fromStore({store,now}),storage.raw),caller=await connect(actor),job=await caller.begin(name,'website-refinement');await caller.registerRuntime(job.id,rt);
+ const authorize=async()=>{const owner=await connect('owner');return owner.authorizeGeneration({policy_sha256:hash(policy),remaining_credits:1000,observed_at:at,auto_recharge_disabled:true});};
+ const generate=async()=>caller.generate(job.id,(await app.snapshot()).revision,hash(policy));
+ return {directory:original.directory,original,prepared,env,app,store,storage,policy,packet,rt,job,caller,connect,signed,make,counts,tokens,execute,authorize,generate,options,seed,selected};
+}

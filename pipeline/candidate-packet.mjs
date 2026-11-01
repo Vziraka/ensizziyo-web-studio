@@ -1,0 +1,21 @@
+import {check,hash} from './lifecycle.mjs';
+import {businessTypes} from './business-types.mjs';
+import {verificationOpening} from './verification-calls.mjs';
+const dmv=/\b(?:Fairfax|Arlington|Alexandria|Vienna|Chantilly|Centreville|Herndon|Reston|Annandale|McLean|Falls Church|Leesburg|Ashburn|Sterling|Loudoun|Woodbridge|Manassas|Springfield|Burke|Lorton|Oakton|Great Falls|Northern Virginia|Montgomery County|Prince George.?s County|Bethesda|Rockville|Silver Spring|Gaithersburg|Potomac|Hyattsville|Bowie|Washington,?\s*(?:D\.?C\.?|DC))\b/i;
+const tradeWords={HVAC:/\bHVAC\b|air conditioning|heating|heat pumps?/i,Plumbing:/plumbing/i,Roofing:/roofing/i,Electrical:/electrical|electrician/i,Cleaning:/cleaning/i,Landscaping:/landscap\w*|lawn care/i,Dental:/dental|dentist/i,'Med spas':/med\s*spa|medical spa/i,Clinics:/clinic|medical practice|wellness/i,Restaurants:/restaurant/i,'Cafés':/caf[eé]|coffee/i,Bakeries:/bakery|bakeries|cakes/i,Catering:/catering/i,'Beverage vendors':/beverage|juice|drinks/i,'Food trucks':/food truck/i,'Agents / teams':/real estate|realtor/i,Brokerages:/brokerage/i,'Property management':/property management/i,Law:/attorney|legal services|law firm/i,Accounting:/accounting|bookkeeping|\bCPA\b/i,Consulting:/consulting/i,'Other local services':/services/i};
+export function candidatePacket(candidate,sources,b,now,intake){
+  const pick=fn=>{for(const s of sources){const excerpt=fn(s.text);if(excerpt)return {url:s.url,excerpt};}throw Error('Required first-party evidence was not found in the bounded captures');};
+  const identity=pick(t=>{const i=t.toLowerCase().indexOf(candidate.name.toLowerCase());return i<0?null:t.slice(i,i+candidate.name.length);});
+  const location=pick(t=>t.match(dmv)?.[0]);
+  const offering=pick(t=>t.match(tradeWords[candidate.subtype])?.[0]);
+  const public_phone=pick(t=>t.match(/(?:\+?1[ .-]?)?\(?[2-9]\d{2}\)?[ .-]\d{3}[ .-]\d{4}\b/)?.[0]);
+  const urls=new Set([identity,location,offering,public_phone].map(c=>c.url));check(urls.size<=(b.profile_version===1?4:2),'Too many verification sources are needed; retain for manual review');
+  const selected=b.profile_version===1?sources.slice(0,4):sources.filter(s=>urls.has(s.url));
+  if(selected.length===1){const ownerPage=sources.find(s=>!urls.has(s.url)&&/owner|founder|president|our team|family.owned/i.test(s.text));if(ownerPage)selected.push(ownerPage);}
+  const established=selected.flatMap(s=>{const excerpt=s.text.match(/\b(?:since|founded in|established in)\s+(?:19|20)\d{2}\b|\bour team\b/i)?.[0];return excerpt?[{url:s.url,excerpt}]:[];})[0];
+  const packet={schema_version:1,...(b.profile_version===1?{profile_version:1}:{}),id:`db-${hash(`${b.id}:${candidate.website}`).slice(0,30)}`,business_name:candidate.name,category:`${businessTypes.find(t=>t.id===candidate.category).label}: ${candidate.subtype}`,business_type:{category:candidate.category,subtype:candidate.subtype},area:location.excerpt,phone:public_phone.excerpt,...(established?{established_evidence:established}:{}),
+    topic:`Ask how new ${candidate.subtype.toLowerCase()} enquiries reach the business and what the owner would most like to make easier. Do not assume a problem, interest or current process.`,owner_question:'How do new enquiries reach you today, and what would you most like to make easier?',reviewed_by:'Pending source review',first_party_note:'Captured public pages on the candidate business website; the independent review checks identity, contact, the evidence-led opening and whether its narrow question avoids assumed needs.',unknowns:['Current operation and owner goals need confirmation.','Budget and willingness to buy are unknown.','A public business line is not an owner-direct number.'],sources:selected,identity,location,offering,public_phone,
+    discovery:{channel:intake?.channel??'Google Search',source_url:selected[0].url,...(intake?{intake:structuredClone(intake)}:{}),website_status:'Verified site',website_url:candidate.website,customer_channel:'Public website checked; internal enquiry handling and follow-up are unconfirmed.',next_check:'Confirm current operation, the decision-maker and their goals before recommending a paid scope.'}};
+  packet.opening=verificationOpening(packet);
+  return packet;
+}
