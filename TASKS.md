@@ -1,5 +1,40 @@
 # Launch tasks
 
+## Operations release — November 1, 2026
+
+Owner approved the interview conclusions and workflow, then said "ok looks good go ahead". This task supersedes earlier proposed launch scope where explicitly different; historical evidence and contact restrictions remain intact. Enterprise with two Premium seats is owner-reported current context, not independently verified entitlement.
+
+### Agreed behavior
+
+- Both operators use the shared desk with either/both computers off. Shared visibility, explicit recorded reassignment and assigned-operator approval/sending; either can pause all outreach. Returning clients retain ownership, genuinely new clients alternate, ambiguous matches await review.
+- Relevant inquiries and tracked replies enter automatically; newsletters/automated mail stay out and uncertain classification waits for review. Any incoming reply pauses its outreach sequence before classification completes.
+- Call preparation, research, history, manual notes/outcomes and follow-ups remain available independently of email. Recording/transcription/AI audio analysis are deferred. Existing PDFs can be inspected/attached; new PDF generation stays in the existing separate authoring workflow.
+- AI drafts are on demand. Both operators send through hello@evzdigital.studio. Exact recipient/content/attachment changes invalidate approval. Uncertain delivery holds for provider readback before retry; never infer a successful send from a timeout.
+- Daily automatic public research targets established independent DMV home services: HVAC/plumbing/electrical and roofing/remodeling/landscaping/cleaning. Strong smaller operators remain eligible. New means not previously contacted, not newly founded. Propose additional regions within this sector for owner approval before geographic expansion.
+- One deduplicated researched pool offers Call first, Email first and Hold. On-demand call-first batches are additional to the email target; call-first records do not automatically email before the call outcome is recorded.
+- Day-one target: 100 distinct new businesses receive their first approved email every day, seven days/week. Previously called businesses, duplicates and follow-ups do not count. Insufficient eligible/approved supply produces an explicit shortfall, not relaxed criteria or automatic next-day catch-up.
+- Batch review displays each business, recipient, evidence and exact message; edit/exclude individual entries and approve selected entries together. First email is a short evidence-backed introduction and discussion question, without unsolicited PDFs or generated proposals. Unanswered-call email never implies a conversation occurred. No fabricated facts/problems, losses or promised results.
+- Spread approved sends over 09:00–17:00 recipient-local time, seven days/week. After-window approvals wait. Email nonresponders become call-eligible after three business days; one exact preapproved email follow-up is eligible after seven calendar days. Replies, opt-outs, bounces and recorded conversations stop/pause the appropriate sequence for human handling.
+- Immediate failure/disconnection alerts and a daily 18:00 America/New_York summary, including sent/new/follow-up/reply/call-due counts, shortfalls and still-scheduled mail. Prefer ChatGPT notifications after verifying both operators' access; retain history in the desk.
+- Existing subscriptions first; preserve progress and pause affected work at exhausted allowances. No automatic paid overage, purchase or paid-provider switch. Agent Reach is an evaluated research candidate, not an adopted Apollo replacement. Preserve historical Apollo receipts while removing active launch dependencies.
+- Preserve existing research, ownership, calls, PDFs and restrictions through a backed-up, checked migration. No automatic campaign enrollment of historical contacts.
+
+### Completion gates
+
+- [x] Record approved scope and inspect the prior chat/current source checkouts; preserve the hybrid checkout's uncommitted work.
+- [ ] Reconcile inherited changes into the release branch with source hashes and affected checks; map reusable code, repairs and deferred features.
+- [ ] Verify Sites versus current hosting: fictional shared record, two actual signed-in operators, exact draft approval, durable reload and fresh unattended update with desktop closed. Verify source access separately from Site write access, account limits and costs. Do not select migration from documentation alone.
+- [ ] Complete shared records/intake/assignment, existing-PDF and on-demand draft journey with approved in-desk sending; verify default holds and disabled integrations.
+- [ ] Replace active Apollo dependencies without losing historical tasks/receipts; verify public research and call workflow without Apollo access.
+- [ ] Implement exact batch scheduling, shared call/email contact history, reply stops, uncertainty handling, cadence, allowances and visible shortfalls. Demonstrate sustainable 100/day capacity before claiming launch acceptance.
+- [ ] Verify desktop/mobile, two-operator identity/authorization, provider readback, backup/restore and actual computer-off operation.
+- [ ] Perform distinct requirements/engineering reviews, required CI and deployment-effect review; merge the reviewed stack in dependency order. Code merge does not activate sending.
+- [ ] Resolve commercial mailing-address prerequisite and remaining provider launch requirements before activation. Owner explicitly left the address unresolved; commercial outreach remains held.
+
+### Current checkpoint
+
+November 1: release branch `codex/operations-release` starts at `e522327` (PR125), above PR124 and PR123. Original hybrid checkout remains untouched with 19 modified tracked files and 13 untracked files. Prior chat's final blocker was unavailable browser access; its 1,174-test report is historical, not a fresh check. Current Sites eligibility lists Sites but no Gmail/Drive; discovery reports those plugins available but uninstalled. No Sites exist in the selected account's owner list. This establishes neither Enterprise tier nor teammate access, included capacity or unattended provider authority. No migration, live send or recurring activation has occurred.
+
 ## Studio workflow implementation — October 28, 2026
 
 Owner authorized implementation after the design interview. Latest selection: references and saved client preferences are consulted only when requested. Model reviews are weekly and before substantial work; defaults never switch automatically. Preserve the separate staging checkout and all client/provider state.
