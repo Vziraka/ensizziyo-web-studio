@@ -1,8 +1,14 @@
-import {operationsMailCapability,mailRecordEvents,applyMailRecord} from './shared-operations-exact-mail.mjs';
+import {sharedDispatchEmailTasks,emailDraftReviewBinding} from './email-draft-policy.mjs';
+import {operationsMailCapability,isOperationsMail,mailRecordEvents,applyMailRecord} from './shared-operations-exact-mail.mjs';
 import {applySharedProjectEvent,sharedProjectDashboard} from './shared-project-continuation.mjs';
 import {bookingConfirmations} from './calendar-confirmation.mjs';
 import {calendarBookingView} from './shared-operations-calendar.mjs';
-import {replySuggestion,replyDraftContent,replyDraftCurrent,validReplySource} from './reply-content.mjs';
+import {replySuggestion,replyDraftContent,replyDraftCurrent,validReplySource,emailDraftSource} from './reply-content.mjs';
+import {retainedConversationContext} from './google-incoming-mail.mjs';
+import {conversationEvents,applyConversationRecord} from './conversation-records.mjs';
+import {localInquiryEvents,applyLocalInquiry} from './local-inquiry-intake.mjs';
+import {applyLocalDelivery,deliveryGateView} from './local-delivery-gates.mjs';
+import {selectReplyAttachments,currentReplyAttachments} from './reply-attachments.mjs';
 import {applyInertNote,inertReconciliation} from './inert-shared-workspace.mjs';
 import {applyManualRecord,manualRecordEvents} from './shared-manual-records.mjs';
 import {applyDispatchManualRecord,applyDispatchProjectRecord,dispatchHasManual,dispatchHasProjects,dispatchProjectEvents} from './shared-internal-dispatch.mjs';
@@ -13,7 +19,8 @@ import { join } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { acquireLock, privateStateDirectory, readJson, saveJson } from './engine.mjs';
-import { dailyCallQueue } from './apollo-queue.mjs';
+import { dailyCallQueue } from './call-queue.mjs';
+import {outreachReviewEvents,applyOutreachReview,outreachReviewView} from './outreach-review.mjs';
 import { verificationLane, verificationData, validateVerificationRecord, verificationFresh, callStages } from './verification-calls.mjs';
 import { verifySupplementalReviewLedger } from './supplemental-reviews.mjs';
 import { callSupply } from './call-desk.mjs';
@@ -238,11 +245,12 @@ export class StudioLifecycle {
     this.config = await this.loadConfig();
     check(key(event?.id) && key(event.prospect_id) && text(event.type, 80) && date(event.at), 'Event needs stable IDs and an explicit timestamp');
     check(Date.parse(event.at) <= +this.now() + 60_000, 'An event cannot claim a future action');
+    if(this.store?.emailTaskBinding)return (await import('./shared-email-draft-tasks.mjs')).recordEmailTaskReview(this,event,actor,expectedRevision);
     if(this.store?.dispatchBinding&&dispatchHasManual(this.store.dispatchBinding.scope.capability)){
       const config=this.config,record={event,actor,revision:expectedRevision};
-      const mail=config.shared_capability===operationsMailCapability&&mailRecordEvents.includes(event.type);
-      const project=dispatchHasProjects(config.shared_capability)&&dispatchProjectEvents.includes(event.type);
-      return this.change(state=>{record.at=this.now().toISOString();return (mail?applyMailRecord:project?applyDispatchProjectRecord:applyDispatchManualRecord)(state,config,record,new Date(record.at));},{eventId:event.id,eventFingerprint:hash({event,actor}),configFingerprint:hash(config),[mail?'mailRecord':project?'projectRecord':'manualRecord']:record});
+      const mail=isOperationsMail(config.shared_capability)&&mailRecordEvents.includes(event.type);
+      const project=dispatchHasProjects(config.shared_capability)&&(dispatchProjectEvents.includes(event.type)||conversationEvents.includes(event.type));
+      return this.change(state=>{record.at=this.now().toISOString();if(mail)return applyMailRecord(state,config,record,new Date(record.at),{app:this});return (project?applyDispatchProjectRecord:applyDispatchManualRecord)(state,config,record,new Date(record.at));},{eventId:event.id,eventFingerprint:hash({event,actor}),configFingerprint:hash(config),[mail?'mailRecord':project?'projectRecord':'manualRecord']:record});
     }
     if(this.store?.projectBinding)return this.change(state=>applySharedProjectEvent(state,event,actor,expectedRevision,this.now(),this.config),{eventId:event.id,eventFingerprint:hash({event,actor}),projectRecord:{event,actor,revision:expectedRevision}});
     if(this.store?.inertBinding)return this.change(state=>applyInertNote(state,event,actor,expectedRevision,this.now()),{eventId:event.id,eventFingerprint:hash({event,actor}),inertNote:{event,actor,revision:expectedRevision}});
@@ -257,7 +265,10 @@ export class StudioLifecycle {
     return this.change(state=>this.reduceEvent(state,event,{actor,expectedRevision,validateMachineDraft,validateHostedAssessment}),{eventId:event.id,eventFingerprint});
   }
   // Shared manual recording reuses this reducer without the production call-execution release.
-  reduceEvent(state,event,{actor,expectedRevision,validateMachineDraft=null,validateHostedAssessment=null,manualRecording=false,projectRecording=false}) {
+  reduceEvent(state,event,{actor,expectedRevision,validateMachineDraft=null,validateHostedAssessment=null,manualRecording=false,projectRecording=false,agentDraft=null}) {
+      if(outreachReviewEvents.includes(event.type))return applyOutreachReview(this,state,event,actor,expectedRevision);
+      if(localInquiryEvents.includes(event.type))return applyLocalInquiry(this,state,event,actor,expectedRevision);
+      if(conversationEvents.includes(event.type))return applyConversationRecord(state,event,actor,expectedRevision,this.now());
       const fingerprint = hash({ event, actor });
       if (state.events[event.id]) { check(state.events[event.id].fingerprint === fingerprint, 'Event ID conflicts with saved evidence'); return { duplicate: true, revision: state.revision }; }
       check(expectedRevision === undefined || expectedRevision === state.revision, 'Record changed; refresh before approving');
@@ -379,7 +390,7 @@ export class StudioLifecycle {
         check(r, 'Unknown prospect');
         if(r.origin==='workspace')check(event.type==='note_added','Workspace-only projects support private notes and asset context; no contact, sales qualification or approvals can be inferred');
         if (r.restriction) check(['support_opened', 'support_closed', 'note_added', 'call_note_updated', 'call_audio_reserved', 'call_audio_stored', 'reply_received', 'email_delivered', 'meeting_verified'].includes(event.type), 'Restriction cannot be cleared by a later event');
-        switch (event.type) {
+        if (!applyLocalDelivery(this,r,event,actor)) switch (event.type) {
           case 'opening_selected':selectOpening(r,event,actor);break;
           case 'project_preparation_requested':
           case 'project_work_recorded':
@@ -606,19 +617,28 @@ export class StudioLifecycle {
             if (['decline', 'do_not_contact'].includes(data.kind)) { r.restriction = data.kind; r.stage = 'Stopped'; }
             else { r.stage = data.kind === 'reply' ? 'Reply review' : 'Hold'; r.next_check = data.kind === 'reply' ? 'Owner reviews reply and next action' : 'Verify contact/return date; never auto-resume from a bounce or auto-reply'; } break;
           case 'reply_draft_saved': {
+            const sharedReview=this.store?.key==='workspace'&&this.store.emailTaskBinding?.scope.capability==='fictional-email-draft-review-v1'||sharedDispatchEmailTasks(this);
             owner(actor);check(['owner','friend'].includes(actor),'A signed operator must prepare reply drafts');check(!r.restriction&&r.reply?.kind==='reply'&&['Reply review','Discovery','Information requested'].includes(r.stage)&&validReplySource(r.reply)&&data.source_id===r.reply.source_id&&data.reply_sha256===hash(r.reply)&&data.source_sha256===r.reply.content.source_sha256,'Draft must match the exact current reply with complete content');
             check(!r.follow_up_owner||r.follow_up_owner===actor,'Claim or hand off this reply before editing its draft');
             check(r.contact?.verified===true&&r.contact.email?.toLowerCase()===r.reply.content.from,'Reply recipient differs from the current verified contact');
             check(text(data.body),'Write a bounded reply draft for human review');
-            const content=replyDraftContent(r,data.body,actor,this.config);
+            if(data.agent_task_id||data.agent_context_sha256||data.agent_result_sha256)check((!this.store||sharedReview)&&agentDraft&&state.email_draft_tasks?.[data.agent_task_id]===agentDraft&&agentDraft.status==='Review'&&agentDraft.project_id===r.id&&agentDraft.result.body===data.body&&agentDraft.result_sha256===data.agent_result_sha256&&agentDraft.context_sha256===data.agent_context_sha256&&hash(emailDraftSource(r,this.config,state))===data.agent_context_sha256,'Agent drafts require the atomic task adoption service');
+            if(data.attachments!==undefined)check((!this.store||sharedReview)&&Array.isArray(data.attachments)&&(data.agent_task_id||data.attachments.length===0),'Attached replies require local task adoption; manual edits may only remove the bundle');
+            if(data.agent_task_id)check(hash(data.attachments??[])===hash(agentDraft.result.attachments??[]),'Adopt the exact worker attachment selection');
+            const attachments=data.agent_task_id?selectReplyAttachments(state,r.id,data.attachments??[],agentDraft.studio_asset_ids??[]):data.attachments??r.reply_draft?.content.attachments??[];
+            if(attachments.length){check(!this.store||sharedReview,'Shared profiles do not authorize attached reply drafts');currentReplyAttachments(state,r.id,attachments);}
+            const boundContext=data.agent_context_sha256||(sharedReview||r.reply_draft?.agent_context_sha256||r.conversation_histories?hash(emailDraftSource(r,this.config,state)):null);
+            const content=replyDraftContent(r,data.body,actor,this.config,Boolean(boundContext));
+            if(attachments.length)content.attachments=structuredClone(attachments);
+            if(sharedReview){content.review_binding_sha256=emailDraftReviewBinding(this.config);const origin=agentDraft?{task_id:agentDraft.id,result_sha256:agentDraft.result_sha256,context_sha256:agentDraft.context_sha256,source_ids:agentDraft.result.source_ids,uncertainties:agentDraft.result.uncertainties}:r.reply_draft?.content.agent_origin;if(origin)content.agent_origin=structuredClone(origin);}
             if(r.reply_draft){r.reply_draft_history??=[];r.reply_draft_history.push({...r.reply_draft,status:'Superseded'});}
-            r.reply_draft={source_id:data.source_id,source_sha256:data.source_sha256,reply_sha256:data.reply_sha256,body:content.body,content,sha256:hash(content),owner:r.follow_up_owner??null,at:event.at,actor,status:'Draft'};
+            r.reply_draft={source_id:data.source_id,source_sha256:data.source_sha256,reply_sha256:data.reply_sha256,body:content.body,content,sha256:hash(content),owner:r.follow_up_owner??null,at:event.at,actor,status:'Draft',...(boundContext?{agent_context_sha256:boundContext}:{}),...(data.agent_task_id?{agent_task_id:data.agent_task_id,agent_result_sha256:data.agent_result_sha256}:{})};
             r.reply_drafts??=[];r.reply_drafts.push(r.reply_draft);break;
           }
           case 'reply_draft_approved': {
             owner(actor);check(['owner','friend'].includes(actor),'A signed operator must approve reply drafts');const draft=r.reply_draft;
             check(!r.follow_up_owner||r.follow_up_owner===actor,'Claim or hand off this reply before approving');
-            check(['Reply review','Discovery','Information requested'].includes(r.stage)&&draft?.status==='Draft'&&replyDraftCurrent(r,draft)&&data.sha256===draft.sha256&&data.approved===true&&data.facts_checked===true,'Review the exact current reply draft, recipient and facts before approval');
+            check(['Reply review','Discovery','Information requested'].includes(r.stage)&&draft?.status==='Draft'&&replyDraftCurrent(r,draft,this.config,state)&&data.sha256===draft.sha256&&data.approved===true&&data.facts_checked===true,'Review the exact current reply draft, recipient and facts before approval');
             draft.status='Approved; sending held';draft.approved_by=actor;draft.approved_at=event.at;draft.approval_event=eid;break;
           }
           case 'email_delivered': {
@@ -669,7 +689,7 @@ export class StudioLifecycle {
             r.quote = { ...data, approved_at: event.at, approved_by: actor, reference: safeReference(data.reference) }; r.stage = 'Agreement'; break;
           case 'agreement_recorded':
             owner(actor); check(r.stage === 'Agreement' && data.signed_verified === true && data.quote_sha256 === hash(r.quote), 'Verify signed acceptance of the exact approved quote');
-            r.agreement = { reference: safeReference(data.reference), verified_at: event.at }; break;
+            r.agreement = { reference: safeReference(data.reference), verified_at: event.at, quote_sha256:data.quote_sha256 }; break;
           case 'invoice_recorded':
             owner(actor); check(r.agreement && key(data.invoice_id) && !r.invoices.some(x => x.invoice_id === data.invoice_id), 'A signed agreement and unique invoice are required');
             check(money(data.amount_cents) && data.currency === r.quote.currency && r.invoices.reduce((n, x) => n + x.amount_cents, 0) + data.amount_cents <= r.quote.price_cents, 'Invoice exceeds the fixed approved price');
@@ -753,7 +773,7 @@ export class StudioLifecycle {
     const first = contacted.filter(r => businessDate(r.attempts.find(a => !a.simulated).at) === today).length;
     const supply = callSupply(state, this.now()), queue = supply.queue;
     state.reply_alerts = Object.values(state.prospects).filter(r => r.stage === 'Reply review').map(r => ({ id: `reply-review-${r.id}`, prospect_id: r.id, reason: `${r.name}: verified reply needs a human decision; future cold follow-ups are paused.` }));
-    return { ...state,team_notifications:undefined,notification_preparation:notificationView(state),follow_up_settings:{follow_up:{booking_url:this.config.follow_up?.booking_url},sender:{email:this.config.sender?.email,postal_address:this.config.sender?.postal_address,operator_names:this.config.sender?.operator_names}}, discovery_daily:discoveryDailySummary(state,this.now()), discovery_batches:Object.values(state.discovery_batches??{}).map(discoverySummary), discovery_campaigns:Object.values(state.discovery_campaigns??{}).map(c=>discoveryCampaignSummary(c,state)), discovery_enabled:this.config.discovery?.enabled===true, owner_contact_summary:ownerContactSummary(state,this.now()), provider_contact_summary:providerContactSummary(state,this.now()), supply, calendar_bookings:['shared-operations-calendar-v1','shared-operations-exact-mail-v1'].includes(this.config.shared_capability)?calendarBookingView(state):undefined, pending_bookings:Object.entries(bookingConfirmations(state,this.config)).filter(([id])=>!state.operations?.bookings?.[id]?.verified).map(([id,b])=>({id,prospect_id:b.prospect_id,start:b.start,mode:b.mode,status:state.operations?.holds?.[id]??'Queued for calendar verification'})), supplemental_reviews: supplementalReviews, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, reply_sha256:r.reply?hash(r.reply):null, reply_suggestion:replySuggestion(r),reply_draft:r.reply_draft?{...r.reply_draft,current:replyDraftCurrent(r,r.reply_draft)}:null, opening_view:openingView(r),owner_contact_view:ownerContactView(r,this.now()),contact_evidence:contactEvidenceView(r,this.now()), provider_contact_view:providerContactView(r,this.now()), quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode,follow_up_enabled:this.config.follow_up?.enabled===true, research_paused: researchPaused, research_priority: researchPriority, outreach_paused: !this.config.outreach_enabled, calls_paused: !this.config.outreach_enabled && !this.config.calls_enabled, priority: this.config.priority,
+    return { ...state,outreach_review:this.config.mode==='controlled'&&(!this.store||this.config.staging_recording==='fictional-records-v1')?outreachReviewView(state,null,this.now()):undefined,email_draft_tasks:Object.fromEntries(Object.entries(state.email_draft_tasks??{}).map(([id,{token_sha256,workspace_sha256,...task}])=>[id,task])),team_notifications:undefined,notification_preparation:notificationView(state),follow_up_settings:{follow_up:{booking_url:this.config.follow_up?.booking_url},sender:{email:this.config.sender?.email,postal_address:this.config.sender?.postal_address,operator_names:this.config.sender?.operator_names}}, discovery_daily:discoveryDailySummary(state,this.now()), discovery_batches:Object.values(state.discovery_batches??{}).map(discoverySummary), discovery_campaigns:Object.values(state.discovery_campaigns??{}).map(c=>discoveryCampaignSummary(c,state)), discovery_enabled:this.config.discovery?.enabled===true, owner_contact_summary:ownerContactSummary(state,this.now()), provider_contact_summary:providerContactSummary(state,this.now()), supply, calendar_bookings:['shared-operations-calendar-v1','shared-operations-exact-mail-v1','shared-operations-pdf-mail-v1'].includes(this.config.shared_capability)?calendarBookingView(state):undefined, pending_bookings:Object.entries(bookingConfirmations(state,this.config)).filter(([id])=>!state.operations?.bookings?.[id]?.verified).map(([id,b])=>({id,prospect_id:b.prospect_id,start:b.start,mode:b.mode,status:state.operations?.holds?.[id]??'Queued for calendar verification'})), supplemental_reviews: supplementalReviews, prospects: Object.fromEntries(Object.entries(state.prospects).map(([id, r]) => [id, { ...r, conversation_context:{...retainedConversationContext(state,this.config,r.id),messages:undefined,checked_at:r.conversation_histories?.[r.reply?.thread_id]?.checked_at??null,source_checked_at:state.operations?.gmail_incoming?.checked_at??null}, reply_sha256:r.reply?hash(r.reply):null, reply_suggestion:replySuggestion(r),reply_draft:r.reply_draft?{...r.reply_draft,current:replyDraftCurrent(r,r.reply_draft,this.config,state)}:null, opening_view:openingView(r),owner_contact_view:ownerContactView(r,this.now()),contact_evidence:contactEvidenceView(r,this.now()), provider_contact_view:providerContactView(r,this.now()), delivery_gates:deliveryGateView(r), quote_sha256: r.quote ? hash(r.quote) : null }])), controls: { mode: this.config.mode,follow_up_enabled:this.config.follow_up?.enabled===true, research_paused: researchPaused, research_priority: researchPriority, outreach_paused: !this.config.outreach_enabled, calls_paused: !this.config.outreach_enabled && !this.config.calls_enabled, priority: this.config.priority,
       runtime_enabled: this.config.runtime?.enabled === true, final_review: this.config.mode === 'production' ? { fingerprint: (await import('./production.mjs')).releaseFingerprint(this.config), gates: (await import('./production.mjs')).productionGates(this.config), approved: this.config.release?.approved === true, verified: this.config.verified_summary ?? [],
         calls: { fingerprint: (await import('./production.mjs')).callReleaseFingerprint(this.config), approved: this.config.call_release?.approved === true, evidence: this.config.call_readiness ?? {}, transcript_daily_calls: this.config.transcript_ai.daily_calls } } : null,
       ai_enabled: this.config.transcript_ai.enabled, connector_writes_enabled: this.config.connector_writes_enabled, readiness: this.config.readiness },

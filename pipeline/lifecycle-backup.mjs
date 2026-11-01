@@ -37,7 +37,7 @@ export function hasProjectDependencies(state){return Object.keys(state.drive_ori
 
 // Resolve a closed allowlist from records, never recurse through the workspace.
 async function inventory(state,read,{restoring=false}={}){
- await validateMailEvidence(state);
+ await validateMailEvidence(state,{read});
  if(Object.values(state.operations?.bookings??{}).some(b=>b.confirmation))validateCalendarImport(state,{operations:{bookings:{}}});
  const dispatch=state.operations?.internal_dispatch;check(!Object.values(dispatch?.ticks??{}).some(t=>['Reserved','Claimed'].includes(t.status)),'Complete G1 held: reconcile incomplete dispatch against its exact observed hash; never replay');
  if(dispatch?.authorization)check(hash(dispatch.policy)===dispatch.authorization.data?.policy_sha256&&hash(state.events[dispatch.authorization.id])===hash(dispatch.authorization),'Standing policy/authorization bytes are incomplete');
@@ -171,6 +171,8 @@ export async function restoreLifecycleBackup(input,destination){
   for(const a of Object.values(state.actions))if(a.status==='Pending'){a.status='Uncertain';a.hold='Restored pending mutation; read back provider, never resend';}
   for(const r of Object.values(state.operations?.requests??{}))if(r.status==='Pending'&&['draft','send','stop','booking_create','task_create','task_skip','contact_create','personalize','intent'].includes(r.operation))r.status='Uncertain';
   if(state.operations)delete state.operations.lease;delete state.runtime;
+  // Recovery retains proposal evidence, never pre-restore worker authority, even at the same path.
+  for(const task of Object.values(state.email_draft_tasks??{}))if(['Ready','Review'].includes(task.status)){task.status='Superseded';task.closure_reason='Backup restored; prepare a new task after reviewing current sources';}
   await writeFile(join(destination,'lifecycle-config.json'),JSON.stringify({...initialConfig,run_id:state.run_id,mode:state.mode}),{flag:'wx',mode:0o600,flush:true});
   // Publish state last: interrupted directories cannot be opened as a workspace.
   const temporary=join(destination,'.state.pending');await writeFile(temporary,JSON.stringify(state),{flag:'wx',mode:0o600,flush:true});await link(temporary,join(destination,'lifecycle-state.json'));published=true;await unlink(temporary);

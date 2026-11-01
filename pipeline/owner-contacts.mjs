@@ -67,17 +67,7 @@ export async function retainContactDiscovery(directory,r,job,{connect,now=()=>ne
   const report={schema_version:1,prospect_id:r.id,company_id:r.company_id,bound_contact_sha256,job,checked_at:now().toISOString(),limitations:'Public business sources and identity candidates only. Search results, masked names, number availability flags and general shop phones do not verify an owner-direct line.'};
   try {report.snapshots=await collectPublicSources(job,{...captureOptions,now});}
   catch(e){report.capture_failure=String(e.message).slice(0,300);}
-  report.apollo={status:'Not connected'};
-  if(connect){
-    try {
-      const input={q_organization_domains_list:[domain(job.website)],person_titles:['owner','founder','co-owner','operator','CEO','president'],include_similar_titles:false,per_page:5,page:1};
-      const raw=await connect.call('mcp__codex_apps__apollo_io_apollo_mixed_people_api_search',input);
-      check(!raw.isError&&Buffer.byteLength(JSON.stringify(raw))<=200_000,'Identity search unavailable or response exceeds bound');
-      const data=raw.structuredContent??JSON.parse(raw.content.filter(c=>c.type==='text').map(c=>c.text).join(''));
-      check(Array.isArray(data.people)&&data.people.length<=5,'Identity search response changed');
-      report.apollo={status:data.people.length?'Candidates':'No match',input,raw_response:raw,response_sha256:hash(raw),candidates:data.people.map(p=>({id:p.id,first_name:p.first_name,last_name_obfuscated:p.last_name_obfuscated,title:p.title,organization:p.organization?.name,phone_availability:p.has_direct_phone??null,requires_source_verification:true}))};
-    }catch(e){report.apollo={status:'Unavailable',reason:String(e.message).slice(0,200)};}
-  }
+  report.apollo={status:'Deferred public-first review'};
   const saved={report,sha256:hash(report)};await writeFile(path,JSON.stringify(saved,null,2),{flag:'wx',mode:0o600});return saved;
 }
 

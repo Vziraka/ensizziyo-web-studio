@@ -56,7 +56,7 @@ export function renderAudioControls(parent,{record,callId,kind,state,upload,chec
   const box=el('section');box.className='audio-controls';
   const title=kind==='call'?'Record call':'Record my spoken notes';box.append(el('h3',title));
   box.append(el('p',kind==='call'?'Put the iPhone on speakerphone near this computer. Only voices audible to the computer microphone are captured. This does not access the cellular call directly.':'Record your own post-call summary separately. Review any dictated text before saving it as private call notes.'));
-  const permission=el('input');permission.type='checkbox';const label=el('label',kind==='call'?'I confirmed recording permission with the people on this call.':'This recording is my own private summary.');label.append(permission);box.append(label);
+  const permission=el('input');permission.type='checkbox';const label=el('label',kind==='call'?'I confirmed recording permission with the people on this call.':'This recording is my own private summary.');label.className='checkbox';label.prepend(permission);box.append(label);
   const start=button(title,async()=>{
     if(active){tell('Stop or save the active recording first.',true);return;}
     if(!permission.checked){tell('Confirm recording permission before starting.',true);return;}

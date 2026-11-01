@@ -68,6 +68,7 @@ export function verifySentRaw(message,expected){
 // These same parsers consume real bounded responses and inert store replay observations.
 export async function mailPreflight(request,account){
  const profile=await request('profile');check(profile.emailAddress===account,'Gmail business owner differs');const aliases=await request('settings/sendAs');check(Array.isArray(aliases.sendAs)&&aliases.sendAs.filter(a=>a.sendAsEmail==='hello@evzdigital.studio'&&a.verificationStatus==='accepted').length===1,'Accepted hello@evzdigital.studio send-as identity required');
+ return profile;
 }
 export async function mailFreshSource(request,p){
  if(!p.reply_source){const result=await request('messages?'+new URLSearchParams({q:'from:'+p.to,maxResults:'10'}));check(!result.nextPageToken&&(!result.messages||Array.isArray(result.messages)&&result.messages.length===0),'Mailbox contains an unbound prior reply; import and review it before dispatch');return {no_prior_incoming:true};}

@@ -1,4 +1,7 @@
 import {callTranscriptionView,approveCallTranscription,runCallTranscription,pauseCallTranscription} from './call-transcription.mjs';
+import {createEmailDraftTask,emailDraftTaskContext,submitEmailDraftResult,adoptEmailDraftResult,readEmailTaskAttachment} from './email-draft-tasks.mjs';
+import {conversationEvents} from './conversation-records.mjs';
+import {syncIncomingMail,incomingMailView} from './google-incoming-mail.mjs';
 import {retainedSource} from './retained-sources.mjs';
 import {prepareTeamNotifications,notificationView} from './team-notifications.mjs';
 import {projectContext,projectWorkContext,resolveProject} from './project-work.mjs';
@@ -23,7 +26,7 @@ import {audioRequest,saveCallAudio,readCallAudio,reconcileCallAudio,localAudioSt
 
 import {lifecycleAssets} from './lifecycle-assets.mjs';
 export {lifecycleAssets};
-export function serveLifecycle(app, { port = 8807, quiet = false, analyze = assessTranscript, operatorAuth = createOperatorAuth() } = {}) {
+export function serveLifecycle(app, { port = 8807, quiet = false, analyze = assessTranscript, operatorAuth = createOperatorAuth(), incomingOptions = {} } = {}) {
   const version = runtimeVersion();
   check(Number.isInteger(port) && port >= 0 && port <= 65535, 'Invalid local port');
   const session = randomBytes(32).toString('hex'), csrf = randomBytes(32).toString('hex'), work = new Map();
@@ -48,6 +51,14 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
         res.end(await readFile(join(fileURLToPath(new URL('./lifecycle-ui/', import.meta.url)), file))); return;
       }
       check(!req.headers['sec-fetch-site'] || ['same-origin', 'none'].includes(req.headers['sec-fetch-site']), 'Cross-site requests are blocked');
+      const taskAsset=/^\/api\/email-draft-task\/([a-zA-Z0-9_-]{1,80})\/asset\/([a-zA-Z0-9_-]{1,100})\/([a-zA-Z0-9_-]{1,100})$/.exec(url.pathname);
+      if(taskAsset){check(req.method==='GET','Use the exact task PDF read operation');const token=/^Bearer ([a-f0-9]{64})$/.exec(req.headers.authorization??'')?.[1],original=await readEmailTaskAttachment(app,taskAsset[1],token,taskAsset[2],taskAsset[3]);res.writeHead(200,{...headers,'Content-Type':'application/pdf','Content-Length':original.bytes.length,'Content-Disposition':`attachment; filename="${original.filename}"`,'X-Content-SHA256':original.sha256});res.end(original.bytes);return;}
+      if(/^\/api\/email-draft-task\/[a-zA-Z0-9_-]{1,80}\/(context|result)$/.test(url.pathname)){
+        const [,,,id,command]=url.pathname.split('/'),token=/^Bearer ([a-f0-9]{64})$/.exec(req.headers.authorization??'')?.[1];
+        if(req.method==='GET'&&command==='context')return json(200,await emailDraftTaskContext(app,id,token));
+        check(req.method==='POST'&&command==='result'&&req.headers['content-type']==='application/json','Use the exact task context/result operation');
+        return json(200,await submitEmailDraftResult(app,id,token,await readInput()));
+      }
       check(req.headers.cookie?.split(';').some(x => x.trim() === `studio_session=${session}`), 'Open the private console first');
       if (req.method === 'GET' && url.pathname === '/api/bootstrap') return json(200, { csrf, operator_auth_required: Boolean(operatorAuth) });
       if (req.method === 'POST' && url.pathname === '/api/login') {
@@ -62,16 +73,17 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
         check(operatorAuth && operator && req.headers['x-studio-token'] === csrf && req.headers['content-type'] === 'application/json', 'Operator session or approval token required');
         return json(200, { signed_out: true }, { 'Set-Cookie': operatorAuth.cookie('', { secure: Boolean(req.socket.encrypted), clear: true }) });
       }
-      if(req.method==='GET'&&/^\/api\/project-context\/[a-zA-Z0-9_-]{1,100}(?:\/[a-zA-Z0-9_-]{1,100})?$/.test(url.pathname)){const [,,,project,workId]=url.pathname.split('/'),snapshot=await app.snapshot();return json(200,workId?projectWorkContext(snapshot,project,workId):projectContext(snapshot,project));}
-      if(req.method==='GET'&&url.pathname==='/api/project-resolve')return json(200,resolveProject(await app.snapshot(),url.searchParams.get('name')));
+      if(req.method==='GET'&&/^\/api\/project-context\/[a-zA-Z0-9_-]{1,100}(?:\/[a-zA-Z0-9_-]{1,100})?$/.test(url.pathname)){const [,,,project,workId]=url.pathname.split('/'),snapshot=await app.snapshot();return json(200,workId?projectWorkContext(snapshot,project,workId):projectContext(snapshot,project,{includePreferences:url.searchParams.get('preferences')==='1'}));}
+      if(req.method==='GET'&&url.pathname==='/api/project-resolve')return json(200,resolveProject(await app.snapshot(),url.searchParams.get('name'),{includePreferences:url.searchParams.get('preferences')==='1'}));
       if(req.method==='GET'&&/^\/api\/project-asset\/[a-zA-Z0-9_-]{1,100}\/[a-zA-Z0-9_-]{1,100}\/[a-zA-Z0-9_-]{1,100}$/.test(url.pathname)){
         const [,,,project,asset,version]=url.pathname.split('/'),original=await readProjectAsset(app,project,asset,version);
-        res.writeHead(200,{...headers,'Content-Type':'application/pdf','Content-Length':original.bytes.length,'Content-Disposition':`attachment; filename="${original.filename}"`,'X-Content-SHA256':original.original.sha256});res.end(original.bytes);return;
+        res.writeHead(200,{...headers,'Content-Type':'application/pdf','Content-Length':original.bytes.length,'Content-Disposition':`${url.searchParams.get('preview')==='1'?'inline':'attachment'}; filename="${original.filename}"`,'X-Content-SHA256':original.original.sha256});res.end(original.bytes);return;
       }
       if(req.method==='GET'&&/^\/retained-source\/[a-zA-Z0-9_-]{1,100}\/[a-f0-9]{64}$/.test(url.pathname)){const [,,project,sha]=url.pathname.split('/');return json(200,retainedSource(await app.snapshot(),project,sha,url.searchParams.get('url'),url.searchParams.get('at')));}
       if(req.method==='GET'&&url.pathname==='/api/call-transcription')return json(200,await callTranscriptionView(app));
       if(req.method==='GET'&&url.pathname==='/api/team-notifications')return json(200,notificationView(await app.snapshot()));
-      if (req.method === 'GET' && url.pathname === '/api/state') return json(200, { ...await app.dashboard(), build:await version, csrf, workers: [...work.keys()], current_operator: operator, operator_auth_enabled: Boolean(operatorAuth) });
+      if(req.method==='GET'&&url.pathname==='/api/incoming-mail')return json(200,incomingMailView(await app.snapshot()));
+      if (req.method === 'GET' && url.pathname === '/api/state') return json(200, { ...await app.dashboard(), build:await version, csrf, workers: [...work.keys()], current_operator: operator, operator_auth_enabled: Boolean(operatorAuth),incoming_sync_enabled:!app.store&&Boolean(operatorAuth)&&app.config.google_incoming_mail?.enabled===true&&(incomingOptions.env??process.env).EVZ_OPERATIONS_GOOGLE_INCOMING_MAIL==='fictional-incoming-v1' });
       if(req.method==='GET'&&/^\/call-audio\/[a-zA-Z0-9_-]{1,100}\/[a-zA-Z0-9_-]{1,80}$/.test(url.pathname)){
         const [, ,project,id]=url.pathname.split('/'),clip=await readCallAudio(app,localAudioStore(app.directory),project,id);
         res.writeHead(200,{...headers,'Content-Type':clip.audio.mime,'Content-Length':clip.bytes.length,'Content-Disposition':`inline; filename="${clip.filename}"`});res.end(clip.bytes);return;
@@ -96,11 +108,15 @@ export function serveLifecycle(app, { port = 8807, quiet = false, analyze = asse
       }
       check(req.method === 'POST' && req.headers['x-studio-token'] === csrf && req.headers['content-type'] === 'application/json', 'Owner session and same-origin approval token required');
       const input = await readInput();
+      if(url.pathname==='/api/incoming-mail/sync'){check(operatorAuth&&!app.store,'Signed local incoming-source session required');check(input&&typeof input==='object'&&!Array.isArray(input)&&Object.keys(input).length===0,'Registered incoming refresh accepts only an empty object');return json(200,await syncIncomingMail(app,{...incomingOptions,actor:operator}));}
+      if(url.pathname==='/api/email-draft-tasks/create'){check(operatorAuth,'Individual operator sign-in required for email draft tasks');return json(200,await createEmailDraftTask(app,input,operator));}
+      if(url.pathname==='/api/email-draft-tasks/adopt'){check(operatorAuth,'Individual operator sign-in required for email draft tasks');return json(200,await adoptEmailDraftResult(app,input,operator));}
       if(url.pathname==='/api/team-notifications/prepare')return json(200,await prepareTeamNotifications(app));
       if(url.pathname==='/api/call-transcription/approve')return json(200,await approveCallTranscription(app,input,operator));
       if(url.pathname==='/api/call-transcription/run')return json(200,await runCallTranscription(app,localAudioStore(app.directory),input,operator));
       if(url.pathname==='/api/call-audio-check')return json(200,await reconcileCallAudio(app,localAudioStore(app.directory),input.prospect_id,input.id));
       if (url.pathname === '/api/event') {
+        if(conversationEvents.includes(input.event?.type))check(operatorAuth,'Individual operator sign-in required for conversation records');
         check(!['prospect_imported', 'verification_imported', 'transcript_assessed', 'reply_received', 'email_delivered', 'meeting_verified','call_audio_reserved','call_audio_stored'].includes(input.event?.type), 'Provider/research/worker events cannot be submitted as owner decisions');
         const result = await app.apply(input.event, { actor: operator, expectedRevision: input.revision });
         if (input.event.type === 'transcript_added') {

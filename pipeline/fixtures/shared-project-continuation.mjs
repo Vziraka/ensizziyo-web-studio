@@ -17,12 +17,13 @@ import {fictionalBlobs,env as previewEnv,at,origin,event} from './hosted-authori
 export {at,origin,event};
 export const name='STUDIO TEST Shared production project';
 export const scope={schema_version:1,capability:'shared-project-continuation-v1',workspace_id:'fictional-studio',run_id:'fictional-production',mode:'production',state_schema:1,site_id:'fictional-site',deploy_id:'fictional-deploy',origin,namespace:'evz-project-shared-fictional-20261024'};
-export async function fixture(t,{actor='owner',directory,fetcher:outerFetch,large=false,approvedQuote=false,audio=false,templateVersions=false,retainedGatewayProof,registeredDriveSource,replyData}={}){
+export async function fixture(t,{actor='owner',directory,fetcher:outerFetch,large=false,approvedQuote=false,audio=false,templateVersions=false,retainedGatewayProof,registeredDriveSource,replyData,claimBeforeReply=false}={}){
  directory??=await mkdtemp(join(tmpdir(),'evz-project-shared-'));t?.after(()=>rm(directory,{recursive:true,force:true}));
  const config={...structuredClone(initialConfig),run_id:scope.run_id,mode:'production',calls_enabled:false,runtime:{enabled:false},operations:{enabled:false},release:{approved:false},call_release:{approved:false}};
  config.sender.operator_names={owner:'Fictional Owner',friend:'Fictional Friend'};
  const sourceApp=await StudioLifecycle.initialize({directory:join(directory,'source'),config,now:()=>new Date(at)});
  const prospect=fixtureProspect('shared-proof',at,name);prospect.data.controlled=false;await sourceApp.apply(prospect,{actor:'research-import'});
+ if(claimBeforeReply)await sourceApp.apply(event('initial-client-lead','call_claimed',{}),{actor});
  await sourceApp.apply(event('reply','reply_received',replyData??fixtureReply()),{actor:'provider'});let state=await sourceApp.snapshot();
  await sourceApp.apply(event('website-interest','reply_reviewed',{source_id:state.prospects['shared-proof'].reply.source_id,reply_sha256:hash(state.prospects['shared-proof'].reply),focus:'website',outcome:'discovery'}),{actor});
  const doc=await PDFDocument.create();doc.addPage();const pdf=Buffer.from(await doc.save());

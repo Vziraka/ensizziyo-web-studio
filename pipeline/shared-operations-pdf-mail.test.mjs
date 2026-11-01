@@ -1,0 +1,157 @@
+import test,{after} from 'node:test';
+import assert from 'node:assert/strict';
+// Install throwing guards before any project/SDK import; runtime uses literal fictional boundaries only.
+process.env={...(process.argv[2]?{}:{NODE_TEST_CONTEXT:'child-v8'}),SystemRoot:'C:\\Windows',TEMP:process.platform==='win32'?'C:\\Users\\zvent\\AppData\\Local\\Temp':'/tmp',TMP:process.platform==='win32'?'C:\\Users\\zvent\\AppData\\Local\\Temp':'/tmp'};
+const denied=[];const deny=name=>(...args)=>{denied.push(name);throw Error('Unexpected real IO: '+name);};globalThis.fetch=deny('fetch');
+for(const name of ['http','https']){const m=(await import('node:'+name)).default;m.request=deny(name);m.get=deny(name+' GET');}
+const net=(await import('node:net')).default,tls=(await import('node:tls')).default,dgram=(await import('node:dgram')).default,dns=(await import('node:dns')).default,cp=(await import('node:child_process')).default;
+net.connect=net.createConnection=net.Socket.prototype.connect=deny('net');tls.connect=deny('tls');dgram.createSocket=deny('dgram');
+for(const key of ['lookup','lookupService','resolve','resolve4','resolve6','resolveAny','resolveCaa','resolveCname','resolveMx','resolveNaptr','resolveNs','resolvePtr','resolveSoa','resolveSrv','resolveTxt','reverse']){if(typeof dns[key]==='function')dns[key]=deny('dns');if(typeof dns.promises[key]==='function')dns.promises[key]=deny('dns');}
+for(const key of ['spawn','spawnSync','exec','execSync','execFile','execFileSync','fork'])cp[key]=deny('process');
+(await import('node:module')).syncBuiltinESMExports();
+
+const {isDispatchCapability}=await import('./shared-internal-dispatch.mjs');
+test('P1 PDF mail uses one explicit existing dispatch capability',()=>{
+ assert.equal(isDispatchCapability('shared-operations-pdf-mail-v1'),true);
+ assert.deepEqual(denied,[]);
+});
+const {observeFictionalBlobs}=await import('./fixtures/hosted-authoring.mjs'),sdkStores=[];observeFictionalBlobs(s=>sdkStores.push(s));
+const {fixture:baseFixture}=await import('./fixtures/shared-operations-pdf-mail.mjs'),fixtures=[],proofCases=[],unexpected=[];
+const unselected=name=>(...args)=>{unexpected.push(name);throw Error('Unexpected unselected boundary '+name);};
+async function fixture(t,options={}){const f=await baseFixture(t,options),record={test:t.name,f};fixtures.push(record);Object.assign(f.googleOAuthOptions,{storeFactory:unselected('OAuth credential'),fetcher:unselected('OAuth HTTP'),certificates:unselected('OAuth certificates')});Object.assign(f.refinementOptions,{clientFactory:unselected('model'),catalogRequest:unselected('catalogue'),dispatch:unselected('refinement dispatch')});t.after(async()=>{record.envelope=(await f.store.envelope()).data;record.provider=structuredClone(f.mailWire.calls);record.tokens=f.mailWire.tokenCalls;record.posts=f.mailWire.sent.length;record.incoming=structuredClone(f.wire.calls);record.qualifications=f.fixture_mutations;});return f;}
+const {hash}=await import('./lifecycle.mjs');
+const {incomingRoutes,validateIncomingImport}=await import('./google-incoming-mail.mjs');
+const {mkdir,writeFile}=await import('node:fs/promises'),{join}=await import('node:path'),{createHash}=await import('node:crypto');
+const proofRoot=process.argv[2];if(proofRoot)await mkdir(proofRoot);
+const {ConditionalLifecycleStore}=await import('./lifecycle-store.mjs'),storeErrors=[],captures=[],originalChange=ConditionalLifecycleStore.prototype.change;
+ConditionalLifecycleStore.prototype.change=async function(fn,options={}){let capture;try{const result=await originalChange.call(this,async(s,c)=>{const before=options.projectMail?{...(await this.envelope()).data,state:structuredClone(s)}:null,result=await fn(s,c);if(before){capture={before,after:{...before,state:structuredClone(s)},options:structuredClone({...options,mailSignal:null}),raw:this.store,binding:this.dispatchBinding,env:this.originalsEnvironment,now:this.now,mailGrant:this.mailGrant,incomingGrant:this.incomingGrant,publication_result:'not_acknowledged'};captures.push(capture);}return result;},options);if(capture)capture.publication_result='acknowledged';return result;}catch(error){storeErrors.push(error.stack);throw error;}};
+test('P1/P2 current signed owner permission precedes separate exact PDF approval',async t=>{
+ const f=await fixture(t),pkg=await f.review(),before=await f.app.snapshot();assert.equal(pkg.execution_hold,null);assert.equal(pkg.thread_id,undefined);
+ assert.equal(before.operations.internal_dispatch.authorization.actor,'owner');assert.deepEqual(before.operations.internal_dispatch.authorization.data.policy.incoming_pdf,f.app.config.internal_dispatch.incoming_pdf);
+ const approved=await f.approve(),s=await f.app.snapshot(),a=s.actions[approved.action_id],e=s.events[a.payload.approval_event];assert.equal(e.data.incoming_authorization_event,s.operations.internal_dispatch.authorization.id);assert.equal(Object.values(s.operations.requests).some(q=>q.incoming_pdf),false);assert.equal(f.mailWire.tokenCalls,0);assert.equal(f.mailWire.sent.length,0);assert.deepEqual(denied,[]);
+});
+for(const actor of ['owner','friend'])test('P3/P5/P9 '+actor+' exact unchanged PDF proof covers an immediate reply after old history passes it',async t=>{
+ const f=await fixture(t,{actor}),pkg=await f.review(),approved=await f.approve();let progressed=false;
+ f.mailWire.incomingHook=async(path,u)=>path==='history'?Response.json({historyId:'110',...(BigInt(u.searchParams.get('startHistoryId'))<106n?{history:[{id:'106',messagesAdded:[{message:{id:'immediate-pdf-reply',threadId:'pdf-thread'}}]}]}:{})}):undefined;
+ f.mailWire.bodyHook=async path=>{if(path==='messages/fictional-exact-sent?format=raw'&&!progressed){progressed=true;f.incomingReply();assert.equal((await f.clock()).status,202);assert.equal((await (await f.run()).json()).status,'Complete');}};
+ const result=await f.call('dispatch',{action_id:approved.action_id});assert.equal(result.status,'Verified',JSON.stringify({result,errors:storeErrors.slice(-3),calls:f.mailWire.calls}));assert.equal(progressed,true);assert.equal(f.mailWire.sent.length,1);
+ let s=await f.app.snapshot(),q=s.operations.requests[approved.action_id+'-intent'];assert.equal(q.incoming_pdf.anchor.history_id,'103');assert.equal(q.incoming_pdf.reserved_cursor,'100');assert.equal(q.incoming_pdf.status,'Bootstrap');assert.equal(q.incoming_pdf.scope_change.before.cursor,'110');assert.equal(s.operations.gmail_incoming.cursor,'110');assert.equal(incomingRoutes(s,f.app.config).length,2);validateIncomingImport(s,f.app.config);
+ assert.deepEqual(s.actions[approved.action_id].payload.package.attachments,pkg.attachments);assert.equal(s.actions[approved.action_id].payload.package.body,pkg.body);assert.equal(s.prospects['shared-proof'].project_email_drafts.find(d=>d.id===pkg.draft_id).send_authorized,false);
+ for(let i=0;i<5;i++){const r=await f.tick();assert.equal(r.status,'Complete',JSON.stringify(r));}
+ s=await f.app.snapshot();q=s.operations.requests[approved.action_id+'-intent'];assert.equal(q.incoming_pdf.status,'Ready',JSON.stringify(q.incoming_pdf));assert.equal(q.incoming_pdf.coverage.history_id,'110');assert.equal(s.operations.gmail_incoming.cursor,'110');assert.equal(Object.values(s.events).filter(e=>e.type==='reply_received'&&e.data.source_id==='immediate-pdf-reply').length,1);assert.equal(s.prospects['shared-proof'].cold_paused,true);assert.equal(f.mailWire.sent.length,1);assert.deepEqual(denied,[]);
+ const {validateMailEvidence}=await import('./shared-operations-exact-mail.mjs');await validateMailEvidence(s,{strict:true});proofCases.push({case:'P3-P5-P9-'+actor,action_id:approved.action_id,h0:'103',original_cursor:'100',preserved_scope_cursor:'110',covered:'110',one_post:true,reply_count:1,coverage:structuredClone(q.incoming_pdf),phases:Object.values(s.operations.internal_dispatch.ticks).map(t=>t.phases.incoming)});
+});
+async function trustedFault(f,mutate){const entry=await f.storage.raw.getWithMetadata('workspace',{type:'json',consistency:'strong'});mutate(entry.data.state,entry.data.config);await f.storage.raw.setJSON('workspace',entry.data,{onlyIfMatch:entry.etag});}
+const {signed}=await import('./fixtures/shared-operations-pdf-mail.mjs');
+test('P2 missing, paused, expired, disconnected or changed earlier permission creates no exact action or send',async t=>{
+ for(const mode of ['missing','paused','expired','grant','context']){
+  const f=await fixture(t,{authorize:mode!=='missing'});
+  if(mode==='paused')await f.control('pause',{},'friend');if(mode==='expired')f.setNow(f.app.config.internal_dispatch.expires_at);if(mode==='grant')f.wire.active=false;if(mode==='context')await signed(f,'note_added',{note:'Signed current context changed.'},'owner','signed-current-context');
+  const before=await f.app.snapshot();await assert.rejects(f.approve());const after=await f.app.snapshot();assert.equal(hash(after.actions),hash(before.actions));assert.equal(hash(after.operations.requests),hash(before.operations.requests));assert.equal(f.mailWire.tokenCalls,0);assert.equal(f.mailWire.sent.length,0);
+ }
+ assert.deepEqual(denied,[]);assert.deepEqual(unexpected,[]);
+});
+test('P7 known thread collision retains terminal exact sender proof without a new-conversation claim',async t=>{
+ const f=await fixture(t),a=await f.approve();f.mailWire.threadId='thread';const result=await f.call('dispatch',{action_id:a.action_id});assert.equal(result.status,'Verified',JSON.stringify(result));const s=await f.app.snapshot(),q=s.operations.requests[a.action_id+'-intent'];assert.equal(q.incoming_pdf.status,'Held');assert.equal(q.incoming_pdf.hold.code,'COLLISION');assert.equal(q.incoming_pdf.scope_change,null);assert.equal(q.receipt.thread_id,'thread');assert.equal(incomingRoutes(s,f.app.config).length,1);assert.equal(f.mailWire.sent.length,1);await (await import('./shared-operations-exact-mail.mjs')).validateMailEvidence(s,{strict:true});proofCases.push({case:'P7-known-collision',receipt:q.receipt,incoming:q.incoming_pdf});
+});
+test('P7 incompatible cross-project union preserves raw receipt and old incoming object, then holds scope',async t=>{
+ const f=await fixture(t),a=await f.approve(),before=structuredClone((await f.app.snapshot()).operations.gmail_incoming);let injected=false;
+ f.mailWire.bodyHook=async path=>{if(path!=='messages/fictional-exact-sent?format=raw'||injected)return;injected=true;await trustedFault(f,s=>{const other=structuredClone(s.prospects['shared-proof']);other.id='other-proof';other.name='STUDIO TEST Other proof';other.contact={...other.contact,email:'other-proof@example.invalid'};other.project_work={};other.project_email_drafts=[];s.prospects[other.id]=other;s.actions['trusted-other-native']={id:'trusted-other-native',prospect_id:other.id,type:'email',status:'Verified',payload:{}};s.operations.email['trusted-other-native']={status:'Verified',thread:{thread_id:'pdf-thread',original_id:'other-original',from:'hello@evzdigital.studio',to:other.contact.email,subject:'Other fictional conversation'}};});};
+ const result=await f.call('dispatch',{action_id:a.action_id});assert.equal(result.status,'Verified',JSON.stringify(result));const s=await f.app.snapshot(),q=s.operations.requests[a.action_id+'-intent'];assert.equal(q.incoming_pdf.hold.code,'SCOPE_CONFLICT');assert.deepEqual(s.operations.gmail_incoming,before);assert.equal(s.actions[a.action_id].delivery.message_id,q.receipt.message_id);assert.throws(()=>incomingRoutes(s,f.app.config),/Ambiguous/);assert.throws(()=>validateIncomingImport(s,f.app.config));assert.equal(f.mailWire.sent.length,1);await (await import('./shared-operations-exact-mail.mjs')).validateMailEvidence(s,{strict:true});proofCases.push({case:'P7-trusted-cross-project-collision',qualification:'Trusted concurrent native import fault, not a signed native send',receipt:q.receipt,incoming:q.incoming_pdf});
+});
+test('P8 lost one-POST response resolves only from full exact raw Sent and retains its original H0 and claims',async t=>{
+ const f=await fixture(t),a=await f.approve();f.mailWire.lost=true;assert.equal((await f.call('dispatch',{action_id:a.action_id})).status,'Uncertain');const original=(await f.app.snapshot()).operations.requests[a.action_id+'-intent'];assert.equal(original.incoming_pdf.status,'Unresolved');assert.equal(original.incoming_pdf.route,null);f.mailWire.lost=false;assert.equal((await f.call('reconcile',{action_id:a.action_id})).status,'Verified');const q=(await f.app.snapshot()).operations.requests[a.action_id+'-intent'];for(const field of ['prepared_at','request_claim','dispatch_claim','dispatch_deadline','raw_base64url'])assert.equal(q[field],original[field]);assert.deepEqual(q.incoming_pdf.anchor,original.incoming_pdf.anchor);assert.equal(f.mailWire.sent.length,1);proofCases.push({case:'P8-lost-response',h0:q.incoming_pdf.anchor,receipt:q.receipt,one_post:true});
+});
+for(const mode of ['404','deleted','old-message','missing-root'])test('P7/P8 '+mode+' keeps exact sender receipt and held bounded PDF coverage',async t=>{
+ const f=await fixture(t),a=await f.approve();assert.equal((await f.call('dispatch',{action_id:a.action_id})).status,'Verified');
+ f.mailWire.incomingHook=async(path,u)=>{
+  if(path==='history'&&u.searchParams.get('startHistoryId')==='103')return mode==='404'?Response.json({}, {status:404}):mode==='deleted'?Response.json({historyId:'110',history:[{id:'106',messagesDeleted:[{message:{id:'deleted-unseen',threadId:'pdf-thread'}}]}]}):undefined;
+  if(path==='threads/pdf-thread'&&mode==='old-message'){const old=structuredClone(f.mailWire.root);old.id='preexisting';old.internalDate=String(Number(old.internalDate)-1000);return Response.json({id:'pdf-thread',messages:[old,f.mailWire.root]});}
+  if(path==='threads/pdf-thread'&&mode==='missing-root')return Response.json({id:'pdf-thread',messages:[]});
+ };
+ await f.tick();if(['404','deleted'].includes(mode)){await f.tick();await f.tick();}
+ const s=await f.app.snapshot(),q=s.operations.requests[a.action_id+'-intent'];assert.equal(q.status,'Verified');assert.equal(q.incoming_pdf.status,'Held',JSON.stringify(q.incoming_pdf));assert.equal(q.incoming_pdf.hold.code,mode==='old-message'?'COLLISION':mode==='missing-root'?'KNOWN_SOURCE_MISSING':'HISTORY_GAP');assert.equal(q.incoming_pdf.progress.cursor,'103');assert.equal(q.incoming_pdf.coverage,null);assert.equal(f.mailWire.sent.length,1);validateIncomingImport(s,f.app.config);await (await import('./shared-operations-exact-mail.mjs')).validateMailEvidence(s,{strict:true});proofCases.push({case:'P7-P8-'+mode,incoming:q.incoming_pdf});
+});
+for(const actor of ['owner','friend'])test('P9 '+actor+' new incoming-grant and original final-claim waits obey signed stop before POST',async t=>{
+ for(const boundary of ['incoming-grant','final-ack','exact-token']){
+  const f=await fixture(t,{actor}),a=await f.approve();let stopped=false;const stop=async()=>{const q=(await f.app.snapshot()).operations.requests[a.action_id+'-intent'];if(stopped||!q?.dispatch_claim||q.provider_message_id)return;stopped=true;await signed(f,'contact_stopped',{reason:'do_not_contact'},actor==='owner'?'friend':'owner','signed-pdf-stop-'+boundary);};
+  if(boundary==='incoming-grant')f.wire.grantHook=stop;else if(boundary==='exact-token')f.mailWire.tokenHook=stop;else f.storage.hook=async(key,bytes)=>{if(key==='workspace'&&JSON.parse(bytes).state.operations?.requests?.[a.action_id+'-intent']?.dispatch_claim)await stop();};
+  const result=await f.call('dispatch',{action_id:a.action_id});assert.equal(stopped,true,boundary);assert.equal(result.status,'Uncertain',JSON.stringify(result));assert.equal(f.mailWire.sent.length,0);const q=(await f.app.snapshot()).operations.requests[a.action_id+'-intent'];assert.ok(q.raw_base64url&&q.incoming_pdf.anchor);assert.equal(q.incoming_pdf.status,'Unresolved');
+ }
+ assert.deepEqual(denied,[]);assert.deepEqual(unexpected,[]);
+});
+test('P11 82 through 85 feasible ticks hold before token/send; 86 passes this capacity gate only',async t=>{
+ const {pdfFutureTicks}=await import('./shared-operations-exact-mail.mjs');
+ for(const capacity of [82,83,84,85,86]){
+  const f=await fixture(t,{limits:{ticks_lifetime:capacity,ticks_day:100}}),s=await f.app.snapshot();assert.equal(pdfFutureTicks(s,f.app.config,f.now()),capacity);
+  if(capacity<86){const {currentPDFMail}=await import('./shared-operations-exact-mail.mjs'),safePackage=await f.review();assert.throws(()=>currentPDFMail(s,f.app.config,safePackage,f.now()),/86/);await assert.rejects(f.approve());assert.equal(f.mailWire.tokenCalls,0);assert.equal(f.mailWire.sent.length,0);assert.equal(Object.values((await f.app.snapshot()).operations.requests).some(q=>q.incoming_pdf),false);}
+  else{const a=await f.approve();assert.equal((await f.call('dispatch',{action_id:a.action_id})).status,'Verified');assert.equal(f.mailWire.sent.length,1);}
+  proofCases.push({case:'P11-feasible-'+capacity,capacity,passes_gate_only:capacity>=86,posts:f.mailWire.sent.length});
+ }
+});
+test('P4 all eight actual stages independently reject changed witness, MIME, raw proof and unrelated after-state',async t=>{
+ const first=await fixture(t),a=await first.approve();assert.equal((await first.call('dispatch',{action_id:a.action_id})).status,'Verified');const lost=await fixture(t),b=await lost.approve();lost.mailWire.lost=true;await lost.call('dispatch',{action_id:b.action_id});
+ const {validateDispatchChange}=await import('./shared-internal-dispatch.mjs'),stages=new Map(captures.filter(c=>[a.action_id,b.action_id].includes(c.options.projectMail.action_id)).map(c=>[c.options.projectMail.type,c]));assert.deepEqual([...stages.keys()].sort(),['approve','reserve','materialize','dispatch','sent','read','verified','hold'].sort());let rejected=0;
+ const verify=(c,before=c.before,after=c.after,options=c.options)=>validateDispatchChange(before,after,options,c.raw,{binding:c.binding,env:c.env,now:c.now,mailGrant:c.mailGrant,incomingGrant:c.incomingGrant});
+ for(const [name,c]of stages){await verify(c);const after=structuredClone(c.after);after.state.prospects['shared-proof'].note='Unrequested tamper';await assert.rejects(verify(c,c.before,after));rejected++;
+  for(const field of ['binding_sha256','config_sha256','source_policy_sha256','source_evidence_sha256','package_sha256','prior_request_sha256','prior_action_sha256','prior_email_sha256']){const options=structuredClone(c.options);options.projectMail[field]='0'.repeat(64);await assert.rejects(verify(c,c.before,c.after,options));rejected++;}
+ }
+ const c=stages.get('materialize'),bad=structuredClone(c.options);bad.projectMail.details.raw_base64url=Buffer.from('wrong PDF and MIME').toString('base64url');await assert.rejects(verify(c,c.before,c.after,bad));rejected++;
+ const v=stages.get('verified'),raw=structuredClone(v.options);raw.projectMail.observations.at(-1).value.raw=Buffer.from('wrong Sent MIME').toString('base64url');await assert.rejects(verify(v,v.before,v.after,raw));rejected++;
+ proofCases.push({case:'P4-eight-stage-whole-state',stages:[...stages.keys()],rejected,witnesses:[...stages].map(([type,c])=>({type,before_sha256:hash(c.before),after_sha256:hash(c.after),witness:c.options.projectMail}))});assert.deepEqual(denied,[]);assert.deepEqual(unexpected,[]);
+});
+function twoRoutes(p,s){p.routes.push({...p.routes[0],thread_id:'thread-b',original_id:'original-b',subject:'Second declared conversation'});const registered=p.routes,g={enabled:true,capability:'shared-registered-incoming-v1',run_id:s.run_id,grant_id:p.grant_id,account_email:p.account_email};s.operations.gmail_incoming={...s.operations.gmail_incoming,binding:hash({g,registered}),routes:structuredClone(registered),index:registered.length};}
+for(const mode of ['bootstrap','pending'])test('P6 actual old '+mode+' progress survives late sender route publication byte-for-byte',async t=>{
+ const f=await fixture(t,{policyChange:twoRoutes}),a=await f.approve();f.mailWire.lost=true;assert.equal((await f.call('dispatch',{action_id:a.action_id})).status,'Uncertain');f.mailWire.lost=false;let pages=0;
+ f.mailWire.incomingHook=async(path,u)=>{
+  if(path==='history'){pages++;if(mode==='bootstrap')return Response.json({}, {status:404});return Response.json(pages===1?{historyId:'110',nextPageToken:'page-a'}:{historyId:'120',history:[{id:'111',messagesAdded:[{message:{id:'new-incoming',threadId:'thread'}}]}],nextPageToken:'page-b'});}
+ };
+ for(let i=0;i<2;i++){f.advance(60000);assert.equal((await f.clock()).status,202);await f.run();}
+ const before=structuredClone((await f.app.snapshot()).operations.gmail_incoming);assert.equal(before.phase,mode==='bootstrap'?'bootstrap':'history');if(mode==='bootstrap')assert.equal(before.index,1);else{assert.equal(before.page,'page-a');assert.equal(before.pending.nextPageToken,'page-b');}
+ assert.equal((await f.call('reconcile',{action_id:a.action_id})).status,'Verified');const s=await f.app.snapshot(),q=s.operations.requests[a.action_id+'-intent'];assert.deepEqual(q.incoming_pdf.scope_change.before,before);for(const field of ['cursor','seen','pending','page','pages','start','hold','resync_hold'])assert.deepEqual(s.operations.gmail_incoming[field],before[field]);if(mode==='bootstrap'){assert.deepEqual(s.operations.gmail_incoming.bootstrap_routes,before.routes.map(b=>b.thread_id));assert.equal(s.operations.gmail_incoming.index,1);}else assert.equal(s.operations.gmail_incoming.index,3);validateIncomingImport(s,f.app.config);proofCases.push({case:'P6-'+mode,before,incoming:q.incoming_pdf,after:s.operations.gmail_incoming});
+});
+for(const expired of [false,true])test('P9 final Verified ACK '+(expired?'after deadline preserves the newer PDF progress':'before deadline leaves complete q untouched'),async t=>{
+ const f=await fixture(t),a=await f.approve();let ran=false,expected;
+ f.storage.hook=async(key,bytes)=>{if(key!=='workspace'||ran)return;const q=JSON.parse(bytes).state.operations?.requests?.[a.action_id+'-intent'];if(q?.status!=='Verified')return;ran=true;expected=hash(q);if(expired)f.advance(41000);assert.equal((await f.clock()).status,202);await f.run();};
+ const result=await f.call('dispatch',{action_id:a.action_id}),s=await f.app.snapshot(),q=s.operations.requests[a.action_id+'-intent'];assert.equal(ran,true);assert.equal(q.status,'Verified');assert.equal(f.mailWire.sent.length,1);const phase=Object.values(s.operations.internal_dispatch.ticks).at(-1).phases.incoming;
+ if(expired){assert.equal(result.status,'Uncertain');assert.equal(phase.target.kind,'pdf');assert.equal(q.incoming_pdf.status,'CatchUp');assert.notEqual(hash(q),expected);}else{assert.equal(result.status,'Verified');assert.equal(phase.target.kind,'registered');assert.equal(hash(q),expected);assert.equal(q.incoming_pdf.status,'Bootstrap');}
+ proofCases.push({case:'P9-verified-ack-'+expired,caller_status:result.status,terminal_receipt:q.receipt,incoming:q.incoming_pdf,target:phase.target});
+});
+
+async function closeFutureJob(f){const observed=await f.caller.recovery(f.job.id);await f.caller.reconcile(f.job.id,{snapshot:observed.snapshot,reason:'Fictional offline closure of the retained unrendered claim; no process-stop assertion.',disposition:'close-publication'});await f.caller.revise(f.job.id,'Fresh unapproved future work after preserved recovery.');}
+async function materializeOriginal(f){for(let i=0;i<2;i++)await f.originals.readDriveOriginal({project_id:'shared-proof',asset_id:'drive-pdf',version_id:'v1'});}
+async function retainG1(f,label,root){
+ const {hostedBackupInventory,writePortableLifecycleBackup,readLifecycleBackup,restoreLifecycleBackup}=await import('./lifecycle-backup.mjs'),{attachHostedAuthoring}=await import('./hosted-authoring.mjs'),{blobAudioStore}=await import('./call-audio.mjs'),{StudioLifecycle}=await import('./lifecycle.mjs'),{readProjectAsset}=await import('./project-assets.mjs');
+ attachHostedAuthoring(f.app,f.storage.raw);const inv=await hostedBackupInventory(f.app,blobAudioStore(f.storage.raw)),path=join(root,label+'.json');await writePortableLifecycleBackup(inv.state,inv.files,path,f.now().toISOString());const read=await readLifecycleBackup(path);assert.deepEqual(read.state,inv.state);for(const [name,bytes]of inv.files)assert.deepEqual(read.files.get(name),bytes);assert.equal(read.files.size,inv.files.size);
+ const destination=join(root,label+'-disabled');await restoreLifecycleBackup(path,destination);const local=await StudioLifecycle.open({directory:destination,now:f.now}),restored=await local.snapshot(),expected=structuredClone(inv.state);for(const a of Object.values(expected.actions))if(a.status==='Pending'){a.status='Uncertain';a.hold='Restored pending mutation; read back provider, never resend';}for(const q of Object.values(expected.operations?.requests??{}))if(q.status==='Pending'&&['draft','send','stop','booking_create','task_create','task_skip','contact_create','personalize','intent'].includes(q.operation))q.status='Uncertain';if(expected.operations)delete expected.operations.lease;delete expected.runtime;assert.deepEqual(restored,expected);const c=await local.loadConfig(),{initialConfig}=await import('./lifecycle.mjs');assert.deepEqual(c,{...structuredClone(initialConfig),run_id:inv.state.run_id,mode:inv.state.mode});if(inv.state.asset_index['drive-pdf'].versions.v1.verified_original)assert.deepEqual((await readProjectAsset(local,'shared-proof','drive-pdf','v1')).bytes,f.originalBytes);
+ const record={label,path,state_sha256:hash(inv.state),restored_sha256:hash(restored),files:[...inv.files].map(([path,bytes])=>({path,bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')}))};proofCases.push({case:'P12-'+label,...record});return {...inv,path,local,record};
+}
+test('P12 zero-tick Bootstrap requires exact initial progress and original anchor/route evidence',async t=>{
+ const f=await fixture(t),a=await f.approve();assert.equal((await f.call('dispatch',{action_id:a.action_id})).status,'Verified');
+ const s=await f.app.snapshot(),logical=a.action_id+'-intent',q=s.operations.requests[logical],{validateMailEvidence}=await import('./shared-operations-exact-mail.mjs');
+ assert.equal(q.incoming_pdf.status,'Bootstrap');assert.equal(Object.keys(s.operations.internal_dispatch.ticks).length,0);await validateMailEvidence(s,{strict:true});
+ for(const change of [x=>x.progress.cursor='104',x=>{x.status='CatchUp';x.progress.phase='history';},x=>x.anchor=null,x=>x.route=null]){
+  const changed=structuredClone(s);change(changed.operations.requests[logical].incoming_pdf);await assert.rejects(validateMailEvidence(changed,{strict:true}));
+ }
+ assert.equal(f.mailWire.sent.length,1);assert.deepEqual(denied,[]);assert.deepEqual(unexpected,[]);
+});
+
+test('P12 complete inert G1 retains every PDF stage, raw proof, dependencies and stopped both-role access',async t=>{
+ const f=await fixture(t,{claimBeforeReply:true});await closeFutureJob(f);const root=join(proofRoot??f.base.directory,'pdf-g1');await mkdir(root);const a=await f.approve();let reserved=false;
+ f.storage.hook=async(key,bytes)=>{if(key!=='workspace'||reserved)return;const q=JSON.parse(bytes).state.operations?.requests?.[a.action_id+'-intent'];if(q?.status!=='Reserved')return;reserved=true;await retainG1(f,'reserved',root);};
+ f.mailWire.lost=true;assert.equal((await f.call('dispatch',{action_id:a.action_id})).status,'Uncertain');f.storage.hook=null;assert.equal(reserved,true);await retainG1(f,'unresolved',root);
+ f.mailWire.lost=false;assert.equal((await f.call('reconcile',{action_id:a.action_id})).status,'Verified');await retainG1(f,'bootstrap',root);
+ await f.tick();await retainG1(f,'catch-up',root);await f.tick();await f.tick();assert.equal((await f.app.snapshot()).operations.requests[a.action_id+'-intent'].incoming_pdf.status,'Ready');await materializeOriginal(f);await retainG1(f,'ready',root);
+ await f.control('pause',{},'friend');
+ // The source fixture claimed this lead while eligible, before the reply and authored context were bound.
+ const beforeHandoff=await f.app.snapshot();assert.equal(beforeHandoff.prospects['shared-proof'].follow_up_owner,'owner');assert.equal(beforeHandoff.events['initial-client-lead'].actor,'owner');
+ await assert.rejects(signed(f,'follow_up_handed_off',{to:'owner'},'friend','signed-pdf-g1-wrong-handoff'),/Only the assigned operator/);assert.deepEqual(await f.app.snapshot(),beforeHandoff);
+ await signed(f,'follow_up_handed_off',{to:'friend'},'owner','signed-pdf-g1-handoff');await signed(f,'contact_stopped',{reason:'do_not_contact'},'friend','signed-pdf-g1-stop');const stopped=await retainG1(f,'stopped-handoff',root),q=stopped.state.operations.requests[a.action_id+'-intent'];assert.equal(q.status,'Verified');assert.equal(q.incoming_pdf.status,'Ready');assert.ok(q.receipt&&q.raw_base64url&&q.incoming_pdf.anchor);assert.equal(stopped.state.actions[a.action_id].assigned_to,'friend');for(const role of ['owner','friend']){const caller=await f.connectOriginals(role);assert.deepEqual((await caller.download({project_id:'shared-proof',asset_id:'drive-pdf',version_id:'v1'})).bytes,f.originalBytes);assert.ok((await caller.download({project_id:'shared-proof',asset_id:f.draft.attachment.asset_id,version_id:f.draft.attachment.version_id})).bytes.length);}
+ assert.equal(f.mailWire.sent.length,1);assert.deepEqual(denied,[]);assert.deepEqual(unexpected,[]);
+});
+
+after(async()=>{
+ if(proofRoot){const records=[];for(const [i,r]of fixtures.entries()){const envelope=r.envelope??(await r.f.store.envelope()).data,path='fixture-'+i+'.json';await writeFile(join(proofRoot,path),JSON.stringify(envelope));records.push({test:r.test,envelope_path:path,envelope_sha256:hash(envelope),binding:r.f.store.dispatchBinding,projectBinding:r.f.store.projectBinding??null,key:r.f.store.key,provider:r.provider??r.f.mailWire.calls,tokens:r.tokens??r.f.mailWire.tokenCalls,posts:r.posts??r.f.mailWire.sent.length,incoming:r.f.wire.incomingCalls,qualifications:r.qualifications??r.f.fixture_mutations});}
+ await writeFile(join(proofRoot,'evidence.json'),JSON.stringify({guard_installation:'Before every project/SDK import; literal fictional environment and throwing real network/process boundaries.',profile:'shared-operations-pdf-mail-v1',sdk:'@netlify/blobs@11.1.6 real pinned SDK with injected fictional HTTP',denied,unexpected,fixtures:records,proofCases,storeErrors,sdk:sdkStores.map(s=>({namespace:s.namespace,requests:s.requests})),stage_captures:captures.map(c=>({stage:c.options.projectMail.type,before:hash(c.before),after:hash(c.after),publication_result:c.publication_result}))},null,2));}
+ assert.deepEqual(denied,[]);assert.deepEqual(unexpected,[]);
+});

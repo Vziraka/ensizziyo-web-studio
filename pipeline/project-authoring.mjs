@@ -8,7 +8,7 @@ import {createHash} from 'node:crypto';
 import {check,hash} from './lifecycle.mjs';
 import {projectWorkContext} from './project-work.mjs';
 import {readProjectAsset,storeProjectPDF} from './project-assets.mjs';
-import {operatorDisplayName,evzIdentity} from './follow-up-template.mjs';
+import {evzIdentity} from './follow-up-template.mjs';
 import {applyDesignPreferences} from './design-preferences.mjs';
 
 const exec=promisify(execFile),sha=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -210,7 +210,7 @@ export function applyAuthoringTransition(s,command,config,now){
   work.result={asset_id:assetId,version_id:versionId,reference,export_reviewed:true,pdf_sha256:original.sha256,...(job.kind==='website-concepts'?{direction_count:5}:{}),...(job.kind==='client-proposal'?{quote_sha256:packet.source.quote_sha256}:{})};
   Object.assign(work,{status:'Review',prepared_by:actor,prepared_at:app.now().toISOString(),prepared_context_sha256:job.context_sha256});
   const title=job.kind==='client-proposal'?'Project proposal':job.kind==='website-refinement'?'Selected website direction - focused refinement':'Five website design directions';
-  const body=`Hi,\n\n${job.kind==='client-proposal'?'Here is the project proposal for your review. Please review the scope, investment, and next steps.':job.kind==='website-refinement'?`Here is the focused refinement of ${work.request.selected_direction}, based on your consolidated feedback.`:'Here are five desktop website directions for your review. Please choose the direction you would like to develop; we can then discuss one focused refinement before scope and price.'}\n\nBest,\n${operatorDisplayName(actor,app.config)}\n${evzIdentity.email}`;
+  const body=`Hi,\n\n${job.kind==='client-proposal'?'Here is the project proposal for your review. Please review the scope, investment, and next steps.':job.kind==='website-refinement'?`Here is the focused refinement of ${work.request.selected_direction}, based on your consolidated feedback.`:'Here are five desktop website directions for your review. Please choose the direction you would like to develop; we can then discuss one focused refinement before scope and price.'}\n\nBest,\nEVZ Digital Team\n${evzIdentity.email}`;
   const draft={id:job.id,status:'Held for human review',to:r.contact.email,from:evzIdentity.email,subject:`${r.name}: ${title}`,body,attachment:{asset_id:assetId,version_id:versionId,reference,sha256:original.sha256,bytes:original.bytes},prepared_by:actor,context_sha256:job.context_sha256,reply_source:packet.source.reply_source,quote_sha256:packet.source.quote_sha256??null,send_authorized:false,client_acceptance:'Not established',hold:'Review exact content, recipient and attachment; use a separately authorized supported attachment send. No send intent exists.'};
   draft.sha256=hash(draft);r.project_email_drafts??=[];r.project_email_drafts.push(draft);
   Object.assign(work.execution,{status:'Review',review_sha256:hash(input.review),reviewed_by:actor,companion_draft_id:draft.id});

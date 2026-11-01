@@ -1,6 +1,6 @@
 import {openingView} from './opening-policy.mjs';
 import {check,hash} from './lifecycle.mjs';
-import {scopedDesignPreferences} from './design-preferences.mjs';
+import {scopedDesignPreferences,designPreferences} from './design-preferences.mjs';
 
 const text=(value,max=3000)=>typeof value==='string'&&value.trim().length>0&&value.length<=max;
 const key=value=>typeof value==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(value);
@@ -10,24 +10,31 @@ const routes={
   'internal-scope':{skill:'evz-proposals',output:'Internal scope/price review only: bounded deliverables, exclusions, client inputs, acceptance, timing, exact USD amounts, revisions, support and tool costs. No client-addressed proposal before exact operator approval.'},
   'client-proposal':{skill:'evz-proposals',output:'Use the exact approved scope and price with the approved EVZ proposal design; retain editable source, reviewed PDF and export checks. Creating a proposal does not send it or prove client acceptance.'}
 };
-function directionContext(state,r){
+function directionContext(state,r,{includePreferences=false,request=null}={}){
   const assets=Object.values(state.asset_index??{}),relevant=assets.filter(a=>a.scope==='studio'||a.project_id===r.id);
   const versions=relevant.map(a=>({asset_id:a.id,name:a.name,kind:a.kind,scope:a.scope,project_id:a.project_id??null,baseline_version:a.baseline_version??null,dispute:a.dispute??null,versions:Object.values(a.versions).map(v=>({...v,status:a.baseline_version===v.id?'Internal approved baseline':'Unapproved version',approval_event:a.baseline_version===v.id?a.baseline_approval_event??null:null,client_acceptance:'Not established by asset registration or internal approval'}))}));
   const approved=relevant.filter(a=>a.baseline_version).map(a=>({asset_id:a.id,name:a.name,kind:a.kind,scope:a.scope,project_id:a.project_id??null,version_id:a.baseline_version,...a.versions[a.baseline_version],approved_by:a.baseline_approved_by??null,approval_event:a.baseline_approval_event??null,agreement_events:a.baseline_agreement_events??[],dispute:a.dispute??null,retrieval:a.versions[a.baseline_version].verified_original?(a.versions[a.baseline_version].original_transfer?'Verified original; use the configured shared chunk client or authenticated local project-asset reader to recheck bytes':'Verified local original; use the authenticated project-asset route or local CLI to recheck bytes'):'Reference only; file contents and permissions have not been retrieved by this interface'}));
-  return {approved_assets:approved,assets:versions,...scopedDesignPreferences(state,r.id)};
+  const saved=scopedDesignPreferences(state,r.id);
+  if(includePreferences)return {approved_assets:approved,assets:versions,...saved};
+  const current=saved.design_preferences.feedback.filter(f=>f.scope==='studio'||request&&f.asset_id===request.asset_id&&f.version_id===request.version_id);
+  if(request?.feedback&&!current.some(f=>f.feedback===request.feedback)){
+    const asset=assets.find(a=>a.id===request.asset_id),instruction={id:'current-refinement-request',feedback:request.feedback,scope:'project',actor:request.requested_by,order:0,baseline_at_feedback:asset?.baseline_version??null,baseline_version:asset?.baseline_version??null,approval_at_feedback:asset?.baseline_approval_event??null,baseline_approval_event:asset?.baseline_approval_event??null};
+    if(designPreferences([instruction]).feedback[0].rule)current.push(instruction);
+  }
+  return {approved_assets:approved,assets:versions,preferences:[],preference_history_sha256:hash(saved),design_preferences:{...designPreferences(current),conflicts:saved.design_preferences.conflicts},preference_recall:'Not requested; optional history withheld. Confirmed studio standards, current task feedback and baseline conflicts remain binding.'};
 }
-export function resolveProject(state,name){
+export function resolveProject(state,name,{includePreferences=false}={}){
   check(text(name,250),'Supply the exact company name');
   const normalized=value=>value.normalize('NFKC').trim().replace(/\s+/g,' ').toLowerCase();
   const matches=Object.values(state.prospects).filter(r=>normalized(r.name)===normalized(name));
   check(matches.length,'No exact company match; clarify the name before creating a workspace');
   check(matches.length===1,'Ambiguous company match; clarify the existing project ID');
-  const r=matches[0];return {project_id:r.id,company_id:r.company_id??null,name:r.name,revision:state.revision,context:projectContext(state,r.id)};
+  const r=matches[0];return {project_id:r.id,company_id:r.company_id??null,name:r.name,revision:state.revision,context:projectContext(state,r.id,{includePreferences})};
 }
-export function projectContext(state,project,{kind='project',request=null}={}){
+export function projectContext(state,project,{kind='project',request=null,includePreferences=false}={}){
   check(Object.hasOwn(state.prospects,project),'Unknown project');const r=state.prospects[project];check(kind==='project'||Object.hasOwn(routes,kind),'Unsupported project workflow');
   const calls=Object.values(r.calls).slice(-3).map(c=>({call_id:c.call_id,performed_at:c.performed_at,outcome:c.outcome,focus:c.focus??null,operator:c.actor,private_note:c.note??'',review:r.approved_calls[c.call_id]??null,transcript:r.transcripts[c.call_id]?{sha256:r.transcripts[c.call_id].sha256,source:r.transcripts[c.call_id].source,audio_ids:r.transcripts[c.call_id].audio_ids??[]}:null,reviewed_claims:r.approved_calls[c.call_id]&&r.proposals[c.call_id]?.review?.verdict==='Accepted'?r.proposals[c.call_id].claims.slice(0,6):[]}));
-  const source={kind,request,researched_opening:openingView(r),stage:r.stage,assigned_to:r.follow_up_owner??null,project_note:r.note??null,reply_review:r.reply_review??null,reply_source:r.reply?{...r.reply,sha256:hash(r.reply)}:null,verification:r.verification?.conversation??null,company:{id:r.id,name:r.name,category:r.category,idea_hypothesis:r.idea,contact:r.contact,...(r.origin?{origin:r.origin}:{})},...(r.workspace?{workspace:r.workspace}:{}),discovery:r.discovery??null,restriction:r.restriction??null,conversations:calls,...directionContext(state,r),refinement_feedback:r.pre_sale_refinements??[],...(kind==='client-proposal'?{approved_quote:r.quote??null,quote_sha256:r.quote?hash(r.quote):null}:{}),...(kind==='internal-scope'?{preview:r.preview??null}:{})};
+  const source={kind,request,researched_opening:openingView(r),stage:r.stage,assigned_to:r.follow_up_owner??null,project_note:r.note??null,reply_review:r.reply_review??null,reply_source:r.reply?{...r.reply,sha256:hash(r.reply)}:null,verification:r.verification?.conversation??null,company:{id:r.id,name:r.name,category:r.category,idea_hypothesis:r.idea,contact:r.contact,...(r.origin?{origin:r.origin}:{})},...(r.workspace?{workspace:r.workspace}:{}),discovery:r.discovery??null,restriction:r.restriction??null,conversations:calls,...directionContext(state,r,{includePreferences,request}),refinement_feedback:r.pre_sale_refinements??[],...(kind==='client-proposal'?{approved_quote:r.quote??null,quote_sha256:r.quote?hash(r.quote):null}:{}),...(kind==='internal-scope'?{preview:r.preview??null}:{})};
   const serialized=JSON.stringify(source);
   check(!/-----BEGIN [A-Z ]*PRIVATE KEY|\b(?:sk-|ghp_|github_pat_)[a-zA-Z0-9_-]{16,}|(?:password|api[_-]?key|authorization)\s*[:=]\s*[^\s"',}]{5,}/i.test(serialized),'Remove credentials from saved context before a tool handoff');
   check(Buffer.byteLength(serialized)<=120_000,'Project context exceeds the bounded handoff; narrow the referenced assets first');

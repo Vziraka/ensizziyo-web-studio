@@ -64,12 +64,12 @@ test('reviewed professional publications need exact business linkage and never a
   const wrong=structuredClone(p);wrong.id=wrong.job.id='wrong-business';wrong.source_approvals[0].identity_excerpt='Jane Stone, owner';await assert.rejects(applyOwnerContact(app,wrong),/identity/);
 });
 
-test('contact discovery reuses bounded public capture and free identity search once; masked names and Maybe phone flags stay candidates',async t=>{
+test('direct contact discovery reuses public capture and never queries an attached Apollo connector',async t=>{
   const directory=await mkdtemp(join(tmpdir(),'owner-contact-'));t.after(()=>rm(directory,{recursive:true,force:true}));const r=record(),p=packet(r);let gets=0,calls=[];
   const connect={call:async(name,input)=>{calls.push({name,input});return {content:[{type:'text',text:JSON.stringify({total_entries:1,people:[{id:'provider-person',first_name:'Jane',last_name_obfuscated:'St***',title:'Owner',has_direct_phone:'Maybe'}]})}]};}};
   const options={now,connect,request:async()=>{gets++;return new Response(p.snapshots.sources[0].text,{headers:{'content-type':'text/plain'}});},resolveHost:async()=>[{address:'8.8.8.8'}]};
   const first=await retainContactDiscovery(directory,r,p.job,options),again=await retainContactDiscovery(directory,r,p.job,options);
-  assert.equal(first.sha256,again.sha256);assert.equal(gets,1);assert.equal(calls.length,1);assert.match(calls[0].name,/mixed_people_api_search$/);assert.deepEqual(calls[0].input.q_organization_domains_list,['bakery.example.com']);assert.equal(first.report.apollo.status,'Candidates');assert.equal(first.report.person,undefined);assert.equal(first.report.direct_phone,undefined);
+  assert.equal(first.sha256,again.sha256);assert.equal(gets,1);assert.equal(calls.length,0);assert.equal(first.report.apollo.status,'Deferred public-first review');assert.equal(first.report.person,undefined);assert.equal(first.report.direct_phone,undefined);
   assert.equal(JSON.parse(await readFile(join(directory,p.job.id,'discovery.json'))).sha256,first.sha256);
   const outside={...p.job,id:'outside',seed_urls:['https://other.example.org/about']};await assert.rejects(retainContactDiscovery(directory,r,outside,options),/existing|domain|scope/i);assert.equal(gets,1);
 });

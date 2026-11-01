@@ -1,5 +1,8 @@
+import {emailDraftReviewBinding} from './email-draft-policy.mjs';
 import {createHash} from 'node:crypto';
 import {operatorDisplayName,evzIdentity} from './follow-up-template.mjs';
+import {currentReplyAttachments} from './reply-attachments.mjs';
+import {retainedConversationContext} from './google-incoming-mail.mjs';
 
 const hash=value=>createHash('sha256').update(typeof value==='string'?value:JSON.stringify(value)).digest('hex');
 const limit=24_000;
@@ -75,15 +78,34 @@ export function replySuggestion(record){
   // This only withholds a starter; it never classifies disposition, resumes contact or books a time.
   if(/\b(?:unsubscribe|remove me|stop|not interested|do not contact|undeliver|delivery fail(?:ed|ure)?|out of (?:the )?office|automatic reply|vacation)\b/i.test(text))return {status:'Held',summary,hold:'Possible refusal, delivery issue or automatic reply. Decide the disposition before drafting in the original mailbox.'};
   let next='What would you most like to improve, and which part should we focus on first?';
-  if(/\b(?:busy|call (?:me |us )?back|callback)\b/i.test(text))next='What day, time and time zone would work for a callback?';
+  if(/\b(?:call (?:me |us )?back|(?:request|want|need|arrange|schedule) (?:a )?callback)\b/i.test(text))next='What day, time and time zone would work for a callback?';
   else if(/\b(?:when|tomorrow|next week|monday|tuesday|wednesday|thursday|friday|available|meeting)\b/i.test(text))next='Could you confirm the date, time and time zone you have in mind?';
   else if(/\b(?:price|cost|quote|pricing|budget)\b/i.test(text))next='Which deliverables and main goal should a quote cover?';
   else if(/\bwebsite\b/i.test(text))next='Which website page or customer journey would you most like to focus on?';
   return {status:'Starter',summary,body:`Hi,\n\nThanks for getting back to me.\n\n${next}`,method:'Conservative rule-based clarification starter; edit after reading the full reply. No factual answer or intent assessment was generated.'};
 }
-export function replyDraftContent(record,body,actor,config){
+export function replyDraftContent(record,body,actor,config,team=false){
   if(!validReplySource(record.reply))throw Error('A complete verified reply body is required');
   const c=record.reply.content;
-  return {from:evzIdentity.email,to:c.from,thread_id:c.thread_id,in_reply_to:c.message_header_id,source_id:c.message_id,source_sha256:c.source_sha256,subject:/^re:/i.test(c.subject)?c.subject:`Re: ${c.subject}`,body:body.trim(),signature:`${operatorDisplayName(actor,config)}\n${evzIdentity.name}\n${evzIdentity.email}\n${evzIdentity.phone}`,prepared_by:actor};
+  return {from:evzIdentity.email,to:c.from,thread_id:c.thread_id,in_reply_to:c.message_header_id,source_id:c.message_id,source_sha256:c.source_sha256,subject:/^re:/i.test(c.subject)?c.subject:`Re: ${c.subject}`,body:body.trim(),signature:team?`EVZ Digital Team\n${evzIdentity.email}\n${evzIdentity.phone}`:`${operatorDisplayName(actor,config)}\n${evzIdentity.name}\n${evzIdentity.email}\n${evzIdentity.phone}`,prepared_by:actor};
 }
-export function replyDraftCurrent(record,draft){return Boolean(['Reply review','Discovery','Information requested'].includes(record.stage)&&!record.restriction&&record.reply?.kind==='reply'&&record.contact?.verified===true&&record.contact.email?.toLowerCase()===record.reply.content?.from&&validReplySource(record.reply)&&draft?.source_sha256===record.reply.content.source_sha256&&draft.reply_sha256===hash(record.reply)&&draft.owner===(record.follow_up_owner??null)&&draft.sha256===hash(draft.content));}
+function reviewedEmailCall(r,id,approved){
+ const stored=r.proposals?.[id],{sha256:proposalHash,review:independent,...proposal}=stored??{},transcript=r.transcripts?.[id],call=r.calls?.[id],scope=independent?.provenance?.scope;
+ const evidence={approved_proposal_sha256:approved.proposal_sha256??null,current_proposal_sha256:proposalHash??null,proposal_content_sha256:hash(proposal),independent_review_sha256:hash(independent??null),transcript_record_sha256:hash(transcript??null),call_record_sha256:hash(call??null)};
+ const transcriptCurrent=typeof transcript?.text==='string'&&transcript.sha256===hash(transcript.text)&&transcript.call_id===id&&['owner','friend'].includes(transcript.actor)&&['Operator-reviewed machine transcript linked to exact saved call audio; factual claims still need review','Operator-supplied transcript linked to saved call audio; wording requires review','Operator-supplied transcript; audio capture not verified'].includes(transcript.source)&&(!transcript.audio_ids||Array.isArray(transcript.audio_ids)&&transcript.audio_ids.every(audio=>r.call_audio?.[audio]?.status==='Stored'&&r.call_audio[audio].call_id===id&&r.call_audio[audio].kind==='call'));
+ const provenanceCurrent=!independent?.provenance||scope&&scope.call_sha256===evidence.call_record_sha256&&scope.transcript_record_sha256===evidence.transcript_record_sha256&&Array.isArray(scope.audio)&&scope.audio.every(a=>a.metadata_sha256===hash(r.call_audio?.[a.id]??null));
+ const available=['owner','friend'].includes(approved.actor)&&call?.outcome==='connected'&&transcriptCurrent&&proposal.transcript_sha256===transcript.sha256&&approved.proposal_sha256===proposalHash&&proposalHash===evidence.proposal_content_sha256&&independent?.verdict==='Accepted'&&independent.independent===true&&independent.proposal_sha256===proposalHash&&provenanceCurrent&&Array.isArray(proposal.claims)&&proposal.claims.every(c=>typeof c.claim==='string'&&typeof c.quote==='string'&&transcript.text.includes(c.quote));
+ return {source_id:'call:'+id,review:{outcome:approved.outcome,at:approved.at,actor:approved.actor,proposal_sha256:approved.proposal_sha256??null,basis:approved.basis??null},evidence,status:available?'Exact operator-reviewed facts':'Unavailable',claims:available?proposal.claims:[],...(!available?{unavailable_reason:'Call claims are unavailable until the exact operator-approved proposal, independent review and current transcript provenance agree.'}:{})};
+}
+export function emailDraftSource(r,config,state){
+ const facts=Object.entries(r.approved_calls??{}).map(([id,review])=>reviewedEmailCall(r,id,review));
+ const review=r.reply_review?(({source_id,reply_sha256,outcome,focus,review_event,actor})=>({source_id,reply_sha256,outcome,focus,review_event,actor}))(r.reply_review):null;
+ const discovery=r.discovery?(({goal,decision_maker,serious_interest,paid_fit_discussed,service,main_flow,preview_screens,confirmed_at,reply_review_event})=>({goal,decision_maker,serious_interest,paid_fit_discussed,service,main_flow,preview_screens,confirmed_at,reply_review_event}))(r.discovery):null;
+ return {project_id:r.id,company:r.name,reply:r.reply,contact:r.contact,owner:r.follow_up_owner??null,stage:r.stage,restriction:r.restriction??null,facts,reply_review:review,discovery,quote:r.quote??null,sender:{email:config.sender?.email,signature:'EVZ Digital Team\nhello@evzdigital.studio\n571-752-9610'},...(r.conversation_histories?{conversation_history:state?retainedConversationContext(state,config,r.id):{status:'Held',hold:'Complete retained source state is required',messages:[]}}:{})};
+}
+export function replyDraftCurrent(record,draft,config,state){
+ if((emailDraftReviewBinding(config)||draft?.content?.review_binding_sha256)&&draft?.content?.review_binding_sha256!==emailDraftReviewBinding(config))return false;
+ try{if(draft?.content&&Object.hasOwn(draft.content,'attachments')){if(!state)return false;currentReplyAttachments(state,record.id,draft.content.attachments);}}catch{return false;}
+ if(record.conversation_histories){const history=state&&config?retainedConversationContext(state,config,record.id):null;if(history?.status!=='Current'||!draft?.agent_context_sha256)return false;}
+ return Boolean(['Reply review','Discovery','Information requested'].includes(record.stage)&&!record.restriction&&record.reply?.kind==='reply'&&record.contact?.verified===true&&record.contact.email?.toLowerCase()===record.reply.content?.from&&validReplySource(record.reply)&&draft?.source_sha256===record.reply.content.source_sha256&&draft.reply_sha256===hash(record.reply)&&draft.owner===(record.follow_up_owner??null)&&draft.sha256===hash(draft.content)&&(!draft.agent_context_sha256||config&&draft.agent_context_sha256===hash(emailDraftSource(record,config,state))));
+}

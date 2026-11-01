@@ -1,0 +1,31 @@
+# Local delivery and maintenance acceptance
+
+This increment extends the existing locked local lifecycle transaction and desk. It is restricted to controlled fictional records and does not activate a provider, authenticate a client, publish a website, charge money, or migrate historical records. Existing shared capability profiles retain their denials. Historical delivery records remain readable under their original semantics; these new gates are not a production rollout.
+
+New controlled onboarding records enter **Ready to build** with no delivery tasks. A separate operator action binds the current accepted quote, settled deposit and onboarding materials before creating one task set. A changed basis or stale revision rejects without a partial write; exact event replay returns the saved result.
+
+Deliveries bind a unique version and content SHA-256. Client approvers have registered names and authority references. Approval is explicitly **operator-attested**, not independently authenticated client identity. Each objection/withdrawal retains its own approver, version and event. Only that named approver's recorded agreement resolves that exact hold; other unresolved holds continue to block approval and release.
+
+Publication is simulated locally: current exact approval, completed internal checks, full settled project balance and explicit target authority precede a durable intent. Dispatch is a separate event. A receipt must match the original intent, content, version and target. Uncertainty reconciles that intent without another dispatch. An undispatched intent may be explicitly cancelled and replaced after renewed approval; dispatched/uncertain intents cannot. Withdrawal after simulated publication creates an urgent review on the client record and never automatically undoes the published result.
+
+Maintenance records contain the actual approved period, category, time allowance and price. Reservation eligibility uses the server's current time, independently of a historical occurrence timestamp. Each work allocation uses exactly one included agreement or accepted additional scope/price. The existing transaction serializes competing reservations. Consumption happens once; support closure requires its exact linked consumed allocation. There is no universal request count or invented response-time promise. The initial desk agreement form exposes the content category; the local event contract accepts explicitly agreed categories.
+
+## Verification and review
+
+- 33 focused lifecycle/delivery/intake checks pass, including two-role decisions, stale revisions, restart/replay, individual objections, expired/backdated allowance, mixed-source rejection, concurrent reservations, exact extra scope, and undispatched-intent recovery.
+- Ten authoring checks pass. Newly created PDF companion drafts use **EVZ Digital Team** and retain `prepared_by`. Historical immutable drafts keep their original wording and remain held; other legacy cold-mail signatures are not silently rewritten.
+- Seven browser/history/readback checks pass on the actual local desk. The form-driven sequence retained one intent and receipt, consumed 15 fictional agreed minutes, and showed postpublication urgent review. Expanded controls fit 390/425/768 CSS-pixel widths after fixing hash wrapping. The credential-free review route is not a proof of real account authentication.
+- Site build/verification and ten site tests pass; two hosted UI asset-bundle checks pass. Final current-source serial regression: **1,166 passed, zero failures/skips, 1,308.429 seconds**. Exact hashes and logs are retained in the private final handoff; the older 1,151-test run and stopped first attempt are not current acceptance.
+- Separate requirements and engineering reviews found the individual-hold, expired-period, mixed-allocation and predispatch recovery issues; focused adversarial checks cover the repairs. Intake tests now assert rotation/replay invariants without assuming concurrent lock acquisition order.
+
+## Coherent fictional client proof
+
+The retained Juniper website study was rendered through the current continuation/authoring/index workflow: five distinct desktop directions, selected Sunday-paper baseline, one focused typography refinement, exact operator-approved fictional scope/price, and the EVZ-template proposal. All eleven actual PDF raster pages were inspected; searchable text, embedded fonts, exact terms, immutable originals and backup/restored readback passed. The example uses existing offline fictional vector artwork, not fresh ImageGen or real company photographs. It demonstrates agent-assisted local authoring, not general unattended creative quality or a built client website.
+
+The original five-page PDF and approved baseline remain unchanged by refinement. The proposal is $1,500 with $750/$750 installments solely as fixture data, not a default price. Companion drafts are held and have no send authority. The same fictional record is visible in the existing local preview after controlled fixture composition; existing preview client records were preserved. Delivery checks use the real static refinement PDF as a simulated artifact and do not claim responsive website implementation.
+
+Private evidence lives in the authorized redesign evidence directory: `completion-evidence-matrix-20261027.{json,md}`, `local-delivery-focused-final-20261027.log`, `local-delivery-browser-20261027.json`, `local-client-journey-20261027/outputs.json`, and the final current-source handoff. The matrix retains all 50 decisions, the original four-phase plan and the later eight hybrid stages.
+
+## Remaining gates
+
+Full product completion remains open. Remaining safe local work includes broader representative creative/mobile acceptance, composed orchestration evaluation, storage partitioning/identity revocation/combined restore and learning-quality evaluation. These are not all credential blockers. External gates include intended account enrollment, live mailbox/Drive/provider composition, actual Windows/macOS speakerphone quality and capacity, independent devices/computer-off operation, real client approvals/payment evidence, and separately authorized deployment/publication/migration. No cleanup retry, schedule resume, push, new service, permission expansion or Screenshot Library upload occurred.

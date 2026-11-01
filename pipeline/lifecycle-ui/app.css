@@ -42,8 +42,36 @@ nav button{justify-content:flex-start;gap:12px}nav button>img{width:19px;height:
 audio{display:block;width:100%;max-width:100%;margin-block:12px}.audio-controls{margin-block:16px;padding-block:12px;border-block:1px solid #e5e5e5}#audio-active{position:sticky;top:0;z-index:20}#audio-active button{margin:6px}
 
 .reply-source { white-space: pre-wrap; overflow-wrap: anywhere; }
+.notice p { overflow-wrap: anywhere; }
 .reply-editor textarea { min-height: 180px; }
+
+/* Keep the approved notes/outcome/email pane usable as recording grows. */
+.call-recording{margin:0 0 16px!important;border-bottom:1px solid var(--line);padding-bottom:12px}
+.call-recording>summary{font-size:15px;font-weight:600;min-height:28px}
+.call-recording .audio-controls{border:0;margin:8px 0 0;padding:0}
+.call-recording .audio-controls>h3{display:none}
+.audio-controls .checkbox input{width:18px;height:18px;min-height:18px;margin:3px 0 0}
+.audio-controls button{font:inherit;min-height:44px;padding:8px 12px;border:1px solid var(--line);border-radius:6px;background:white;color:var(--ink)}
+.audio-controls button:disabled{opacity:.5;cursor:not-allowed}
+.desk-notes>form>label:has(textarea){font-size:18px;font-weight:700}
+.desk-shortcuts{display:none}
+.desk-reply-priority{display:flex;align-items:center;justify-content:space-between;gap:16px;border-block:1px solid var(--line);padding:10px 0;margin-bottom:16px;font-size:16px;font-weight:600}
+.desk-reply-priority button{flex-shrink:0}
+.desk-reply-priority>div{min-width:0;overflow-wrap:anywhere}
+.desk-reply-priority>button{align-self:flex-start}
+.check-item>p{flex:1;min-width:0;overflow-wrap:anywhere}
+.check-item>button{align-self:flex-start;flex-shrink:0}
+@media(max-width:650px){.check-item{display:grid;grid-template-columns:24px minmax(0,1fr)}.check-item>button{grid-column:2;justify-self:start;max-width:100%}}
+.mailbox-status{font-size:14px;color:var(--muted);margin:0 0 14px}
+.desk-reply-priority small{display:block;color:var(--muted);font-size:14px;font-weight:400;margin-top:4px}
+.email-copy:empty{display:none}
+@media(max-width:850px){
+  .desk-shortcuts{display:flex;position:sticky;top:0;z-index:5;background:#fff;border-block:1px solid var(--line);gap:0;margin-bottom:12px;overflow:visible}
+  .desk-shortcuts button{flex:1;min-width:0;justify-content:center;font-size:14px;white-space:normal;padding:12px 5px;border:0;border-radius:0}
+  .call-desk>.panel{scroll-margin-top:65px}
+}
 
 .research-page{max-width:1000px;margin:24px auto;padding:16px}.research-page pre{white-space:pre-wrap;overflow-wrap:anywhere}.research-page label{display:block;margin:16px 0}.research-page textarea{display:block;width:100%;min-height:90px}.research-page details{margin:16px 0}
 .research-page select{width:100%;max-width:100%;min-width:0}.research-page{width:100%;min-width:0}.research-page h1,.research-page h2,.research-page p,.research-page label{overflow-wrap:anywhere}
 .research-page pre{font-size:14px;line-height:1.65}.research-page article{margin:18px 0;padding:16px;border:1px solid var(--line);border-radius:8px}.research-page input[type=checkbox]{width:22px;height:22px;min-height:22px;margin-right:10px;vertical-align:middle}.research-page button{min-height:44px;margin:6px 8px 6px 0;padding:10px;border:1px solid var(--line);border-radius:6px;background:#fff;font:inherit}.research-page button:focus-visible{outline:2px solid #244a8f;outline-offset:3px}
+.outreach-review fieldset{min-width:0;margin:20px 0;padding:20px;border:1px solid var(--line);border-radius:8px}.outreach-review .checkbox{display:flex;align-items:flex-start;gap:10px;margin:16px 0}.outreach-review input[type=checkbox]{width:22px;height:22px;min-height:22px;flex:0 0 22px;margin:2px 0}.outreach-review .email-copy{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere}.outreach-review a{overflow-wrap:anywhere}.outreach-review form{margin-top:20px}

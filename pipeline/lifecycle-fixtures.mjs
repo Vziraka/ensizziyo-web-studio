@@ -31,6 +31,21 @@ export function fixtureProspect(id, at, name = 'STUDIO TEST Juniper Bakery') {
       review_sha256: hash('fictional independent review'), evidence_ref: 'fixture:synthetic evidence; not a real researched prospect' },
     contact: { email: `${id}@example.invalid`, verified: true, checked_at: at, source: 'fixture:synthetic public business contact' } } };
 }
+export async function fixtureStartBuild(app,id,actor='controlled-fixture') {
+  const {buildBasis}=await import('./local-delivery-gates.mjs');
+  return app.apply({id:`${id}-start-build`,prospect_id:id,type:'build_started',at:app.now().toISOString(),data:{basis_sha256:buildBasis((await app.snapshot()).prospects[id]),authorized:true,reference:'fixture:separate Start build authorization'}},{actor});
+}
+export async function fixtureAcceptDelivery(app,id,actor='controlled-fixture') {
+  const at=app.now().toISOString();
+  await app.apply({id:`${id}-approver`,prospect_id:id,type:'client_approver_registered',at,data:{approver_id:'fictional-client',name:'Fictional client decision-maker',authority_confirmed:true,reference:'fixture:approver authority'}},{actor});
+  const {version,content_sha256}=(await app.snapshot()).prospects[id].delivery;
+  return app.apply({id:`${id}-exact-acceptance`,prospect_id:id,type:'acceptance_recorded',at,data:{version,content_sha256,approver_id:'fictional-client',client_approval_verified:true,reference:'fixture:operator-attested exact client approval'}},{actor});
+}
+export async function fixturePublish(app,id,actor='controlled-fixture') {
+  const at=app.now().toISOString(),{version,content_sha256}=(await app.snapshot()).prospects[id].delivery;
+  const data={version,content_sha256,target:'fixture:local-preview',intent_id:`${id}-release`,receipt_id:`${id}-receipt`,simulated:true,authorized:true,reference:'fixture:simulated publication only'};
+  for(const type of ['publication_authorized','publication_intent_prepared','publication_dispatched','publication_receipt_recorded'])await app.apply({id:`${id}-${type}`,prospect_id:id,type,at,data},{actor});
+}
 export async function seedLifecycle(app) {
   const at = app.now().toISOString();
   const apply = (id, type, data = {}, suffix = type) => app.apply({ id: `${id}-${suffix}`, prospect_id: id, type, at, data }, { actor: 'controlled-fixture' });
@@ -54,12 +69,14 @@ export async function seedLifecycle(app) {
     await apply(id, 'invoice_recorded', { invoice_id: `${id}-invoice-1`, amount_cents: 120000, currency: 'USD', reference: 'fixture:invoice' });
     await apply(id, 'payment_recorded', { invoice_id: `${id}-invoice-1`, payment_id: `${id}-payment-1`, amount_cents: 120000, currency: 'USD', settled_verified: true, simulated: true, reference: 'fixture:settled payment — no transaction' });
     await apply(id, 'onboarding_completed', { materials: 'Fictional menu, assets and pickup text', access_plan: 'Client-owned accounts and scoped invitations; credentials stay in owner vault', kickoff: 'Fictional kickoff agreed after materials' });
+    await fixtureStartBuild(app,id);
     for (let i = 1; i <= 4; i++) await apply(id, 'delivery_task_updated', { task_id: `task-${i}`, status: 'Complete', evidence: `fixture:verified check ${i}` }, `task-${i}`);
-    await apply(id, 'delivery_submitted', { reference: '/preview/' });
+    await apply(id, 'delivery_submitted', { reference: '/preview/',version:'v1',content_sha256:hash('fictional delivery v1'),internal_checks:true });
     await apply(id, 'revision_requested', { feedback: 'Clarify pickup wording', reference: 'fixture:client feedback' });
     await apply(id, 'delivery_task_updated', { task_id: 'revision-1', status: 'Complete', evidence: 'fixture:wording recheck' }, 'revision-task');
-    await apply(id, 'delivery_submitted', { reference: '/preview/' }, 'delivery-v2');
-    await apply(id, 'acceptance_recorded', { client_approval_verified: true, reference: 'fixture:client acceptance' });
+    await apply(id, 'delivery_submitted', { reference: '/preview/',version:'v2',content_sha256:hash('fictional delivery v2'),internal_checks:true }, 'delivery-v2');
+    await fixtureAcceptDelivery(app,id);
+    await fixturePublish(app,id);
     await apply(id, 'handover_completed', { ownership: 'fixture:ownership', training: 'fixture:operating guide', backup: 'fixture:backup restore', support: 'fixture:bounded support agreement' });
     await apply(id, 'support_opened', { ticket_id: 'support-1', description: 'Clarify a pickup-hours change', priority: 'routine', review_at: new Date(+app.now() + 86_400_000).toISOString() });
   }

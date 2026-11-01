@@ -2,10 +2,10 @@ name: Research proof checks
 
 on:
   pull_request:
-    paths: ['pipeline/**', 'netlify/**', 'netlify.toml', '.github/workflows/research-proof.yml']
+    paths: ['pipeline/**', 'scripts/studio-context*', 'docs/design-references.json', 'netlify/**', 'netlify.toml', '.github/workflows/research-proof.yml']
   push:
     branches: [main]
-    paths: ['pipeline/**', 'netlify/**', 'netlify.toml', '.github/workflows/research-proof.yml']
+    paths: ['pipeline/**', 'scripts/studio-context*', 'docs/design-references.json', 'netlify/**', 'netlify.toml', '.github/workflows/research-proof.yml']
 
 permissions:
   contents: read
@@ -25,4 +25,5 @@ jobs:
           cache-dependency-path: pipeline/package-lock.json
       - run: npm ci --ignore-scripts
       - run: npm run check
+      - run: node --test ../scripts/studio-context.test.mjs
       - run: npm test

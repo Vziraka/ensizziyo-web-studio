@@ -3,7 +3,8 @@ import {check,hash,businessDate,StudioLifecycle} from './lifecycle.mjs';
 import {ConditionalLifecycleStore} from './lifecycle-store.mjs';
 import {dispatchHasManual,isDispatchCapability,dispatchPrincipal,validateDispatchBinding,currentDispatch,dispatchTransition,nextStandingMessage,assertStandingPost} from './shared-internal-dispatch.mjs';
 import {googleHostedTransport} from './google-hosted-transport.mjs';
-import {syncIncomingMail} from './google-incoming-mail.mjs';
+import {syncIncomingMail,syncPDFIncoming,pdfIncomingTarget,pdfIncomingRequest} from './google-incoming-mail.mjs';
+import {operationsPDFMailCapability,pdfIncomingStorageAllowance,validateIncomingGrant} from './shared-operations-exact-mail.mjs';
 import {createGoogleOAuth,dispatchOAuthProfile} from './google-oauth.mjs';
 
 export const dispatchWorkerPath='/desk/api/internal-dispatch-background';
@@ -24,7 +25,7 @@ export function verifyDispatchReference(env,binding,ref,token,now){
  const actual=Buffer.from(token??'','base64url'),expected=mac(env.EVZ_INTERNAL_DISPATCH_SECRET,ref);check(actual.length===expected.length&&timingSafeEqual(actual,expected),'Host MAC required');
 }
 async function body(request,max=2048){check(request.body,'Tiny dispatch envelope required');const reader=request.body.getReader(),chunks=[];let bytes=0;try{for(;;){const {value,done}=await reader.read();if(done)break;bytes+=value.length;check(bytes<=max,'Dispatch envelope exceeds bound');chunks.push(Buffer.from(value));}}finally{await reader.cancel();}return JSON.parse(Buffer.concat(chunks));}
-async function open(env,binding,storeFactory,now){const raw=await storeFactory(env.EVZ_OPERATIONS_BLOB_NAMESPACE);return StudioLifecycle.fromStore({store:new ConditionalLifecycleStore(raw,{dispatchBinding:binding}),now});}
+async function open(env,binding,storeFactory,now){const raw=await storeFactory(env.EVZ_OPERATIONS_BLOB_NAMESPACE);return StudioLifecycle.fromStore({store:new ConditionalLifecycleStore(raw,{dispatchBinding:binding,originalsEnvironment:env,now}),now});}
 export async function enqueueInternalDispatch(app,tick,{env,context,fetcher=fetch}={}){
  const binding=dispatchHostBinding(env,context),ref=dispatchReference(binding,tick);check(hash(app.store.dispatchBinding)===hash(binding)&&tick.status==='Reserved','Exact reserved tick required');
  const response=await fetcher(binding.scope.origin+dispatchWorkerPath,{method:'POST',headers:{'Content-Type':'application/json','x-evz-internal-dispatch':signDispatchReference(env,ref)},body:JSON.stringify(ref),redirect:'error',signal:AbortSignal.timeout(5000)});await response.body?.cancel();return {tick_id:tick.id,acknowledged:response.status===202,status:'Read durable exact background claim; acknowledgement is not delivery'};
@@ -54,7 +55,7 @@ export async function executeInternalDispatch(app,ref,{env,context,getAccessToke
   check(!controller.signal.aborted,'Overall dispatch deadline exhausted');let rejectAbort;const aborted=new Promise((_,reject)=>{rejectAbort=()=>reject(Error('Overall dispatch deadline exhausted'));controller.signal.addEventListener('abort',rejectAbort,{once:true});});
   try{return await Promise.race([start(),aborted]);}finally{controller.signal.removeEventListener('abort',rejectAbort);}
  };
- const guard=async()=>{dispatchHostBinding(env,context);check(!controller.signal.aborted,'Overall dispatch deadline exhausted');const c=await app.loadConfig(),s=await app.snapshot(),t=s.operations.internal_dispatch.ticks[ref.tick_id];currentDispatch(s,c,app.now(),{recovery:Boolean(t.reconciliation)});check(t.status==='Claimed'&&+app.now()<Date.parse(t.deadline)&&t.day===businessDate(app.now()),'Worker attempt closed or expired');};
+ const guard=async()=>{dispatchHostBinding(env,context);check(!controller.signal.aborted,'Overall dispatch deadline exhausted');const c=await app.loadConfig(),s=await app.snapshot(),t=s.operations.internal_dispatch.ticks[ref.tick_id];if(c.shared_capability===operationsPDFMailCapability)pdfIncomingStorageAllowance((await app.store.envelope()).data);currentDispatch(s,c,app.now(),{recovery:Boolean(t.reconciliation)});check(t.status==='Claimed'&&+app.now()<Date.parse(t.deadline)&&t.day===businessDate(app.now()),'Worker attempt closed or expired');};
  const reserve=async(operation,action_id)=>{await guard();const request_id='io-'+(++sequence);await dispatchTransition(app,{kind:'io',tick_id:ref.tick_id,request_id,operation,...(action_id?{action_id}:{})});await guard();return request_id;};
  const observed=async(id,bytes,ok)=>dispatchTransition(app,{kind:'io-result',tick_id:ref.tick_id,request_id:id,bytes,ok});
  const boundedFetch=async(url,options={})=>{
@@ -70,21 +71,27 @@ export async function executeInternalDispatch(app,ref,{env,context,getAccessToke
   }catch(error){try{await observed(id,Math.min(size,app.config.internal_dispatch.limits.bytes_tick),false);}catch{}throw error;}finally{await reader?.cancel().catch(()=>{});}
  };
  let originalToken=getAccessToken;
- const accessToken=()=>{originalToken??=createGoogleOAuth({...oauthOptions,env,now:()=>+app.now(),profile:dispatchOAuthProfile,grantId:app.config.internal_dispatch.grant_id,fetcher:boundedFetch}).getAccessToken;return originalToken();};
+ const pdf=app.config.shared_capability===operationsPDFMailCapability;
+ const incomingGetter=()=>originalToken??=createGoogleOAuth({...oauthOptions,env,now:()=>+app.now(),profile:dispatchOAuthProfile,...(pdf?{dispatchApp:app}:{}),grantId:app.config.internal_dispatch.grant_id,fetcher:boundedFetch}).getAccessToken;
+ const accessToken=()=>incomingGetter()();
+ if(pdf)app.store.incomingGrant=async expected=>{const getter=incomingGetter();check(typeof getter.assertGrant==='function','Independent incoming current/grant readers required');const value=await bounded(()=>getter.assertGrant(expected));await guard();return validateIncomingGrant(value,app.config,app.now().toISOString());};
  const token=async()=>{const id=await reserve('token');try{const result=await bounded(accessToken);await observed(id,0,true);await guard();return result;}catch(error){try{await observed(id,0,false);}catch{}throw error;}};
  token.invalidate=async rejected=>{await guard();if(originalToken?.invalidate)await bounded(()=>originalToken.invalidate(rejected));await guard();};
- const p=app.config.internal_dispatch,provider=googleHostedTransport({getAccessToken:token,fetcher:boundedFetch,account:p.account_email,grantId:p.grant_id});
+ if(pdf){token.assertGrant=expected=>app.store.incomingGrant(expected);token.assertCurrent=async value=>{await guard();const getter=incomingGetter();check(typeof getter.assertCurrent==='function','Independent incoming current reader required');await bounded(()=>getter.assertCurrent(value));await guard();};}
+ const p=app.config.internal_dispatch,provider=googleHostedTransport({getAccessToken:token,fetcher:boundedFetch,account:p.account_email,grantId:p.grant_id,...(pdf?{requiredProfile:dispatchOAuthProfile,observations:[],now:app.now}:{})});
  async function reconcile(id){const s=await app.snapshot(),q=s.operations.requests[id+'-intent'];check(q?.raw_base64url,'Retain incomplete MIME intent; no resend');rawReadback=null;await provider.preflight();await provider.reconcileSent({raw:Buffer.from(q.raw_base64url,'base64url'),message_id:q.rfc_message_id,thread_id:q.provider_thread_id??null},q.provider_message_id??null);await guard();check(rawReadback,'Complete raw Sent observation required');await dispatchTransition(app,{kind:'verified',tick_id:ref.tick_id,action_id:id,raw:rawReadback});}
  try{
   if(tick.reconciliation){await reconcile(tick.reconciliation);await dispatchTransition(app,{kind:'close-tick',tick_id:ref.tick_id,held:false});return {status:'Complete',readback_required:true};}
   const pending=Object.entries((await app.snapshot()).operations.requests??{}).filter(([,q])=>q.standing_internal&&!['Verified','Cancelled'].includes(q.status));
   for(const [logical,q] of pending.slice(0,1)){check(q.status==='Uncertain','Unclaimed retained intent requires explicit recovery; never retry');await reconcile(logical.slice(0,-7));}
   check(pending.length<=1,'More retained intents require a bounded subsequent reconcile tick');
-  await guard();const observations=[],captured=Object.fromEntries(['incomingProfile','incomingHistory','incomingThread'].map(name=>[name,async(...args)=>{try{const value=await provider[name](...args);observations.push({name,args,value});return value;}catch(error){observations.push({name,args,error:true,...(error.status?{status:error.status}:{})});throw Error('Bounded incoming read unavailable');}}]));
+  await guard();const before=await app.snapshot(),target=pdf?pdfIncomingTarget(before,app.config,app.now()):null,prior_incoming_sha256=hash(before.operations?.gmail_incoming??null),prior_request_sha256=hash(pdfIncomingRequest(before,app.config)?.request??null),observations=[];
+  const phaseGuard=async()=>{await guard();if(pdf){const s=await app.snapshot();check(hash(s.operations?.gmail_incoming??null)===prior_incoming_sha256&&hash(pdfIncomingRequest(s,app.config)?.request??null)===prior_request_sha256&&hash(pdfIncomingTarget(s,app.config,app.now()))===hash(target),'Incoming selected source/progress changed across wait');}};
+  const captured=Object.fromEntries(['incomingProfile','incomingHistory','incomingThread'].map(name=>[name,async(...args)=>{await phaseGuard();const index=provider.observations?.length??0;try{const value=await provider[name](...args);await phaseGuard();observations.push(pdf?{name,args,at:provider.observations[index].at,grant:provider.observations[index].grant,value}:{name,args,value});return value;}catch(error){const o=provider.observations?.[index];observations.push(pdf?{name,args,at:o?.at??app.now().toISOString(),grant:o?.grant??null,error:o?.error??{code:'NETWORK',status:error.status??null,bytes:0,body_sha256:null}}:{name,args,error:true,...(error.status?{status:error.status}:{})});throw error;}}]));
   // Run the existing parser/reducer on an isolated prospective state; publish through replayed CAS only.
-  const before=await app.snapshot(),scratch=structuredClone(before),at=app.now().toISOString(),sim={config:app.config,store:{dispatchBinding:binding},now:()=>new Date(at),loadConfig:async()=>app.config,snapshot:async()=>structuredClone(scratch),change:async fn=>fn(scratch)};
-  await syncIncomingMail(sim,{actor:dispatchPrincipal,env,transport:captured});await guard();
-  await dispatchTransition(app,{kind:'incoming',tick_id:ref.tick_id,observations});
+  const scratch=structuredClone(before),at=app.now().toISOString(),sim={config:app.config,store:{dispatchBinding:binding},now:()=>new Date(at),loadConfig:async()=>app.config,snapshot:async()=>structuredClone(scratch),change:async fn=>fn(scratch)};
+  if(target?.kind==='pdf')await syncPDFIncoming(sim,{target,tick_id:ref.tick_id,transport:captured});else await syncIncomingMail(sim,{actor:dispatchPrincipal,env,transport:captured});await phaseGuard();
+  await dispatchTransition(app,{kind:'incoming',tick_id:ref.tick_id,observations,...(pdf?{target,prior_incoming_sha256,prior_request_sha256}:{})},{signal:controller.signal});
   await dispatchTransition(app,{kind:'prepare',tick_id:ref.tick_id});
   for(let i=0;i<p.limits.sends_tick;i++){
    await guard();const s=await app.snapshot(),m=nextStandingMessage(s,await app.loadConfig(),app.now());if(!m)break;

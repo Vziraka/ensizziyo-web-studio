@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import {PDFDocument} from 'pdf-lib';
+import {StudioLifecycle,initialConfig} from '../lifecycle.mjs';
+import {ConditionalLifecycleStore} from '../lifecycle-store.mjs';
+import {fixtureProspect,fixtureReply} from '../lifecycle-fixtures.mjs';
+import {projectContext} from '../project-work.mjs';
+import {archiveProjectAsset} from '../project-assets.mjs';
+import {blobProjectOriginalStore} from '../shared-project-originals.mjs';
+import {prepareEmailTaskProof,openFictionalEmailTaskApp} from '../shared-email-draft-tasks.mjs';
+
+export const at='2026-10-26T15:00:00.000Z',token='ab'.repeat(32),origin='https://preview.example.invalid';
+export const scope={schema_version:1,capability:'fictional-email-draft-task-v1',workspace_id:'fictional-email-proof',run_id:'fictional-email-proof',site_id:'fictional-site',deploy_id:'fictional-deploy',origin,namespace:'evz-redesign-proof-email-task-123',recovery_generation:'first-proof',routes:[{project_id:'p',thread_id:'thread'}]};
+export function rawStore(){const entries=new Map();let version=0;return {writes:0,loseNext:false,entries,async getWithMetadata(key,options){assert.equal(options.consistency,'strong');const e=entries.get(key);return e?{data:structuredClone(e.data),etag:e.etag}:null;},async setJSON(key,data,options){const e=entries.get(key);if(options.onlyIfNew&&e||options.onlyIfMatch!==undefined&&options.onlyIfMatch!==e?.etag)return {modified:false};const etag='"'+(++version)+'"';entries.set(key,{data:JSON.parse(JSON.stringify(data)),etag});this.writes++;if(this.loseNext){this.loseNext=false;throw Error('Committed acknowledgement lost');}return {modified:true,etag};},async set(key,data,options){assert.equal(options.onlyIfNew,true);if(entries.has(key))return {modified:false};const etag='"'+(++version)+'"';entries.set(key,{data:Buffer.from(data),etag});return {modified:true,etag};}};}
+export async function fixture({actor='owner',capability=scope.capability}={}){
+ const raw=rawStore(),config={...structuredClone(initialConfig),run_id:scope.run_id,calls_enabled:false,runtime:{enabled:false},operations:{enabled:false},release:{approved:false},call_release:{approved:false},sender:{email:'hello@evzdigital.studio',operator_names:{owner:'Owner proof',friend:'Friend proof'}}};
+ const seedStore=new ConditionalLifecycleStore(raw),empty={schema_version:1,run_id:config.run_id,mode:'controlled',revision:0,updated_at:at,prospects:{},events:{},actions:{},asset_index:{},ai_attempts:{},exceptions:[]};await seedStore.initialize(config,empty);
+ const seed=await StudioLifecycle.fromStore({store:seedStore,now:()=>new Date(at)}),event=(id,type,data,project='p')=>({id,prospect_id:project,type,at,data});
+ await seed.apply(fixtureProspect('p',at));await seed.apply(event('incoming','reply_received',fixtureReply('incoming','thread','p@example.invalid')),{actor:'provider'});await seed.apply(event('claim','conversation_claimed',{reason:'Fictional existing-client task proof.'}),{actor,expectedRevision:(await seed.snapshot()).revision});
+ await seed.apply(event('style','operator_writing_style_saved',{role:actor,preferences:'Use short direct paragraphs.',examples:[],reason:'Fictional personal style.',expected_style_sha256:null},'operator-'+actor),{actor,expectedRevision:(await seed.snapshot()).revision});
+ const pdf=await PDFDocument.create();pdf.setCreationDate(new Date(at));pdf.setModificationDate(new Date(at));pdf.addPage([400,300]).drawText('FICTIONAL approved website direction',{x:20,y:240,size:12});const bytes=Buffer.from(await pdf.save()),reference='private-path:fictional/direction.pdf';
+ const {originalDigest}=await import('../shared-project-originals.mjs');const digest=originalDigest(bytes);
+ await seed.apply(event('register','asset_registered',{asset_id:'direction',scope:'project',project_id:'p',kind:'mockup',name:'Fictional direction',version_id:'v1',version_label:'v1',reference},'studio-assets'),{actor});seed.originalStore=blobProjectOriginalStore(raw);
+ await archiveProjectAsset(seed,{project_id:'p',asset_id:'direction',version_id:'v1',context_sha256:projectContext(await seed.snapshot(),'p').context_sha256,expected_sha256:digest},bytes,{reference,name:'direction.pdf',mime_type:'application/pdf',modified_time:at},actor);await seed.apply(event('approve-pdf','asset_version_selected',{asset_id:'direction',version_id:'v1'},'studio-assets'),{actor});
+ const packet=prepareEmailTaskProof({config,state:await seed.snapshot(),scope:{...scope,capability}}),prior=await raw.getWithMetadata('workspace',{type:'json',consistency:'strong'});await raw.setJSON('workspace',packet.envelope,{onlyIfMatch:prior.etag});
+ const env={CONTEXT:'deploy-preview',EVZ_OPERATIONS_DESK_ENABLED:'fictional-preview',EVZ_OPERATIONS_ORIGIN:origin,EVZ_OPERATIONS_BLOB_NAMESPACE:scope.namespace,SITE_ID:scope.site_id,DEPLOY_ID:scope.deploy_id,EVZ_OPERATIONS_EMAIL_TASK_BINDING:JSON.stringify(packet.binding),EVZ_OPERATIONS_OWNER_KEY:'o'.repeat(43),EVZ_OPERATIONS_FRIEND_KEY:'f'.repeat(43),EVZ_OPERATIONS_SESSION_SECRET:'s'.repeat(43)},context={site:{id:scope.site_id},deploy:{id:scope.deploy_id,context:'deploy-preview'}};
+ let time=Date.parse(at);const options={env,context,storeFactory:namespace=>{assert.equal(namespace,scope.namespace);return raw;},now:()=>new Date(time)},open=()=>openFictionalEmailTaskApp(options);return {raw,packet,env,context,options,open,app:await open(),bytes,selection:{asset_id:'direction',version_id:'v1',sha256:digest},actor,advance:ms=>{time+=ms;}};
+}
