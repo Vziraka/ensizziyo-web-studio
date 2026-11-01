@@ -24,7 +24,7 @@ function task(s,p,id){check(key(id),'Exact task identity required');const t=s.em
 export function mailboxWorkTaskSummary(t){const {lease,token_sha256,workspace_sha256,...out}=structuredClone(t);return {...out,...(lease?{lease:{worker_id:lease.worker_id,request_id:lease.request_id,fence:lease.fence,claimed_at:lease.claimed_at,expires_at:lease.expires_at}}:{})};}
 const view=mailboxWorkTaskSummary;
 function sources(packet){return ['reply:'+packet.reply.source_id,...(packet.conversation_history?.messages??[]).map(m=>m.citation_id),...packet.facts.map(f=>f.source_id),...(packet.quote?['quote']:[])];}
-function material(s,c,project,studioIds,now){
+export function assertMailboxWorkReplySource(s,c,project,now=s.updated_at){
  const sync=s.mailbox_sync,r=s.prospects?.[project];
  check(sync?.policy_sha256===hash(c.mailbox)&&sync.phase==='history'&&utc(sync.checked_at)&&Date.parse(sync.checked_at)<=Date.parse(now)&&Array.isArray(sync.pending)&&sync.pending.length===0&&sync.page===null&&sync.next_cursor===null&&!sync.hold&&!s.mailbox_failure,'Mailbox coverage is incomplete or held');
  check(r&&r.id===project&&!r.restriction&&['Reply review','Discovery','Information requested'].includes(r.stage)&&r.reply?.kind==='reply'&&validReplySource(r.reply)&&r.contact?.verified===true&&r.contact.email?.toLowerCase()===r.reply.content.from&&['owner','friend'].includes(r.follow_up_owner),'Current assigned verified reply required');
@@ -40,6 +40,10 @@ function material(s,c,project,studioIds,now){
   if(entry.source_id===r.reply.source_id)return false;
   const received=Date.parse(incoming?.received_at),currentTime=Date.parse(r.reply.at??r.reply.received_at);return !Number.isFinite(received)||!Number.isFinite(currentTime)||received>currentTime;
  }),'Current conversation has an unresolved or newer retained source');
+ return r;
+}
+function material(s,c,project,studioIds,now){
+ const r=assertMailboxWorkReplySource(s,c,project,now);
  const context=emailDraftSource(r,c,s);check(context.conversation_history?.status!=='Held','Retained conversation context is held');
  const writing_style=writingStyle(s,r.follow_up_owner),attachment_catalogue=replyAttachmentCatalogue(s,project,studioIds),packet={context,writing_style,attachment_catalogue,initial_draft_sha256:r.reply_draft?.sha256??null};
  safeEmailTaskMaterial(packet);check(Buffer.byteLength(JSON.stringify(packet))<=100000,'Task context exceeds bound');return packet;

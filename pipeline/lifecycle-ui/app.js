@@ -8,7 +8,7 @@ import {createEventRequest} from './event-request.js';
 import {readDeskSnapshot} from './snapshot-read.js';
 import {audioBusy,stopAudioCapture} from './call-audio.js';
 let state, csrf, operatorAuthRequired = false, view = 'today', selected = 'juniper', lane = 'all', assetProject = '', dirty = false, refreshAfter = 0;
-let eventRequest,loadedWorkspaceContext;
+let eventRequest,loadedWorkspaceContext,refreshPromise,mailboxBusy=false;
 let googleConnectionPanel,googleConnectionActor;
 const emailTaskHandoffs=new Map();
 const content = document.querySelector('#content'), message = document.querySelector('#message');
@@ -66,6 +66,11 @@ function showOperatorLogin(error = '') {
   tell(error, Boolean(error));
 }
 async function refresh() {
+  if(refreshPromise)return refreshPromise;
+  refreshPromise=readAndRenderState();
+  try{return await refreshPromise;}finally{refreshPromise=null;}
+}
+async function readAndRenderState() {
   const response = await fetch(deskPath('/api/state'));
   if (response.status === 401 && operatorAuthRequired) { showOperatorLogin(); return; }
   if (!response.ok) throw Error('Private session unavailable. Reload the console.');
@@ -710,7 +715,7 @@ function render() {
     if(['shared-mailbox-review-v1','shared-mailbox-work-v1'].includes(state.shared_workspace?.capability)){
       const box=panel('Incoming mailbox status'),sync=state.mailbox_sync;
       box.append(el('p',sync?.checked_at?'Last completed check: '+new Date(sync.checked_at).toLocaleString():'Initial import has not completed.','notice'),el('p',state.mailbox_failure?`Processing held: ${state.mailbox_failure.reason}. Last successful position is retained.`:sync?`Import phase: ${sync.phase}; ${sync.pending.length} message reads pending.`:'No mailbox messages imported yet.'));
-      box.append(button('Read next mailbox batch',async()=>{try{await api('/api/mailbox/sync',{});await refresh();tell('Mailbox step saved. Review its status and incoming messages.');}catch(error){tell(error.message,true);}}));content.append(box);
+      const readButton=button('Read next mailbox batch',async()=>{if(mailboxBusy)return;mailboxBusy=true;readButton.disabled=true;try{if(refreshPromise)await refreshPromise;await api('/api/mailbox/sync',{});await refresh();tell('Mailbox step saved. Review its status and incoming messages.');}catch(error){tell(error.message+' Refresh saved status before attempting another step.',true);}finally{mailboxBusy=false;readButton.disabled=false;}});readButton.disabled=mailboxBusy;box.append(readButton);content.append(box);
     }
     if(state.hosted_preview&&(!googleConnectionPanel||googleConnectionActor!==state.current_operator)){
       const connection=panel('Business Gmail connection'),status=el('p',['shared-mailbox-review-v1','shared-mailbox-work-v1'].includes(state.shared_workspace?.capability)?'Check the business connection, then read the next mailbox batch. Automatic checks and sending remain paused.':'Check the connection before requesting owner consent. Connecting does not enable sending or mailbox synchronization.','muted'),actions=el('div',undefined,'actions');
@@ -795,6 +800,6 @@ async function start() {
 }
 start().catch(error => tell(error.message, true));
 setInterval(() => {
-  if (audioBusy() || dirty || document.querySelector('[data-exact-reply-review="active"]') || document.querySelector('.desk-next') || document.visibilityState !== 'visible' || Date.now() < refreshAfter || document.activeElement?.closest('form') || document.activeElement?.matches('input,textarea,select')) return;
+  if (refreshPromise || mailboxBusy || audioBusy() || dirty || document.querySelector('[data-exact-reply-review="active"]') || document.querySelector('.desk-next') || document.visibilityState !== 'visible' || Date.now() < refreshAfter || document.activeElement?.closest('form') || document.activeElement?.matches('input,textarea,select')) return;
   refresh().catch(error => { refreshAfter = Date.now() + 60000; if (message.textContent !== error.message) tell(error.message, true); });
 }, 15000);

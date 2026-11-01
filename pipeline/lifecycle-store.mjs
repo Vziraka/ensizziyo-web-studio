@@ -58,6 +58,10 @@ export class ConditionalLifecycleStore {
     if(options.projectMail){check(options.mailSignal instanceof AbortSignal&&!options.mailSignal.aborted,'Mail request interrupted before CAS');check(+this.now()<options.projectMail.deadline,'Mail transition deadline expired before CAS');}
     if(this.dispatchBinding?.scope.capability==='shared-operations-pdf-mail-v1'&&options.dispatchTransition?.kind==='incoming'){const t=JSON.parse(before).state.operations.internal_dispatch.ticks[options.dispatchTransition.tick_id];check(options.dispatchSignal instanceof AbortSignal&&!options.dispatchSignal.aborted&&+this.now()<Date.parse(t.deadline),'Incoming transition interrupted or expired before CAS');}
     if(JSON.stringify(data)===before)return result;
+    if(options.mailboxWork?.actor==='worker'){
+      const live=+this.now(),task=data.state.email_draft_tasks?.[options.mailboxWork.input.id];
+      check(Number.isFinite(live)&&live<Date.parse(data.config.mailbox_work.expires_at)&&live<Date.parse(task?.lease?.expires_at),'Worker policy or task lease expired before CAS');
+    }
     let modified,uncertain=false;
     try {const written=await this.store.setJSON(this.key,data,{onlyIfMatch:etag});check(typeof written?.modified==='boolean'&&(!written.modified||typeof written.etag==='string'&&written.etag.length>0),'Conditional write result is unavailable');modified=written.modified;}
     catch {uncertain=true;}
