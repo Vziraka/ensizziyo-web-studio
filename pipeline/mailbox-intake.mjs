@@ -33,7 +33,7 @@ function adoptMessage(state,config,m,at){
  if(state.inquiry_intake?.sources?.[m.id]||sync.held_sources[m.id])return;
  let content=replyContent(m,m.threadId),classification='uncertain';const sender=replySender(m);
  if(content.status==='Complete')try{const list=replyHeader(m,'List-ID')||replyHeader(m,'List-Unsubscribe'),automatic=replyHeader(m,'Auto-Submitted');classification=list?'newsletter':automatic&&automatic.toLowerCase()!=='no'?'automatic_reply':'uncertain';}catch{content={...content,status:'Held',hold:'Ambiguous automated-message headers; review original'};}
- const matches=Object.values(state.prospects).filter(r=>Boolean(sender)&&r.contact?.email?.toLowerCase()===sender||r.reply?.thread_id===m.threadId||r.conversation_histories?.[m.threadId]||Object.values(state.outreach_delivery?.intents??{}).some(i=>i.project_id===r.id&&i.receipt?.thread_id===m.threadId));
+ const matches=Object.values(state.prospects).filter(r=>Boolean(sender)&&r.contact?.email?.toLowerCase()===sender||r.reply?.thread_id===m.threadId||r.conversation_histories?.[m.threadId]||Object.values(state.outreach_delivery?.intents??{}).some(i=>i.project_id===r.id&&i.receipt?.thread_id===m.threadId)||Object.values(state.mailbox_delivery?.intents??{}).some(i=>i.package.project_id===r.id&&i.receipt?.thread_id===m.threadId));
  const eventId='gmail-'+hash(m.id).slice(0,32),oldActions=new Set(Object.keys(state.actions));
  for(const r of matches)pauseCold(state,r,eventId,'Incoming business mail awaits review');
  if(content.status!=='Complete'){

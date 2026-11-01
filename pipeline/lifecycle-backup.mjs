@@ -218,6 +218,7 @@ export async function restoreLifecycleBackup(input,destination){
   for(const a of Object.values(state.actions))if(a.status==='Pending'){a.status='Uncertain';a.hold='Restored pending mutation; read back provider, never resend';}
   for(const r of Object.values(state.operations?.requests??{}))if(r.status==='Pending'&&['draft','send','stop','booking_create','task_create','task_skip','contact_create','personalize','intent'].includes(r.operation))r.status='Uncertain';
   if(state.operations)delete state.operations.lease;delete state.runtime;
+  for(const r of Object.values(state.prospects??{})){const v=r.requested_information;if(v?.draft?.status==='Approved'){if(v.history.length<100)v.history.push(structuredClone(v.draft));v.draft={...v.draft,status:'Draft'};delete v.draft.approval_event;delete v.draft.approved_by;delete v.draft.approved_at;}}
   if(state.cloud_discovery){
    state.cloud_discovery.paused=true;state.cloud_discovery.epoch++;
   }

@@ -1,3 +1,4 @@
+import {requestedInformationSource,requestedInformationDraftCurrent} from './requested-information.mjs';
 import {check,hash,businessDate} from './lifecycle.mjs';
 import {replyDraftCurrent} from './reply-content.mjs';
 import {currentReplyAttachments} from './reply-attachments.mjs';
@@ -20,11 +21,11 @@ export function validateMailboxDeliveryPolicy(p){
  check(p.schema_version===1&&[p.site_id,p.deploy_id,p.grant_id,p.recovery_generation].every(key)&&utc(p.expires_at),'Exact delivery identity required');
  const origin=new URL(p.origin);check(origin.protocol==='https:'&&origin.origin===p.origin,'Exact delivery HTTPS origin required');
  check(typeof p.account==='string'&&/^[A-Za-z0-9._%+-]+@evzdigital\.studio$/.test(p.account)&&p.from==='hello@evzdigital.studio','Exact business account and sender required');
- check(count(p.max_intents,10000)&&p.max_intents>0&&count(p.max_per_day,500)&&p.max_per_day>0&&hash(p.kinds)===hash(['reply','outreach'])&&typeof p.sender_ready==='boolean'&&typeof p.postal_address_verified==='boolean','Finite closed delivery policy required');return p;
+ check(count(p.max_intents,10000)&&p.max_intents>0&&count(p.max_per_day,500)&&p.max_per_day>0&&[hash(['reply','outreach']),hash(['reply','outreach','requested-information'])].includes(hash(p.kinds))&&typeof p.sender_ready==='boolean'&&typeof p.postal_address_verified==='boolean','Finite closed delivery policy required');return p;
 }
 function policy(c,now,live=true){
  check(isMailboxDeliveryCapability(c.shared_capability)&&c.mode==='production'&&c.outreach_enabled===false,'Exact mailbox delivery capability required');
- const p=validateMailboxDeliveryPolicy(c.mailbox_delivery);check(utc(now)&&(!live||Date.parse(now)<Date.parse(p.expires_at)),'Mailbox delivery policy expired');
+ const p=validateMailboxDeliveryPolicy(c.mailbox_delivery);check(!p.kinds.includes('requested-information')||c.shared_capability==='shared-operations-desk-v1','Requested information requires operations capability');check(utc(now)&&(!live||Date.parse(now)<Date.parse(p.expires_at)),'Mailbox delivery policy expired');
  check(c.mailbox?.account===p.account&&c.mailbox?.grant_id===p.grant_id&&c.sender?.email===p.from,'Delivery account differs from canonical mailbox');return p;
 }
 const approvalId=(s,p,a,epoch)=>'mail-approval-'+hash({run:s.run_id,package:p.sha256,actor:a,epoch}).slice(0,40);
@@ -34,13 +35,15 @@ function bound(d,p){check(d.policy_sha256===hash(p)&&d.recovery_generation===p.r
 function allowanceShape(a){exact(a,'id,evidence_ref,observed_at,expires_at,included_only,max_intents');check(key(a.id)&&text(a.evidence_ref)&&utc(a.observed_at)&&utc(a.expires_at)&&a.expires_at>a.observed_at&&a.included_only===true&&count(a.max_intents,10000)&&a.max_intents>0,'Finite reviewed delivery allowance required');}
 function packageShape(p){
  exact(p,'schema_version,kind,project_id,owner,from,to,subject,body,attachments,thread_id,in_reply_to,references,source,sha256');
- const {sha256,...content}=p;check(p.schema_version===1&&['reply','outreach'].includes(p.kind)&&key(p.project_id)&&['owner','friend'].includes(p.owner)&&p.from==='hello@evzdigital.studio'&&typeof p.to==='string'&&/^[^\s<>@]+@[^\s<>@]+$/.test(p.to)&&text(p.subject,200)&&typeof p.body==='string'&&p.body.trim()&&p.body.length<=12000&&Array.isArray(p.attachments)&&p.attachments.length<=2&&sha(sha256)&&hash(content)===sha256,'Invalid retained exact package');
+ const {sha256,...content}=p;check(p.schema_version===1&&['reply','outreach','requested-information'].includes(p.kind)&&key(p.project_id)&&['owner','friend'].includes(p.owner)&&p.from==='hello@evzdigital.studio'&&typeof p.to==='string'&&/^[^\s<>@]+@[^\s<>@]+$/.test(p.to)&&text(p.subject,200)&&typeof p.body==='string'&&p.body.trim()&&p.body.length<=12000&&Array.isArray(p.attachments)&&p.attachments.length<=2&&sha(sha256)&&hash(content)===sha256,'Invalid retained exact package');
  check(p.thread_id===null||key(p.thread_id),'Invalid exact thread');check(p.in_reply_to===null||text(p.in_reply_to,1000),'Invalid reply header');check(Array.isArray(p.references)&&p.references.length<=30&&new Set(p.references).size===p.references.length&&p.references.every(x=>/^<[^\s<>@]+@[^\s<>@]+>$/.test(x)&&x.length<255),'Invalid references');
  let total=0;for(const a of p.attachments){check(key(a.asset_id)&&key(a.version_id)&&sha(a.sha256)&&a.mime==='application/pdf'&&a.filename===a.sha256+'.pdf'&&count(a.bytes,20000000)&&a.bytes>0,'Exact bounded PDF descriptor required');total+=a.bytes;}check(total<=20000000,'Combined PDF bound exceeded');
- if(p.kind==='reply')exact(p.source,'draft_sha256,approval_event,reply_sha256,source_id');
+ if(p.kind==='requested-information')exact(p.source,'draft_sha256,approval_event,request_id,request_sha256,call_id');
+ else if(p.kind==='reply')exact(p.source,'draft_sha256,approval_event,reply_sha256,source_id');
  else exact(p.source,'draft_sha256,approval_event,scheduled_at,kind,company_id,timezone,first_intent,not_before');
  check(sha(p.source.draft_sha256)&&key(p.source.approval_event),'Exact reviewed source required');
- if(p.kind==='reply')check(sha(p.source.reply_sha256)&&key(p.source.source_id)&&p.thread_id!==null,'Exact reply source required');
+ if(p.kind==='requested-information')check(key(p.source.request_id)&&key(p.source.call_id)&&sha(p.source.request_sha256)&&p.thread_id===null&&p.in_reply_to===null&&p.references.length===0,'Exact requested source required');
+ else if(p.kind==='reply')check(sha(p.source.reply_sha256)&&key(p.source.source_id)&&p.thread_id!==null,'Exact reply source required');
  else check(utc(p.source.scheduled_at)&&['new-business','previously-called','follow-up'].includes(p.source.kind)&&key(p.source.company_id)&&text(p.source.timezone,80)&&(p.source.first_intent===null||key(p.source.first_intent))&&(p.source.not_before===null||utc(p.source.not_before))&&p.attachments.length===0,'Exact outreach source required');
 }
 // Project new receipts into the existing cadence/review reader without rewriting historical state.
@@ -52,7 +55,12 @@ export function mailboxDeliveryOutreachState(state){
 export function mailboxDeliveryPackage(state,config,input,actor,now){
  exact(input,'kind,project_id');operator(actor);policy(config,now);check(key(input.project_id),'Exact project required');const r=state.prospects[input.project_id];check(r?.follow_up_owner===actor,'Assigned operator required');
  let result;
- if(input.kind==='reply'){
+ if(input.kind==='requested-information'){
+  const source=requestedInformationSource(state,config,r.id,now),d=r.requested_information.draft,footer=outreachFooter(config.sender?.postal_address),e=state.events[d?.approval_event];
+  check(config.mailbox_delivery.postal_address_verified&&footer&&config.sender.postal_address.trim(),'Commercial mailing address remains required');
+  check(d?.status==='Approved'&&d.approved_by===actor&&e?.actor===actor&&e.type==='requested_information_approve'&&e.data?.draft_sha256===d.sha256&&requestedInformationDraftCurrent(state,config,r.id,now),'Exact requested content approval required');
+  result={schema_version:1,kind:'requested-information',project_id:r.id,owner:actor,from:config.sender.email,to:d.content.to,subject:d.content.subject,body:d.content.body+'\n\n'+d.content.signature+'\n\n'+footer,attachments:currentReplyAttachments(state,r.id,d.content.attachments).map(a=>({...a,filename:a.sha256+'.pdf'})),thread_id:null,in_reply_to:null,references:[],source:{draft_sha256:d.sha256,approval_event:d.approval_event,request_id:source.request.id,request_sha256:source.sha256,call_id:source.request.call_id}};
+ }else if(input.kind==='reply'){
   assertMailboxWorkReplySource(state,config,r.id,now);const d=r.reply_draft,e=state.events[d?.approval_event];
   check(d?.status==='Approved; sending held'&&replyDraftCurrent(r,d,config,state)&&e?.type==='reply_draft_approved'&&e.prospect_id===r.id&&e.actor===actor&&d.approved_by===actor&&e.data?.sha256===d.sha256&&e.data.approved===true&&e.data.facts_checked===true,'Separate exact content and facts approval required');
   const c=d.content,refs=(r.reply.content.references??'').split(/\s+/).filter(Boolean).filter(x=>x!==c.in_reply_to);
@@ -68,7 +76,7 @@ export function mailboxDeliveryPackage(state,config,input,actor,now){
   check(!Object.values(sync.held_sources??{}).some(x=>x.matched_projects?.includes(r.id))&&!Object.values(state.inquiry_intake?.sources??{}).some(x=>(x.project_id===r.id||x.paused_projects?.includes(r.id)||x.candidates?.includes(r.id)||x.source?.content?.from?.toLowerCase()===r.contact.email.toLowerCase())&&!(x.status==='Excluded'&&['newsletter','spam','automatic_reply'].includes(x.classification))),'Outreach has unresolved incoming evidence');
   result={schema_version:1,kind:'outreach',project_id:r.id,owner:actor,from:d.from,to:d.to,subject:d.subject,body:d.body,attachments:[],thread_id:null,in_reply_to:null,references:[],source:{draft_sha256:d.sha256,approval_event:schedule.approval_event,scheduled_at:schedule.at,kind:d.kind,company_id:d.company_id,timezone:d.timezone,first_intent:d.first_intent??null,not_before:d.not_before??null}};
  }
- check(result.to.toLowerCase()===r.contact.email.toLowerCase()&&result.from===config.mailbox_delivery.from,'Exact current recipient and sender required');const p={...result,sha256:hash(result)};packageShape(p);
+ check((result.kind==='requested-information'||result.to.toLowerCase()===r.contact.email.toLowerCase())&&result.from===config.mailbox_delivery.from,'Exact current recipient and sender required');const p={...result,sha256:hash(result)};packageShape(p);
  check(!Object.values(state.mailbox_delivery?.intents??{}).some(i=>i.package.project_id===r.id&&i.status!=='Verified'&&i.package.sha256!==p.sha256),'Reconcile the original unsettled delivery before replacing its package');return p;
 }
 function active(d,p,now){bound(d,p);check(!d.paused&&now>=d.updated_at&&p.sender_ready,'Delivery paused, time moved backwards or sender unverified');const a=d.allowances[d.allowance_id];check(a&&a.recorded_at<=now&&now<a.expires_at,'Current finite allowance required');return a;}
@@ -118,6 +126,7 @@ export function applyMailboxDeliveryTransition(state,config,tr){
    exact(input,'revision,approval_id,mime');check(input.revision===state.revision&&key(input.approval_id),'Current delivery revision and approval identity required');const a=d.approvals[input.approval_id],grant=active(d,p,at),packet=currentApproval(next,config,a,at),id=mailboxDeliveryIntentId(next,a);mimeShape(input.mime,id);
    check(!d.intents[id],'Original intent already reserved; reconcile without resend');check(Object.keys(d.intents).length<p.max_intents&&grant.used_intents<grant.max_intents,'Finite delivery allowance exhausted');const day=businessDate(new Date(at));check(Object.values(d.intents).filter(i=>i.sender_day===day).length<p.max_per_day,'Daily delivery ceiling reached');
    if(packet.kind==='reply')check(!Object.values(d.intents).some(i=>i.package.kind==='reply'&&i.package.project_id===packet.project_id&&i.package.source.source_id===packet.source.source_id),'Original reply already reserved');
+   else if(packet.kind==='requested-information')check(!Object.values(d.intents).some(i=>i.package.kind==='requested-information'&&i.package.project_id===packet.project_id&&i.package.source.call_id===packet.source.call_id),'Original requested response already reserved; reconcile without resend');
    else{
     const previous=Object.values(mailboxDeliveryOutreachState(next).outreach_delivery.intents),same=previous.filter(i=>i.company_id===packet.source.company_id||i.to?.toLowerCase()===packet.to.toLowerCase());
     check(packet.source.kind==='follow-up'?same.length===1&&same[0].id===packet.source.first_intent&&same[0].status==='Verified'&&same[0].to.toLowerCase()===packet.to.toLowerCase():same.length===0,'Original business or recipient intent must be reconciled');check(packet.source.kind!=='new-business'||previous.filter(i=>i.kind==='new-business'&&i.sender_day===day).length<100,'Daily 100 new-business ceiling reached');
