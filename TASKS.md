@@ -8,9 +8,9 @@ The owner selected “All EVZ projects, starting here,” “Create and test cha
 - [x] Record decisions, reasons and checkpoints in existing project/private records; use real context signals where exposed and mark unknown otherwise.
 - [x] Require separate independent requirements and engineering reviewers for substantial operations changes and broad audits; require independent review of skill changes. Preserve proportional handling for routine work and report an unavailable review honestly.
 - [x] Enable evidenced creation and improvement of EVZ skills, with relevant behavior checks, independent review, traceable results and rollback; preserve client privacy and existing model, spending and provider boundaries.
-- [x] Run fictional baseline/candidate comparisons and document actual observations, isolation limitations and relevant local checks; track final-revision reviews and CI in the PR.
+- [x] Run fictional baseline/candidate comparisons and document actual observations, isolation limitations and relevant local checks.
 
-The [fictional evaluation](docs/agent-workflow-evaluation.md) records six policy pairs and four revised-skill pairs, including retained inputs, responses, exact artifact bytes and limitations. Independent requirements and engineering reviewers found and verified corrections to the skill reference and evidence binding; both reported no remaining findings on `d9da9bf`. The PR records reviews and CI for the final revision.
+The [fictional evaluation](docs/agent-workflow-evaluation.md) records six policy pairs and four revised-skill pairs, including retained inputs, responses, exact artifact bytes and limitations. Independent requirements and engineering reviewers found and verified corrections to the skill reference and evidence binding; both reported no remaining findings on `d9da9bf`. Record final-head reviews and CI in the PR before completion.
 
 ## Operations release — November 1, 2026
 

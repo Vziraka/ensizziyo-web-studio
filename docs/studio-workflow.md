@@ -11,19 +11,20 @@ flowchart TD
     A["Owner request"] --> B["Read applicable instructions and current task context"]
     B --> C["Match the task to toolkit guidance and available skills/tools"]
     C --> D["Lead agent works; delegate bounded independent tasks when useful"]
-    D --> E{"What needs review?"}
-    E -- "Substantial operations or broad audit" --> F["Independent requirements reviewer"]
-    E -- "Substantial operations or broad audit" --> G["Independent engineering reviewer"]
-    E -- "Skill change" --> H["Test examples and obtain independent skill review"]
-    E -- "Routine task" --> I["Proportionate checks"]
-    F --> J["Reconcile findings and recheck affected changes"]
-    G --> J
-    H --> J
+    D --> E{"Substantial operations change or broad audit?"}
+    E -- "Yes" --> F["Require both independent reviewers: requirements and engineering"]
+    E -- "No" --> G{"Skill change?"}
+    F --> G
+    G -- "Yes" --> H["Test examples and obtain independent skill review"]
+    G -- "No" --> I["Proportionate requirements and engineering checks"]
+    H --> J["Reconcile findings and recheck affected changes"]
     I --> J
-    J --> K["Checkpoint decisions, reasons, evidence and next action"]
-    K --> L["Report result or reviewed PR"]
-    M["Actual context signal, if available"] -.-> K
-    K -. "When an improvement is warranted" .-> N["Compare skill or workflow changes with a baseline"]
+    J --> K{"Meaningful milestone or known handoff?"}
+    K -- "Yes" --> L["Checkpoint decisions, reasons, evidence and next action"]
+    K -- "No" --> M["Report result or reviewed PR"]
+    L --> M
+    N["Actual context signal, if available"] -.-> L
+    L -. "When an improvement is warranted" .-> O["Compare skill or workflow changes with a baseline"]
 ```
 
 ## Interviews and persistent decisions
