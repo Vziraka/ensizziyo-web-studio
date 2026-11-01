@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {join} from 'node:path';
+import {readFile} from 'node:fs/promises';
 import {PDFDocument} from 'pdf-lib';
 import {cloudDiscoveryFixture} from './cloud-discovery-fixtures.mjs';
 import {createHostedDesk} from './hosted-desk.mjs';
@@ -103,4 +104,26 @@ test('actual HTTP bounds a stalled initial canonical read and never resumes a la
  const f=await fixture(t),owner=await f.session('owner'),controller=new AbortController();t.mock.method(AbortSignal,'timeout',()=>controller.signal);
  let release,entered;const blocked=new Promise(r=>{release=r;}),started=new Promise(r=>{entered=r;});f.control.beforeRead=async k=>{if(k==='workspace'){entered();await blocked;}};
  const pending=owner.raw('/api/operations-pdf/record',{method:'POST',body:'{}'});await started;controller.abort();const response=await pending;assert.equal(response.status,503);f.control.beforeRead=null;release();assert.equal(Object.keys((await f.store.snapshot()).asset_index??{}).length,0);
+});
+
+
+test('retained asset/version bounds reject preparation and installation before writes without altering backup evidence',async t=>{
+ const f=await fixture(t);await f.register();
+ for(const [type,data,reference] of [
+  ['asset_registered',{asset_id:'b',scope:'project',project_id:'p',name:'Second retained PDF',kind:'source',version_id:'v',version_label:'Original'},'drive:synthetic-retained-second'],
+  ['asset_version_registered',{asset_id:'a',version_id:'v2',version_label:'Second'},'drive:synthetic-retained-version']
+ ])await operationsPdfRecord(f.app,await f.record(type,{...data,reference},{source:{...f.source,reference,sha256:f.manifest.sha256,bytes:f.manifest.bytes}}),'owner');
+ const output=join(f.directory,'retained-bounds.json');await exportManualBackup(f.app,join(f.directory,'local'),output);const original=await readFile(output),snapshot=await f.store.snapshot(),c=f.app.config;
+ const scope={...f.packet.binding.scope,namespace:'evz-manual-shared-pdf-limit-test'},wide={...policy,max_assets:2,max_versions_per_asset:2};
+ const prepare=operationsPdf=>prepareManualWorkspace({backup:output,sourceConfig:c,scope,mailbox:c.mailbox,mailboxWork:c.mailbox_work,mailboxClock:c.mailbox_clock,mailboxDelivery:c.mailbox_delivery,cloudDiscovery:c.cloud_discovery,operationsPdf});
+ const packet=await prepare(wide);assert.equal(Object.keys(packet.envelope.state.asset_index).length,2);assert.equal(Object.keys(packet.envelope.state.asset_index.a.versions).length,2);
+ for(const [bounded,error] of [[{...wide,max_assets:1},/asset count/],[{...wide,max_versions_per_asset:1},/version count/]]){
+  await assert.rejects(prepare(bounded),error);
+  // Even a newly resealed candidate must validate the retained counts at install entry.
+  const limited={...packet,envelope:structuredClone(packet.envelope),binding:structuredClone(packet.binding)};
+  limited.envelope.config.operations_pdf=bounded;limited.envelope.manual_source.config_sha256=hash(limited.envelope.config);limited.envelope.manual_source.operations_pdf.policy_sha256=hash(bounded);limited.binding.manifest_sha256=hash(limited.envelope.manual_source);
+  let accesses=0;const raw={getWithMetadata:async()=>{accesses++;throw Error('No destination read permitted');},setJSON:async()=>{accesses++;throw Error('No destination write permitted');}},store=new ConditionalLifecycleStore(raw,{manualBinding:limited.binding,now:f.now});
+  for(const commit of [false,true])await assert.rejects(installManualWorkspace(store,limited,{commit}),error);
+  assert.equal(accesses,0,'Reject over-limit retained authority before opening destination');assert.deepEqual(await readFile(output),original);assert.deepEqual((await readLifecycleBackup(output)).state,snapshot);assert.deepEqual(await f.store.snapshot(),snapshot);
+ }
 });

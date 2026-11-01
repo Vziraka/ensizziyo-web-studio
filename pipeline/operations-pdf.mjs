@@ -26,8 +26,10 @@ function source(s){
 }
 const provenance=s=>Object.fromEntries(['reference','name','mime_type','modified_time','account'].map(k=>[k,s[k]]));
 export function validateOperationsPdfState(s,c){
- policy(c);
- for(const a of Object.values(s.asset_index??{}))for(const v of Object.values(a.versions??{}))if(v.operations_pdf_source){
+ const p=policy(c),assets=Object.values(s.asset_index??{});
+ check(assets.length<=p.max_assets,'Existing PDF asset count exceeds its declared policy');
+ for(const a of assets)check(Object.keys(a.versions??{}).length<=p.max_versions_per_asset,'Existing PDF version count exceeds its declared policy');
+ for(const a of assets)for(const v of Object.values(a.versions??{}))if(v.operations_pdf_source){
   const d=source(v.operations_pdf_source);check(d.reference===v.reference,'Registered PDF reference changed');
   if(v.verified_original){const o=v.verified_original;check(d.bytes<=projectOriginalLimit&&o.sha256===d.sha256&&o.bytes===d.bytes&&hash(provenance(o))===hash(provenance(d)),'Verified PDF differs from registered original');}
   if(v.original_transfer){const t=v.original_transfer;check(d.bytes<=projectOriginalLimit&&t.manifest.sha256===d.sha256&&t.manifest.bytes===d.bytes&&hash(t.source)===hash(provenance(d)),'Reserved PDF differs from registered original');}
