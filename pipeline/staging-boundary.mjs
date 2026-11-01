@@ -20,6 +20,8 @@ export function stagingEnvironment(env, context, binding) {
   if(binding.google_connection===true){
     for(const key of ['EVZ_OPERATIONS_GOOGLE_OAUTH','EVZ_GOOGLE_OAUTH_BINDING','EVZ_GOOGLE_CREDENTIAL_NAMESPACE','EVZ_GOOGLE_CREDENTIAL_KEY_ID','EVZ_GOOGLE_CREDENTIAL_KEY','EVZ_GOOGLE_CLIENT_SECRET'])
       if(env[key]!==undefined)projected[key]=env[key];
+    // Build-pinned public metadata takes precedence over stale runtime bindings.
+    if(binding.google_oauth_binding)projected.EVZ_GOOGLE_OAUTH_BINDING=JSON.stringify(binding.google_oauth_binding);
   }
   for (const key of ['EVZ_OPERATIONS_OWNER_KEY','EVZ_OPERATIONS_FRIEND_KEY','EVZ_OPERATIONS_SESSION_SECRET']) {
     if (typeof env[key] !== 'string' || env[key].length < 32) fail();

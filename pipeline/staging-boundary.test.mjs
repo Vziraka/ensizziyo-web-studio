@@ -4,9 +4,29 @@ import {stagingEnvironment,createStagingBoundary} from './staging-boundary.mjs';
 import {createHostedDesk} from './hosted-desk.mjs';
 import {fixtureReply} from './lifecycle-fixtures.mjs';
 import {createOperatorAuth} from './operators.mjs';
+import {mkdtempSync,readFileSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {execFileSync} from 'node:child_process';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 const binding={site_id:'d7840f1d-c0e6-4f87-a41f-e34f53c81625',deploy_id:'abc123',origin:'https://abc123--evz-hybrid-fictional-20261027.netlify.app',namespace:'evz-redesign-proof-staging-1234567890abcdef'};
 const context={site:{id:binding.site_id},deploy:{id:binding.deploy_id,context:'deploy-preview',published:false}};
 const env={EVZ_OPERATIONS_OWNER_KEY:'o'.repeat(43),EVZ_OPERATIONS_FRIEND_KEY:'f'.repeat(43),EVZ_OPERATIONS_SESSION_SECRET:'s'.repeat(43),EVZ_OPERATIONS_DESK_ENABLED:'shared-operations-pdf-mail-v1',EVZ_INTERNAL_DISPATCH_BINDING:'poison',OPENAI_API_KEY:'not-forwarded'};
+test('packaged Google connection binds actual build metadata without embedding runtime secrets',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'evz-staging-')),output=join(root,'source');
+ try{
+  execFileSync(process.execPath,[fileURLToPath(new URL('../scripts/prepare-protected-staging.mjs',import.meta.url)),output,'--google-connection','--google-client-id=fictional-client.apps.googleusercontent.com']);
+  execFileSync(process.execPath,['staging-build.mjs'],{cwd:output,env:{...process.env,SITE_ID:binding.site_id,DEPLOY_ID:binding.deploy_id,DEPLOY_URL:binding.origin,CONTEXT:'deploy-preview'}});
+  const generated=(await import(pathToFileURL(join(output,'pipeline/staging.generated.mjs')))).default;
+  const projected=stagingEnvironment({...env,EVZ_GOOGLE_OAUTH_BINDING:'stale-deploy',EVZ_GOOGLE_CLIENT_SECRET:'runtime-only-secret'},context,generated);
+  const oauth=JSON.parse(projected.EVZ_GOOGLE_OAUTH_BINDING);
+  assert.equal(oauth.deploy_id,binding.deploy_id);assert.equal(oauth.redirect_uri,binding.origin+'/desk/api/google-oauth/callback');
+  assert.equal(oauth.client_id,'fictional-client.apps.googleusercontent.com');assert.equal(oauth.account,'ensizziyo@evzdigital.studio');assert.equal(oauth.audience,'internal');
+  assert.equal(projected.EVZ_GOOGLE_CLIENT_SECRET,'runtime-only-secret');
+  assert.doesNotMatch(readFileSync(join(output,'pipeline/staging.generated.mjs'),'utf8'),/runtime-only-secret/);
+  assert.throws(()=>stagingEnvironment(env,{...context,deploy:{...context.deploy,id:'other'}},generated));
+ }finally{rmSync(root,{recursive:true,force:true});}
+});
 test('owner connection opt-in forwards only its credential configuration and closed routes',async()=>{
  const supplied={...env,EVZ_OPERATIONS_GOOGLE_OAUTH:'owner-code-v1',EVZ_GOOGLE_OAUTH_BINDING:'bound-by-existing-oauth-validator',EVZ_GOOGLE_CREDENTIAL_NAMESPACE:'separate-namespace',EVZ_GOOGLE_CREDENTIAL_KEY_ID:'key-id',EVZ_GOOGLE_CREDENTIAL_KEY:'test-key',EVZ_GOOGLE_CLIENT_SECRET:'test-secret',EVZ_OPERATIONS_GOOGLE_EXACT_MAIL:'shared-operations-exact-mail-v1',EVZ_OPERATIONS_GOOGLE_INCOMING:'enabled'};
  const ordinary=stagingEnvironment(supplied,context,binding);
