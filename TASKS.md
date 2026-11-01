@@ -1,5 +1,16 @@
 # Launch tasks
 
+## Subagent model routing — November 1, 2026
+
+The owner approved evaluating and implementing proportional subagent model choices after observing that the preceding workflow pilot inherited Terra Max even for narrow cases. Start in this repository, preserve independent review for consequential work, and use only included Codex allowance on fictional fixtures. A fresh conversation does not itself change the model, isolate files or permissions, or prove a review independent. The active operations chat remains separately owned; inspect it read-only for handoff advice without interrupting its work.
+
+- [x] Compare available model/effort candidates on fictional prompts against expectations written before the runs; record misses, false positives, observed token usage, latency and limitations.
+- [x] Record a provisional model/effort route and escalation/fallback rules. Add project-scoped roles, verify their CLI discovery, and record the unverified nested-child execution. Keep other projects, main-agent settings and paid overage unchanged.
+- [x] Verify role schemas, installed CLI discovery and affected documentation; retain the independent review and CI evidence in the PR.
+- [ ] In a clean supported session, verify actual named-role-to-child execution; extend adoption beyond this repository only after checking the other client or project.
+
+Record separate independent requirements and engineering reviews and required CI for the final head in the PR before merge.
+
 ## Agent workflow reliability — November 1, 2026
 
 The owner selected “All EVZ projects, starting here,” “Create and test changes with independent review,” and “Separate requirements and engineering reviews” for substantial operations changes and broad audits. The owner wants reviewers separate from the implementer because an agent may make its own tests pass without satisfying the original goal. The same discussion requested task-based skill/tool routing, decisions with reasons, honest context tracking and handoffs, and evidence-based skill creation and improvement. Included Codex usage is authorized as needed for this task's fictional comparisons, without live client data or paid overage; fresh contexts and separate fixture directories do not imply OS-level isolation. These are studio standards; this repository is the first implementation, not proof that other EVZ environments have adopted them.
