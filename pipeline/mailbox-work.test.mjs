@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {hash,initialConfig} from './lifecycle.mjs';
 import {fixtureReply} from './lifecycle-fixtures.mjs';
+import {applyMailboxObservation,mailboxProfile} from './mailbox-intake.mjs';
+import {gmailScopes} from './google-hosted-transport.mjs';
 import {mailboxWorkCapability,validateMailboxWorkPolicy,validateMailboxWorkState,applyMailboxWorkTransition,mailboxWorkContext,mailboxWorkReceipt,mailboxWorkAdoption} from './mailbox-work.mjs';
 
 const at='2026-11-02T14:00:00.000Z',secret='ab'.repeat(32),lease={worker_id:'worker-one',token:secret};
@@ -73,4 +75,23 @@ test('historical generations remain inert and claim collisions cannot hide in re
 test('signed adoption validation survives lease expiry but rejects changed material and owner',()=>{
  const f=fixture();f.create();f.claim();submit(f);const input={id:'draft',revision:f.s.revision,result_sha256:hash(result)},before=structuredClone(f.s),later='2026-11-04T00:00:00.000Z';
  const packet=mailboxWorkAdoption(f.s,f.c,input,'owner',later);assert.equal(packet.task.result.body,result.body);assert.equal(packet.context.project_id,'p');assert.deepEqual(f.s,before);assert.throws(()=>mailboxWorkAdoption(f.s,f.c,input,'friend',later),/Assigned/);f.s.prospects.p.quote={scope:'New scope'};assert.throws(()=>mailboxWorkAdoption(f.s,f.c,input,'owner',later),/changed/);
+});
+test('drained mailbox with a relevant unclassified source holds creation, claimed context, result and adoption',()=>{
+ const now='2026-11-02T14:01:00.000Z';
+ function ingest(f,{from='customer@example.org',thread='thread',newsletter=false,received=now}={}){
+  Object.assign(f.s.mailbox_sync,{cursor:'100',pages:[],after:f.c.mailbox.after});
+  const grant={profile:mailboxProfile,account:f.c.mailbox.account,grant_id:f.c.mailbox.grant_id,scopes:['openid','https://www.googleapis.com/auth/userinfo.email',...gmailScopes],expires_at:Date.parse(now)+3600000};
+  const apply=(operation,input,value)=>applyMailboxObservation(f.s,f.c,{operation,input,value,grant,at:now,before_sha256:hash(f.s.mailbox_sync),policy_sha256:hash(f.c.mailbox)});
+  apply('history',{cursor:'100',page:null},{historyId:'110',history:[{id:'110',messagesAdded:[{message:{id:'new-mail',threadId:thread}}]}]});
+  apply('message',{id:'new-mail',threadId:thread},{id:'new-mail',threadId:thread,internalDate:String(Date.parse(received)),labelIds:['INBOX'],payload:{mimeType:'text/plain',headers:[{name:'From',value:from},{name:'To',value:f.c.mailbox.account},{name:'Subject',value:'New request'},{name:'Message-ID',value:'<new-mail@example.org>'},...(newsletter?[{name:'List-ID',value:'fixture.list'}]:[])],body:{data:Buffer.from('A newer message requiring classification.').toString('base64url')}}});
+ }
+ for(const scope of [{from:'customer@example.org',thread:'different-thread'},{from:'different@example.org',thread:'thread'}]){
+  for(const phase of ['create','claimed','review']){const f=fixture();f.s.prospects.p.reply.at=at;if(phase!=='create'){f.create();f.claim();}if(phase==='review')submit(f);ingest(f,scope);const source=f.s.inquiry_intake.sources['new-mail'];assert.equal(source.classification,'uncertain');assert.equal(source.status,'Identity review');assert.deepEqual(source.paused_projects,['p']);assert.equal(f.s.prospects.p.reply.source_id,'reply');assert.deepEqual(f.s.mailbox_sync.pending,[]);assert.equal(f.s.mailbox_sync.checked_at,now);
+   const before=structuredClone(f.s);
+   if(phase==='create')assert.throws(()=>f.transition('create',{id:'draft',project_id:'p',revision:f.s.revision,replace_task_id:null,studio_asset_ids:[]},'owner',now),/unresolved|newer/);
+   if(phase==='claimed'){assert.throws(()=>mailboxWorkContext(f.s,f.c,'draft',lease,now),/unresolved|newer/);assert.throws(()=>f.transition('result',{id:'draft',worker_id:lease.worker_id,lease:secret,context_sha256:f.s.email_draft_tasks.draft.context_sha256,result},'worker',now),/unresolved|newer/);}
+   if(phase==='review')assert.throws(()=>mailboxWorkAdoption(f.s,f.c,{id:'draft',revision:f.s.revision,result_sha256:hash(result)},'owner',now),/unresolved|newer/);assert.deepEqual(f.s,before);
+  }
+ }
+ for(const options of [{newsletter:true,received:'2026-11-01T15:00:00.000Z'},{from:'unrelated@example.org',thread:'unrelated-thread'}]){const f=fixture();f.s.prospects.p.reply.at=at;f.create();f.claim();ingest(f,options);assert.equal(mailboxWorkContext(f.s,f.c,'draft',lease,now).context.reply.source_id,'reply');}
 });

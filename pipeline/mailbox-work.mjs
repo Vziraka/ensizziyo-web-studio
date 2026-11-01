@@ -31,6 +31,13 @@ function material(s,c,project,studioIds,now){
  // The mailbox profile has no legacy registered-route configuration; inspect owned intents directly.
  check(!Object.values(s.outreach_delivery?.intents??{}).some(i=>i.project_id===project&&i.status!=='Verified')&&!Object.values(s.actions??{}).some(a=>a.prospect_id===project&&a.payload?.exact_mail&&!a.payload.internal_notification&&s.operations?.requests?.[a.id+'-intent']?.dispatch_started_at&&s.operations.requests[a.id+'-intent'].status!=='Verified'),'Reconcile uncertain outgoing intent');
  check(!Object.values(sync.held_sources??{}).some(x=>x.thread_id===r.reply.thread_id||x.matched_projects?.includes(project)),'Current conversation has held mailbox sources');
+ check(!Object.values(s.inquiry_intake?.sources??{}).some(entry=>{
+  const incoming=entry.source,relevant=entry.project_id===project||entry.paused_projects?.includes(project)||entry.candidates?.includes(project)||incoming?.thread_id===r.reply.thread_id||incoming?.content?.from?.toLowerCase()===r.contact.email.toLowerCase();
+  if(!relevant||entry.status==='Excluded'&&['newsletter','spam','automatic_reply'].includes(entry.classification))return false;
+  if(entry.classification==='uncertain'||['Identity review','Ownership review','Restricted'].includes(entry.status))return true;
+  if(entry.source_id===r.reply.source_id)return false;
+  const received=Date.parse(incoming?.received_at),currentTime=Date.parse(r.reply.at??r.reply.received_at);return !Number.isFinite(received)||!Number.isFinite(currentTime)||received>currentTime;
+ }),'Current conversation has an unresolved or newer retained source');
  const context=emailDraftSource(r,c,s);check(context.conversation_history?.status!=='Held','Retained conversation context is held');
  const writing_style=writingStyle(s,r.follow_up_owner),attachment_catalogue=replyAttachmentCatalogue(s,project,studioIds),packet={context,writing_style,attachment_catalogue,initial_draft_sha256:r.reply_draft?.sha256??null};
  safeEmailTaskMaterial(packet);check(Buffer.byteLength(JSON.stringify(packet))<=100000,'Task context exceeds bound');return packet;
