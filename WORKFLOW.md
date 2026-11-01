@@ -15,7 +15,7 @@ Updated October 12, 2026. This is a continuing project. The first website is an 
 
 ## Prototypes and production handoff
 
-For substantial planning/design changes, load the portable [studio grilling skill](.agents/skills/studio-grilling/SKILL.md). Save settled decisions and their reasons through the existing task/client record; do not re-interview settled choices. [The studio workflow](docs/studio-workflow.md) owns optional reference/preference recall and learned-procedure suggestions. Check releases and actual model availability before substantial work using [studio model review](.agents/skills/studio-model-review/SKILL.md); it never changes defaults automatically.
+For substantial planning/design changes, load the portable [studio grilling skill](.agents/skills/studio-grilling/SKILL.md). Save settled decisions and their reasons through the existing task/client record; do not re-interview settled choices. [The studio workflow](docs/studio-workflow.md) owns optional reference/preference recall and the skill-improvement lifecycle. Check releases and actual model availability before substantial work using [studio model review](.agents/skills/studio-model-review/SKILL.md); it never changes defaults automatically.
 
 State the question each prototype must answer. For visual exploration, compare two structurally different layouts using realistic copy and representative content; add another only when it explores a meaningful alternative. Make variants easy to compare in one preview with labelled controls or links.
 
@@ -59,15 +59,27 @@ Review the same identified base/head change through two separate passes:
 1. Requirements: compare against the task/brief; identify missing, incorrect, or unrequested behavior.
 2. Engineering quality: check correctness, affected callers, maintainability, security, accessibility, and test quality as relevant. Confirm findings with concrete scenarios rather than speculative concerns.
 
-Keep the results distinguishable even when one reviewer performs both. Additional independent review is useful for consequential changes when available and authorized; this workflow does not mandate multi-agent or multi-model orchestration.
+For substantial operations changes and broad audits, use two distinct reviewers independent of the implementer: one for requirements and one for engineering quality. This includes consequential changes to live data, access, outbound delivery, deployment or multi-system operations; use judgment for the breadth and risk of other changes. A broad audit spans a repository or a substantial multi-component workflow. For a skill creation or change, obtain an independent review of the skill and its evidence. Routine work retains proportionate, distinguishable passes; it does not automatically need multiple agents.
+
+For other substantial tasks, delegate bounded independent research, testing or review when the host supports it and it improves quality or speed; keep short or dependent work with the main agent. When supported, start independent subagents without the parent's conversation history and give them the original task, acceptance criteria, relevant decisions, current constraints, authoritative sources, exact base/head or immutable artifact, and expected result. A continuing worker may need prior history; note when it is inherited. Do not give independent reviewers the author's conclusion. In the Codex collaboration tool used for this project, `fork_turns: "none"` omits the parent history; other hosts may differ. Fresh context does not isolate shared files or permissions. Share only task-authorized evidence, never credentials. Use one integration owner for shared files and separate worktrees for competing writers when needed. If independent reviewers are unavailable, report the missing review and leave that gate incomplete; a distinct human reviewer can satisfy a role. Do not silently substitute the implementer or claim an unperformed review.
+
+Record each reviewer, scope, reviewed revision, findings and checks. For an implementation, fix confirmed findings, then have the affected review and checks reconsider the changed revision before completion. For a requested read-only audit, report findings without changing the audited code. The same model may be used by different reviewers; independence is not a guarantee of correctness.
 
 The PR explains the problem, resulting behavior, verification evidence, and material limitations. Include before/after evidence when it helps assess the change, and describe affected behavior and rollback implications when material. Match verification claims to the reviewed revision; reassess affected checks after later changes. Documentation-only changes need document/diff checks, not an invented application test run.
+
+## Context and long-running work
+
+Use a real current-chat context or token signal only when the active surface exposes it; account allowance and cumulative usage are not the current context window. Codex's interactive `/status` or app-server token events may be available, but do not infer a percentage, compaction threshold, or automatic alert when they are not. Do not change model or compaction defaults merely to avoid summaries. Save a concise checkpoint at meaningful milestones and before a known handoff using [WORKSPACE.md](WORKSPACE.md#work-and-codex-handoff). Record confirmed decisions and their reasons when they occur, rather than relying on a later summary.
+
+A checkpoint in the same chat does not reset context; a new chat or host handoff follows the current client's controls and user authorization. On resumption, reread the relevant current source and reconcile the branch, worktree, approvals and evidence; a checkpoint does not grant fresh authority. Compaction remains a normal safeguard. Never put client data, credentials, or raw sensitive tool output in repository checkpoints.
 
 ## Keeping instructions current
 
 AGENTS.md contains stable working conventions; BRIEF.md describes product intent; TASKS.md tracks current work; TOOLKIT.md routes capabilities. Avoid duplicating their contents.
 
 When requirements, commands, architecture, or integrations change, update affected documentation in the same PR. At milestone completion, remove obsolete instructions and reconcile proposed versus implemented capabilities. Resolve contradictions against the latest user decisions and actual code; surface consequential uncertainty rather than blindly following stale text.
+
+At a substantial task's review, or after a repeated failure, consider whether a reusable skill or test improvement is warranted. Follow the [skill lifecycle](docs/studio-workflow.md#model-updates-and-learned-procedures); do not promote a one-off example into a global rule.
 
 Keep each rule in one authoritative place and use task-specific pointers elsewhere. Prefer a type, test, lint, or CI check for recurring mechanical mistakes instead of accumulating reminders. Add a glossary only when terminology needs clarification. Add a short architecture decision record only for a meaningful tradeoff that is costly to reverse and surprising without context; create neither as an empty template.
 
