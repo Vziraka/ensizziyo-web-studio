@@ -2,6 +2,30 @@
 
 October 28, 2026. The owner authorized implementation after selecting these defaults: interview substantial planning/design changes; save confirmed project decisions and confirm wider preferences; consult references and saved design preferences only on request; research public sources before evaluating Apollo; review releases weekly and before substantial work without automatically switching models. These choices supersede the earlier automatic design-retrieval suggestion.
 
+## Task flow
+
+This is the intended workflow in a supported host, not proof that every client exposes the same tools or enforced gates. Categories can overlap; [WORKFLOW.md](../WORKFLOW.md) owns the detailed review requirements.
+
+```mermaid
+flowchart TD
+    A["Owner request"] --> B["Read applicable instructions and current task context"]
+    B --> C["Match the task to toolkit guidance and available skills/tools"]
+    C --> D["Lead agent works; delegate bounded independent tasks when useful"]
+    D --> E{"What needs review?"}
+    E -- "Substantial operations or broad audit" --> F["Independent requirements reviewer"]
+    E -- "Substantial operations or broad audit" --> G["Independent engineering reviewer"]
+    E -- "Skill change" --> H["Test examples and obtain independent skill review"]
+    E -- "Routine task" --> I["Proportionate checks"]
+    F --> J["Reconcile findings and recheck affected changes"]
+    G --> J
+    H --> J
+    I --> J
+    J --> K["Checkpoint decisions, reasons, evidence and next action"]
+    K --> L["Report result or reviewed PR"]
+    M["Actual context signal, if available"] -.-> K
+    K -. "When an improvement is warranted" .-> N["Compare skill or workflow changes with a baseline"]
+```
+
 ## Interviews and persistent decisions
 
 `.agents/skills/studio-grilling/SKILL.md` owns the interview method. It is an EVZ adaptation rather than a vendored upstream skill. Read it automatically for substantial planning/design changes, or on an explicit grilling request. Direct small changes proceed normally. Confirmed implementation decisions belong in BRIEF.md/TASKS.md; private client decisions belong in that client's existing notes/work/asset feedback, never a new public client folder. Save the reason and the deciding answer alongside acceptance criteria. Chat summaries are not the durable record.
