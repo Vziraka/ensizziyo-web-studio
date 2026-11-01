@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {hash,initialConfig} from './lifecycle.mjs';
+import {hash,initialConfig,StudioLifecycle} from './lifecycle.mjs';
 import {fixtureReply} from './lifecycle-fixtures.mjs';
 import {applyMailboxObservation,mailboxProfile} from './mailbox-intake.mjs';
 import {gmailScopes} from './google-hosted-transport.mjs';
+import {applyLocalInquiry} from './local-inquiry-intake.mjs';
+import {applyConversationRecord} from './conversation-records.mjs';
 import {mailboxWorkCapability,validateMailboxWorkPolicy,validateMailboxWorkState,applyMailboxWorkTransition,mailboxWorkContext,mailboxWorkReceipt,mailboxWorkAdoption} from './mailbox-work.mjs';
 
 const at='2026-11-02T14:00:00.000Z',secret='ab'.repeat(32),lease={worker_id:'worker-one',token:secret};
@@ -94,4 +96,15 @@ test('drained mailbox with a relevant unclassified source holds creation, claime
   }
  }
  for(const options of [{newsletter:true,received:'2026-11-01T15:00:00.000Z'},{from:'unrelated@example.org',thread:'unrelated-thread'}]){const f=fixture();f.s.prospects.p.reply.at=at;f.create();f.claim();ingest(f,options);assert.equal(mailboxWorkContext(f.s,f.c,'draft',lease,now).context.reply.source_id,'reply');}
+});
+test('signed claim resolves current-source ownership even when intake retains Ownership review',()=>{
+ const f=fixture();f.s.prospects.p.follow_up_owner=null;const app=new StudioLifecycle(null,()=>new Date(at));app.config=f.c;
+ const reply={...fixtureReply('owned-source','thread','customer@example.org'),received_at:at};
+ applyLocalInquiry(app,f.s,{id:'record-unowned',prospect_id:'inquiry-intake',type:'inquiry_recorded',at,data:{company_name:'Fixture business',classification:'uncertain',reply}},'provider',f.s.revision,{shared:true});
+ applyLocalInquiry(app,f.s,{id:'review-unowned',prospect_id:'inquiry-intake',type:'inquiry_classification_reviewed',at,data:{source_id:'owned-source',classification:'inquiry',reason:'Reviewed ordinary client inquiry'}},'owner',f.s.revision,{shared:true});
+ assert.equal(f.s.inquiry_intake.sources['owned-source'].status,'Ownership review');assert.equal(f.s.prospects.p.reply.source_id,'owned-source');assert.throws(()=>f.create(),/assigned/);
+ applyConversationRecord(f.s,{id:'claim-unowned',prospect_id:'p',type:'conversation_claimed',at,data:{reason:'I will handle this inquiry'}},'owner',f.s.revision,new Date(at),{manualRecording:true});
+ assert.equal(f.s.prospects.p.follow_up_owner,'owner');assert.equal(f.s.inquiry_intake.sources['owned-source'].status,'Ownership review');f.create();f.claim();assert.equal(mailboxWorkContext(f.s,f.c,'draft',lease,at).context.owner,'owner');
+ const draft={...result,source_ids:['reply:owned-source']};f.transition('result',{id:'draft',worker_id:lease.worker_id,lease:secret,context_sha256:f.s.email_draft_tasks.draft.context_sha256,result:draft});assert.equal(mailboxWorkAdoption(f.s,f.c,{id:'draft',revision:f.s.revision,result_sha256:hash(draft)},'owner',at).task.status,'Review');
+ f.s.inquiry_intake.sources['owned-source'].status='Identity review';assert.throws(()=>mailboxWorkAdoption(f.s,f.c,{id:'draft',revision:f.s.revision,result_sha256:hash(draft)},'owner',at),/unresolved/);
 });
