@@ -34,4 +34,6 @@ A controlled research runner remains in [pipeline](pipeline/README.md), with sub
 
 Research checks: run `npm ci --ignore-scripts`, `npm run check` and `npm test` from `pipeline`. See its README for private configuration, connection health checks, runtime verification, recovery and current limits.
 
+Agent workflow evaluation checks: run `node --test scripts/context-handoff-pilot.test.mjs scripts/context-handoff-evidence.test.mjs` from the repository root. The [fictional handoff pilot](docs/context-handoff-pilot.md) records its evidence and limits; it does not activate an automatic handoff.
+
 Use this repository in a dedicated Codex project. Client builds belong in separate repositories. Keep customer contact records and credentials out of Git.

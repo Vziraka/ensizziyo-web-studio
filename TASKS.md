@@ -4,6 +4,19 @@
 
 Implement an explicitly opted-in, default-disabled MCP Events transport for saved operations incidents and the daily 18:00 Eastern summary. Preserve role isolation, same-CAS intent and claims, encrypted separately stored subscriptions, bounded included-only execution and secret-free disabled restore. Callback acceptance is not evidence of a ChatGPT task or device notification. Independent requirements and engineering review, synthetic protocol/race tests and disabled package verification remain release gates; no live connection, send or schedule is authorized by this source task. Eugene identity, powered-off operation and independent host-outage detection remain open.
 
+## Context and handoff evaluation — November 1, 2026
+
+The owner accepted a fictional pilot of context-aware checkpoints and handoffs, starting here before considering wider EVZ use. Preserve decisions and their reasons, current work and approval holds; compare the existing workflow with a structured checkpoint and a fresh-session continuation. The existing workflow already recommends checkpoints, so the baseline must retain that guidance. Use only included Codex allowance and preserve the existing shared reserve. No real client data, sends, deployments, paid overage, user-owned chat creation or global activation is authorized by this pilot.
+
+- [x] Freeze representative fictional cases and independent expectations before comparisons. Exercise changed decisions, stale worktree state, uncertain operations, approval holds, unavailable context signals and unnecessary handoffs.
+- [x] Compare matched continuations and inspect actual available evidence. Distinguish a prompt simulation from real compaction, a same-chat continuation or OS-level isolation; retain the outcomes, omissions and any unavailable measurements.
+- [x] Have distinct requirements and engineering reviewers assess the candidate and evidence; resolve findings and rerun affected checks. Keep live integration and broader rollout unproven until separately demonstrated.
+- [x] Verify an actual host compaction event and checkpoint restoration before considering automatic handoff. A fictional in-memory app-server test observed manual compaction and explicit checkpoint restoration; automatic restoration and successor creation remain unverified.
+
+November 1 continuation: the owner said “ok continue the next step” after the pilot report proposed an isolated test that captures a real compaction event and verifies checkpoint restoration. Use a dedicated in-memory test session with fictional records, observe the actual event, and check that a separately saved checkpoint is delivered and applied after compaction. Preserve the existing allowance reserve and independent review. This authorizes no user-owned chat, real connector action, live data, deployment, global setting change or bypass of hook trust; manual test injection does not establish automatic restoration.
+
+The [handoff pilot](docs/context-handoff-pilot.md) owns the experiment, limitations and resulting recommendation. Separate requirements and engineering reviewers accepted implementation head `6ea3376` after the reproduced concurrency issue was fixed; the final status-only update records that evidence. Existing [context and long-running work](WORKFLOW.md#context-and-long-running-work) remains the active policy during the pilot.
+
 ## Subagent model routing — November 1, 2026
 
 The owner approved evaluating and implementing proportional subagent model choices after observing that the preceding workflow pilot inherited Terra Max even for narrow cases. Start in this repository, preserve independent review for consequential work, and use only included Codex allowance on fictional fixtures. A fresh conversation does not itself change the model, isolate files or permissions, or prove a review independent. The active operations chat remains separately owned; inspect it read-only for handoff advice without interrupting its work.
