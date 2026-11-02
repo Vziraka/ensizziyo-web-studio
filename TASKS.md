@@ -1,5 +1,16 @@
 # Launch tasks
 
+## Truthful internal-mail disposition — November 2, 2026
+
+Complete internal/test mail needs a truthful reviewed exclusion instead of a false inquiry, spam or automated-mail classification. Reuse the existing signed classification event with `non_inquiry`, visibly labelled **Not an inquiry (internal/test/other)**, only for complete uncertain sources in Identity review. [Mailbox intake contract](pipeline/MAILBOX-INTAKE.md#reviewed-non-inquiries) owns the interface and retained-history rules. This is separate from the frozen renewable-desk upgrade.
+
+- [x] Preserve exact source/hash/original events, review actor/time/reason, all client and stop history, assignment rotation and permanent work charges; create no client/reply/task/approval/send or automatic resume.
+- [x] Apply the same Excluded disposition to reply-work, outreach and requested-information coverage; keep the excluded message ineligible as reply context and retain independent incomplete/newer-source, restriction, uncertainty, allowance, postal and approval holds.
+- [x] Verify both signed roles, conflicting/stale/duplicate/concurrent reviews, original-event reconciliation after a lost acknowledgement, complete backup/inert restore, and truthful notification counters using fictional sources and substituted provider/storage boundaries.
+- [x] Complete bounded actual-handler browser review for both roles, retained reason as literal text, keyboard submission and reload at actual 400 CSS pixels without overflow; preserve independent real-reply/incomplete-original attention and zero provider/task/send activity.
+- [ ] Complete final read-only identity-resolution UI regression check, distinct frozen-source requirements/engineering reviews and required CI. The final text insertion preserves the existing ambiguous-client matching branch; full production acceptance remains separate.
+- [ ] Deploy a separately reviewed backed-up source increment before any actual internal-mail disposition. No real classification, send, owner change, allowance, resume, visibility or commercial activation is part of these source checks.
+
 ## Reusable manual mailbox allowances — November 2, 2026
 
 The finite proof policies could consume their lifetime task/intent limits after one successful journey. This source increment adds explicit version-2 operations policies with stable immutable hard limits and signed finite worker/delivery allowances. Normal renewal retains the binding, history and permanent charges; it does not redeploy, reconnect Google, invoke a model, unpause or reset a day. Older policy versions keep their finite proof behavior and denials. [Worker contract](pipeline/MAILBOX-WORK.md#renewable-manual-allowances) and [delivery contract](pipeline/MAILBOX-DELIVERY.md#renewable-manual-allowances) own the exact interface.

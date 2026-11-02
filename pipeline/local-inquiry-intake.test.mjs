@@ -80,3 +80,30 @@ test('an unclassified reply pauses every exact sender match before identity revi
  await app.apply({id:'exclude',prospect_id:'inquiry-intake',type:'inquiry_classification_reviewed',at,data:{source_id:'source-unclassified',classification:'automatic_reply',reason:'Reviewed as an automated reply.'}});
  s=await app.snapshot();assert.equal(s.prospects.one.cold_paused,true);assert.equal(s.prospects.two.cold_paused,true);assert.equal(s.inquiry_intake.next_owner,'owner');
 });
+
+test('signed non-inquiry review retains exact source and stops without creating a client or consuming rotation',async()=>{
+ for(const actor of ['owner','friend']){
+  const app=await fixture();await app.apply(fixtureProspect('old',at));await app.apply({id:'stop-old',prospect_id:'old',type:'contact_stopped',at,data:{reason:'do_not_contact'}});
+  const source=inquiry('internal','Internal test','old@example.invalid','uncertain');await app.apply(source);const before=await app.snapshot(),prior=before.inquiry_intake.sources['source-internal'];
+  const event={id:'non-inquiry-review',prospect_id:'inquiry-intake',type:'inquiry_classification_reviewed',at,data:{source_id:prior.source_id,classification:'non_inquiry',reason:'Read the complete source: an internal technical test, not a business inquiry.'}};
+  const saved=await app.apply(event,{actor,expectedRevision:before.revision}),s=await app.snapshot(),receipt=saved.receipt;
+  assert.equal(receipt.classification,'non_inquiry');assert.equal(receipt.status,'Excluded');assert.equal(receipt.project_id,null);assert.equal(receipt.assigned_to,null);assert.equal(receipt.original_event_id,prior.event_id);assert.equal(receipt.source_sha256,prior.source_sha256);assert.deepEqual(receipt.source,prior.source);
+  assert.deepEqual(receipt.classification_review,{by:actor,at,event_id:event.id,reason:event.data.reason,original_classification:'uncertain'});assert.deepEqual(s.prospects,before.prospects);assert.deepEqual(s.actions,before.actions);assert.equal(s.inquiry_intake.next_owner,before.inquiry_intake.next_owner);assert.deepEqual(s.events[source.id],before.events[source.id]);assert.equal(s.revision,before.revision+1);
+  assert.equal((await app.apply(event,{actor,expectedRevision:before.revision})).duplicate,true);assert.deepEqual(await app.snapshot(),s);
+  await assert.rejects(app.apply({...event,data:{...event.data,reason:'Conflicting review'}},{actor}),/conflicts/);await assert.rejects(app.apply({...event,id:'second-review'},{actor}),/unresolved uncertain/);assert.deepEqual(await app.snapshot(),s);
+ }
+});
+
+test('non-inquiry cannot be imported directly, inferred from held content or used to rewrite resolved evidence',async()=>{
+ const app=await fixture();const direct=inquiry('direct','Internal','internal@example.invalid','non_inquiry');await assert.rejects(app.apply(direct),/classification explicitly/);
+ const source=inquiry('uncertain','Internal','internal@example.invalid','uncertain');await app.apply(source);const review={id:'review',prospect_id:'inquiry-intake',type:'inquiry_classification_reviewed',at,data:{source_id:'source-uncertain',classification:'non_inquiry',reason:'Internal test, reviewed.'}},before=await app.snapshot();
+ for(const data of [{...review.data,reason:''},{...review.data,reason:' '.repeat(3)},{...review.data,reason:'x'.repeat(501)},{...review.data,classification:'dismissed'},{...review.data,source_id:'missing'},{...review.data,approved:true}]){await assert.rejects(app.apply({...review,data}));assert.deepEqual(await app.snapshot(),before);}
+ await assert.rejects(app.apply(review,{expectedRevision:before.revision-1}),/changed/);assert.deepEqual(await app.snapshot(),before);
+ const held=structuredClone(before);held.inquiry_intake.sources['source-uncertain'].source.content.status='Held';assert.throws(()=>app.reduceEvent(held,review,{actor:'owner',expectedRevision:held.revision}),/complete source/);
+ const resolved=await app.apply({...review,data:{...review.data,classification:'inquiry'}});assert.equal(resolved.receipt.status,'Assigned new inquiry');await assert.rejects(app.apply({...review,id:'cannot-erase-inquiry'}),/unresolved uncertain/);
+});
+
+test('competing signed non-inquiry decisions commit once and keep one attributable reason',async()=>{
+ const app=await fixture();await app.apply(inquiry('race','Internal','internal@example.invalid','uncertain'));const other=await StudioLifecycle.open({directory:app.directory,now:()=>new Date(at)}),before=await app.snapshot(),review=actor=>({id:'review-'+actor,prospect_id:'inquiry-intake',type:'inquiry_classification_reviewed',at,data:{source_id:'source-race',classification:'non_inquiry',reason:actor+' reviewed the complete internal source.'}});
+ const results=await Promise.allSettled([app.apply(review('owner'),{actor:'owner',expectedRevision:before.revision}),other.apply(review('friend'),{actor:'friend',expectedRevision:before.revision})]);assert.equal(results.filter(r=>r.status==='fulfilled').length,1);const saved=await app.snapshot();assert.equal(saved.revision,before.revision+1);assert.equal(saved.inquiry_intake.next_owner,before.inquiry_intake.next_owner);assert.equal(Object.keys(saved.prospects).length,0);
+});
