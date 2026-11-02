@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { basename, join, relative } from 'node:path';
+import { basename, delimiter, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gitExecutable } from './context-checkpoint.mjs';
 
@@ -260,6 +260,9 @@ test('the session hook emits only bounded guidance and a validated session ident
   const unsafe = execute({ ...input, session_id: 'bad;send' });
   assert.equal(unsafe.status, 0, unsafe.stderr);
   assert.equal(unsafe.stdout, '');
+  const newline = execute({ ...input, session_id: 'fictional-session-1\n' });
+  assert.equal(newline.status, 0, newline.stderr);
+  assert.equal(newline.stdout, '');
 });
 
 test('a Windows worktree node executable cannot replace the hook runtime', async t => {
@@ -271,7 +274,23 @@ test('a Windows worktree node executable cannot replace the hook runtime', async
     const command = config.hooks.SessionStart[0].hooks[0].commandWindows;
     const payload = JSON.stringify({ hook_event_name: 'SessionStart', source: 'compact', session_id: 'fictional-session-1' });
     const result = spawnSync(join(safeCwd, 'WindowsPowerShell', 'v1.0', 'powershell.exe'), ['-NoProfile', '-NonInteractive', '-Command', command],
-      { cwd: projectA, input: payload, encoding: 'utf8', windowsHide: true });
+      { cwd: projectA, input: payload, encoding: 'utf8', windowsHide: true,
+        env: { ...process.env, PATH: `${projectA}${delimiter}${process.env.PATH || ''}` } });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(JSON.parse(result.stdout).hookSpecificOutput.additionalContext, /fictional-session-1/);
+  } finally { await unlink(fake); }
+});
+
+test('the POSIX hook ignores a worktree executable and inherited PATH', async t => {
+  if (process.platform === 'win32') return t.skip('POSIX executable lookup test');
+  const config = JSON.parse(await readFile(new URL('../.codex/hooks.json', import.meta.url), 'utf8'));
+  const fake = join(projectA, 'node');
+  await writeFile(fake, '#!/bin/sh\nprintf fictional-shadow\n');
+  await chmod(fake, 0o755);
+  try {
+    const payload = JSON.stringify({ hook_event_name: 'SessionStart', source: 'compact', session_id: 'fictional-session-1' });
+    const result = spawnSync(config.hooks.SessionStart[0].hooks[0].command, { cwd: projectA, shell: true, input: payload,
+      encoding: 'utf8', env: { ...process.env, PATH: `${projectA}${delimiter}${process.env.PATH || ''}` } });
     assert.equal(result.status, 0, result.stderr);
     assert.match(JSON.parse(result.stdout).hookSpecificOutput.additionalContext, /fictional-session-1/);
   } finally { await unlink(fake); }
