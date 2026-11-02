@@ -24,6 +24,10 @@ flowchart TD
     K -- "No" --> M["Report result or reviewed PR"]
     L --> M
     N["Actual context signal, if available"] -.-> L
+    P["Project hook, if supported and trusted"] -.-> Q["Session ID and checkpoint reminder"]
+    Q -.-> L
+    Q -. "After compaction or resume" .-> R["Read the same-session checkpoint as evidence and reconcile current state"]
+    R -.-> D
     J -. "When an improvement is warranted" .-> O["Compare skill or workflow changes with a baseline"]
 ```
 
