@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "mode": "registered-existing-pdfs",
+  "max_assets": 64,
+  "max_versions_per_asset": 16
+}

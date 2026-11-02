@@ -1,5 +1,7 @@
 # Task-based tool catalog
 
+November 1 existing PDFs: reuse signed sessions, the existing original manifest/chunk store, closed manual replay, reply catalogue and complete G1. Read the [bounded contract](pipeline/OPERATIONS-EXISTING-PDFS.md), installed Ponytail/frontend-testing/PDF guidance and the linked upstream integration/TDD references. No dependency, provider grant, authoring or runtime activation is added. Browser plugin absent; bundled Playwright and Poppler verify synthetic owner/friend access and rendering.
+
 ## Quick routing
 
 Start with the row that matches the task, then read only its relevant guidance and check which tools actually exist in this session. The [selection guide](#selection-guide) and [detailed references](#detailed-workflow-references) below retain the wider catalog and adoption history.

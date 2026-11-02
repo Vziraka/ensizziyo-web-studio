@@ -12,7 +12,7 @@ import {cloudDiscoveryCapability} from './cloud-discovery.mjs';
 import {cloudDiscoveryCommand} from './cloud-discovery-service.mjs';
 
 // Account-free canonical workspace for service/host tests. Importing this module has no side effects.
-export async function cloudDiscoveryFixture(t,{capability=cloudDiscoveryCapability,seed}={}){
+export async function cloudDiscoveryFixture(t,{capability=cloudDiscoveryCapability,seed,operationsPdf}={}){
  const directory=await mkdtemp(join(tmpdir(),'evz-discovery-service-'));t.after(()=>rm(directory,{recursive:true,force:true}));
  let time=Date.parse('2026-11-01T14:00:00.000Z'),version=0;const now=()=>new Date(time),at=now().toISOString(),expires_at='2026-11-03T00:00:00.000Z';
  const local=await StudioLifecycle.initialize({directory:join(directory,'local'),now}),state=await local.snapshot();state.mode='production';state.run_id='discovery-service';
@@ -25,7 +25,7 @@ export async function cloudDiscoveryFixture(t,{capability=cloudDiscoveryCapabili
  const cloudDiscovery={schema_version:1,site_id:scope.site_id,deploy_id:scope.deploy_id,origin:scope.origin,recovery_generation:'discovery-one',expires_at,daily_email_target:100,max_imports_per_day:125,max_candidates_per_day:200,max_tasks:50,max_attempts:100,max_attempts_per_day:100,reserve_percent:30,lease_minutes:10,researcher_id:'researcher',reviewer_id:'reviewer',areas:['Fairfax Northern Virginia Washington DC Maryland'],trades:['HVAC','Plumbing']};
  const sourceConfig={...structuredClone(initialConfig),mode:'production',run_id:state.run_id};sourceConfig.sender.email=mailboxDelivery.from;
  if(seed)await seed({state,sourceConfig,mailbox,mailboxWork,mailboxDelivery,local,at});await writeLifecycleBackup(local.directory,state,backup,at);
- const packet=await prepareManualWorkspace({backup,sourceConfig,scope,mailbox,mailboxWork,mailboxClock,mailboxDelivery,...(capability===cloudDiscoveryCapability?{cloudDiscovery}:{})});
+ const packet=await prepareManualWorkspace({backup,sourceConfig,scope,mailbox,mailboxWork,mailboxClock,mailboxDelivery,operationsPdf,...(capability===cloudDiscoveryCapability?{cloudDiscovery}:{})});
  const objects=new Map(),control={lose:null,beforeRead:null,beforeWrite:null};
  const raw={async getWithMetadata(k,o){if(control.beforeRead)await control.beforeRead(k,o);const entry=objects.get(k);return entry?{data:o.type==='json'?JSON.parse(entry.bytes):Uint8Array.from(entry.bytes).buffer,etag:entry.etag}:null;},async set(k,bytes,o){if(control.beforeWrite)await control.beforeWrite(k,bytes,o);const previous=objects.get(k);if(o.onlyIfNew&&previous||o.onlyIfMatch!==undefined&&o.onlyIfMatch!==previous?.etag)return {modified:false};const etag=String(++version);objects.set(k,{bytes:Buffer.from(bytes),etag});if(control.lose?.(k,bytes)){control.lose=null;throw Error('Lost committed acknowledgement');}return {modified:true,etag};},async setJSON(k,value,o){return this.set(k,Buffer.from(JSON.stringify(value)),o);}};
  const store=new ConditionalLifecycleStore(raw,{manualBinding:packet.binding,now});await installManualWorkspace(store,packet,{commit:true});const app=await StudioLifecycle.fromStore({store,now});

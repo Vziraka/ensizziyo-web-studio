@@ -1,3 +1,4 @@
+import {blobProjectOriginalStore} from './shared-project-originals.mjs';
 import {applyRequestedInformationTransition,requestedInformationSource} from './requested-information.mjs';
 import {prepareOperationsNotifications} from './operations-notifications.mjs';
 import {validateProjectEnvelope,validateProjectChange} from './shared-project-continuation.mjs';
@@ -14,7 +15,7 @@ import {assertMailboxClockStep,isMailboxClockCapability} from './mailbox-clock.m
 
 // Callbacks must reserve local state only: a conflict never reruns a callback or an external effect.
 export class ConditionalLifecycleStore {
-  constructor(store,{key='workspace',maxBytes=20_000_000,inertBinding=null,manualBinding=null,projectBinding=null,dispatchBinding=null,emailTaskBinding=null,originalsEnvironment=null,now=()=>new Date()}={}){this.store=store;this.key=key;this.maxBytes=maxBytes;this.inertBinding=inertBinding;this.manualBinding=manualBinding;this.projectBinding=projectBinding;this.dispatchBinding=dispatchBinding;this.emailTaskBinding=emailTaskBinding;this.originalsEnvironment=originalsEnvironment;this.now=now;check([inertBinding,manualBinding,projectBinding,dispatchBinding,emailTaskBinding].filter(Boolean).length<=1,'Choose one shared capability');check((!dispatchHasOriginals(dispatchBinding?.scope.capability)&&!emailTaskBinding)||key==='workspace','Shared originals and tasks require the actual workspace authority key');}
+  constructor(store,{key='workspace',maxBytes=20_000_000,inertBinding=null,manualBinding=null,projectBinding=null,dispatchBinding=null,emailTaskBinding=null,originalsEnvironment=null,now=()=>new Date()}={}){this.store=store;this.key=key;this.maxBytes=maxBytes;this.inertBinding=inertBinding;this.manualBinding=manualBinding;this.projectBinding=projectBinding;this.dispatchBinding=dispatchBinding;this.emailTaskBinding=emailTaskBinding;this.originalsEnvironment=originalsEnvironment;this.now=now;check([inertBinding,manualBinding,projectBinding,dispatchBinding,emailTaskBinding].filter(Boolean).length<=1,'Choose one shared capability');check((!dispatchHasOriginals(dispatchBinding?.scope.capability)&&!emailTaskBinding&&!manualBinding)||key==='workspace','Shared originals and tasks require the actual workspace authority key');}
   async initialize(config,state){
     const data={schema_version:1,config,state};this.validate(data);
     const result=await this.store.setJSON(this.key,data,{onlyIfNew:true});
@@ -39,13 +40,23 @@ export class ConditionalLifecycleStore {
   }
   async config(){return (await this.envelope()).data.config;}
   async snapshot(){return (await this.envelope()).data.state;}
+  async assertPdfCurrent(expected,guard){
+    guard();
+    if(typeof this.store.getMetadata==='function'){
+      const current=await this.store.getMetadata(this.key,{consistency:'strong'});
+      guard();check(typeof current?.etag==='string'&&current.etag.length>0&&current.etag===expected.etag,'PDF source or workspace changed; refresh exact state');
+    }else{
+      const current=await this.envelope();guard();
+      check(current.etag===expected.etag&&hash(current.data)===hash(typeof expected.data==='function'?expected.data():expected.data),'PDF source or workspace changed; refresh exact state');
+    }
+  }
   async change(fn,options={}){
-    const {eventId,eventFingerprint}=options;
+    const {eventId,eventFingerprint}=options,pdfBinding=options.operationsPdf?hash(this.manualBinding):null;
     const {data,etag}=await this.envelope(),before=JSON.stringify(data);
     if(options.configFingerprint)check(hash(data.config)===options.configFingerprint,'Incoming configuration changed during read; no cursor or effects committed');
     if(this.emailTaskBinding)check(options.emailTask,'Fictional task storage requires a typed task transition');
     if(this.inertBinding)check(options.inertNote,'Inert storage rejects worker and provider mutations');
-    if(this.manualBinding)check(options.manualRecord||['shared-mailbox-review-v1','shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding.scope.capability)&&(options.mailboxObservation||options.mailboxFailure)||['shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding.scope.capability)&&options.mailboxWork||isMailboxClockCapability(this.manualBinding.scope.capability)&&options.mailboxClock||['shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding.scope.capability)&&options.mailboxDelivery||this.manualBinding.scope.capability===cloudDiscoveryCapability&&options.cloudDiscovery||this.manualBinding.scope.capability===cloudDiscoveryCapability&&(options.operationsNotifications||options.requestedInformation),'Manual storage rejects worker and provider mutations');
+    if(this.manualBinding)check(options.manualRecord||['shared-mailbox-review-v1','shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding.scope.capability)&&(options.mailboxObservation||options.mailboxFailure)||['shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding.scope.capability)&&options.mailboxWork||isMailboxClockCapability(this.manualBinding.scope.capability)&&options.mailboxClock||['shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding.scope.capability)&&options.mailboxDelivery||this.manualBinding.scope.capability===cloudDiscoveryCapability&&options.cloudDiscovery||this.manualBinding.scope.capability===cloudDiscoveryCapability&&(options.operationsNotifications||options.requestedInformation||options.operationsPdf),'Manual storage rejects worker and provider mutations');
     if(this.projectBinding)check(options.projectResearch&&this.projectBinding.scope.capability==='shared-known-identity-research-v1'||options.projectRecord||options.projectAuthoring||options.projectReconcile||options.projectGeneration&&this.projectBinding.scope.capability==='shared-refinement-generation-v1','Shared project storage rejects untyped worker and provider mutations');
     if(this.dispatchBinding)validateDispatchOptions(this.dispatchBinding.scope.capability,options);
     const result=await fn(data.state,data.config);this.validate(data);
@@ -56,7 +67,16 @@ export class ConditionalLifecycleStore {
     if(dependency)validateEmailDependencyContract(dependency,dependencyBefore,data,options,dependencyBinding,etag);
     if(this.emailTaskBinding)await validateEmailTaskChange(JSON.parse(before),data,options,this.emailTaskBinding,this.now,this.store);
     if(this.inertBinding)validateInertChange(JSON.parse(before).state,data.state,options);
-    if(this.manualBinding)validateManualChange(JSON.parse(before),data,options);
+    const pdfCurrent=async()=>{
+      if(!options.operationsPdf)return;
+      const at=Date.parse(options.operationsPdf.at),guard=()=>{const live=+this.now();check(this.key==='workspace'&&hash(this.manualBinding)===pdfBinding&&Number.isFinite(options.operationsPdfDeadline)&&live>=at&&live<Math.min(at+25000,options.operationsPdfDeadline),'PDF authority or invocation expired before CAS');};
+      await this.assertPdfCurrent({etag,data:()=>JSON.parse(before)},guard);
+    };
+    if(this.manualBinding){
+      const originals=options.operationsPdf?blobProjectOriginalStore(this.store):null,reader={};
+      if(originals)for(const name of ['get','manifest','chunk'])reader[name]=async(...args)=>{await pdfCurrent();const value=await originals[name](...args);await pdfCurrent();return value;};
+      await validateManualChange(JSON.parse(before),data,options,{originalStore:originals?reader:undefined,now:this.now});
+    }
     if(options.cloudDiscovery){
       const tr=options.cloudDiscovery,task=JSON.parse(before).state.cloud_discovery?.tasks[tr.input.id],artifacts=cloudDiscoveryArtifactStore(this.store);
       const guard=async()=>check(options.cloudDiscoveryDeadline===undefined||+this.now()<options.cloudDiscoveryDeadline,'Discovery invocation expired during artifact verification');
@@ -105,6 +125,7 @@ export class ConditionalLifecycleStore {
       const live=+this.now(),task=data.state.email_draft_tasks?.[options.mailboxWork.input.id];
       check(Number.isFinite(live)&&live<Date.parse(data.config.mailbox_work.expires_at)&&live<Date.parse(task?.lease?.expires_at),'Worker policy or task lease expired before CAS');
     }
+    await pdfCurrent();
     let modified,uncertain=false;
     try {const written=await this.store.setJSON(this.key,data,{onlyIfMatch:etag});check(typeof written?.modified==='boolean'&&(!written.modified||typeof written.etag==='string'&&written.etag.length>0),'Conditional write result is unavailable');modified=written.modified;}
     catch {uncertain=true;}

@@ -1,3 +1,4 @@
+import {blobProjectOriginalStore} from './shared-project-originals.mjs';
 import {validateMailEvidence} from './shared-operations-exact-mail.mjs';
 import {validateResearchEvidence} from './known-identity-research.mjs';
 import {validateCalendarImport} from './shared-operations-calendar.mjs';
@@ -140,7 +141,10 @@ export async function hostedManualBackupInventory(app,localDependencies){
  check(app.store?.manualBinding,'Exact manual workspace required');const {data}=await app.store.envelope(),state=data.state;
  check(!state.mailbox_delivery||['shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(app.store.manualBinding.scope.capability),'Delivery recovery requires its own capability');
  check(!state.cloud_discovery&&!discoveryReferences(state).length||app.store.manualBinding.scope.capability==='shared-operations-desk-v1','Discovery recovery requires its own capability');
+ const originals=data.config.operations_pdf?new Map(Object.values(state.asset_index??{}).flatMap(a=>Object.values(a.versions??{}).filter(v=>v.verified_original).map(v=>[v.verified_original.sha256,v.verified_original]))):null;
  const localRead=localBackupReader(localDependencies),read=async(path,max,optional)=>{
+  const original=/^project-originals\/([a-f0-9]{64})\.pdf$/.exec(path);
+  if(originals&&original){const metadata=originals.get(original[1]);check(metadata,'Choose an exact verified original backup dependency');const bytes=await blobProjectOriginalStore(app.store.store).get(metadata);check(bytes.length<=max,'Oversized original backup dependency');return bytes;}
   if(!mimePath.test(path)&&!discoveryPath.test(path))return localRead(path,max,optional);
   const entry=await app.store.store.getWithMetadata(path,{type:'arrayBuffer',consistency:'strong'});check(entry?.data,'Missing required MIME backup dependency');const bytes=Buffer.from(entry.data);check(bytes.length<=max,'Oversized MIME backup dependency');return bytes;
  };
