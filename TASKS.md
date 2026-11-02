@@ -9,6 +9,8 @@ The owner accepted a fictional pilot of context-aware checkpoints and handoffs, 
 - [x] Have distinct requirements and engineering reviewers assess the candidate and evidence; resolve findings and rerun affected checks. Keep live integration and broader rollout unproven until separately demonstrated.
 - [ ] Verify an actual host compaction event and checkpoint restoration before considering automatic handoff. An isolated native CLI smoke returned the right fictional facts but exposed no compaction event or plan-tool call, so the result is inconclusive.
 
+November 1 continuation: the owner said “ok continue the next step” after the pilot report proposed an isolated test that captures a real compaction event and verifies checkpoint restoration. Use a dedicated in-memory test session with fictional records, observe the actual event, and check that a separately saved checkpoint is delivered and applied after compaction. Preserve the existing allowance reserve and independent review. This authorizes no user-owned chat, real connector action, live data, deployment, global setting change or bypass of hook trust; manual test injection does not establish automatic restoration.
+
 The [handoff pilot](docs/context-handoff-pilot.md) owns the experiment, limitations and resulting recommendation. Separate requirements and engineering reviewers accepted implementation head `6ea3376` after the reproduced concurrency issue was fixed; the final status-only update records that evidence. Existing [context and long-running work](WORKFLOW.md#context-and-long-running-work) remains the active policy during the pilot.
 
 ## Subagent model routing — November 1, 2026
