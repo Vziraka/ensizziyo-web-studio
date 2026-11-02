@@ -9,7 +9,7 @@ import {nativeNotificationCurrent} from './native-notifications.mjs';
 
 const capability='shared-operations-desk-v1',response=(status,data)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
 async function defaultStore(namespace){const {getStore}=await import('@netlify/blobs');return getStore({name:namespace,consistency:'strong'});}
-// Saved health and summary preparation only; no token refresh, model call or notification transport.
+// Saved health and summary preparation; optional native callback dispatch is separately gated.
 export function createOperationsNotificationClock({env=process.env,storeFactory=defaultStore,now=()=>new Date(),googleOAuthOptions={},readHealth,nativeOptions={}}={}){return async(request,context)=>{
  if(env.EVZ_OPERATIONS_DESK_ENABLED!==capability||env.EVZ_OPERATIONS_NOTIFICATION_CLOCK_RUNTIME!==capability||context?.deploy?.context!=='production'||context.deploy.published!==true||request.method!=='POST')return response(503,{held:true,sending:false});
  const deadline=+now()+25000,signal=AbortSignal.timeout(25000),expired=new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(Error('Notification invocation expired')),{once:true}));expired.catch(()=>{});
@@ -32,5 +32,5 @@ export function createOperationsNotificationClock({env=process.env,storeFactory=
 };}
 export function operationsNotificationClockEntry(env={}){
  if(env.CONTEXT!=='production'||env.EVZ_OPERATIONS_NOTIFICATION_CLOCK_BUILD!==capability)return '// Generated: operations notification preparation disabled.\nexport default async()=>Response.json({held:true,sending:false},{status:503});\n';
- return `// Generated: exact published saved notification preparation only.\nimport {createOperationsNotificationClock} from '../operations-notifications-host.mjs';\nexport default (request,context)=>createOperationsNotificationClock({env:{...process.env,CONTEXT:context.deploy?.context??'',SITE_ID:context.site?.id??'',DEPLOY_ID:context.deploy?.id??''}})(request,context);\nexport const config={schedule:'*/5 * * * *'};\n`;
+ return `// Generated: exact published notification preparation and separately gated native dispatch.\nimport {createOperationsNotificationClock} from '../operations-notifications-host.mjs';\nexport default (request,context)=>createOperationsNotificationClock({env:{...process.env,CONTEXT:context.deploy?.context??'',SITE_ID:context.site?.id??'',DEPLOY_ID:context.deploy?.id??''}})(request,context);\nexport const config={schedule:'*/5 * * * *'};\n`;
 }
