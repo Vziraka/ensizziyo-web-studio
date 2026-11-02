@@ -1,6 +1,8 @@
+import {withNativeTransportGuard} from './native-notification-transport.mjs';
 import {blobProjectOriginalStore} from './shared-project-originals.mjs';
 import {applyRequestedInformationTransition,requestedInformationSource} from './requested-information.mjs';
 import {prepareOperationsNotifications} from './operations-notifications.mjs';
+import {projectNativeNotifications,applyNativeNotificationTransition} from './native-notifications.mjs';
 import {validateProjectEnvelope,validateProjectChange} from './shared-project-continuation.mjs';
 import {validateDispatchEnvelope,validateDispatchChange,validateDispatchOptions,dispatchHasOriginals,operationsCalendarCapability} from './shared-internal-dispatch.mjs';
 import {check,hash} from './lifecycle.mjs';
@@ -56,7 +58,7 @@ export class ConditionalLifecycleStore {
     if(options.configFingerprint)check(hash(data.config)===options.configFingerprint,'Incoming configuration changed during read; no cursor or effects committed');
     if(this.emailTaskBinding)check(options.emailTask,'Fictional task storage requires a typed task transition');
     if(this.inertBinding)check(options.inertNote,'Inert storage rejects worker and provider mutations');
-    if(this.manualBinding)check(options.manualRecord||['shared-mailbox-review-v1','shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding.scope.capability)&&(options.mailboxObservation||options.mailboxFailure)||['shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding.scope.capability)&&options.mailboxWork||isMailboxClockCapability(this.manualBinding.scope.capability)&&options.mailboxClock||['shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding.scope.capability)&&options.mailboxDelivery||this.manualBinding.scope.capability===cloudDiscoveryCapability&&options.cloudDiscovery||this.manualBinding.scope.capability===cloudDiscoveryCapability&&(options.operationsNotifications||options.requestedInformation||options.operationsPdf),'Manual storage rejects worker and provider mutations');
+    if(this.manualBinding)check(options.manualRecord||['shared-mailbox-review-v1','shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding.scope.capability)&&(options.mailboxObservation||options.mailboxFailure)||['shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding.scope.capability)&&options.mailboxWork||isMailboxClockCapability(this.manualBinding.scope.capability)&&options.mailboxClock||['shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding.scope.capability)&&options.mailboxDelivery||this.manualBinding.scope.capability===cloudDiscoveryCapability&&options.cloudDiscovery||this.manualBinding.scope.capability===cloudDiscoveryCapability&&(options.operationsNotifications||options.requestedInformation||options.operationsPdf||options.nativeNotification),'Manual storage rejects worker and provider mutations');
     if(this.projectBinding)check(options.projectResearch&&this.projectBinding.scope.capability==='shared-known-identity-research-v1'||options.projectRecord||options.projectAuthoring||options.projectReconcile||options.projectGeneration&&this.projectBinding.scope.capability==='shared-refinement-generation-v1','Shared project storage rejects untyped worker and provider mutations');
     if(this.dispatchBinding)validateDispatchOptions(this.dispatchBinding.scope.capability,options);
     const result=await fn(data.state,data.config);this.validate(data);
@@ -108,6 +110,12 @@ export class ConditionalLifecycleStore {
         }
         this.validate(data);
       }
+      const priorNative=data.state.native_notifications===undefined?undefined:structuredClone(data.state.native_notifications),nativeRevision=data.state.revision,nativeUpdated=data.state.updated_at;
+      if(projectNativeNotifications(data.state,data.config,projectionAt)){
+        if(nativeRevision===JSON.parse(before).state.revision){data.state.revision++;data.state.updated_at=projectionAt;}
+        if(Buffer.byteLength(JSON.stringify(data))>this.maxBytes){if(priorNative===undefined)delete data.state.native_notifications;else data.state.native_notifications=priorNative;data.state.revision=nativeRevision;data.state.updated_at=nativeUpdated;}
+        this.validate(data);
+      }
     }
     if(JSON.stringify(data)===before)return result;
     if(options.mailboxWork?.type==='adopt'){const prior=JSON.parse(before).state,task=prior.email_draft_tasks?.[options.mailboxWork.input.id];if(task?.kind==='requested_information_draft'&&task.status!=='Adopted'){check(+this.now()<options.mailboxWorkDeadline,'Requested-information adoption deadline expired');requestedInformationSource(prior,data.config,task.project_id,this.now().toISOString());}}
@@ -126,11 +134,13 @@ export class ConditionalLifecycleStore {
       check(Number.isFinite(live)&&live<Date.parse(data.config.mailbox_work.expires_at)&&live<Date.parse(task?.lease?.expires_at),'Worker policy or task lease expired before CAS');
     }
     await pdfCurrent();
+    // Revalidate at the write boundary without changing the original transition bytes.
+    const nativeGuard=()=>{if(options.nativeNotification){const live=this.now(),start=Date.parse(options.nativeNotification.at);check(Number.isFinite(options.nativeNotificationDeadline)&&start<=+live&&+live<Math.min(options.nativeNotificationDeadline,start+25000),'Native notification invocation expired before CAS');applyNativeNotificationTransition(JSON.parse(before).state,data.config,{...options.nativeNotification,at:live.toISOString()});}};nativeGuard();
     let modified,uncertain=false;
-    try {const written=await this.store.setJSON(this.key,data,{onlyIfMatch:etag});check(typeof written?.modified==='boolean'&&(!written.modified||typeof written.etag==='string'&&written.etag.length>0),'Conditional write result is unavailable');modified=written.modified;}
+    try {const written=await withNativeTransportGuard(nativeGuard,()=>this.store.setJSON(this.key,data,{onlyIfMatch:etag}));check(typeof written?.modified==='boolean'&&(!written.modified||typeof written.etag==='string'&&written.etag.length>0),'Conditional write result is unavailable');modified=written.modified;}
     catch {uncertain=true;}
-    if(modified===true)return result;
-    if(this.manualBinding?.scope.capability===cloudDiscoveryCapability||this.emailTaskBinding||options.emailTask&&this.dispatchBinding||options.mailboxWork&&['shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding?.scope.capability)||options.mailboxClock&&isMailboxClockCapability(this.manualBinding?.scope.capability)||options.mailboxDelivery&&['shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding?.scope.capability)||options.cloudDiscovery&&this.manualBinding?.scope.capability===cloudDiscoveryCapability||options.operationsNotifications&&this.manualBinding?.scope.capability===cloudDiscoveryCapability){try{const saved=await this.envelope();if(hash(saved.data)===hash(data))return {...result,reconciled:true};}catch{}}
+    if(modified===true){nativeGuard();return result;}
+    if(this.manualBinding?.scope.capability===cloudDiscoveryCapability||this.emailTaskBinding||options.emailTask&&this.dispatchBinding||options.mailboxWork&&['shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding?.scope.capability)||options.mailboxClock&&isMailboxClockCapability(this.manualBinding?.scope.capability)||options.mailboxDelivery&&['shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding?.scope.capability)||options.cloudDiscovery&&this.manualBinding?.scope.capability===cloudDiscoveryCapability||options.operationsNotifications&&this.manualBinding?.scope.capability===cloudDiscoveryCapability){try{const saved=await this.envelope();if(hash(saved.data)===hash(data)){nativeGuard();return {...result,reconciled:true};}}catch{}}
     if(eventId&&eventFingerprint){
       try {const current=await this.snapshot();if(current.events[eventId]?.fingerprint===eventFingerprint)return {...result,reconciled:true};}catch {}
     }

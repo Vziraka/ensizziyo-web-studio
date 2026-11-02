@@ -1,3 +1,5 @@
+The [native operations notification contract](NATIVE-OPERATIONS-NOTIFICATIONS.md) defines default-disabled, role-bound MCP Events, exact subscription/claim recovery and synthetic checks. Callback acceptance does not prove ChatGPT or device delivery; no live access or schedule is activated.
+
 The [existing-PDF operations contract](OPERATIONS-EXISTING-PDFS.md) adds an explicit immutable opt-in for signed retained-source registration, transfer, inspection and separate baseline review. Run `node --test operations-pdf.test.mjs operations-pdf-service.test.mjs operations-pdf-integration.test.mjs email-reply-attachments.test.mjs` and `npm run check`; existing manifests retain denial.
 
 The [mailbox cloud proposal contract](MAILBOX-WORK.md) adds a separately bound, default-disabled reply worker on the existing shared store. Exact source/lease checks, chunked originals and signed adoption keep proposals separate from approval and sending. Run `node --test mailbox-work.test.mjs mailbox-work-service.test.mjs shared-manual-records.test.mjs` from `pipeline`. Native cloud execution remains a separate live check.

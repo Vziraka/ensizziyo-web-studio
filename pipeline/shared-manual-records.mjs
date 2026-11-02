@@ -1,4 +1,5 @@
 import {operationsPdfCapability,operationsPdfSchema,validateOperationsPdfPolicy,validateOperationsPdfState,replayOperationsPdfTransition} from './operations-pdf.mjs';
+import {validateNativeNotificationPolicy,validateNativeNotificationState,applyNativeNotificationTransition} from './native-notifications.mjs';
 import {applyRequestedInformationTransition,validateRequestedInformationState} from './requested-information.mjs';
 import {applyOperationsNotificationTransition,validateOperationsNotificationsState} from './operations-notifications.mjs';
 import {check,hash,StudioLifecycle} from './lifecycle.mjs';
@@ -44,7 +45,7 @@ export function validateManualEnvelope(data,binding){
   check(binding.scope.capability===operationsPdfCapability,'PDF policy requires its exact operations capability');validateOperationsPdfPolicy(data.config.operations_pdf);validateOperationsPdfState(data.state,data.config);
   check(hash(m.operations_pdf)===hash({schema_version:1,policy_sha256:hash(data.config.operations_pdf),transitions:operationsPdfSchema.transitions}),'Original transfer declaration changed; prepare a new binding');
  }else check(!m.operations_pdf,'Original transfer declaration requires explicit policy');
- validateOperationsNotificationsState(data.state,data.config);validateRequestedInformationState(data.state,data.config);
+ validateOperationsNotificationsState(data.state,data.config);validateNativeNotificationState(data.state,data.config);if(data.config.native_notifications){const p=data.config.native_notifications;check(p.site_id===binding.scope.site_id&&p.deploy_id===binding.scope.deploy_id&&p.origin===binding.scope.origin,'Native notification deployment differs');}validateRequestedInformationState(data.state,data.config);
  check(!data.config.mailbox_delivery?.kinds?.includes('requested-information')||binding.scope.capability==='shared-operations-desk-v1','Requested information requires operations capability');
  if(binding.scope.capability===cloudDiscoveryCapability){validateCloudDiscoveryPolicy(data.config.cloud_discovery);validateCloudDiscoveryState(data.state,data.config);const p=data.config.cloud_discovery;check(p.site_id===binding.scope.site_id&&p.deploy_id===binding.scope.deploy_id&&p.origin===binding.scope.origin,'Discovery policy deployment differs');}
  else check(!data.config.cloud_discovery&&!data.state.cloud_discovery,'Discovery state and policy require their separate capability');
@@ -52,11 +53,12 @@ export function validateManualEnvelope(data,binding){
  check(data.config.runtime?.enabled===false&&data.config.operations?.enabled===false&&data.config.transcript_ai?.enabled===false&&data.config.release?.approved===false&&data.config.call_release?.approved===false,'Manual recording cannot release execution');
 }
 // Local preparation only. A new manifest/capability is required; an old inert binding cannot gain write authority.
-export async function prepareManualWorkspace({backup,sourceConfig,scope,mailbox,mailboxWork,mailboxClock,mailboxDelivery,cloudDiscovery,operationsPdf}){
+export async function prepareManualWorkspace({backup,sourceConfig,scope,mailbox,mailboxWork,mailboxClock,mailboxDelivery,cloudDiscovery,operationsPdf,nativeNotifications}){
  validateManualBinding(scope);
  if(isMailboxCapability(scope.capability))validateMailboxPolicy(mailbox);else check(mailbox===undefined,'Mailbox policy requires its separate capability');
  const inertScope={...scope,capability:'inert-shared-v1',namespace:scope.namespace.replace('evz-manual-shared-','evz-inert-shared-')};
  const packet=await prepareInertWorkspace({backup,sourceConfig,scope:inertScope}),config={...packet.envelope.config,shared_capability:scope.capability,follow_up:{...packet.envelope.config.follow_up,enabled:true}};
+ const retainedNative=packet.envelope.state.native_notifications;if(retainedNative)check(retainedNative.paused===true&&retainedNative.allowance===null&&Object.values(retainedNative.subscriptions??{}).every(s=>s.active===false)&&Object.values(retainedNative.attempts??{}).every(a=>a.status!=='Claimed'),'Restore must revoke native notification authority before importing history');
  if(mailbox)config.mailbox=structuredClone(mailbox);
  if([mailboxWorkCapability,'shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(scope.capability))config.mailbox_work=structuredClone(validateMailboxWorkPolicy(mailboxWork));
  else check(mailboxWork===undefined,'Worker policy requires its separate capability');
@@ -71,6 +73,7 @@ export async function prepareManualWorkspace({backup,sourceConfig,scope,mailbox,
  if(scope.capability===cloudDiscoveryCapability)config.cloud_discovery=structuredClone(validateCloudDiscoveryPolicy(cloudDiscovery));
  else check(cloudDiscovery===undefined,'Discovery policy requires its separate capability');
  if(operationsPdf!==undefined){check(scope.capability===operationsPdfCapability,'PDF policy requires its exact operations capability');config.operations_pdf=structuredClone(validateOperationsPdfPolicy(operationsPdf));}
+ if(nativeNotifications!==undefined){check(scope.capability===cloudDiscoveryCapability,'Native notifications require operations capability');config.native_notifications=structuredClone(validateNativeNotificationPolicy(nativeNotifications));check(config.native_notifications.site_id===scope.site_id&&config.native_notifications.deploy_id===scope.deploy_id&&config.native_notifications.origin===scope.origin,'Native notification deployment differs');}
  const manifest={...packet.envelope.inert_source,kind:'shared-manual-record-source-v1',binding:structuredClone(scope),config_sha256:hash(config),allowed_events:[...manualAllowedEvents(scope.capability)],attestation:'Human-reported completed call; no call authorization or independent provider proof'};
  if(config.operations_pdf)manifest.operations_pdf={schema_version:1,policy_sha256:hash(config.operations_pdf),transitions:operationsPdfSchema.transitions};
  const envelope={schema_version:1,config,state:packet.envelope.state,manual_source:manifest},binding={scope:structuredClone(scope),manifest_sha256:hash(manifest)};
@@ -123,7 +126,8 @@ export function applyManualRecord(state,event,actor,revision,now,config){
  return {...result,execution:'disabled',external_suppression:'unverified'};
 }
 export function validateManualChange(before,after,options={},pdfContext={}){
- const {manualRecord,mailboxObservation,mailboxFailure,mailboxWork,mailboxClock,mailboxClockStep,mailboxDelivery,cloudDiscovery,operationsNotifications,requestedInformation,operationsPdf}=options;
+ const {manualRecord,mailboxObservation,mailboxFailure,mailboxWork,mailboxClock,mailboxClockStep,mailboxDelivery,cloudDiscovery,operationsNotifications,requestedInformation,operationsPdf,nativeNotification}=options;
+ if(nativeNotification){check(Object.keys(options).every(k=>['nativeNotification','nativeNotificationDeadline','configFingerprint'].includes(k)),'Exclusive native notification transition required');const expected=structuredClone(before.state);applyNativeNotificationTransition(expected,before.config,nativeNotification);check(hash(expected)===hash(after.state)&&hash(before.config)===hash(after.config)&&hash(before.manual_source)===hash(after.manual_source),'Native notification transition changed unrelated authority');return;}
  if(operationsPdf){
   check(before.config.operations_pdf&&before.config.shared_capability===operationsPdfCapability&&Object.keys(options).every(k=>['operationsPdf','operationsPdfDeadline','configFingerprint'].includes(k)),'Exclusive typed PDF transition required');
   check(hash(before.manual_source)===hash(after.manual_source),'PDF transition cannot change the source binding');
