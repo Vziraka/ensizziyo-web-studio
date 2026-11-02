@@ -1,7 +1,7 @@
 import {blobProjectOriginalStore} from './shared-project-originals.mjs';
 import {applyRequestedInformationTransition,requestedInformationSource} from './requested-information.mjs';
 import {prepareOperationsNotifications} from './operations-notifications.mjs';
-import {projectNativeNotifications} from './native-notifications.mjs';
+import {projectNativeNotifications,applyNativeNotificationTransition} from './native-notifications.mjs';
 import {validateProjectEnvelope,validateProjectChange} from './shared-project-continuation.mjs';
 import {validateDispatchEnvelope,validateDispatchChange,validateDispatchOptions,dispatchHasOriginals,operationsCalendarCapability} from './shared-internal-dispatch.mjs';
 import {check,hash} from './lifecycle.mjs';
@@ -120,7 +120,6 @@ export class ConditionalLifecycleStore {
     if(options.mailboxWork?.type==='adopt'){const prior=JSON.parse(before).state,task=prior.email_draft_tasks?.[options.mailboxWork.input.id];if(task?.kind==='requested_information_draft'&&task.status!=='Adopted'){check(+this.now()<options.mailboxWorkDeadline,'Requested-information adoption deadline expired');requestedInformationSource(prior,data.config,task.project_id,this.now().toISOString());}}
     if(options.requestedInformation){check(+this.now()<options.requestedInformationDeadline,'Requested-information deadline expired');applyRequestedInformationTransition(JSON.parse(before).state,data.config,{...options.requestedInformation,at:this.now().toISOString()});}
     if(options.operationsNotifications){const start=Date.parse(options.operationsNotifications.at),live=+this.now();check(start<=live&&live<Math.min(options.operationsNotificationsDeadline??Infinity,start+25000),'Notification invocation expired before CAS');}
-    if(options.nativeNotification){const start=Date.parse(options.nativeNotification.at),live=+this.now();check(Number.isFinite(options.nativeNotificationDeadline)&&start<=live&&live<Math.min(options.nativeNotificationDeadline,start+25000),'Native notification invocation expired before CAS');}
     if(options.cloudDiscovery){check(options.cloudDiscoveryDeadline===undefined||+this.now()<options.cloudDiscoveryDeadline,'Discovery invocation expired before CAS');assertCloudDiscoveryTransitionLive(JSON.parse(before).state,data.state,data.config,options.cloudDiscovery,this.now().toISOString());}
     if(options.mailboxDelivery){check(options.mailboxDeliveryDeadline===undefined||+this.now()<options.mailboxDeliveryDeadline,'Delivery invocation expired before CAS');assertMailboxDeliveryTransitionLive(JSON.parse(before).state,data.state,data.config,options.mailboxDelivery,this.now().toISOString());}
     if(options.mailboxClock){
@@ -134,6 +133,8 @@ export class ConditionalLifecycleStore {
       check(Number.isFinite(live)&&live<Date.parse(data.config.mailbox_work.expires_at)&&live<Date.parse(task?.lease?.expires_at),'Worker policy or task lease expired before CAS');
     }
     await pdfCurrent();
+    // Revalidate at the write boundary without changing the original transition bytes.
+    if(options.nativeNotification){const live=this.now(),start=Date.parse(options.nativeNotification.at);check(Number.isFinite(options.nativeNotificationDeadline)&&start<=+live&&+live<Math.min(options.nativeNotificationDeadline,start+25000),'Native notification invocation expired before CAS');applyNativeNotificationTransition(JSON.parse(before).state,data.config,{...options.nativeNotification,at:live.toISOString()});}
     let modified,uncertain=false;
     try {const written=await this.store.setJSON(this.key,data,{onlyIfMatch:etag});check(typeof written?.modified==='boolean'&&(!written.modified||typeof written.etag==='string'&&written.etag.length>0),'Conditional write result is unavailable');modified=written.modified;}
     catch {uncertain=true;}
