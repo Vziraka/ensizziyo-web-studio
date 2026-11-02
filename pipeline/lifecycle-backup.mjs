@@ -231,10 +231,12 @@ export async function restoreLifecycleBackup(input,destination){
   if(state.mailbox_delivery){
    state.mailbox_delivery.paused=true;
    check(Number.isSafeInteger(state.mailbox_delivery.epoch)&&state.mailbox_delivery.epoch<Number.MAX_SAFE_INTEGER,'Invalid delivery recovery epoch');state.mailbox_delivery.epoch++;
+   if(state.mailbox_delivery.schema_version===2)state.mailbox_delivery.allowance_id=null;
    for(const intent of Object.values(state.mailbox_delivery.intents??{}))if(intent.status==='Reserved'){intent.status='Held';intent.hold='Backup restored; original reservation cannot dispatch';}
   }
-  // Recovery retains proposal evidence, never pre-restore worker authority, even at the same path.
-  for(const task of Object.values(state.email_draft_tasks??{}))if(['Ready','Review'].includes(task.status)){task.status='Superseded';task.closure_reason='Backup restored; prepare a new task after reviewing current sources';}
+  // Retained charges and leases remain evidence; a restored allowance can never resume them.
+  if(state.mailbox_work){const n=state.mailbox_work;check(n.schema_version===2&&Number.isSafeInteger(n.epoch)&&n.epoch<Number.MAX_SAFE_INTEGER,'Invalid worker recovery epoch');n.paused=true;n.epoch++;n.allowance_id=null;}
+  for(const task of Object.values(state.email_draft_tasks??{}))if(task.status==='Ready'||task.status==='Review'&&!state.mailbox_work){task.status='Superseded';if(task.schema_version===2){task.reason='Backup restored; prepare a new task after reviewing current sources';task.closed_at=new Date().toISOString();}else task.closure_reason='Backup restored; prepare a new task after reviewing current sources';}
   await writeFile(join(destination,'lifecycle-config.json'),JSON.stringify({...initialConfig,run_id:state.run_id,mode:state.mode}),{flag:'wx',mode:0o600,flush:true});
   // Publish state last: interrupted directories cannot be opened as a workspace.
   const temporary=join(destination,'.state.pending');await writeFile(temporary,JSON.stringify(state),{flag:'wx',mode:0o600,flush:true});await link(temporary,join(destination,'lifecycle-state.json'));published=true;await unlink(temporary);

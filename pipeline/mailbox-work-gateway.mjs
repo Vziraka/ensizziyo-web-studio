@@ -1,10 +1,11 @@
 import {timingSafeEqual} from 'node:crypto';
+import {nativeGuardedFetch} from './native-notification-transport.mjs';
 import {check,hash,StudioLifecycle} from './lifecycle.mjs';
 import {validateManualBinding} from './shared-manual-records.mjs';
 import {ConditionalLifecycleStore} from './lifecycle-store.mjs';
 import {createMailboxWorker} from './mailbox-work-service.mjs';
 
-async function defaultStore(scope,token){const {getStore}=await import('@netlify/blobs');return getStore({name:scope.namespace,siteID:scope.site_id,token,consistency:'strong'});}
+async function defaultStore(scope,token){const {getStore}=await import('@netlify/blobs');return getStore({name:scope.namespace,siteID:scope.site_id,token,consistency:'strong',fetch:nativeGuardedFetch});}
 export async function openMailboxWorker({env=process.env,credential,context,origin,storeFactory=defaultStore,now=()=>new Date()}){
  check(env.EVZ_MAILBOX_WORK_GATEWAY==='scoped-reply-worker-v1','Worker gateway is disabled');
  const digest=env.EVZ_MAILBOX_WORK_CREDENTIAL_SHA256;

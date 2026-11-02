@@ -32,7 +32,7 @@ async function settings(app){
  const c=await app.loadConfig();check([mailboxWorkCapability,'shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(c.shared_capability),'Exact mailbox worker configuration required');app.config=c;app.originalStore=blobProjectOriginalStore(app.store.store);return hash(c);
 }
 export async function mailboxWorkCommand(app,type,input,actor){
- check(['create','cancel','adopt'].includes(type)&&['owner','friend'].includes(actor),'Signed operator task command required');
+ check(['create','cancel','adopt','allowance','pause','rebind'].includes(type)&&['owner','friend'].includes(actor),'Signed operator task command required');
  const invocationDeadline=+app.now()+25000;const fingerprint=await settings(app),transition={type,actor,input,at:app.now().toISOString()};
  if(type==='adopt'){
   const state=await app.snapshot(),t=state.email_draft_tasks?.[input.id];
@@ -53,7 +53,7 @@ export function createMailboxWorker(app,{credential,leaseSecret,context,origin})
   check(context?.site?.id===p.gateway_site_id&&context?.deploy?.id===p.gateway_deploy_id&&['deploy-preview','production'].includes(context.deploy.context)&&origin===p.gateway_origin,'Exact trusted worker deployment required');return p;
  }
  const leaseFor=(p,id,request)=>createHmac('sha256',Buffer.from(leaseSecret,'hex')).update(JSON.stringify({policy:hash(p),id,request})).digest('hex');
- async function change(type,input){const p=await authorized(),fingerprint=hash(app.config),transition={type,actor:'worker',at:app.now().toISOString(),input:{...input,worker_id:p.worker_id}};return app.change((s,c)=>applyMailboxWorkChange(s,c,transition),{configFingerprint:fingerprint,mailboxWork:transition});}
+ async function change(type,input){const deadline=+app.now()+25000,p=await authorized(),fingerprint=hash(app.config),transition={type,actor:'worker',at:app.now().toISOString(),input:{...input,worker_id:p.worker_id}};return app.change((s,c)=>applyMailboxWorkChange(s,c,transition),{configFingerprint:fingerprint,mailboxWork:transition,mailboxWorkDeadline:deadline});}
  async function packet(id,lease){const p=await authorized();return mailboxWorkContext(await app.snapshot(),app.config,id,{worker_id:p.worker_id,token:lease},app.now().toISOString());}
  return {
   async authenticate(){await authorized();return {workspace_id:app.store.manualBinding.scope.workspace_id};},
