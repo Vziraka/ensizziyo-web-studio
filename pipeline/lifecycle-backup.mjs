@@ -226,6 +226,7 @@ export async function restoreLifecycleBackup(input,destination){
   if(state.cloud_discovery){
    state.cloud_discovery.paused=true;state.cloud_discovery.epoch++;
   }
+  if(state.native_notifications){const n=state.native_notifications;check(Number.isSafeInteger(n.epoch)&&n.epoch<Number.MAX_SAFE_INTEGER,'Invalid native notification recovery epoch');n.epoch++;n.paused=true;n.allowance=null;for(const sub of Object.values(n.subscriptions??{})){check(Number.isSafeInteger(sub.revision)&&sub.revision<Number.MAX_SAFE_INTEGER,'Invalid native subscription recovery revision');sub.active=false;sub.revision++;}for(const a of Object.values(n.attempts??{}))if(a.status==='Claimed'){a.status='Uncertain';a.next_at=null;}}
   // Retain permanent dispatch claims and exact MIME for readback, never carry pre-restore send approval.
   if(state.mailbox_delivery){
    state.mailbox_delivery.paused=true;

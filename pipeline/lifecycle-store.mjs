@@ -1,6 +1,7 @@
 import {blobProjectOriginalStore} from './shared-project-originals.mjs';
 import {applyRequestedInformationTransition,requestedInformationSource} from './requested-information.mjs';
 import {prepareOperationsNotifications} from './operations-notifications.mjs';
+import {projectNativeNotifications} from './native-notifications.mjs';
 import {validateProjectEnvelope,validateProjectChange} from './shared-project-continuation.mjs';
 import {validateDispatchEnvelope,validateDispatchChange,validateDispatchOptions,dispatchHasOriginals,operationsCalendarCapability} from './shared-internal-dispatch.mjs';
 import {check,hash} from './lifecycle.mjs';
@@ -56,7 +57,7 @@ export class ConditionalLifecycleStore {
     if(options.configFingerprint)check(hash(data.config)===options.configFingerprint,'Incoming configuration changed during read; no cursor or effects committed');
     if(this.emailTaskBinding)check(options.emailTask,'Fictional task storage requires a typed task transition');
     if(this.inertBinding)check(options.inertNote,'Inert storage rejects worker and provider mutations');
-    if(this.manualBinding)check(options.manualRecord||['shared-mailbox-review-v1','shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding.scope.capability)&&(options.mailboxObservation||options.mailboxFailure)||['shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding.scope.capability)&&options.mailboxWork||isMailboxClockCapability(this.manualBinding.scope.capability)&&options.mailboxClock||['shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding.scope.capability)&&options.mailboxDelivery||this.manualBinding.scope.capability===cloudDiscoveryCapability&&options.cloudDiscovery||this.manualBinding.scope.capability===cloudDiscoveryCapability&&(options.operationsNotifications||options.requestedInformation||options.operationsPdf),'Manual storage rejects worker and provider mutations');
+    if(this.manualBinding)check(options.manualRecord||['shared-mailbox-review-v1','shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding.scope.capability)&&(options.mailboxObservation||options.mailboxFailure)||['shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding.scope.capability)&&options.mailboxWork||isMailboxClockCapability(this.manualBinding.scope.capability)&&options.mailboxClock||['shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding.scope.capability)&&options.mailboxDelivery||this.manualBinding.scope.capability===cloudDiscoveryCapability&&options.cloudDiscovery||this.manualBinding.scope.capability===cloudDiscoveryCapability&&(options.operationsNotifications||options.requestedInformation||options.operationsPdf||options.nativeNotification),'Manual storage rejects worker and provider mutations');
     if(this.projectBinding)check(options.projectResearch&&this.projectBinding.scope.capability==='shared-known-identity-research-v1'||options.projectRecord||options.projectAuthoring||options.projectReconcile||options.projectGeneration&&this.projectBinding.scope.capability==='shared-refinement-generation-v1','Shared project storage rejects untyped worker and provider mutations');
     if(this.dispatchBinding)validateDispatchOptions(this.dispatchBinding.scope.capability,options);
     const result=await fn(data.state,data.config);this.validate(data);
@@ -108,11 +109,18 @@ export class ConditionalLifecycleStore {
         }
         this.validate(data);
       }
+      const priorNative=data.state.native_notifications===undefined?undefined:structuredClone(data.state.native_notifications),nativeRevision=data.state.revision,nativeUpdated=data.state.updated_at;
+      if(projectNativeNotifications(data.state,data.config,projectionAt)){
+        if(nativeRevision===JSON.parse(before).state.revision){data.state.revision++;data.state.updated_at=projectionAt;}
+        if(Buffer.byteLength(JSON.stringify(data))>this.maxBytes){if(priorNative===undefined)delete data.state.native_notifications;else data.state.native_notifications=priorNative;data.state.revision=nativeRevision;data.state.updated_at=nativeUpdated;}
+        this.validate(data);
+      }
     }
     if(JSON.stringify(data)===before)return result;
     if(options.mailboxWork?.type==='adopt'){const prior=JSON.parse(before).state,task=prior.email_draft_tasks?.[options.mailboxWork.input.id];if(task?.kind==='requested_information_draft'&&task.status!=='Adopted'){check(+this.now()<options.mailboxWorkDeadline,'Requested-information adoption deadline expired');requestedInformationSource(prior,data.config,task.project_id,this.now().toISOString());}}
     if(options.requestedInformation){check(+this.now()<options.requestedInformationDeadline,'Requested-information deadline expired');applyRequestedInformationTransition(JSON.parse(before).state,data.config,{...options.requestedInformation,at:this.now().toISOString()});}
     if(options.operationsNotifications){const start=Date.parse(options.operationsNotifications.at),live=+this.now();check(start<=live&&live<Math.min(options.operationsNotificationsDeadline??Infinity,start+25000),'Notification invocation expired before CAS');}
+    if(options.nativeNotification){const start=Date.parse(options.nativeNotification.at),live=+this.now();check(Number.isFinite(options.nativeNotificationDeadline)&&start<=live&&live<Math.min(options.nativeNotificationDeadline,start+25000),'Native notification invocation expired before CAS');}
     if(options.cloudDiscovery){check(options.cloudDiscoveryDeadline===undefined||+this.now()<options.cloudDiscoveryDeadline,'Discovery invocation expired before CAS');assertCloudDiscoveryTransitionLive(JSON.parse(before).state,data.state,data.config,options.cloudDiscovery,this.now().toISOString());}
     if(options.mailboxDelivery){check(options.mailboxDeliveryDeadline===undefined||+this.now()<options.mailboxDeliveryDeadline,'Delivery invocation expired before CAS');assertMailboxDeliveryTransitionLive(JSON.parse(before).state,data.state,data.config,options.mailboxDelivery,this.now().toISOString());}
     if(options.mailboxClock){

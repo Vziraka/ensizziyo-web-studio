@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "mode": "mcp-events-v1",
+  "site_id": "REPLACE_SITE_ID",
+  "deploy_id": "REPLACE_DEPLOY_ID",
+  "origin": "https://example.invalid",
+  "starts_at": "2026-11-01T00:00:00.000Z",
+  "expires_at": "2026-11-02T00:00:00.000Z",
+  "max_attempts_per_day": 4,
+  "max_attempts_total": 8,
+  "reserve_percent": 30
+}

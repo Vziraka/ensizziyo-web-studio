@@ -1,5 +1,9 @@
 # Launch tasks
 
+## Native operations notification transport — November 1, 2026
+
+Implement an explicitly opted-in, default-disabled MCP Events transport for saved operations incidents and the daily 18:00 Eastern summary. Preserve role isolation, same-CAS intent and claims, encrypted separately stored subscriptions, bounded included-only execution and secret-free disabled restore. Callback acceptance is not evidence of a ChatGPT task or device notification. Independent requirements and engineering review, synthetic protocol/race tests and disabled package verification remain release gates; no live connection, send or schedule is authorized by this source task. Eugene identity, powered-off operation and independent host-outage detection remain open.
+
 ## Subagent model routing — November 1, 2026
 
 The owner approved evaluating and implementing proportional subagent model choices after observing that the preceding workflow pilot inherited Terra Max even for narrow cases. Start in this repository, preserve independent review for consequential work, and use only included Codex allowance on fictional fixtures. A fresh conversation does not itself change the model, isolate files or permissions, or prove a review independent. The active operations chat remains separately owned; inspect it read-only for handoff advice without interrupting its work.
