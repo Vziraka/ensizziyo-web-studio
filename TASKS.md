@@ -6,9 +6,9 @@ The owner accepted a fictional pilot of context-aware checkpoints and handoffs, 
 
 - [x] Freeze representative fictional cases and independent expectations before comparisons. Exercise changed decisions, stale worktree state, uncertain operations, approval holds, unavailable context signals and unnecessary handoffs.
 - [x] Compare matched continuations and inspect actual available evidence. Distinguish a prompt simulation from real compaction, a same-chat continuation or OS-level isolation; retain the outcomes, omissions and any unavailable measurements.
-- [ ] Have distinct requirements and engineering reviewers assess the exact final candidate and evidence; resolve findings and rerun affected checks. Keep live integration and broader rollout unproven until separately demonstrated.
+- [x] Have distinct requirements and engineering reviewers assess the candidate and evidence; resolve findings and rerun affected checks. Keep live integration and broader rollout unproven until separately demonstrated.
 
-The [handoff pilot](docs/context-handoff-pilot.md) owns the experiment, limitations and resulting recommendation. Existing [context and long-running work](WORKFLOW.md#context-and-long-running-work) remains the active policy during the pilot.
+The [handoff pilot](docs/context-handoff-pilot.md) owns the experiment, limitations and resulting recommendation. Separate requirements and engineering reviewers accepted implementation head `6ea3376` after the reproduced concurrency issue was fixed; the final status-only update records that evidence. Existing [context and long-running work](WORKFLOW.md#context-and-long-running-work) remains the active policy during the pilot.
 
 ## Subagent model routing — November 1, 2026
 
