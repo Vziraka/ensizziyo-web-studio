@@ -10,3 +10,5 @@ lifecycleAssets.set('/known-research.js',['known-research.js','text/javascript']
 lifecycleAssets.set('/project-authoring.js',['project-authoring.js','text/javascript']);
 
 lifecycleAssets.set('/operations-pdf.js',['operations-pdf.js','text/javascript']);
+
+lifecycleAssets.set('/native-notification-setup.js',['native-notification-setup.js','text/javascript']);

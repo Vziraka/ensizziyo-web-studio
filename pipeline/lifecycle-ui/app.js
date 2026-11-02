@@ -1,3 +1,4 @@
+import {nativeNotificationPanel} from './native-notification-setup.js';
 import {renderOperationsPdfs,operationsPdfBusy} from './operations-pdf.js';
 import {gatewayProofPanel} from './gateway-proof.js';
 import {renderHostedAssessment} from './transcript-assessment.js';
@@ -783,6 +784,7 @@ function render() {
     node.append(notices,el('p',standingInternal?'Bounded ticks and pending digests stay visible in policy status. Exhausted limits never grant extra sends or backfill.':'Routine checks stay in private logs. The earlier test monitor stays paused; no external delivery is enabled by these prepared messages.','muted'));content.append(node);return;
   }
   if (view === 'launch') {
+    if(state.native_notification_setup)content.append(nativeNotificationPanel(()=>state,{panel,el,button,inputField,api,refresh,tell}));
     if(state.cloud_discovery_status)content.append(cloudDiscoveryPanel());
     if(state.mailbox_delivery_status){
       const delivery=state.mailbox_delivery_status,box=panel('Email delivery controls');
