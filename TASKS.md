@@ -4,8 +4,8 @@
 
 The owner accepted a fictional pilot of context-aware checkpoints and handoffs, starting here before considering wider EVZ use. Preserve decisions and their reasons, current work and approval holds; compare the existing workflow with a structured checkpoint and a fresh-session continuation. The existing workflow already recommends checkpoints, so the baseline must retain that guidance. Use only included Codex allowance and preserve the existing shared reserve. No real client data, sends, deployments, paid overage, user-owned chat creation or global activation is authorized by this pilot.
 
-- [ ] Freeze representative fictional cases and independent expectations before comparisons. Exercise changed decisions, stale worktree state, uncertain operations, approval holds, unavailable context signals and unnecessary handoffs.
-- [ ] Compare matched continuations and inspect actual available evidence. Distinguish a prompt simulation from real compaction, a same-chat continuation or OS-level isolation; retain the outcomes, omissions and any unavailable measurements.
+- [x] Freeze representative fictional cases and independent expectations before comparisons. Exercise changed decisions, stale worktree state, uncertain operations, approval holds, unavailable context signals and unnecessary handoffs.
+- [x] Compare matched continuations and inspect actual available evidence. Distinguish a prompt simulation from real compaction, a same-chat continuation or OS-level isolation; retain the outcomes, omissions and any unavailable measurements.
 - [ ] Have distinct requirements and engineering reviewers assess the exact final candidate and evidence; resolve findings and rerun affected checks. Keep live integration and broader rollout unproven until separately demonstrated.
 
 The [handoff pilot](docs/context-handoff-pilot.md) owns the experiment, limitations and resulting recommendation. Existing [context and long-running work](WORKFLOW.md#context-and-long-running-work) remains the active policy during the pilot.

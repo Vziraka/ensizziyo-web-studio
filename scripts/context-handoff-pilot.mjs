@@ -6,7 +6,9 @@ import {isAbsolute, join, relative, resolve, sep} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {cases, candidateChecklist} from './context-handoff-fixtures.mjs';
 
-const resultsFile = new URL('../docs/context-handoff-pilot-results.json', import.meta.url);
+const resultsFile = process.env.EVZ_HANDOFF_RESULTS_PATH
+  ? pathToFileURL(resolve(process.env.EVZ_HANDOFF_RESULTS_PATH))
+  : new URL('../docs/context-handoff-pilot-results.json', import.meta.url);
 const hash = value => createHash('sha256').update(value).digest('hex');
 const arms = ['baseline', 'candidate_history', 'candidate_fresh'];
 
@@ -153,9 +155,16 @@ export async function runCodex(prompt, traceDir) {
 }
 
 async function save(results) {
-  const pendingFile = new URL('../docs/context-handoff-pilot-results.pending.json', import.meta.url);
-  await writeFile(pendingFile, `${JSON.stringify(results, null, 2)}\n`, {encoding: 'utf8'});
-  await rename(pendingFile, resultsFile);
+  const pendingFile = `${fileURLToPath(resultsFile)}.${randomUUID()}.pending`;
+  let created = false;
+  try {
+    await writeFile(pendingFile, `${JSON.stringify(results, null, 2)}\n`, {encoding: 'utf8', flag: 'wx'});
+    created = true;
+    await rename(pendingFile, resultsFile);
+    created = false;
+  } finally {
+    if (created) await unlink(pendingFile).catch(() => {});
+  }
 }
 
 async function main() {

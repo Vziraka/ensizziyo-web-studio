@@ -124,3 +124,20 @@ test('module URLs resolve to the actual follow-up file on the current platform',
   const expected = createHash('sha256').update(await readFile(url, 'utf8')).digest('hex');
   assert.equal(await moduleFileHash(url.href), expected);
 });
+
+test('a separate results path refuses to mix an earlier experiment before inference', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'evz-pilot-version-test-'));
+  const resultPath = join(dir, 'earlier.json');
+  const earlier = JSON.stringify({version: 'different-version', cases: {}});
+  try {
+    await writeFile(resultPath, earlier);
+    const script = fileURLToPath(new URL('./context-handoff-pilot.mjs', import.meta.url));
+    const result = spawnSync(process.execPath, [script, 'decisions', 'round-1'], {encoding: 'utf8', env: {...process.env, EVZ_HANDOFF_TRACE_DIR: dir, EVZ_HANDOFF_RESULTS_PATH: resultPath}});
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Frozen fixtures or policy changed/);
+    assert.equal(await readFile(resultPath, 'utf8'), earlier);
+  } finally {
+    await unlink(resultPath);
+    await rmdir(dir);
+  }
+});
