@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {cases} from './context-handoff-fixtures.mjs';
-import {blockingAttempt, checkpointPrompt, continuationPrompt, extractPolicy, followupVersion, moduleFileHash, simulate, writePrivateTrace} from './context-handoff-pilot.mjs';
+import {blockingAttempt, checkpointPrompt, continuationPrompt, extractPolicy, followupVersion, moduleFileHash, simulate, withExclusiveLock, writePrivateTrace} from './context-handoff-pilot.mjs';
 
 const byId = id => cases.find(item => item.id === id);
 const reply = actions => JSON.stringify({summary: '', decision: '', reason: '', source: '', context: '', actions});
@@ -138,6 +138,49 @@ test('a separate results path refuses to mix an earlier experiment before infere
     assert.equal(await readFile(resultPath, 'utf8'), earlier);
   } finally {
     await unlink(resultPath);
+    await rmdir(dir);
+  }
+});
+
+test('an exclusive pilot lock rejects a concurrent or interrupted run', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'evz-pilot-lock-test-'));
+  const lock = join(dir, 'results.json.lock');
+  let secondRan = false;
+  try {
+    await withExclusiveLock(lock, async () => {
+      await assert.rejects(withExclusiveLock(lock, async () => { secondRan = true; }), /lock already exists/);
+    });
+    assert.equal(secondRan, false);
+    await assert.rejects(readFile(lock), {code: 'ENOENT'});
+    await writeFile(lock, 'interrupted');
+    await assert.rejects(withExclusiveLock(lock, async () => {}), /lock already exists/);
+    assert.equal(await readFile(lock, 'utf8'), 'interrupted');
+  } finally {
+    await unlink(lock).catch(() => {});
+    await rmdir(dir);
+  }
+});
+
+test('both pilot entrypoints fail closed when their existing lock is held', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'evz-pilot-lock-entry-test-'));
+  const resultPath = join(dir, 'results.json');
+  const pilotLock = `${resultPath}.lock`;
+  const followupLock = join(dir, 'followup.lock');
+  try {
+    await writeFile(pilotLock, 'held');
+    await writeFile(followupLock, 'held');
+    const env = {...process.env, EVZ_HANDOFF_TRACE_DIR: dir, EVZ_HANDOFF_RESULTS_PATH: resultPath};
+    const pilot = spawnSync(process.execPath, [fileURLToPath(new URL('./context-handoff-pilot.mjs', import.meta.url)), 'decisions', 'checkpoints'], {encoding: 'utf8', env});
+    const followup = spawnSync(process.execPath, [fileURLToPath(new URL('./context-handoff-followup.mjs', import.meta.url)), 'original', '1'], {encoding: 'utf8', env});
+    assert.notEqual(pilot.status, 0);
+    assert.notEqual(followup.status, 0);
+    assert.match(pilot.stderr, /lock already exists/);
+    assert.match(followup.stderr, /lock already exists/);
+    assert.equal(await readFile(pilotLock, 'utf8'), 'held');
+    assert.equal(await readFile(followupLock, 'utf8'), 'held');
+  } finally {
+    await unlink(pilotLock);
+    await unlink(followupLock);
     await rmdir(dir);
   }
 });

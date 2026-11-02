@@ -1,8 +1,8 @@
 import {spawn} from 'node:child_process';
 import {createHash, randomUUID} from 'node:crypto';
-import {mkdtemp, readFile, realpath, rename, rmdir, stat, unlink, writeFile} from 'node:fs/promises';
+import {mkdtemp, open, readFile, realpath, rename, rmdir, stat, unlink, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
-import {isAbsolute, join, relative, resolve, sep} from 'node:path';
+import {basename, dirname, isAbsolute, join, relative, resolve, sep} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {cases, candidateChecklist} from './context-handoff-fixtures.mjs';
 
@@ -18,6 +18,21 @@ export function followupVersion({addon, policy, original, holdoutHash, runnerHas
 
 export async function moduleFileHash(moduleUrl) {
   return hash(await readFile(new URL(moduleUrl), 'utf8'));
+}
+
+export async function withExclusiveLock(lockPath, action) {
+  let handle;
+  try { handle = await open(lockPath, 'wx', 0o600); } catch (error) {
+    if (error.code === 'EEXIST') throw new Error(`Pilot lock already exists; inspect before recovery: ${lockPath}`);
+    throw error;
+  }
+  try {
+    await handle.writeFile(JSON.stringify({pid: process.pid, startedAt: new Date().toISOString()}));
+    return await action();
+  } finally {
+    await handle.close();
+    await unlink(lockPath);
+  }
 }
 
 export function extractPolicy(workflow, workspace) {
@@ -171,6 +186,12 @@ async function main() {
   const [caseId, phase] = process.argv.slice(2);
   const fixture = cases.find(item => item.id === caseId);
   if (!fixture || !['checkpoints', 'round-1', 'round-2'].includes(phase)) throw new Error('Usage: node scripts/context-handoff-pilot.mjs <case-id> <checkpoints|round-1|round-2>');
+  const resultPath = fileURLToPath(resultsFile);
+  const lockPath = join(await realpath(dirname(resultPath)), `${basename(resultPath)}.lock`);
+  return withExclusiveLock(lockPath, () => runPhase(caseId, phase, fixture));
+}
+
+async function runPhase(caseId, phase, fixture) {
   if (!process.env.EVZ_HANDOFF_TRACE_DIR) throw new Error('Set EVZ_HANDOFF_TRACE_DIR to an existing owner-private directory outside the repository');
   const traceDir = await realpath(process.env.EVZ_HANDOFF_TRACE_DIR);
   const repoDir = await realpath(fileURLToPath(new URL('../', import.meta.url)));

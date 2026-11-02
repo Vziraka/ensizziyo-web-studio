@@ -3,7 +3,7 @@ import {open, readFile, realpath, writeFile} from 'node:fs/promises';
 import {isAbsolute, join, relative, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {cases, candidateChecklist} from './context-handoff-fixtures.mjs';
-import {checkpointPrompt, extractPolicy, followupVersion, moduleFileHash, runCodex} from './context-handoff-pilot.mjs';
+import {checkpointPrompt, extractPolicy, followupVersion, moduleFileHash, runCodex, withExclusiveLock} from './context-handoff-pilot.mjs';
 
 const hash = text => createHash('sha256').update(text).digest('hex');
 const [which, repetition] = process.argv.slice(2);
@@ -13,6 +13,7 @@ const dir = await realpath(process.env.EVZ_HANDOFF_TRACE_DIR);
 const repo = await realpath(fileURLToPath(new URL('../', import.meta.url)));
 const fromRepo = relative(repo, dir);
 if (!fromRepo || (fromRepo !== '..' && !fromRepo.startsWith(`..${sep}`) && !isAbsolute(fromRepo))) throw new Error('Private traces must be stored outside the repository');
+await withExclusiveLock(join(dir, 'followup.lock'), async () => {
 const prior = [];
 for (const name of ['followup-original-1.json', 'followup-original-2.json', 'followup-holdout-1.json', 'followup-holdout-2.json']) {
   try {
@@ -49,3 +50,4 @@ const record = {which, repetition: Number(repetition), version, promptHash: hash
 await writeFile(outputPath, `${JSON.stringify(record, null, 2)}\n`, {encoding: 'utf8', mode: 0o600});
 if (!result.valid) throw new Error('Invalid follow-up run; inspect its private trace before continuing');
 process.stdout.write(`${which} repetition ${repetition}: completed\n`);
+});
