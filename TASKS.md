@@ -1,5 +1,9 @@
 # Launch tasks
 
+## Shared desk session refresh — November 2, 2026
+
+A reported owner/friend switch can interrupt a paged workspace load. A synthetic regression reproduces an in-flight snapshot crossing the sign-out boundary; the source fix cancels old reads and starts a fresh session-bound snapshot without weakening revision or hash checks. Independent review and an authorized hosted browser recheck remain open; this source change does not deploy or alter saved records.
+
 ## Native operations notification transport — November 1, 2026
 
 Implemented an explicitly opted-in, default-disabled MCP Events transport for saved operations incidents and the daily 18:00 Eastern summary. Exact corrected cross-site source `264a760` passed independent requirements and engineering reviews: role isolation, full source-binding pin, private-source SDK routing, same-CAS outbox/claims, encrypted subscription secrets and finite included-only execution. Validation includes 111 affected author tests, 95 independent engineering tests plus 12 independent boundary cases, three unchanged root regressions, 41 root affected checks and syntax checks. The exact package has API v2, no schedule and isolated default 403 with zero fetches. [PR145](https://github.com/Vziraka/ensizziyo-web-studio/pull/145) retains the full CI gate. Expired public unsubscribe returns 403; delivery/refresh are already expired and canonical revocation remains available. Callback acceptance is not ChatGPT processing or device delivery. Actual hosted access, native connections, Eugene identity, powered-off operation and independent host-outage detection remain open; source merge activates no connection, send or schedule.

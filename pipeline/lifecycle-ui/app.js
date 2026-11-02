@@ -6,10 +6,10 @@ import { renderCallDesk } from './call-desk.js';
 import { centsFromDollars } from './money.js';
 import {deskPath} from './paths.js';
 import {createEventRequest} from './event-request.js';
-import {readDeskSnapshot} from './snapshot-read.js';
+import {readDeskSnapshot,createSessionRefresh} from './snapshot-read.js';
 import {audioBusy,stopAudioCapture} from './call-audio.js';
 let state, csrf, operatorAuthRequired = false, view = 'today', selected = 'juniper', lane = 'all', assetProject = '', dirty = false, refreshAfter = 0;
-let eventRequest,loadedWorkspaceContext,refreshPromise,mailboxBusy=false;
+let eventRequest,loadedWorkspaceContext,mailboxBusy=false;
 let googleConnectionPanel,googleConnectionActor;
 const emailTaskHandoffs=new Map();
 const expandedNotificationIds=new Set();
@@ -48,7 +48,7 @@ function showPendingEvent() {
   message.after(notice);
 }
 function showOperatorLogin(error = '') {
-  googleConnectionPanel=null;googleConnectionActor=null;
+  sessionRefresh.invalidate();googleConnectionPanel=null;googleConnectionActor=null;loadedWorkspaceContext=null;emailTaskHandoffs.clear();expandedNotificationIds.clear();eventRequest=null;dirty=false;refreshAfter=0;document.querySelector('#pending-event')?.remove();
   state = null; document.querySelector('nav').hidden = true; document.querySelector('.aside-foot').hidden = true;
   document.querySelector('#mode-banner').hidden = true; document.querySelector('#backup').hidden = true;
   document.querySelector('#pause').hidden = true; document.querySelector('#operator-label').hidden = true; document.querySelector('#sign-out').hidden = true;
@@ -60,23 +60,20 @@ function showOperatorLogin(error = '') {
     try {
       const response = await fetch(deskPath('/api/login'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Studio-Token': csrf }, body: JSON.stringify({ key: input.value }) });
       const result = await response.json(); if (!response.ok) throw Error(result.error);
-      input.value = ''; await refresh();
+      input.value = ''; sessionRefresh.invalidate(); await refresh();
     } catch (e) { tell(e.message, true); input.focus(); } finally { submit.disabled = false; }
   });
   node.append(form); content.replaceChildren(node); document.querySelector('#view-kicker').textContent = 'Shared company workspace';
   document.querySelector('#view-title').textContent = 'Sign in to continue.'; document.querySelector('#view-description').textContent = 'Each operator uses a separate key; the workspace records who made each decision.';
   tell(error, Boolean(error));
 }
-async function refresh() {
-  if(refreshPromise)return refreshPromise;
-  refreshPromise=readAndRenderState();
-  try{return await refreshPromise;}finally{refreshPromise=null;}
-}
-async function readAndRenderState() {
-  const response = await fetch(deskPath('/api/state'));
+const sessionRefresh=createSessionRefresh(readAndRenderState);
+function refresh() { return sessionRefresh.refresh(); }
+async function readAndRenderState(signal) {
+  signal.throwIfAborted();const response = await fetch(deskPath('/api/state'),{signal,cache:'no-store'});signal.throwIfAborted();
   if (response.status === 401 && operatorAuthRequired) { showOperatorLogin(); return; }
   if (!response.ok) throw Error('Private session unavailable. Reload the console.');
-  state = await readDeskSnapshot(response,{fetch:(...args)=>fetch(...args),path:deskPath('/api/state')});
+  const nextState = await readDeskSnapshot(response,{fetch:url=>fetch(url,{signal,cache:'no-store'}),path:deskPath('/api/state')});signal.throwIfAborted();state=nextState;
   if (state.hosted_preview && !eventRequest) eventRequest = createEventRequest({fetch: (...args) => fetch(...args), storage: sessionStorage, csrf: () => csrf, actor: () => state?.current_operator, changed: showPendingEvent});
   showPendingEvent();
   document.querySelector('nav').hidden = false; document.querySelector('.aside-foot').hidden = false;
@@ -806,7 +803,7 @@ function render() {
     if(['shared-mailbox-review-v1','shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(state.shared_workspace?.capability)){
       const box=panel('Incoming mailbox status'),sync=state.mailbox_sync;
       box.append(el('p',sync?.checked_at?'Last completed check: '+new Date(sync.checked_at).toLocaleString():'Initial import has not completed.','notice'),el('p',state.mailbox_failure?`Processing held: ${state.mailbox_failure.reason}. Last successful position is retained.`:sync?`Import phase: ${sync.phase}; ${sync.pending.length} message reads pending.`:'No mailbox messages imported yet.'));
-      const readButton=button('Read next mailbox batch',async()=>{if(mailboxBusy)return;mailboxBusy=true;readButton.disabled=true;try{if(refreshPromise)await refreshPromise;await api('/api/mailbox/sync',{});await refresh();tell('Mailbox step saved. Review its status and incoming messages.');}catch(error){tell(error.message+' Refresh saved status before attempting another step.',true);}finally{mailboxBusy=false;readButton.disabled=false;const current=content.querySelector('[data-mailbox-read]');if(current)current.disabled=false;}});readButton.dataset.mailboxRead='true';readButton.disabled=mailboxBusy;box.append(readButton);content.append(box);
+      const readButton=button('Read next mailbox batch',async()=>{if(mailboxBusy)return;mailboxBusy=true;readButton.disabled=true;try{if(sessionRefresh.pending)await sessionRefresh.pending;await api('/api/mailbox/sync',{});await refresh();tell('Mailbox step saved. Review its status and incoming messages.');}catch(error){tell(error.message+' Refresh saved status before attempting another step.',true);}finally{mailboxBusy=false;readButton.disabled=false;const current=content.querySelector('[data-mailbox-read]');if(current)current.disabled=false;}});readButton.dataset.mailboxRead='true';readButton.disabled=mailboxBusy;box.append(readButton);content.append(box);
     }
     if(state.hosted_preview&&(!googleConnectionPanel||googleConnectionActor!==state.current_operator)){
       const connection=panel('Business Gmail connection'),status=el('p',['shared-mailbox-review-v1','shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(state.shared_workspace?.capability)?['shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(state.shared_workspace?.capability)?'Check the business connection. Automatic checks and delivery follow their separate controls above.':'Check the business connection, then read the next mailbox batch. Automatic checks and sending remain paused.':'Check the connection before requesting owner consent. Connecting does not enable sending or mailbox synchronization.','muted'),actions=el('div',undefined,'actions');
@@ -891,6 +888,6 @@ async function start() {
 }
 start().catch(error => tell(error.message, true));
 setInterval(() => {
-  if (refreshPromise || operationsPdfBusy() || document.querySelector('.pdf-preview') || mailboxBusy || audioBusy() || dirty || document.querySelector('[data-exact-reply-review="active"]') || document.querySelector('.desk-next') || document.visibilityState !== 'visible' || Date.now() < refreshAfter || document.activeElement?.closest('form') || document.activeElement?.matches('input,textarea,select')) return;
-  refresh().catch(error => { refreshAfter = Date.now() + 60000; if (message.textContent !== error.message) tell(error.message, true); });
+  if ((!state && operatorAuthRequired) || sessionRefresh.pending || operationsPdfBusy() || document.querySelector('.pdf-preview') || mailboxBusy || audioBusy() || dirty || document.querySelector('[data-exact-reply-review="active"]') || document.querySelector('.desk-next') || document.visibilityState !== 'visible' || Date.now() < refreshAfter || document.activeElement?.closest('form') || document.activeElement?.matches('input,textarea,select')) return;
+  refresh().catch(error => { if(error.name==='AbortError')return; refreshAfter = Date.now() + 60000; if (message.textContent !== error.message) tell(error.message, true); });
 }, 15000);

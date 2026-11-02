@@ -11,3 +11,8 @@ test('bounded UTF-8 snapshot pages reconstruct exactly and fail closed on mixed 
  await assert.rejects(readDeskSnapshot(response(),{path:'/desk/api/state',fetch:async()=>new Response(null,{status:503})}),/interrupted/);
  assert.deepEqual(await readDeskSnapshot(new Response(JSON.stringify({revision:1})),{}),{revision:1});
 });
+
+for(const [from,to] of [['owner','friend'],['friend','owner']])test(`switching ${from} to ${to} during a paged read starts a new session snapshot`,async()=>{
+ const {createSessionRefresh}=await import('./lifecycle-ui/snapshot-read.js');let actor=from,release,started;const entered=new Promise(r=>started=r),wait=new Promise(r=>release=r),view=who=>({revision:7,current_operator:who,prospects:{first:{note:'Fictional data. '.repeat(150000)}}}),sessions=createSessionRefresh(async signal=>{const first=deskSnapshotPage(view(actor));return readDeskSnapshot(new Response(JSON.stringify(first)),{path:'/desk/api/state',fetch:async url=>{if(actor===from){started();await wait;}try{return new Response(JSON.stringify(deskSnapshotPage(view(actor),new URL(url,'https://local.invalid').searchParams)));}catch{return new Response(null,{status:409});}}});});
+ const old=sessions.refresh(),oldRejected=assert.rejects(old,e=>e.name==='AbortError');await entered;actor=to;sessions.invalidate();const current=sessions.refresh();release();const result=await current;assert.equal(result.current_operator,to);await oldRejected;
+});

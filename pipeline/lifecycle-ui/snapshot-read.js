@@ -14,3 +14,5 @@ export async function readDeskSnapshot(response,{fetch,path,crypto=globalThis.cr
  if(sha!==first.sha256)throw Error('Private snapshot integrity check failed.');
  const snapshot=JSON.parse(text);if(snapshot.revision!==first.revision)throw Error('Private snapshot revision does not match.');return snapshot;
 }
+
+export function createSessionRefresh(read){let active;return {get pending(){return active?.promise??null;},invalidate(){const previous=active;active=null;previous?.controller.abort();},refresh(){if(active)return active.promise;const entry={controller:new AbortController()};entry.promise=Promise.resolve().then(()=>read(entry.controller.signal)).catch(error=>{entry.controller.signal.throwIfAborted();throw error;}).finally(()=>{if(active===entry)active=null;});active=entry;return entry.promise;}};}

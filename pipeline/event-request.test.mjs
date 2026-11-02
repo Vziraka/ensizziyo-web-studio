@@ -23,6 +23,7 @@ test('hosted UI retains one exact approval across lost HTTP responses, reload an
   assert.equal((await client.send(input('committed-response-loss'))).reconciled,true); assert.equal(client.pending,null); assert.equal(postCount,1);
   lose=false; beforeCommit=true; const retained=input('uncommitted-response-loss');
   await assert.rejects(client.send(retained),/uncertain/); assert.equal(client.pending.id,retained.event.id);
+  client=createEventRequest({fetch,storage,csrf:()=>csrf,actor:()=> 'friend'}); assert.equal(client.pending.actor,'owner'); await assert.rejects(client.retry(),/original|operator who approved/); assert.equal(client.pending.id,retained.event.id);
   client=createEventRequest({fetch,storage,csrf:()=>csrf,actor:()=> 'owner'}); assert.equal(await client.recover(),false);
   await assert.rejects(client.send(input('must-not-be-new')),/unresolved/); assert.equal(postCount,2);
   beforeCommit=false; await client.retry(); assert.equal(client.pending,null); assert.equal(postCount,3);
