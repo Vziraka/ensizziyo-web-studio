@@ -84,7 +84,7 @@ export function mailboxCoverageComplete(state){const s=state.mailbox_sync;return
 export async function syncMailboxStep(app,{transport,clockStep}={}){
  check(isMailboxCapability(app.store?.manualBinding?.scope.capability),'Exact shared mailbox store required');
  const config=await app.loadConfig(),policy=validateMailboxPolicy(config.mailbox),state=await app.snapshot(),sync=state.mailbox_sync??null;
- const request=expected(sync),before=hash(sync),configuration=hash(config),guard=async()=>{const current=await app.snapshot();check(hash(await app.loadConfig())===configuration&&hash(current.mailbox_sync??null)===before,'Mailbox source changed during provider read');if(clockStep)assertMailboxClockStep(current,config,clockStep,app.now().toISOString());};
+ const request=expected(sync),before=hash(sync),configuration=hash(config),guard=async()=>{const current=clockStep?(await app.store.envelope()).data:{state:await app.snapshot(),config:await app.loadConfig()};check(hash(current.config)===configuration&&hash(current.state.mailbox_sync??null)===before,'Mailbox source changed during provider read');if(clockStep)assertMailboxClockStep(current.state,current.config,clockStep,app.now().toISOString());};
  const commit=(kind,evidence)=>{
   const options={configFingerprint:configuration,[kind]:evidence};
   if(clockStep){options.mailboxClockStep=clockStep;options.mailboxClock={type:'settle',actor:'clock',at:evidence.at,input:{...clockStep,outcome:'Held'}};}
@@ -98,12 +98,12 @@ export async function syncMailboxStep(app,{transport,clockStep}={}){
  const hold=reason=>commit('mailboxFailure',{before_sha256:before,policy_sha256:hash(policy),at:app.now().toISOString(),operation:request.operation,reason});
  if(Buffer.byteLength(JSON.stringify(state))>=18_500_000)return hold('Capacity reached');
  if(state.mailbox_failure?.reason==='History expired; full recovery required')return {held:true,reason:state.mailbox_failure.reason};
- await guard();let value;
+ await guard();let value;const options=clockStep?{beforeFetch:guard}:undefined;
  try{
- if(request.operation==='profile')value=await transport.incomingProfile();
- else if(request.operation==='list')value=await transport.mailboxList(policy.after,request.input.page);
- else if(request.operation==='history')value=await transport.incomingHistory(request.input.cursor,request.input.page);
- else value=await transport.mailboxMessage(request.input.id);
+ if(request.operation==='profile')value=await transport.incomingProfile(options);
+ else if(request.operation==='list')value=await transport.mailboxList(policy.after,request.input.page,options);
+ else if(request.operation==='history')value=await transport.incomingHistory(request.input.cursor,request.input.page,options);
+ else value=await transport.mailboxMessage(request.input.id,options);
  await guard();
  const observation={...request,before_sha256:before,policy_sha256:hash(policy),at:app.now().toISOString(),value,grant:transport.grant()};
  return await commit('mailboxObservation',observation);
