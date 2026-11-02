@@ -14,9 +14,13 @@ async function invocation(app,actor,run,{deadline:callerDeadline=Infinity}={}){
  const alive=()=>check(!signal.aborted&&+app.now()<deadline,'PDF invocation expired; retain the exact transfer');
  const expired=new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(Error('PDF invocation expired; retain the exact transfer')),{once:true}));
  const work=(async()=>{
-  alive();const base=(await app.store.envelope()).data;alive();validateOperationsPdfState(base.state,base.config);
+  alive();const snapshot=await app.store.envelope(),base=snapshot.data;alive();validateOperationsPdfState(base.state,base.config);
   const fingerprint=hash(base.config),stateHash=hash(base.state),at=app.now().toISOString();
-  const guard=async()=>{alive();boundary(app,actor);check(hash(app.store.manualBinding)===binding,'PDF workspace binding changed');const current=(await app.store.envelope()).data;alive();validateOperationsPdfState(current.state,current.config);check(hash(current.config)===fingerprint&&hash(current.state)===stateHash,'PDF source or workspace changed; refresh exact state');};
+  const current=()=>{alive();boundary(app,actor);check(hash(app.store.manualBinding)===binding,'PDF workspace binding changed');};
+  const guard=async()=>{
+   if(typeof app.store.assertPdfCurrent==='function')return app.store.assertPdfCurrent(snapshot,current);
+   current();const observed=await app.store.envelope();current();check(observed.etag===snapshot.etag&&hash(observed.data)===hash(snapshot.data),'PDF source or workspace changed; refresh exact state');
+  };
   const raw=blobProjectOriginalStore(app.store.store),store={};
   for(const name of ['get','manifest','chunk','putChunk','publish'])store[name]=async(...args)=>{await guard();const result=await raw[name](...args);await guard();return result;};
   const readOnly={chunk:store.chunk,publish:async m=>check(hash(await store.manifest(m))===hash(m),'Published original manifest differs')};
@@ -24,7 +28,7 @@ async function invocation(app,actor,run,{deadline:callerDeadline=Infinity}={}){
    await guard();
    return app.change(async(s,c)=>{alive();boundary(app,actor);check(hash(app.store.manualBinding)===binding&&hash(c)===fingerprint&&hash(s)===stateHash,'PDF source changed before commit');const result=await reconstruct(s,c);alive();return result;},{configFingerprint:fingerprint,operationsPdf:tr,operationsPdfDeadline:deadline});
   }
-  return run({base,at,guard,store,readOnly,commit,alive});
+  return run({base,at,guard,current,store,readOnly,commit,alive});
  })();return Promise.race([work,expired]);
 }
 // Actor is a trusted server argument obtained from the signed session, never request JSON.
@@ -62,11 +66,11 @@ export async function operationsPdfUploadChunk(app,ids,index,bytes,transfer_id,a
 }
 export async function operationsPdfComplete(app,ids,input,actor,options={}){
  ids=target(ids);input=structuredClone(input);exact(input,'revision,context_sha256,transfer_id');
- return invocation(app,actor,async({base,at,store,readOnly,guard,commit})=>{
+ return invocation(app,actor,async({base,at,store,readOnly,current,commit})=>{
   const tr={schema_version:1,type:'complete',actor,at,input:{ids,...input}},candidate=structuredClone(base.state),v=projectAssetVersion(candidate,ids.project_id,ids.asset_id,ids.version_id);
   check(input.revision===candidate.revision&&projectContext(candidate,ids.project_id).context_sha256===input.context_sha256,'PDF revision or project context changed');check(v.operations_pdf_source&&v.operations_pdf_source.bytes<=operationsPdfLimits.original_bytes,'Registered bounded original required');
-  await completeSharedOriginal(shadow(candidate,base.config,at),store,{...ids,transfer_id:input.transfer_id},actor,{assertCurrent:guard});validateOperationsPdfState(candidate,base.config);
+  await completeSharedOriginal(shadow(candidate,base.config,at),store,{...ids,transfer_id:input.transfer_id},actor,{assertCurrent:current});validateOperationsPdfState(candidate,base.config);
   // Immutable publication above grants no canonical authority. Reconstruct only from its exact bytes.
-  return commit(tr,async(s,c)=>{const result=await completeSharedOriginal(shadow(s,c,at),readOnly,{...ids,transfer_id:input.transfer_id},actor,{assertCurrent:guard});check(hash(s)===hash(candidate),'Original completion candidate changed');return result;});
+  return commit(tr,async(s,c)=>{const result=await completeSharedOriginal(shadow(s,c,at),readOnly,{...ids,transfer_id:input.transfer_id},actor,{assertCurrent:current});check(hash(s)===hash(candidate),'Original completion candidate changed');return result;});
  },options);
 }

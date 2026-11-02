@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {join} from 'node:path';
 import {readFile} from 'node:fs/promises';
 import {PDFDocument} from 'pdf-lib';
+import {getStore} from '@netlify/blobs';
 import {cloudDiscoveryFixture} from './cloud-discovery-fixtures.mjs';
 import {createHostedDesk} from './hosted-desk.mjs';
 import {StudioLifecycle,hash} from './lifecycle.mjs';
@@ -80,7 +81,7 @@ test('complete G1 export/restore retains exact originals and source metadata whi
 });
 
 test('concurrent reservations and completion CAS loss preserve exact transfers and immutable evidence',async t=>{
- const f=await fixture(t);await f.register();const extra=await f.record('workspace_project_created',{name:'SYNTHETIC Other company',purpose:'Unrelated private context',controlled:false});extra.event.prospect_id='q';await operationsPdfRecord(f.app,extra,'friend');const input={...await f.input(),manifest:f.manifest,source:f.source},outcomes=await Promise.allSettled(['owner','friend'].map(actor=>operationsPdfReserve(f.app,ids,input,actor)));
+ const f=await fixture(t);f.raw.getMetadata=async key=>({etag:f.objects.get(key)?.etag});await f.register();const extra=await f.record('workspace_project_created',{name:'SYNTHETIC Other company',purpose:'Unrelated private context',controlled:false});extra.event.prospect_id='q';await operationsPdfRecord(f.app,extra,'friend');const input={...await f.input(),manifest:f.manifest,source:f.source},outcomes=await Promise.allSettled(['owner','friend'].map(actor=>operationsPdfReserve(f.app,ids,input,actor)));
  assert.equal(outcomes.filter(x=>x.status==='fulfilled').length,1);const transfer=(await f.store.snapshot()).asset_index.a.versions.v.original_transfer;
  for(let i=0;i<f.manifest.chunks.length;i++)await operationsPdfUploadChunk(f.app,ids,i,f.bytes.subarray(i*1_000_000,(i+1)*1_000_000),transfer.id,'owner');
  const unchangedContext=projectContext(await f.store.snapshot(),'p').context_sha256;
@@ -126,4 +127,26 @@ test('retained asset/version bounds reject preparation and installation before w
   for(const commit of [false,true])await assert.rejects(installManualWorkspace(store,limited,{commit}),error);
   assert.equal(accesses,0,'Reject over-limit retained authority before opening destination');assert.deepEqual(await readFile(output),original);assert.deepEqual((await readLifecycleBackup(output)).state,snapshot);assert.deepEqual(await f.store.snapshot(),snapshot);
  }
+});
+
+test('pinned Blobs SDK uses strong HEAD for the PDF ETag fence and fails closed',async()=>{
+ let response='"same"',requests=[];
+ const raw=getStore({name:'synthetic-pdf',siteID:'synthetic-site',token:'synthetic-token',edgeURL:'https://edge.example.invalid',uncachedEdgeURL:'https://strong.example.invalid',fetch:async(url,options)=>{requests.push({url:String(url),method:options.method});return new Response(null,{status:response==='missing'?404:200,headers:response&&response!=='missing'?{etag:response}:{}});}});
+ const store=new ConditionalLifecycleStore(raw),expected={etag:'"same"',data:{}};let checks=0;
+ await store.assertPdfCurrent(expected,()=>checks++);assert.equal(checks,2);assert.equal(requests[0].method.toUpperCase(),'HEAD');assert.equal(new URL(requests[0].url).origin,'https://strong.example.invalid');
+ for(const value of ['"different"','', 'missing']){response=value;await assert.rejects(store.assertPdfCurrent(expected,()=>{}),/changed/);}
+});
+
+test('PDF metadata fences reject changed ETag, binding and deadline after asynchronous reads',async t=>{
+ const f=await fixture(t);await f.register();const input={...await f.input(),manifest:f.manifest,source:f.source},tr=await operationsPdfReserve(f.app,ids,input,'owner');
+ let action='ok';f.raw.getMetadata=async key=>{assert.equal(key,'workspace');if(action==='binding')f.store.manualBinding={...f.store.manualBinding,changed:true};if(action==='deadline')f.advance(25000);if(action==='changed')return {etag:'wrong'};return {etag:f.objects.get(key).etag};};
+ for(const mode of ['changed','binding','deadline']){action=mode;const binding=f.store.manualBinding;await assert.rejects(operationsPdfUploadChunk(f.app,ids,0,f.bytes.subarray(0,1_000_000),tr.id,'owner'),/changed|expired/);f.store.manualBinding=binding;}
+ assert.equal([...f.objects.keys()].filter(k=>k.startsWith('project-originals/')).length,0);
+});
+
+test('metadata fence after a late immutable chunk prevents canonical authority',async t=>{
+ const f=await fixture(t);await f.register();const tr=await operationsPdfReserve(f.app,ids,{...await f.input(),manifest:f.manifest,source:f.source},'owner');
+ f.raw.getMetadata=async key=>{if([...f.objects.keys()].some(k=>k.startsWith('project-originals/')))f.advance(25000);return {etag:f.objects.get(key).etag};};
+ await assert.rejects(operationsPdfUploadChunk(f.app,ids,0,f.bytes.subarray(0,1_000_000),tr.id,'owner'),/expired/);
+ assert.ok([...f.objects.keys()].some(k=>k.startsWith('project-originals/')));assert.equal((await f.store.snapshot()).asset_index.a.versions.v.verified_original,undefined);
 });
