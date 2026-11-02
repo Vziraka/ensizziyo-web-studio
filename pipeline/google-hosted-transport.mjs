@@ -101,7 +101,7 @@ export async function mailSentReadback(request,expected,known=null,max=mailLimit
 // Credentials exist only in this server-owned closure; the owner grant supplies them.
 export function googleHostedTransport({getAccessToken,fetcher=fetch,account,grantId,requiredProfile=null,observations=null,rawResponseMax=mailLimits.response,now=()=>new Date(),signal:sessionSignal}={}){
  let observedGrant=null;
- async function request(path,{method='GET',body,max=120_000,guard=async()=>{},signal:operationSignal,onPost=()=>{}}={}){
+ async function request(path,{method='GET',body,max=120_000,guard=async()=>{},beforeFetch,signal:operationSignal,onPost=()=>{}}={}){
   const signal=AbortSignal.any([operationSignal,sessionSignal,AbortSignal.timeout(25_000)].filter(Boolean));
   const alive=()=>check(!signal.aborted,'Gmail request deadline expired; retain the original intent');
   async function bounded(start){alive();let abort;const expired=new Promise((_,reject)=>{abort=()=>reject(Error('Gmail request deadline expired; retain the original intent'));signal.addEventListener('abort',abort,{once:true});});try{const result=await Promise.race([start(),expired]);alive();return result;}finally{signal.removeEventListener('abort',abort);}}
@@ -116,6 +116,7 @@ export function googleHostedTransport({getAccessToken,fetcher=fetch,account,gran
    const exactToken=()=>check((!requiredProfile||token?.profile===requiredProfile)&&token?.account===account&&token.grant_id===grantId&&typeof token.access_token==='string'&&/^[\x21-\x7e]{10,8192}$/.test(token.access_token)&&Number.isSafeInteger(token.expires_at)&&token.expires_at>(requiredProfile?+now():Date.now())+30_000&&Array.isArray(token.scopes)&&new Set(token.scopes).size===token.scopes.length&&gmailScopes.every(s=>token.scopes.includes(s))&&(requiredProfile?token.scopes.length===4&&identityScopes.every(s=>token.scopes.includes(s)):token.scopes.length===gmailScopes.length||token.scopes.length===4&&identityScopes.every(s=>token.scopes.includes(s))),'Exact hosted gmail.readonly + gmail.send grant/account required; only essential OpenID email identity may accompany it');
    async function live(){alive();exactToken();if(getAccessToken.assertCurrent)await bounded(()=>getAccessToken.assertCurrent(token));if(getAccessToken.assertGrant)await bounded(()=>getAccessToken.assertGrant(metadata()));await bounded(guard);alive();exactToken();requestGrant=metadata();observedGrant=requestGrant;}
    await live();
+   if(beforeFetch){await bounded(beforeFetch);alive();exactToken();}
    try{if(method==='POST')onPost();response=await bounded(()=>fetcher('https://gmail.googleapis.com/gmail/v1/users/me/'+path,{method,headers:{Authorization:'Bearer '+token.access_token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'error',signal}));}catch{throw Error('Gmail response unavailable; never retry an uncertain send');}
    try{await live();}catch(error){void response.body?.cancel().catch(()=>{});throw error;}
    if(!response.ok){failure='HTTP';await bounded(()=>response.body?.cancel());await live();if(response.status===401&&typeof getAccessToken.invalidate==='function'){try{await bounded(()=>getAccessToken.invalidate(token));}catch{}}const error=Error(response.status===403?'Gmail 403: exact grant/API or send-as access unavailable; verify required grant without expanding scopes':`Gmail ${response.status}: held; automatic retry disabled`);error.status=response.status;throw error;}
@@ -128,11 +129,11 @@ export function googleHostedTransport({getAccessToken,fetcher=fetch,account,gran
  }
  return {
   observations,grant:()=>structuredClone(observedGrant),
-  incomingProfile:()=>request('profile'),
-  incomingHistory:(cursor,page)=>request('history?'+new URLSearchParams({startHistoryId:cursor,maxResults:'50',...(page?{pageToken:page}:{})}),{max:250_000}),
+  incomingProfile:({beforeFetch}={})=>request('profile',{beforeFetch}),
+  incomingHistory:(cursor,page,{beforeFetch}={})=>request('history?'+new URLSearchParams({startHistoryId:cursor,maxResults:'50',...(page?{pageToken:page}:{})}),{max:250_000,beforeFetch}),
   incomingThread:thread=>request('threads/'+encodeURIComponent(thread)+'?format=full',{max:2_000_000}),
-  mailboxList:(after,page)=>{check(typeof after==='string'&&Number.isFinite(Date.parse(after))&&(!page||typeof page==='string'&&page.length<=500),'Bounded mailbox search required');return request('messages?'+new URLSearchParams({q:'after:'+Math.floor(Date.parse(after)/1000)+' -in:sent -in:drafts -in:spam -in:trash',maxResults:'50',...(page?{pageToken:page}:{})}),{max:250_000});},
-  mailboxMessage:message=>{check(id(message),'Exact Gmail message ID required');return request('messages/'+encodeURIComponent(message)+'?format=full',{max:2_000_000});},
+  mailboxList:(after,page,{beforeFetch}={})=>{check(typeof after==='string'&&Number.isFinite(Date.parse(after))&&(!page||typeof page==='string'&&page.length<=500),'Bounded mailbox search required');return request('messages?'+new URLSearchParams({q:'after:'+Math.floor(Date.parse(after)/1000)+' -in:sent -in:drafts -in:spam -in:trash',maxResults:'50',...(page?{pageToken:page}:{})}),{max:250_000,beforeFetch});},
+  mailboxMessage:(message,{beforeFetch}={})=>{check(id(message),'Exact Gmail message ID required');return request('messages/'+encodeURIComponent(message)+'?format=full',{max:2_000_000,beforeFetch});},
   async preflight(options={}){await mailPreflight((path,more)=>request(path,{...options,...more}),account);return {account,from:'hello@evzdigital.studio',grant_id:grantId};},
   freshSource:(p,options={})=>mailFreshSource((path,more)=>request(path,{...options,...more}),p),
   async send(expected,options={}){return mailSendResponse(await request('messages/send',{...options,method:'POST',body:mailSendBody(expected)}),expected);},
