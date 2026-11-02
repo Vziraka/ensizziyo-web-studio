@@ -1,3 +1,4 @@
+import {nativeGuardedFetch} from './native-notification-transport.mjs';
 import {check,hash,StudioLifecycle,businessDate} from './lifecycle.mjs';
 import {ConditionalLifecycleStore} from './lifecycle-store.mjs';
 import {validateManualBinding} from './shared-manual-records.mjs';
@@ -8,7 +9,7 @@ import {dispatchNativeNotification,expireNativeClaim} from './native-notificatio
 import {nativeNotificationCurrent} from './native-notifications.mjs';
 
 const capability='shared-operations-desk-v1',response=(status,data)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
-async function defaultStore(namespace){const {getStore}=await import('@netlify/blobs');return getStore({name:namespace,consistency:'strong'});}
+async function defaultStore(namespace){const {getStore}=await import('@netlify/blobs');return getStore({name:namespace,consistency:'strong',fetch:nativeGuardedFetch});}
 // Saved health and summary preparation; optional native callback dispatch is separately gated.
 export function createOperationsNotificationClock({env=process.env,storeFactory=defaultStore,now=()=>new Date(),googleOAuthOptions={},readHealth,nativeOptions={}}={}){return async(request,context)=>{
  if(env.EVZ_OPERATIONS_DESK_ENABLED!==capability||env.EVZ_OPERATIONS_NOTIFICATION_CLOCK_RUNTIME!==capability||context?.deploy?.context!=='production'||context.deploy.published!==true||request.method!=='POST')return response(503,{held:true,sending:false});

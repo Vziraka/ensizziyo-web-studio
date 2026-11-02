@@ -1,3 +1,4 @@
+import {withNativeTransportGuard} from './native-notification-transport.mjs';
 import {blobProjectOriginalStore} from './shared-project-originals.mjs';
 import {applyRequestedInformationTransition,requestedInformationSource} from './requested-information.mjs';
 import {prepareOperationsNotifications} from './operations-notifications.mjs';
@@ -134,12 +135,12 @@ export class ConditionalLifecycleStore {
     }
     await pdfCurrent();
     // Revalidate at the write boundary without changing the original transition bytes.
-    if(options.nativeNotification){const live=this.now(),start=Date.parse(options.nativeNotification.at);check(Number.isFinite(options.nativeNotificationDeadline)&&start<=+live&&+live<Math.min(options.nativeNotificationDeadline,start+25000),'Native notification invocation expired before CAS');applyNativeNotificationTransition(JSON.parse(before).state,data.config,{...options.nativeNotification,at:live.toISOString()});}
+    const nativeGuard=()=>{if(options.nativeNotification){const live=this.now(),start=Date.parse(options.nativeNotification.at);check(Number.isFinite(options.nativeNotificationDeadline)&&start<=+live&&+live<Math.min(options.nativeNotificationDeadline,start+25000),'Native notification invocation expired before CAS');applyNativeNotificationTransition(JSON.parse(before).state,data.config,{...options.nativeNotification,at:live.toISOString()});}};nativeGuard();
     let modified,uncertain=false;
-    try {const written=await this.store.setJSON(this.key,data,{onlyIfMatch:etag});check(typeof written?.modified==='boolean'&&(!written.modified||typeof written.etag==='string'&&written.etag.length>0),'Conditional write result is unavailable');modified=written.modified;}
+    try {const written=await withNativeTransportGuard(nativeGuard,()=>this.store.setJSON(this.key,data,{onlyIfMatch:etag}));check(typeof written?.modified==='boolean'&&(!written.modified||typeof written.etag==='string'&&written.etag.length>0),'Conditional write result is unavailable');modified=written.modified;}
     catch {uncertain=true;}
-    if(modified===true)return result;
-    if(this.manualBinding?.scope.capability===cloudDiscoveryCapability||this.emailTaskBinding||options.emailTask&&this.dispatchBinding||options.mailboxWork&&['shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding?.scope.capability)||options.mailboxClock&&isMailboxClockCapability(this.manualBinding?.scope.capability)||options.mailboxDelivery&&['shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding?.scope.capability)||options.cloudDiscovery&&this.manualBinding?.scope.capability===cloudDiscoveryCapability||options.operationsNotifications&&this.manualBinding?.scope.capability===cloudDiscoveryCapability){try{const saved=await this.envelope();if(hash(saved.data)===hash(data))return {...result,reconciled:true};}catch{}}
+    if(modified===true){nativeGuard();return result;}
+    if(this.manualBinding?.scope.capability===cloudDiscoveryCapability||this.emailTaskBinding||options.emailTask&&this.dispatchBinding||options.mailboxWork&&['shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding?.scope.capability)||options.mailboxClock&&isMailboxClockCapability(this.manualBinding?.scope.capability)||options.mailboxDelivery&&['shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(this.manualBinding?.scope.capability)||options.cloudDiscovery&&this.manualBinding?.scope.capability===cloudDiscoveryCapability||options.operationsNotifications&&this.manualBinding?.scope.capability===cloudDiscoveryCapability){try{const saved=await this.envelope();if(hash(saved.data)===hash(data)){nativeGuard();return {...result,reconciled:true};}}catch{}}
     if(eventId&&eventFingerprint){
       try {const current=await this.snapshot();if(current.events[eventId]?.fingerprint===eventFingerprint)return {...result,reconciled:true};}catch {}
     }
