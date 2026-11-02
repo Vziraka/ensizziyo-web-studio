@@ -13,6 +13,7 @@ import {emailDependencyContract,validateEmailDependencyContract} from './email-d
 import {assertCloudDiscoveryTransitionLive,cloudDiscoveryCapability} from './cloud-discovery.mjs';
 import {cloudDiscoveryArtifactStore} from './cloud-discovery-artifacts.mjs';
 import {assertMailboxDeliveryTransitionLive} from './mailbox-delivery.mjs';
+import {assertMailboxWorkTransitionLive} from './mailbox-work.mjs';
 import {assertMailboxClockStep,isMailboxClockCapability} from './mailbox-clock.mjs';
 
 // Callbacks must reserve local state only: a conflict never reruns a callback or an external effect.
@@ -131,11 +132,16 @@ export class ConditionalLifecycleStore {
     }
     if(options.mailboxWork?.actor==='worker'){
       const live=+this.now(),task=data.state.email_draft_tasks?.[options.mailboxWork.input.id];
-      check(Number.isFinite(live)&&live<Date.parse(data.config.mailbox_work.expires_at)&&live<Date.parse(task?.lease?.expires_at),'Worker policy or task lease expired before CAS');
+      check(Number.isFinite(live)&&(data.config.mailbox_work.schema_version===2||live<Date.parse(data.config.mailbox_work.expires_at))&&live<Date.parse(task?.lease?.expires_at),'Worker policy or task lease expired before CAS');
     }
     await pdfCurrent();
     // Revalidate at the write boundary without changing the original transition bytes.
-    const nativeGuard=()=>{if(options.nativeNotification){const live=this.now(),start=Date.parse(options.nativeNotification.at);check(Number.isFinite(options.nativeNotificationDeadline)&&start<=+live&&+live<Math.min(options.nativeNotificationDeadline,start+25000),'Native notification invocation expired before CAS');applyNativeNotificationTransition(JSON.parse(before).state,data.config,{...options.nativeNotification,at:live.toISOString()});}};nativeGuard();
+    const nativeGuard=()=>{
+      const live=this.now();
+      if(options.mailboxWork){check((data.config.mailbox_work.schema_version!==2&&options.mailboxWorkDeadline===undefined)||Number.isFinite(options.mailboxWorkDeadline)&&+live<options.mailboxWorkDeadline,'Worker invocation expired before CAS');assertMailboxWorkTransitionLive(JSON.parse(before).state,data.state,data.config,options.mailboxWork,live.toISOString());}
+      if(options.mailboxDelivery){check((data.config.mailbox_delivery.schema_version!==2&&options.mailboxDeliveryDeadline===undefined)||Number.isFinite(options.mailboxDeliveryDeadline)&&+live<options.mailboxDeliveryDeadline,'Delivery invocation expired before CAS');assertMailboxDeliveryTransitionLive(JSON.parse(before).state,data.state,data.config,options.mailboxDelivery,live.toISOString());}
+      if(options.nativeNotification){const start=Date.parse(options.nativeNotification.at);check(Number.isFinite(options.nativeNotificationDeadline)&&start<=+live&&+live<Math.min(options.nativeNotificationDeadline,start+25000),'Native notification invocation expired before CAS');applyNativeNotificationTransition(JSON.parse(before).state,data.config,{...options.nativeNotification,at:live.toISOString()});}
+    };nativeGuard();
     let modified,uncertain=false;
     try {const written=await withNativeTransportGuard(nativeGuard,()=>this.store.setJSON(this.key,data,{onlyIfMatch:etag}));check(typeof written?.modified==='boolean'&&(!written.modified||typeof written.etag==='string'&&written.etag.length>0),'Conditional write result is unavailable');modified=written.modified;}
     catch {uncertain=true;}

@@ -1,4 +1,5 @@
 import {StudioLifecycle,check} from './lifecycle.mjs';
+import {nativeGuardedFetch} from './native-notification-transport.mjs';
 import {ConditionalLifecycleStore} from './lifecycle-store.mjs';
 import {validateManualBinding} from './shared-manual-records.mjs';
 import {mailboxDeliveryCapability,isMailboxDeliveryCapability,mailboxDeliveryStatus,mailboxDeliveryPackage,mailboxDeliveryIntentId} from './mailbox-delivery.mjs';
@@ -8,7 +9,7 @@ import {createGoogleOAuth} from './google-oauth.mjs';
 import {mailboxProfile} from './mailbox-intake.mjs';
 
 const response=(status,value)=>Response.json(value,{status,headers:{'Cache-Control':'no-store'}});
-async function defaultStore(namespace){const {getStore}=await import('@netlify/blobs');return getStore({name:namespace,consistency:'strong'});}
+async function defaultStore(namespace){const {getStore}=await import('@netlify/blobs');return getStore({name:namespace,consistency:'strong',fetch:nativeGuardedFetch});}
 async function scheduledEnvelope(request,deadline,now){
  const reader=request.body?.getReader();check(reader,'Scheduled envelope required');let bytes=0;const chunks=[],signal=AbortSignal.timeout(Math.max(1,deadline-+now()));
  const read=async()=>{check(!signal.aborted&&+now()<deadline,'Invocation expired');let abort;const expired=new Promise((_,reject)=>{abort=()=>reject(Error('Scheduled envelope deadline expired'));signal.addEventListener('abort',abort,{once:true});});try{return await Promise.race([reader.read(),expired]);}finally{signal.removeEventListener('abort',abort);}};

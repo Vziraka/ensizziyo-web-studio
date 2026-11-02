@@ -10,9 +10,9 @@ async function change(app,type,input,actor,config,deadline){
  return app.change((s,c)=>applyMailboxDeliveryTransition(s,c,mailboxDelivery),{configFingerprint:hash(config),mailboxDelivery,...(deadline===undefined?{}:{mailboxDeliveryDeadline:deadline})});
 }
 export async function mailboxDeliveryCommand(app,type,input,actor){
- boundary(app);check(['owner','friend'].includes(actor)&&['package','approve','approve-batch','pause','allowance'].includes(type),'Signed delivery review command required');const {data}=await app.store.envelope();
+ const deadline=+app.now()+25000;boundary(app);check(['owner','friend'].includes(actor)&&['package','approve','approve-batch','pause','allowance','rebind'].includes(type),'Signed delivery review command required');const {data}=await app.store.envelope();
  if(type==='package')return mailboxDeliveryPackage(data.state,data.config,input,actor,app.now().toISOString());
- return change(app,type,input,actor,data.config);
+ return change(app,type,input,actor,data.config,deadline);
 }
 function budget(app,deadline){
  const end=Math.min(deadline??Infinity,+app.now()+25000);check(Number.isFinite(end)&&+app.now()<end,'Delivery invocation expired');
@@ -20,7 +20,7 @@ function budget(app,deadline){
 }
 function requireActor(intent,actor){check(actor==='delivery'||['owner','friend'].includes(actor)&&intent.package.owner===actor,'Assigned operator must send or reconcile this exact message');}
 export async function reconcileMailboxDelivery(app,id,{transport,actor,deadline}={}){
- boundary(app);const b=budget(app,deadline),{data}=await app.store.envelope(),i=data.state.mailbox_delivery?.intents[id];check(i?.claimed_at,'Original claimed intent required');requireActor(i,actor);
+ boundary(app);const b=budget(app,deadline),{data}=await app.store.envelope(),i=data.state.mailbox_delivery?.intents[id];check(i?.claimed_at,'Original claimed intent required');requireActor(i,actor);check(data.state.mailbox_delivery.account===data.config.mailbox_delivery.account,'Original sender account read authority required');
  if(i.status==='Verified')return {id,status:'Verified',receipt:i.receipt};
  const guard=async()=>{b.alive();const current=await app.store.envelope();check(hash(current.data.config)===hash(data.config)&&hash(current.data.state.mailbox_delivery?.intents[id]?.mime)===hash(i.mime),'Original delivery authority changed');};
  const raw=await mailboxMimeStore(app.store.store).get({sha256:i.mime.sha256,bytes:i.mime.bytes},{guard}),expected={raw,message_id:i.mime.message_id,thread_id:i.package.thread_id};
