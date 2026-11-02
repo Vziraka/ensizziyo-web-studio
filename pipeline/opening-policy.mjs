@@ -11,7 +11,7 @@ function specificQuestion(question,excerpt){
 }
 export const openingFields={
  opening_candidates:{type:'array',maxItems:3,items:{type:'object',additionalProperties:false,required:['id','service','customer_difficulty','source_url','source_sha256','excerpt','hypothesis','owner_question','opening'],properties:{id:string,service:{enum:['website','systems','ai','marketing']},customer_difficulty:string,source_url:string,source_sha256:string,excerpt:string,hypothesis:string,owner_question:string,opening:string}}},
- selected_opening_id:{anyOf:[string,{type:'null'}]},selection_reason:string
+ selected_opening_id:{anyOf:[string,{type:'null'}]},selection_reason:{type:'string',maxLength:1200}
 };
 export function openingAssessment(packet,review){
  check(Array.isArray(review.opening_candidates)&&review.opening_candidates.length<=3&&typeof review.selection_reason==='string'&&review.selection_reason.length<=1200,'Opening selection needs bounded alternatives and an evidence-based reason');

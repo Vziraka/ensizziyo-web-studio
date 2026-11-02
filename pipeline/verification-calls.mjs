@@ -4,6 +4,8 @@ import { validateJob, validateSnapshots } from './sources.mjs';
 import {businessType,validateBusinessType,businessTypes} from './business-types.mjs';
 import {buildResearchProfile} from './research-profile.mjs';
 
+export const discoveryChannels=Object.freeze(['Public web search','Google Search','Google Maps','Instagram','Facebook','Local directory','Referral']);
+
 export const verificationLane = r => r.call_lane === 'verification';
 export const callStages = ['Ready to contact', 'Contacting', 'Ready to verify', 'Verifying', 'Callback'];
 const text = (s, max = 1600) => typeof s === 'string' && s.trim().length > 0 && s.length <= max;
@@ -33,7 +35,7 @@ export function verificationData(packet, now, controlled = false) {
   }
   const d=packet.discovery;
   if(d){
-    check(['Google Search','Google Maps','Instagram','Facebook','Local directory','Referral'].includes(d.channel)&&packet.sources.some(s=>s.url===d.source_url),'Retain the actual discovery source separately from contact proof');
+    check(discoveryChannels.includes(d.channel)&&packet.sources.some(s=>s.url===d.source_url),'Retain the actual discovery source separately from contact proof');
     check(['Verified site','No verified site found','Not checked'].includes(d.website_status)&&text(d.customer_channel,300)&&text(d.next_check,600),'Record website status, customer channel uncertainty and the next check');
     if(d.website_status==='Verified site'){
       validateJob({id:packet.id,business_name:packet.business_name,website:d.website_url,research_version:3,as_of:packet.sources[0].checked_at,seed_urls:[d.website_url]});

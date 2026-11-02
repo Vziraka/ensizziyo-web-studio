@@ -60,6 +60,7 @@ function textFromHtml(html) {
     .replace(/[\t\r ]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n')).trim();
 }
 
+export const sourceCaptureEnums=Object.freeze({kind:Object.freeze(['business','social','directory']),capture_method:Object.freeze(['http','reviewed_page','search_snippet']),coverage:Object.freeze(['full','partial'])});
 export const sourceContentHash = source => createHash('sha256').update(source.reviewed_context ? JSON.stringify({ text: source.text, reviewed_context: source.reviewed_context }) : source.text).digest('hex');
 // Form punctuation and the HTML collector's bracketed link targets are not quoted prose words.
 export const quotedWordCount = text => text.split(/\s+/).filter(t => /[\p{L}\p{N}]/u.test(t) && !/^\[(?:https:\/\/|\/)[^\]]*\]$/.test(t)).length;
@@ -71,7 +72,7 @@ export function validateSnapshots(snapshot, job) {
     if (source.reviewed_context && job.research_version !== 3) throw Error('Reviewed context requires explicit research version 3');
     if (!job.seed_urls.includes(source.url) || source.checked_at !== job.as_of || !source.fetched_at?.startsWith(`${job.as_of}T`) || !Number.isFinite(Date.parse(source.fetched_at)) || typeof source.text !== 'string' || source.text.length < (job.research_version === 3 && source.reviewed_context ? 1 : quality ? 50 : 200) || source.text.length > 20_000 || sourceContentHash(source) !== source.content_sha256) throw Error('Retrieved source integrity check failed');
     if (quality) {
-      if (!['business', 'social', 'directory'].includes(source.kind) || !['http', 'reviewed_page', 'search_snippet'].includes(source.capture_method) || !['full', 'partial'].includes(source.coverage) || typeof source.identity_note !== 'string' || source.identity_note.trim().length < 20) throw Error('Source capture/coverage/identity review is required');
+      if (!sourceCaptureEnums.kind.includes(source.kind) || !sourceCaptureEnums.capture_method.includes(source.capture_method) || !sourceCaptureEnums.coverage.includes(source.coverage) || typeof source.identity_note !== 'string' || source.identity_note.trim().length < 20) throw Error('Source capture/coverage/identity review is required');
       if ((source.capture_method === 'search_snippet' || source.truncated) && source.coverage !== 'partial') throw Error('Snippets and truncated text require partial coverage');
       if (/^(?:log in to (?:facebook|instagram)|login required|sign in to continue|access denied|just a moment|checking your browser)/i.test(source.text.trim())) throw Error('Blocked/login text cannot be business evidence');
     }
