@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "mode": "saved-operations-status-v1",
+  "site_id": "fictional-status-gateway-site",
+  "deploy_id": "fictional-status-gateway-deploy",
+  "context": "deploy-preview",
+  "published": false,
+  "origin": "https://fictional-status.example.invalid",
+  "source_access": "cross-site-token-v1",
+  "source_binding_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "source_config_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "owner_credential_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+  "friend_credential_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+  "excluded_credential_sha256": [
+    "3333333333333333333333333333333333333333333333333333333333333333",
+    "4444444444444444444444444444444444444444444444444444444444444444"
+  ],
+  "starts_at": "2000-01-01T00:00:00.000Z",
+  "expires_at": "2000-01-01T01:00:00.000Z"
+}

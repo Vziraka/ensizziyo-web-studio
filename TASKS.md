@@ -1,5 +1,15 @@
 # Launch tasks
 
+## Read-only saved operations status — November 2, 2026
+
+Add explicit `saved-operations-status-v1` mode to the existing notification gateway so a separately authenticated caller can inspect saved operations incidents/digests without native subscriptions or credential storage. The [closed caller contract](pipeline/NATIVE-OPERATIONS-NOTIFICATIONS.md#saved-status-without-native-subscriptions) owns policy fields, role privacy, freshness and limits. Legacy `mcp-events-v1` and the current manual rollout remain separate.
+
+- [x] Authenticate exact finite gateway/B/config and distinct role credentials before storage; initialize/list read nothing, status uses at most two strong canonical reads with a final source/authority fence after SDK cleanup.
+- [x] Return only role-filtered opaque saved IDs/kinds/states, workspace aggregate counts, saved-health freshness, closed holds/truncation and a semantic fingerprint stable across unchanged polls/unrelated revisions.
+- [x] Verify actual MCP client/server and pinned Blobs SDK with fictional reads, strict request/output and error canaries, saved/unlinked/unsaved history, role-first truncation, expiry/races, Eastern day/DST and legacy native denials. No UI change is needed.
+- [ ] Obtain distinct frozen-source requirements/engineering reviews and required CI before a separately reviewed package or hosted access trial.
+- [ ] Separately verify actual Business Scheduled caller access, finite included capacity/hosting cost, meaningful saved status changes and device/PC-off behavior. No clock, connection, credential provisioning, schedule, send or automatic-desk completion follows from this source slice.
+
 ## Truthful internal-mail disposition — November 2, 2026
 
 Complete internal/test mail needs a truthful reviewed exclusion instead of a false inquiry, spam or automated-mail classification. Reuse the existing signed classification event with `non_inquiry`, visibly labelled **Not an inquiry (internal/test/other)**, only for complete uncertain sources in Identity review. [Mailbox intake contract](pipeline/MAILBOX-INTAKE.md#reviewed-non-inquiries) owns the interface and retained-history rules. This is separate from the frozen renewable-desk upgrade.
@@ -8,7 +18,7 @@ Complete internal/test mail needs a truthful reviewed exclusion instead of a fal
 - [x] Apply the same Excluded disposition to reply-work, outreach and requested-information coverage; keep the excluded message ineligible as reply context and retain independent incomplete/newer-source, restriction, uncertainty, allowance, postal and approval holds.
 - [x] Verify both signed roles, conflicting/stale/duplicate/concurrent reviews, original-event reconciliation after a lost acknowledgement, complete backup/inert restore, and truthful notification counters using fictional sources and substituted provider/storage boundaries.
 - [x] Complete bounded actual-handler browser review for both roles, retained reason as literal text, keyboard submission and reload at actual 400 CSS pixels without overflow; preserve independent real-reply/incomplete-original attention and zero provider/task/send activity.
-- [ ] Complete final read-only identity-resolution UI regression check, distinct frozen-source requirements/engineering reviews and required CI. The final text insertion preserves the existing ambiguous-client matching branch; full production acceptance remains separate.
+- [x] Complete final read-only identity-resolution UI regression check, distinct frozen-source requirements/engineering reviews and full CI `41506475412`; [PR161](https://github.com/Vziraka/ensizziyo-web-studio/pull/161) merged as `e1d260c`. The existing ambiguous-client matching branch is preserved; production cutover and real controlled proof remain separate.
 - [ ] Deploy a separately reviewed backed-up source increment before any actual internal-mail disposition. No real classification, send, owner change, allowance, resume, visibility or commercial activation is part of these source checks.
 
 ## Reusable manual mailbox allowances — November 2, 2026
@@ -20,10 +30,11 @@ The finite proof policies could consume their lifetime task/intent limits after 
 - [x] Import nonempty legacy intent/task/MIME history unchanged, require explicit paused policy rebind, retain original same-account sender reconciliation, and revoke active allowance pointers on complete restore without refunding charges.
 - [x] Serve unauthenticated OAuth callback landing/script as static assets with zero storage/provider access; private GET and authenticated CSRF/session/owner callback rules remain intact.
 - [x] Complete both fictional proposal/adoption/exact-send journeys across renewed allowances, owner/Friend readback and reload; final receipt-aware display and Setup pass at actual 400 CSS pixels with 383-pixel document width. The full repeated journey used desktop/narrow views; the final 400-pixel check was read-only.
-- [ ] Obtain distinct independent requirements/engineering reviews, required source checks/full CI and the separate exact upgrade/effect review before rollout.
+- [x] Obtain distinct independent requirements/engineering source reviews and full CI `41499331460`; [PR160](https://github.com/Vziraka/ensizziyo-web-studio/pull/160) merged as `0cf4833`.
+- [ ] Complete the separate exact upgrade/effect review and backed-up rollout acceptance; source review/CI does not establish publication or hosted operation.
 - [ ] Perform the backed-up one-time production upgrade, then verify repeated actual controlled noncommercial journeys and normal allowance renewal. Actual teammate identity, computer-off acceptance and sustainable capacity remain separate.
 
-Final affected verification passed 203 tests, pipeline syntax checks, compilation of all 33 desk assets and diff checks. Distinct frozen-source reviews, required CI and production upgrade acceptance remain open.
+Final affected verification passed 203 tests, pipeline syntax checks, compilation of all 33 desk assets and diff checks. Distinct frozen-source reviews and required CI passed; production upgrade and repeated actual controlled acceptance remain open.
 
 The ordinary reserve remains 30%; any explicitly authorized task-scoped exception must be recorded in the manually reviewed evidence reference. There is no automatic usage meter, paid route, new mail engine, schedule or commercial activation. Production manual intake is already working; no new production send/task was performed by these source tests. Current publication and remaining release facts belong to the Operations release checkpoint below. The lower draft now reports sender verification only when its exact draft hash matches a saved Verified intent; content approval alone still does not establish sending.
 

@@ -26,6 +26,7 @@ function sources(state,config,at){
  for(const action of values(state.actions))if(action.type==='callback_task'&&['Queued','Verified'].includes(action.status)&&!action.cancel_requested&&!action.cancellation&&valid(action.payload?.due_at)&&Date.parse(action.payload.due_at)<=+date(at)&&state.prospects?.[action.prospect_id]&&!state.prospects[action.prospect_id].restriction)add('callback:'+action.id,'callback',role(state.prospects[action.prospect_id]),action.prospect_id);
  return items;
 }
+export {sources as operationsNotificationSources};
 export function currentOperationsNotification(state,config,message,at){return sources(state,config,date(at).toISOString()).some(x=>x.id===message.source_id&&x.role===message.recipient_role);}
 export function operationsDailySummary(state,config,at){
  if(config.shared_capability!==capability)return null;at=date(at).toISOString();const day=businessDate(at),modern=values(state.mailbox_delivery?.intents),modernIds=new Set(modern.map(i=>i.id)),legacy=values(state.outreach_delivery?.intents).filter(i=>!modernIds.has(i.id)).map(i=>({...i,package:{kind:'outreach',project_id:i.project_id,owner:i.owner,source:{kind:i.kind,company_id:i.company_id,draft_sha256:i.package_sha256}}})),intents=[...legacy,...modern],sent=intents.filter(i=>i.status==='Verified'&&i.receipt&&sameDay(i.receipt.sent_at,day));
