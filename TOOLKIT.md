@@ -16,7 +16,7 @@ Start with the row that matches the task, then read only its relevant guidance a
 | Implementation, bug or runtime check | [WORKFLOW.md](WORKFLOW.md) and the relevant selection-guide row; use available tools suited to the change. |
 | Substantial operations change or broad audit | [Review and PR evidence](WORKFLOW.md#review-and-pr-evidence); choose available reviewers and task-specific tools. |
 | Create, improve or evaluate an EVZ skill | [Skill lifecycle](docs/studio-workflow.md#model-updates-and-learned-procedures), the installed `skill-creator` when available, and [skill evaluation cases](docs/agent-workflow-evaluation.md). |
-| Context, compaction or handoff | [Context and long-running work](WORKFLOW.md#context-and-long-running-work) and [handoff](WORKSPACE.md#work-and-codex-handoff). |
+| Context, compaction or handoff | [Context and long-running work](WORKFLOW.md#context-and-long-running-work), [session checkpoints](docs/context-checkpoint.md), and [handoff](WORKSPACE.md#work-and-codex-handoff). |
 | Model selection or releases | [Subagent routing pilot](docs/model-review.md#subagent-routing-pilot) and [studio model review](.agents/skills/studio-model-review/SKILL.md); use evaluated, task-appropriate choices where the host supports them. |
 
 ## Historical checkpoints

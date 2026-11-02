@@ -21,4 +21,4 @@ jobs:
       - run: node scripts/build-site.mjs
       - run: node scripts/verify-site.mjs
       - run: node --test scripts/inquiry.test.mjs scripts/voice-demo.test.mjs
-      - run: node --test scripts/context-handoff-pilot.test.mjs scripts/context-handoff-evidence.test.mjs
+      - run: node --test scripts/context-handoff-pilot.test.mjs scripts/context-handoff-evidence.test.mjs scripts/context-checkpoint.test.mjs
