@@ -13,6 +13,8 @@ After the native-event proof, the owner said “finish all work end to end.” I
 - [x] Test fictional changed decisions, stale state, cross-session separation, malformed/unsafe input, interrupted-writer lock recovery, untrusted instructions and unresolved operations. These deterministic checks do not establish actual hook delivery or semantic recovery. Distinguish actual events from simulations and account allowance from context occupancy.
 - [x] Obtain separate independent requirements and engineering reviews of the source increment, run appropriate checks, and record limitations and the next supported handoff step. The actual trusted-host proof remains open above.
 
+A separately reviewed private host-test harness is prepared for the remaining gate. Its no-inference preflight stopped because the project hook was not discovered; no test session was started. [The checkpoint guide](docs/context-checkpoint.md#verification-and-limits) records its hashes and the normal trust step. The owner has been asked to review the project hook; do not bypass trust or treat the manual-compaction pilot as automatic recovery.
+
 ## Context and handoff evaluation — November 1, 2026
 
 The owner accepted a fictional pilot of context-aware checkpoints and handoffs, starting here before considering wider EVZ use. Preserve decisions and their reasons, current work and approval holds; compare the existing workflow with a structured checkpoint and a fresh-session continuation. The existing workflow already recommends checkpoints, so the baseline must retain that guidance. Use only included Codex allowance and preserve the existing shared reserve. No real client data, sends, deployments, paid overage, user-owned chat creation or global activation is authorized by this pilot.
