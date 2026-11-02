@@ -25,8 +25,10 @@ function run(cwd, args, input, state = directory, overrides = {}) {
   });
 }
 function git(cwd, args) {
-  const result = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8', windowsHide: true });
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !/^GIT_/i.test(name)));
+  const result = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8', windowsHide: true, env });
   assert.equal(result.status, 0, result.stderr);
+  return result.stdout.trim();
 }
 function runConcurrent(cwd, session, value) {
   return new Promise((resolve, reject) => {
@@ -81,6 +83,16 @@ test('different sessions and worktrees cannot select each other’s record', () 
   assert.equal(parsed(run(projectA, ['read', 'session-b'])).status, 'missing');
   assert.equal(parsed(run(projectB, ['read', 'session-a'])).status, 'missing');
   assert.notEqual(run(projectA, ['read', '../session-a']).status, 0);
+});
+
+test('test fixture setup cannot commit to an inherited Git worktree', () => {
+  const beforeHead = git(projectB, ['rev-parse', 'HEAD']);
+  const nested = spawnSync(process.execPath, ['--test', '--test-name-pattern=^different sessions and worktrees', fileURLToPath(import.meta.url)], {
+    encoding: 'utf8', windowsHide: true,
+    env: { ...process.env, GIT_DIR: join(projectB, '.git'), GIT_WORK_TREE: projectB },
+  });
+  assert.equal(nested.status, 0, nested.stderr || nested.stdout);
+  assert.equal(git(projectB, ['rev-parse', 'HEAD']), beforeHead);
 });
 
 test('a later decision replaces the earlier one and retains its reason and source', () => {
