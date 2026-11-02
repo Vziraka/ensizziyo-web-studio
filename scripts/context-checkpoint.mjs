@@ -1,4 +1,4 @@
-import { constants } from 'node:fs';
+import { constants, existsSync, realpathSync, statSync } from 'node:fs';
 import { lstat, mkdir, open, realpath, rename, unlink } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -65,11 +65,40 @@ foreach ($identity in @($owner.Value, $system.Value)) {
 `;
 
 function checkWindowsAcl(directory, action) {
-  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', windowsAcl], {
+  const executable = join(trustedWorkingDirectory(), 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const result = spawnSync(executable, ['-NoProfile', '-NonInteractive', '-Command', windowsAcl], {
     encoding: 'utf8', windowsHide: true,
     env: { ...process.env, EVZ_CHECKPOINT_DIRECTORY: directory, EVZ_CHECKPOINT_ACL_ACTION: action },
   });
   if (result.error || result.status !== 0) fail('Checkpoint directory permissions could not be verified');
+}
+
+function trustedWorkingDirectory() {
+  if (process.platform !== 'win32') return '/';
+  const windows = process.env.SystemRoot || process.env.SYSTEMROOT;
+  if (!windows || !isAbsolute(windows)) fail('Windows system directory is unavailable');
+  return join(windows, 'System32');
+}
+
+export function gitExecutable(env = process.env) {
+  const configured = env.EVZ_GIT_EXECUTABLE;
+  if (configured) {
+    if (!isAbsolute(configured) || !existsSync(configured)) fail('Configured Git executable is unavailable');
+    const executable = realpathSync(configured);
+    if (!statSync(executable).isFile()) fail('Configured Git executable is unavailable');
+    for (let current = dirname(executable); ; current = dirname(current)) {
+      if (existsSync(join(current, '.git'))) fail('Configured Git executable must be outside a Git checkout');
+      if (dirname(current) === current) break;
+    }
+    return executable;
+  }
+  const candidates = process.platform === 'win32'
+    ? [env.ProgramFiles, env['ProgramFiles(x86)']].filter(Boolean)
+      .flatMap(root => [join(root, 'Git', 'cmd', 'git.exe'), join(root, 'Git', 'bin', 'git.exe')])
+    : ['/usr/bin/git', '/usr/local/bin/git', '/opt/homebrew/bin/git'];
+  const executable = candidates.find(path => isAbsolute(path) && existsSync(path));
+  if (!executable) fail('Trusted Git executable is unavailable');
+  return executable;
 }
 
 function stateDirectory() {
@@ -114,7 +143,9 @@ async function privateDirectory(create) {
 
 function git(cwd, args) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !/^GIT_/i.test(name)));
-  const result = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8', windowsHide: true, env });
+  const result = spawnSync(gitExecutable(), ['-C', cwd, ...args], {
+    encoding: 'utf8', windowsHide: true, env, cwd: trustedWorkingDirectory(),
+  });
   return result.status === 0 ? result.stdout.trim() : null;
 }
 

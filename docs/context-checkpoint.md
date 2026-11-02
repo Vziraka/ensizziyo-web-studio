@@ -6,6 +6,8 @@ This repository can keep a small, session-bound checkpoint outside Git. A checkp
 
 The project hook sends a short reminder and the current session ID on supported `SessionStart` events, including compaction. It does not read or emit checkpoint content. The hook only runs after the project configuration and its exact hook definition have been trusted using Codex's normal review flow. A running chat may need to be resumed or restarted before changed project hooks are discovered. If no ID is provided, do not guess one; use the existing task or authorized private record for the handoff instead.
 
+The Windows hook embeds the exact source in [context-hook-windows.ps1](../scripts/context-hook-windows.ps1); the test verifies the encoded command matches that source. It assumes the host interprets `commandWindows` with PowerShell, which has not been verified for this host. The POSIX hook searches only standard runtime locations from `/`; if Node is installed elsewhere, the hook will not run. An unavailable hook is a recovery gap, not a reason to weaken trust checks.
+
 From the repository root, for a substantive decision or milestone, send a JSON object to `node scripts/context-checkpoint.mjs save SESSION_ID` on standard input. Replace the ID with the one supplied for this session. The command returns only a saved status and opaque checkpoint ID. Supply all of these fields:
 
 ```json
@@ -29,6 +31,8 @@ For a handoff to another chat, first preserve a checkpoint and give the successo
 ## Storage and recovery
 
 The default directory is `%LOCALAPPDATA%\EVZ-Codex-Checkpoints` on Windows and `~/.codex/evz-checkpoints` on other platforms. It is created on the first save, outside any Git checkout. On Windows the new directory receives an owner-and-SYSTEM-only protected ACL, and directory and file ACLs are checked on use. On POSIX the owner and restrictive permission bits are checked. These checks do not isolate other processes running as the same user or an administrator. `EVZ_CONTEXT_DIR` may name a different absolute, already appropriate private location; it must also be outside Git and pass the same checks. Do not change global settings to use it.
+
+The checkpoint tool uses Git from standard system locations and the Windows system PowerShell path, rather than executables in the worktree. If Git is installed elsewhere, `EVZ_GIT_EXECUTABLE` can identify its verified absolute path outside every Git checkout. Treat that explicit override and the operating-system environment as trusted configuration.
 
 Records are bound to the canonical worktree and session and written through an exclusive lock and same-directory temporary file. A failure before replacement leaves the previous complete record in place; an interruption after replacement may leave the new record. Power-loss durability is not established. If a process stops while holding a lock, verify that all potential writers are stopped and recheck the same lock and token before removing it. A PID is only a clue and the lock may be empty or incomplete if creation was interrupted. The tool never deletes a competing or stale lock automatically. Rollback removes the project hook definition and the workflow pointer; it does not delete saved checkpoints.
 
