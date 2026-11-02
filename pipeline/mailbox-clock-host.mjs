@@ -5,16 +5,17 @@ import {mailboxClockCapability,isMailboxClockCapability,mailboxClockTickId,apply
 import {syncMailboxStep,mailboxProfile} from './mailbox-intake.mjs';
 import {createGoogleOAuth} from './google-oauth.mjs';
 import {googleHostedTransport} from './google-hosted-transport.mjs';
+import {nativeGuardedFetch} from './native-notification-transport.mjs';
 
 const response=(status,data)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
-async function defaultStore(namespace){const {getStore}=await import('@netlify/blobs');return getStore({name:namespace,consistency:'strong'});}
-async function transition(app,type,input,actor,config){
+async function defaultStore(namespace){const {getStore}=await import('@netlify/blobs');return getStore({name:namespace,consistency:'strong',fetch:nativeGuardedFetch});}
+async function transition(app,type,input,actor,config,deadline=+app.now()+25000){
  check(app.store?.key==='workspace'&&isMailboxClockCapability(app.store.manualBinding?.scope.capability),'Exact mailbox clock store required');
  config??=await app.loadConfig();const mailboxClock={type,actor,at:app.now().toISOString(),input};
- return app.change((s,c)=>applyMailboxClockTransition(s,c,mailboxClock),{configFingerprint:hash(config),mailboxClock});
+ return app.change((s,c)=>applyMailboxClockTransition(s,c,mailboxClock),{configFingerprint:hash(config),mailboxClock,mailboxClockDeadline:deadline});
 }
 export async function mailboxClockCommand(app,type,input,actor){
- check(['allowance','pause'].includes(type)&&['owner','friend'].includes(actor),'Signed clock control required');return transition(app,type,input,actor);
+ check(['allowance','pause','rebind'].includes(type)&&['owner','friend'].includes(actor),'Signed clock control required');return transition(app,type,input,actor);
 }
 export async function runMailboxClock(app,{readStep,deadline,initialEnvelope}={}){
  check(typeof readStep==='function'&&Number.isFinite(deadline),'Bounded read-only clock required');
@@ -23,18 +24,18 @@ export async function runMailboxClock(app,{readStep,deadline,initialEnvelope}={}
  check(at<deadline,'Invocation budget exhausted before claim');
  const scheduled_at=new Date(Math.floor(at/interval)*interval).toISOString();
  // Reuse only the immutable config fingerprint; each transition still reads and validates fresh canonical state.
- const claim=await transition(app,'claim',{tick_id:mailboxClockTickId(scheduled_at),scheduled_at,revision:s.revision},'clock',c);
+ const claim=await transition(app,'claim',{tick_id:mailboxClockTickId(scheduled_at),scheduled_at,revision:s.revision},'clock',c,deadline);
  if(claim.duplicate)return {...claim,read_steps:0};
  let reads=0,view=claim;
  for(let step=1;step<=c.mailbox_clock.max_steps_per_tick;step++){
   if(view.tick?.status!=='Running'||view.paused||+app.now()>=Math.min(deadline,Date.parse(view.tick.deadline_at))){view=mailboxClockStatus(await app.snapshot(),c,app.now().toISOString());break;}
   const clockStep={tick_id:claim.tick.id,fence:claim.tick.fence,step};
-  await transition(app,'step',clockStep,'clock',c);
+  await transition(app,'step',clockStep,'clock',c,deadline);
   reads++;
   await readStep(clockStep,Math.min(deadline,Date.parse(claim.tick.deadline_at)));
   const after=await app.snapshot();view=mailboxClockStatus(after,c,app.now().toISOString());
   if(after.mailbox_clock.tick.status!=='Running')break;
-  if(step===c.mailbox_clock.max_steps_per_tick)view=await transition(app,'finish',{tick_id:claim.tick.id,fence:claim.tick.fence,outcome:'Completed'},'clock',c);
+  if(step===c.mailbox_clock.max_steps_per_tick)view=await transition(app,'finish',{tick_id:claim.tick.id,fence:claim.tick.fence,outcome:'Completed'},'clock',c,deadline);
  }
  return {...view,read_steps:reads};
 }
@@ -59,7 +60,7 @@ export function createMailboxClock({env=process.env,storeFactory=defaultStore,no
    check(app.config.mailbox_clock.interval_minutes===Number(env.EVZ_MAILBOX_CLOCK_INTERVAL_MINUTES),'Clock cadence differs from reviewed build');
    const result=await runMailboxClock(app,{deadline,initialEnvelope,readStep:async(clockStep,stepDeadline)=>{
     check(+now()<stepDeadline,'Mailbox deadline exhausted');const signal=AbortSignal.timeout(Math.max(1,stepDeadline-+now()));
-    const read=getAccessToken=>syncMailboxStep(app,{clockStep,transport:googleHostedTransport({...googleIncomingOptions,getAccessToken,signal,account:app.config.mailbox.account,grantId:app.config.mailbox.grant_id,requiredProfile:mailboxProfile,now})});
+    const read=getAccessToken=>syncMailboxStep(app,{clockStep,deadline:stepDeadline,transport:googleHostedTransport({...googleIncomingOptions,getAccessToken,signal,account:app.config.mailbox.account,grantId:app.config.mailbox.grant_id,requiredProfile:mailboxProfile,now})});
     return googleIncomingOptions.getAccessToken?read(googleIncomingOptions.getAccessToken):createGoogleOAuth({...googleOAuthOptions,env,profile:mailboxProfile,dispatchApp:app,grantId:app.config.mailbox.grant_id,now:()=>+now()}).withMailboxRead(read);
    }});
    return response(200,{...result,sending:false});

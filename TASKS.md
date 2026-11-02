@@ -1,5 +1,16 @@
 # Launch tasks
 
+## Clock history and restore authority — November 2, 2026
+
+Use explicit policy2 compatibility in the existing clock ledger so the first charged automatic check does not strand a future upgrade. [Clock history contract](pipeline/MAILBOX-CLOCK.md#retained-history-and-signed-rebind) owns exact identities, archival, restore revocation and capacity limits. This source change adds no schedule, production migrator, consent or provider activation.
+
+- [x] Demonstrate RED then GREEN: exact nonempty state1 history is readable under policy2 but cannot execute before signed rebind; retain all charges, old tick/settlements, cursor, last slot/fence and unrelated records.
+- [x] Verify both signed roles, strict previous/current identity and revision, paused rebind, unique fresh budget, separate resume, unresolved next-slot archival, lower current caps, capacity/corruption and inert disaster restore with identical prior policy bytes.
+- [x] Verify current authority at the actual pinned SDK lookup/data-PUT boundary, including the clock host default store; expiry/binding drift blocks data PUT and a competing ETag preserves the other writer without retry.
+- [ ] Complete final identity-display/actual400 CSS-pixel browser recheck. Initial Owner/Friend legacy and restored journeys retained exact archives and protected records; the legacy lane settled one fictional GET and both lanes finished paused. The corrected visible identity details still need the final read-only check.
+- [ ] Freeze exact source/archive evidence, obtain distinct requirements/engineering reviews and required CI.
+- [ ] Separately review a history-compatible private preparer, exact production OAuth wrapper/function/schedule profile, finite host-overhead bounds and actual activation. Keep the independent unbounded health/digest clock off. Missing postal details hold commercial sending activation only, not desk software, automatic intake, research, saved status or controlled noncommercial end-to-end tests.
+
 ## Mailbox clock prefetch fence — November 2, 2026
 
 Close the reproduced gap where a signed pause during awaited token/grant preflight could still be followed by a Gmail GET. Reuse the existing transport, pending-step assertion and typed clock settlement; the [clock contract](pipeline/MAILBOX-CLOCK.md) owns the source boundary and activation limits. This change is stacked on the saved-status source increment and adds no schedule or migration.
@@ -7,7 +18,7 @@ Close the reproduced gap where a signed pause during awaited token/grant preflig
 - [x] Reproduce the post-pause GET with fictional actual-handler/transport boundaries, then block it for all four incoming operations after token/current/grant awaits using a once-per-request bounded pre-fetch callback.
 - [x] Validate current clock state/config from one envelope; deny pause, replaced allowance, expiry and sync/config/binding drift before GET. Keep charges, pending uncertainty, cursor and existing post-read/CAS protection intact.
 - [x] Verify callback ordering and multi-chunk behavior without per-chunk envelope reads; measured caught-up fixture uses 12 workspace reads and three writes, paused/expired one read and duplicates four.
-- [ ] Obtain distinct exact-source requirements/engineering reviews and required CI before a separately reviewed artifact or effect.
+- [x] Obtain distinct exact-source requirements/engineering reviews and required CI `41522107424`; [PR164](https://github.com/Vziraka/ensizziyo-web-studio/pull/164) merged as `35fa3f2` with the identical reviewed clock-prefetch tree. Artifacts/effects remain separate.
 - [ ] Separately implement/review retained paused clock-history migration/rebind and inert restore revocation, exact production OAuth wrapper/schedule allowlists and finite host-overhead proof before canonical clock activation. Keep the independent unbounded health clock off. Postal details hold commercial activation only.
 
 ## Read-only saved operations status — November 2, 2026
@@ -17,7 +28,7 @@ Add explicit `saved-operations-status-v1` mode to the existing notification gate
 - [x] Authenticate exact finite gateway/B/config and distinct role credentials before storage; initialize/list read nothing, status uses at most two strong canonical reads with a final source/authority fence after SDK cleanup.
 - [x] Return only role-filtered opaque saved IDs/kinds/states, workspace aggregate counts, saved-health freshness, closed holds/truncation and a semantic fingerprint stable across unchanged polls/unrelated revisions.
 - [x] Verify actual MCP client/server and pinned Blobs SDK with fictional reads, strict request/output and error canaries, saved/unlinked/unsaved history, role-first truncation, expiry/races, Eastern day/DST and legacy native denials. No UI change is needed.
-- [ ] Obtain distinct frozen-source requirements/engineering reviews and required CI before a separately reviewed package or hosted access trial.
+- [x] Obtain distinct frozen-source requirements/engineering reviews and required CI `41516134015`; [PR162](https://github.com/Vziraka/ensizziyo-web-studio/pull/162) merged as `9505251`. Package and hosted access acceptance remain separate.
 - [ ] Separately verify actual Business Scheduled caller access, finite included capacity/hosting cost, meaningful saved status changes and device/PC-off behavior. No clock, connection, credential provisioning, schedule, send or automatic-desk completion follows from this source slice.
 
 ## Truthful internal-mail disposition — November 2, 2026
@@ -152,7 +163,7 @@ Owner approved the interview conclusions and workflow, then said "ok looks good 
 - [ ] Implement exact batch scheduling, shared call/email contact history, reply stops, uncertainty handling, cadence, allowances and visible shortfalls. Demonstrate sustainable 100/day capacity before claiming launch acceptance.
 - [ ] Verify desktop/mobile, two-operator identity/authorization, provider readback, backup/restore and actual computer-off operation.
 - [ ] Perform distinct requirements/engineering reviews, required CI and deployment-effect review; merge the reviewed stack in dependency order. Code merge does not activate sending.
-- [ ] Keep commercial outreach and requested-information activation held until a valid business mailing address and the remaining commercial provider requirements are satisfied. The owner confirmed no address exists; do not ask again. This hold does not block manual desk acceptance or separately approved noncommercial owned-account tests.
+- [ ] Keep commercial outreach and requested-information activation held until a valid business mailing address and the remaining commercial provider requirements are satisfied. The owner confirmed no address exists; do not ask again. This hold does not block desk software, automatic intake, research, saved status or controlled noncommercial end-to-end tests.
 
 ### Delivery implementation contract
 
@@ -170,7 +181,7 @@ The initial complete production G1 backup passed, preserving the same revision/c
 
 The current worker policy is finite. Reusable manual renewal is implemented in source in the current task; its reviewed one-time upgrade and repeated actual journeys remain pending. Normal finite allowance renewal will retain the same deployment and history. Fresh allowance checks and repeatable backup/recovery remain operational requirements. Automatic intake/research/cadence, native notification delivery, sustained 100/day capacity and actual computer-off acceptance remain separate incomplete gates. The tested native notification subscription limitation is separate from the on-demand proposal worker. One saved-record reload took about 21.5 seconds including orchestration overhead; this is not an isolated server-latency measurement, and operator latency acceptance remains open.
 
-One received noncommercial sender test passed aligned SPF and DKIM. Desk delivery and the separate DMARC rollout retain their own verification. No business mailing address exists, so commercial outreach and requested-information activation remain held without another address request. Manual desk work and separately approved noncommercial owned-account tests continue independently of that commercial hold.
+One received noncommercial sender test passed aligned SPF and DKIM. Desk delivery and the separate DMARC rollout retain their own verification. No business mailing address exists, so commercial outreach and requested-information activation remain held without another address request. Desk software, automatic intake, research, saved status and controlled noncommercial end-to-end tests continue independently of that commercial hold.
 
 ## Studio workflow implementation — October 28, 2026
 

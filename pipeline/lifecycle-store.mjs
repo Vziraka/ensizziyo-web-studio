@@ -14,7 +14,7 @@ import {assertCloudDiscoveryTransitionLive,cloudDiscoveryCapability} from './clo
 import {cloudDiscoveryArtifactStore} from './cloud-discovery-artifacts.mjs';
 import {assertMailboxDeliveryTransitionLive} from './mailbox-delivery.mjs';
 import {assertMailboxWorkTransitionLive} from './mailbox-work.mjs';
-import {assertMailboxClockStep,isMailboxClockCapability} from './mailbox-clock.mjs';
+import {assertMailboxClockStep,assertMailboxClockTransitionLive,isMailboxClockCapability} from './mailbox-clock.mjs';
 
 // Callbacks must reserve local state only: a conflict never reruns a callback or an external effect.
 export class ConditionalLifecycleStore {
@@ -54,7 +54,7 @@ export class ConditionalLifecycleStore {
     }
   }
   async change(fn,options={}){
-    const {eventId,eventFingerprint}=options,pdfBinding=options.operationsPdf?hash(this.manualBinding):null;
+    const {eventId,eventFingerprint}=options,pdfBinding=options.operationsPdf?hash(this.manualBinding):null,clockBinding=options.mailboxClock?hash(this.manualBinding):null;
     const {data,etag}=await this.envelope(),before=JSON.stringify(data);
     if(options.configFingerprint)check(hash(data.config)===options.configFingerprint,'Incoming configuration changed during read; no cursor or effects committed');
     if(this.emailTaskBinding)check(options.emailTask,'Fictional task storage requires a typed task transition');
@@ -140,6 +140,7 @@ export class ConditionalLifecycleStore {
       const live=this.now();
       if(options.mailboxWork){check((data.config.mailbox_work.schema_version!==2&&options.mailboxWorkDeadline===undefined)||Number.isFinite(options.mailboxWorkDeadline)&&+live<options.mailboxWorkDeadline,'Worker invocation expired before CAS');assertMailboxWorkTransitionLive(JSON.parse(before).state,data.state,data.config,options.mailboxWork,live.toISOString());}
       if(options.mailboxDelivery){check((data.config.mailbox_delivery.schema_version!==2&&options.mailboxDeliveryDeadline===undefined)||Number.isFinite(options.mailboxDeliveryDeadline)&&+live<options.mailboxDeliveryDeadline,'Delivery invocation expired before CAS');assertMailboxDeliveryTransitionLive(JSON.parse(before).state,data.state,data.config,options.mailboxDelivery,live.toISOString());}
+      if(options.mailboxClock&&data.config.mailbox_clock.schema_version===2){check(hash(this.manualBinding)===clockBinding&&Number.isFinite(options.mailboxClockDeadline)&&+live<Math.min(options.mailboxClockDeadline,Date.parse(options.mailboxClock.at)+25000),'Clock binding or invocation expired before CAS');assertMailboxClockTransitionLive(JSON.parse(before).state,data.state,data.config,options.mailboxClock,live.toISOString());}
       if(options.nativeNotification){const start=Date.parse(options.nativeNotification.at);check(Number.isFinite(options.nativeNotificationDeadline)&&start<=+live&&+live<Math.min(options.nativeNotificationDeadline,start+25000),'Native notification invocation expired before CAS');applyNativeNotificationTransition(JSON.parse(before).state,data.config,{...options.nativeNotification,at:live.toISOString()});}
     };nativeGuard();
     let modified,uncertain=false;
