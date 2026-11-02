@@ -36,6 +36,12 @@ function fixture(kind='reply'){
 }
 function unchanged(f,fn,pattern){const before=structuredClone(f.state);assert.throws(fn,pattern);assert.deepEqual(f.state,before);}
 
+test('non-inquiry exclusion clears coverage only with Excluded status and never resumes outreach or commercial gates',()=>{
+ const f=fixture('outreach'),source={source_id:'internal',classification:'non_inquiry',status:'Identity review',paused_projects:['project'],source:{content:{from:f.r.contact.email}}};f.state.inquiry_intake={sources:{internal:source}};
+ unchanged(f,()=>mailboxDeliveryPackage(f.state,f.config,{kind:'outreach',project_id:'project'},'owner',at),/incoming evidence/);source.status='Excluded';assert.doesNotThrow(()=>mailboxDeliveryPackage(f.state,f.config,{kind:'outreach',project_id:'project'},'owner',at));assert.equal(f.state.mailbox_delivery,undefined);
+ f.r.cold_paused=true;unchanged(f,()=>mailboxDeliveryPackage(f.state,f.config,{kind:'outreach',project_id:'project'},'owner',at));f.r.cold_paused=false;f.config.sender.postal_address='';f.config.mailbox_delivery.postal_address_verified=false;unchanged(f,()=>mailboxDeliveryPackage(f.state,f.config,{kind:'outreach',project_id:'project'},'owner',at),/postal|address/i);
+});
+
 test('exact separately approved reply reserves once, claims before POST and verifies original receipt',()=>{
  const f=fixture(),records=structuredClone(f.state.prospects),{id}=f.start();assert.equal(f.state.mailbox_delivery.intents[id].status,'Reserved');assert.equal(f.state.mailbox_delivery.allowances.allowance.used_intents,1);
  f.tr('claim',{id});assert.equal(f.state.mailbox_delivery.intents[id].status,'Uncertain');f.tr('ack',{id,message_id:'gmail-message',thread_id:'thread'});f.tr('verify',{id,receipt:f.receipt(id)});

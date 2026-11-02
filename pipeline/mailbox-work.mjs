@@ -42,7 +42,8 @@ export function assertMailboxWorkReplySource(s,c,project,now=s.updated_at){
  check(!Object.values(sync.held_sources??{}).some(x=>x.thread_id===r.reply.thread_id||x.matched_projects?.includes(project)),'Current conversation has held mailbox sources');
  check(!Object.values(s.inquiry_intake?.sources??{}).some(entry=>{
   const incoming=entry.source,relevant=entry.project_id===project||entry.paused_projects?.includes(project)||entry.candidates?.includes(project)||incoming?.thread_id===r.reply.thread_id||incoming?.content?.from?.toLowerCase()===r.contact.email.toLowerCase();
-  if(!relevant||entry.status==='Excluded'&&['newsletter','spam','automatic_reply'].includes(entry.classification))return false;
+  if(entry.source_id===r.reply.source_id&&entry.classification==='non_inquiry')return true;
+  if(!relevant||entry.status==='Excluded'&&['newsletter','spam','automatic_reply','non_inquiry'].includes(entry.classification))return false;
   // Claiming updates the prospect's lead, not the historical intake receipt.
   if(entry.status==='Ownership review'&&entry.classification==='inquiry'&&entry.project_id===project&&entry.source_id===r.reply.source_id&&incoming?.source_id===r.reply.source_id&&incoming.thread_id===r.reply.thread_id&&hash(incoming.content)===hash(r.reply.content)&&['owner','friend'].includes(r.follow_up_owner))return false;
   if(entry.classification==='uncertain'||['Identity review','Ownership review','Restricted'].includes(entry.status))return true;

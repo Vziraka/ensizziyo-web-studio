@@ -765,13 +765,14 @@ function render() {
       for(const receipt of Object.values(state.inquiry_intake.sources)){
         const item=el('details');item.open=receipt.status==='Identity review';item.append(el('summary',`${receipt.company_name} · ${receipt.status}`),el('p',`Source ${receipt.source_id} · ${receipt.assigned_to??'Unassigned'} · ${receipt.classification}`,'muted'),el('p',receipt.source.content.text,'reply-source'));
         if(receipt.status==='Identity review'&&receipt.classification==='uncertain')item.append(eventForm({id:'inquiry-intake'},'Review inquiry classification','inquiry_classification_reviewed',[
-          ['Reviewed classification','classification','inquiry','text',['inquiry','newsletter','spam','automatic_reply']],['Reason for classification','reason','','textarea']
+          ['Reviewed classification','classification','inquiry','text',['inquiry','newsletter','spam','automatic_reply',{value:'non_inquiry',label:'Not an inquiry (internal/test/other)'}]],['Reason for classification','reason','','textarea']
         ],{source_id:receipt.source_id},'Save reviewed classification'));
         else if(receipt.status==='Identity review'){
           const candidates=Object.values(state.prospects).filter(r=>(r.controlled||['shared-mailbox-review-v1','shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(state.shared_workspace?.capability))&&r.origin!=='workspace'&&r.contact?.email?.toLowerCase()===receipt.source.content.from.toLowerCase()).map(r=>({value:r.id,label:r.name}));
           if(candidates.length)item.append(eventForm({id:'inquiry-intake'},'Choose the matching client','inquiry_identity_resolved',[['Existing client','project_id',candidates[0].value,'text',candidates]],{source_id:receipt.source_id},'Resolve client identity'));
           else item.append(el('p','No current client has this exact sender. Keep this provisional source held; review contact identity separately.','notice'));
         }
+        if(receipt.classification_review){const review=receipt.classification_review;item.append(el('p',`Classification reviewed by ${review.by} · ${new Date(review.at).toLocaleString()}`,'muted'),el('p',review.reason,'reply-source'));if(receipt.classification==='non_inquiry')item.append(el('p','Not an inquiry. Source and history retained; cold activity stays paused. This disposition does not authorize a reply or send.','muted'));}
         if(receipt.project_id&&receipt.status!=='Restricted')item.append(button('Open client reply',()=>{selected=receipt.project_id;view='reviews';render();}));
         intake.append(item);
       }node.append(intake);

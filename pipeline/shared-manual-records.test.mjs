@@ -1,8 +1,8 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';import {join} from 'node:path';import {tmpdir} from 'node:os';
+import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';import {join} from 'node:path';import {tmpdir} from 'node:os';
 import {getStore} from '@netlify/blobs';
-import {StudioLifecycle,initialConfig,hash} from './lifecycle.mjs';import {fixtureProspect} from './lifecycle-fixtures.mjs';
-import {ConditionalLifecycleStore} from './lifecycle-store.mjs';import {writeLifecycleBackup,readLifecycleBackup} from './lifecycle-backup.mjs';
+import {StudioLifecycle,initialConfig,hash} from './lifecycle.mjs';import {fixtureProspect,fixtureReply} from './lifecycle-fixtures.mjs';import {applyLocalInquiry} from './local-inquiry-intake.mjs';
+import {ConditionalLifecycleStore} from './lifecycle-store.mjs';import {writeLifecycleBackup,readLifecycleBackup,restoreLifecycleBackup} from './lifecycle-backup.mjs';
 import {prepareManualWorkspace,installManualWorkspace,exportManualBackup} from './shared-manual-records.mjs';
 import {originalDigest} from './shared-project-originals.mjs';import {readProjectAsset} from './project-assets.mjs';
 import {createHostedDesk} from './hosted-desk.mjs';import {readDeskSnapshot} from './lifecycle-ui/snapshot-read.js';
@@ -16,11 +16,11 @@ function sdkMemory(){
   if(method==='GET'){control.reads++;return entry?new Response(entry.bytes,{headers:{etag:entry.etag}}):new Response(null,{status:404});}
   assert.equal(method,'PUT');assert.ok(headers.get('if-match')||headers.get('if-none-match')==='*');
   if(headers.get('if-none-match')==='*'&&entry||headers.has('if-match')&&headers.get('if-match')!==entry?.etag)return new Response(null,{status:412});
-  const etag=`"${++revision}"`;objects.set(key,{bytes:options.body,etag});control.writes++;
+  const etag=`"${++revision}"`;objects.set(key,{bytes:options.body,etag});control.writes++;if(control.lose?.(key,options.body)){control.lose=null;throw Error('Synthetic lost committed acknowledgement');}
   return new Response(null,{headers:{etag}});
  }});return control;
 }
-async function fixture(t,capability=scope.capability){
+async function fixture(t,capability=scope.capability,seed=null){
  const directory=await mkdtemp(join(tmpdir(),'evz-inert-'));t.after(()=>rm(directory,{recursive:true,force:true}));
  const app=await StudioLifecycle.initialize({directory:join(directory,'source'),config:structuredClone(initialConfig),now:()=>new Date(at)});await app.apply(fixtureProspect('synthetic-project',at));
  const state=await app.snapshot();state.mode='production';state.run_id=scope.run_id;delete state.prospects['synthetic-project'].controlled;
@@ -32,6 +32,7 @@ async function fixture(t,capability=scope.capability){
  state.prospects['synthetic-project'].apollo={sequence_id:'synthetic-historical-sequence'};
  state.operations={lease:{owner:'old-host',expires_at:'2099-01-01T00:00:00Z'},requests:{external:{operation:'send',status:'Pending',id:'external'}},budget:{reserved_microcredits:123456,consumed_microcredits:80000,paused:true}};
  state.runtime={status:'Running',transport:'historical-host'};state.ai_attempts={immutable:{status:'Uncertain',reserved_microcredits:1900,receipt:'retained original attempt'}};
+ if(seed)await seed(state);
  const backup=join(directory,'source.backup.json');await writeLifecycleBackup(app.directory,state,backup,at);
  const sourceConfig={...structuredClone(initialConfig),mode:'production',run_id:scope.run_id,calls_enabled:true,outreach_enabled:true,connector_writes_enabled:true,transcript_ai:{...initialConfig.transcript_ai,enabled:true,daily_calls:100},runtime:{enabled:true},release:{approved:true,fingerprint:'old'},call_release:{approved:true},sender:{operator_names:{owner:'Synthetic Owner',friend:'Synthetic Friend'},secret:'NEVER_COPY'}};
  const packet=await prepareManualWorkspace({backup,sourceConfig,scope:{...scope,capability},...(capability==='shared-mailbox-review-v1'?{mailbox:{schema_version:1,account:'ensizziyo@evzdigital.studio',grant_id:'synthetic-mailbox',after:'2026-10-24T00:00:00.000Z'}}:{})}),sdk=sdkMemory(),store=new ConditionalLifecycleStore(sdk.raw,{manualBinding:packet.binding});
@@ -50,6 +51,27 @@ async function client(f,actor,overrides={},options={}){
 const call=(id,outcome='no_answer',more={})=>({id,prospect_id:'synthetic-project',type:'call_logged',at,data:{call_id:id,outcome,performed_at:at,desk:true,focus:'website',manual_attested:true,...more}});
 async function installed(t){const f=await fixture(t);await installManualWorkspace(f.store,f.packet,{commit:true});return {...f,app:await StudioLifecycle.fromStore({store:f.store,now:()=>new Date(at)})};}
 async function apply(f,event,actor='owner'){return f.app.apply(event,{actor,expectedRevision:(await f.app.snapshot()).revision});}
+
+test('signed non-inquiry survives shared CAS, role readback and complete backup without granting execution',async t=>{
+ for(const actor of ['owner','friend']){
+  const source={id:'internal-source',prospect_id:'inquiry-intake',type:'inquiry_recorded',at,data:{company_name:'Internal technical test',classification:'uncertain',reply:{...fixtureReply('internal','internal-thread','synthetic-project@example.invalid','Read this internal technical test.'),received_at:at}}};
+  const f=await fixture(t,'shared-mailbox-review-v1',state=>{const seed=new StudioLifecycle(null,()=>new Date(at));seed.config={mode:'production',shared_capability:'shared-mailbox-review-v1'};applyLocalInquiry(seed,state,source,'provider',state.revision,{shared:true});});await installManualWorkspace(f.store,f.packet,{commit:true});f.app=await StudioLifecycle.fromStore({store:f.store,now:()=>new Date(at)});
+  const owner=await client(f,actor),other=await client(f,actor==='owner'?'friend':'owner'),before=await f.store.snapshot(),event={id:'exclude-internal',prospect_id:'inquiry-intake',type:'inquiry_classification_reviewed',at,data:{source_id:'internal',classification:'non_inquiry',reason:'Complete source reviewed: internal test, no business inquiry.'}},body={revision:before.revision,event};
+  assert.equal((await owner.handler(owner.request('/api/event',{method:'POST',body}))).status,403);
+  for(const headers of [{...owner.headers,'x-studio-token':'wrong'},{...owner.headers,origin:'https://foreign.invalid'}])assert.equal((await owner.handler(owner.request('/api/event',{method:'POST',headers,body}))).status,403);
+  const csrfOnly={...owner.headers,cookie:owner.headers.cookie.split('; ')[0],authorization:'Bearer '+'ab'.repeat(32)};assert.equal((await owner.handler(owner.request('/api/event',{method:'POST',headers:csrfOnly,body}))).status,401);
+  const writes=f.sdk.writes,results=await Promise.all([owner.call('/api/event',body),other.call('/api/event',{revision:before.revision,event:{...event,id:'competing-exclude'}})]);assert.equal(results.filter(r=>r.status===200).length,1);assert.equal(f.sdk.writes,writes+1);const saved=await f.store.snapshot(),receipt=saved.inquiry_intake.sources.internal;
+  assert.equal(receipt.classification,'non_inquiry');assert.equal(receipt.status,'Excluded');assert.deepEqual(receipt.source,before.inquiry_intake.sources.internal.source);assert.equal(receipt.source_sha256,before.inquiry_intake.sources.internal.source_sha256);assert.deepEqual(saved.prospects,before.prospects);assert.deepEqual(saved.actions,before.actions);assert.deepEqual(saved.operations,before.operations);assert.deepEqual(saved.ai_attempts,before.ai_attempts);assert.equal(saved.inquiry_intake.next_owner,before.inquiry_intake.next_owner);assert.equal((await other.read()).inquiry_intake.sources.internal.classification_review.reason,event.data.reason);
+  const winner=saved.events[receipt.classification_review.event_id],winnerClient=winner.actor===actor?owner:other,{actor:ignoredActor,fingerprint:ignoredFingerprint,...winnerEvent}=winner;assert.equal((await winnerClient.call('/api/event',{revision:before.revision,event:winnerEvent})).status,200);assert.equal(f.sdk.writes,writes+1);
+  const backupPath=join(f.directory,'non-inquiry-backup.json');await exportManualBackup(f.app,f.local,backupPath);const backup=await readLifecycleBackup(backupPath);assert.deepEqual(backup.state,saved);assert.deepEqual(backup.files.get(f.path),f.pdf);const restored=join(f.directory,'non-inquiry-restored');await restoreLifecycleBackup(backupPath,restored);const restoredState=JSON.parse(await readFile(join(restored,'lifecycle-state.json'),'utf8')),restoredConfig=JSON.parse(await readFile(join(restored,'lifecycle-config.json'),'utf8'));assert.deepEqual(restoredState.inquiry_intake,saved.inquiry_intake);assert.deepEqual(restoredState.events,saved.events);assert.equal(restoredConfig.outreach_enabled,false);assert.notEqual(restoredConfig.calls_enabled,true);
+  const reopened=await client(f,actor);assert.equal((await reopened.read()).inquiry_intake.sources.internal.classification,'non_inquiry');
+ }
+});
+
+test('lost non-inquiry acknowledgement is reconciled by the original signed event, never a replacement decision',async t=>{
+ const f=await fixture(t,'shared-mailbox-review-v1',state=>{const seed=new StudioLifecycle(null,()=>new Date(at));seed.config={mode:'production',shared_capability:'shared-mailbox-review-v1'};applyLocalInquiry(seed,state,{id:'internal-source',prospect_id:'inquiry-intake',type:'inquiry_recorded',at,data:{company_name:'Internal test',classification:'uncertain',reply:{...fixtureReply('internal','internal-thread','synthetic-project@example.invalid'),received_at:at}}},'provider',state.revision,{shared:true});});await installManualWorkspace(f.store,f.packet,{commit:true});const owner=await client(f,'owner'),before=await f.store.snapshot(),event={id:'original-review',prospect_id:'inquiry-intake',type:'inquiry_classification_reviewed',at,data:{source_id:'internal',classification:'non_inquiry',reason:'Reviewed complete internal test source.'}},body={revision:before.revision,event},writes=f.sdk.writes;
+ f.sdk.lose=(key,bytes)=>key.endsWith('/workspace')&&JSON.parse(bytes).state.events[event.id];await owner.call('/api/event',body);const saved=await f.store.snapshot();assert.equal(saved.inquiry_intake.sources.internal.classification_review.event_id,event.id);assert.equal(f.sdk.writes,writes+1);const reopened=await client(f,'owner');assert.equal((await reopened.call('/api/event',body)).status,200);assert.equal(f.sdk.writes,writes+1);assert.deepEqual(await f.store.snapshot(),saved);assert.notEqual((await reopened.call('/api/event',{revision:saved.revision,event:{...event,id:'replacement-review'}})).status,200);
+});
 
 test('signed production-shaped manual calls are attributable attestations with first-caller ownership, explicit handoff and held follow-up',async t=>{
  const f=await installed(t),owner=await client(f,'owner'),friend=await client(f,'friend'),first=await owner.read();

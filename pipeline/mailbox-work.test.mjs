@@ -6,7 +6,7 @@ import {applyMailboxObservation,mailboxProfile} from './mailbox-intake.mjs';
 import {gmailScopes} from './google-hosted-transport.mjs';
 import {applyLocalInquiry} from './local-inquiry-intake.mjs';
 import {applyConversationRecord} from './conversation-records.mjs';
-import {mailboxWorkCapability,validateMailboxWorkPolicy,validateMailboxWorkState,applyMailboxWorkTransition,mailboxWorkContext,mailboxWorkReceipt,mailboxWorkAdoption} from './mailbox-work.mjs';
+import {mailboxWorkCapability,validateMailboxWorkPolicy,validateMailboxWorkState,applyMailboxWorkTransition,mailboxWorkContext,mailboxWorkReceipt,mailboxWorkAdoption,assertMailboxWorkReplySource} from './mailbox-work.mjs';
 
 const at='2026-11-02T14:00:00.000Z',secret='ab'.repeat(32),lease={worker_id:'worker-one',token:secret};
 function fixture(){
@@ -107,4 +107,12 @@ test('signed claim resolves current-source ownership even when intake retains Ow
  assert.equal(f.s.prospects.p.follow_up_owner,'owner');assert.equal(f.s.inquiry_intake.sources['owned-source'].status,'Ownership review');f.create();f.claim();assert.equal(mailboxWorkContext(f.s,f.c,'draft',lease,at).context.owner,'owner');
  const draft={...result,source_ids:['reply:owned-source']};f.transition('result',{id:'draft',worker_id:lease.worker_id,lease:secret,context_sha256:f.s.email_draft_tasks.draft.context_sha256,result:draft});assert.equal(mailboxWorkAdoption(f.s,f.c,{id:'draft',revision:f.s.revision,result_sha256:hash(draft)},'owner',at).task.status,'Review');
  f.s.inquiry_intake.sources['owned-source'].status='Identity review';assert.throws(()=>mailboxWorkAdoption(f.s,f.c,{id:'draft',revision:f.s.revision,result_sha256:hash(draft)},'owner',at),/unresolved/);
+});
+
+test('reviewed non-inquiry clears only a distinct retained-source blocker, never its own reply or other source holds',()=>{
+ const f=fixture(),app=new StudioLifecycle(null,()=>new Date(at));app.config=f.c;const source={id:'internal',prospect_id:'inquiry-intake',type:'inquiry_recorded',at,data:{company_name:'Internal technical test',classification:'uncertain',reply:{...fixtureReply('internal','thread-old','customer@example.org','An internal technical test.'),received_at:at}}};
+ applyLocalInquiry(app,f.s,source,'provider',f.s.revision,{shared:true});assert.throws(()=>f.create(),/unresolved|newer/);const before=structuredClone(f.s.prospects.p),review={id:'review-internal',prospect_id:'inquiry-intake',type:'inquiry_classification_reviewed',at,data:{source_id:'internal',classification:'non_inquiry',reason:'Reviewed internal message, not an inquiry.'}};
+ applyLocalInquiry(app,f.s,review,'friend',f.s.revision,{shared:true});assert.deepEqual(f.s.prospects.p,before);assert.equal(f.s.prospects.p.cold_paused,true);assert.doesNotThrow(()=>assertMailboxWorkReplySource(f.s,f.c,'p',at));f.create();f.claim();assert.equal(mailboxWorkContext(f.s,f.c,'draft',lease,at).context.reply.source_id,'reply');submit(f);assert.equal(mailboxWorkAdoption(f.s,f.c,{id:'draft',revision:f.s.revision,result_sha256:hash(result)},'owner',at).task.status,'Review');
+ const changes={current:s=>s.prospects.p.reply=structuredClone(s.inquiry_intake.sources.internal.source),unresolved:s=>s.inquiry_intake.sources.internal.status='Identity review',held:s=>s.mailbox_sync.held_sources.x={thread_id:'thread'},incomplete:s=>s.mailbox_sync.pending.push({id:'pending'}),restricted:s=>s.prospects.p.restriction='do_not_contact',uncertain:s=>s.outreach_delivery={intents:{old:{project_id:'p',status:'Uncertain'}}},newer:s=>s.inquiry_intake.sources.real={...structuredClone(s.inquiry_intake.sources.internal),source_id:'real',classification:'inquiry',status:'Matched existing client',project_id:'p',source:{...fixtureReply('real','thread','customer@example.org'),received_at:'2026-11-02T14:01:00.000Z'}}};
+ for(const [name,change]of Object.entries(changes)){const s=structuredClone(f.s);change(s);assert.throws(()=>assertMailboxWorkReplySource(s,f.c,'p',at),undefined,name);}
 });

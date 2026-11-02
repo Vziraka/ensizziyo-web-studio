@@ -17,7 +17,7 @@ export function applyLocalInquiry(app,state,event,actor,revision,{shared=false}=
   const intake=state.inquiry_intake??{next_owner:'owner',sources:{}};
   let receipt,classificationReview;
   if(event.type==='inquiry_classification_reviewed'){
-    exact(data,'source_id,classification,reason');check(key(data.source_id)&&['inquiry','newsletter','spam','automatic_reply'].includes(data.classification)&&typeof data.reason==='string'&&data.reason.trim().length>0&&data.reason.length<=500,'Record a reviewed classification and reason');
+    exact(data,'source_id,classification,reason');check(key(data.source_id)&&['inquiry','newsletter','spam','automatic_reply','non_inquiry'].includes(data.classification)&&typeof data.reason==='string'&&data.reason.trim().length>0&&data.reason.length<=500,'Record a reviewed classification and reason');
     const prior=intake.sources[data.source_id];check(prior?.classification==='uncertain'&&prior.status==='Identity review','Only an unresolved uncertain classification can be reviewed');
     classificationReview={by:actor,at:event.at,event_id:event.id,reason:data.reason,original_classification:'uncertain'};
     data={company_name:prior.company_name,classification:data.classification,reply:prior.source};
@@ -25,7 +25,7 @@ export function applyLocalInquiry(app,state,event,actor,revision,{shared=false}=
   if(event.type==='inquiry_recorded'||classificationReview){
     exact(data,'company_name,classification,reply');
     check(typeof data.company_name==='string'&&data.company_name.trim()&&data.company_name.length<=250&&(shared||/^STUDIO TEST\s/i.test(data.company_name)),'Use a bounded source name; local rehearsal requires an explicitly fictional company');
-    check(['inquiry','uncertain','newsletter','spam','automatic_reply'].includes(data.classification),'Review the inquiry classification explicitly');
+    check(['inquiry','uncertain','newsletter','spam','automatic_reply'].includes(data.classification)||classificationReview&&data.classification==='non_inquiry','Review the inquiry classification explicitly');
     check(validReplySource(data.reply)&&key(data.reply.source_id)&&key(data.reply.thread_id)&&(shared||data.reply.content.from.endsWith('@example.invalid'))&&data.reply.kind==='reply','Retain a complete source; local rehearsal requires an .invalid sender');
     if(shared)check(typeof data.reply.received_at==='string'&&Number.isFinite(Date.parse(data.reply.received_at))&&Date.parse(data.reply.received_at)<=+app.now()+60000,'Retain actual provider receipt time');
     const prior=intake.sources[data.reply.source_id],sourceFingerprint=classificationReview?prior.source_sha256:hash(data);
