@@ -40,6 +40,16 @@ export class ConditionalLifecycleStore {
   }
   async config(){return (await this.envelope()).data.config;}
   async snapshot(){return (await this.envelope()).data.state;}
+  async assertPdfCurrent(expected,guard){
+    guard();
+    if(typeof this.store.getMetadata==='function'){
+      const current=await this.store.getMetadata(this.key,{consistency:'strong'});
+      guard();check(typeof current?.etag==='string'&&current.etag.length>0&&current.etag===expected.etag,'PDF source or workspace changed; refresh exact state');
+    }else{
+      const current=await this.envelope();guard();
+      check(current.etag===expected.etag&&hash(current.data)===hash(typeof expected.data==='function'?expected.data():expected.data),'PDF source or workspace changed; refresh exact state');
+    }
+  }
   async change(fn,options={}){
     const {eventId,eventFingerprint}=options,pdfBinding=options.operationsPdf?hash(this.manualBinding):null;
     const {data,etag}=await this.envelope(),before=JSON.stringify(data);
@@ -59,11 +69,8 @@ export class ConditionalLifecycleStore {
     if(this.inertBinding)validateInertChange(JSON.parse(before).state,data.state,options);
     const pdfCurrent=async()=>{
       if(!options.operationsPdf)return;
-      const at=Date.parse(options.operationsPdf.at),live=+this.now();
-      check(this.key==='workspace'&&hash(this.manualBinding)===pdfBinding&&Number.isFinite(options.operationsPdfDeadline)&&live>=at&&live<Math.min(at+25000,options.operationsPdfDeadline),'PDF authority or invocation expired before CAS');
-      const current=await this.envelope();
-      check(hash(this.manualBinding)===pdfBinding&&current.etag===etag&&hash(current.data)===hash(JSON.parse(before)),'PDF source or workspace changed before CAS');
-      check(+this.now()<Math.min(at+25000,options.operationsPdfDeadline),'PDF invocation expired during current read');
+      const at=Date.parse(options.operationsPdf.at),guard=()=>{const live=+this.now();check(this.key==='workspace'&&hash(this.manualBinding)===pdfBinding&&Number.isFinite(options.operationsPdfDeadline)&&live>=at&&live<Math.min(at+25000,options.operationsPdfDeadline),'PDF authority or invocation expired before CAS');};
+      await this.assertPdfCurrent({etag,data:()=>JSON.parse(before)},guard);
     };
     if(this.manualBinding){
       const originals=options.operationsPdf?blobProjectOriginalStore(this.store):null,reader={};
