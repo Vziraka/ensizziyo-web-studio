@@ -44,6 +44,8 @@ Records are bound to the canonical worktree and session and written through an e
 
 ## Verification and limits
 
+The [current recovery isolation protocol](recovery-isolation-protocol.md) owns the next-test gates and November 2 host inspection. Recovery inference is held until prevention is established; the historical outcomes below remain unchanged.
+
 `node --test scripts/context-checkpoint.test.mjs` exercises fictional records, isolation, stale revisions, malformed input, locks, permissions and the hook's bounded output. Hook-command tests alone do not prove Codex loaded or delivered the hook. A real lifecycle proof must use the normal trust flow, observe compaction and hook execution, and verify the immediate continuation; see the [pilot record](context-handoff-pilot.md).
 
 The hook's reminder is model-facing guidance, not a guarantee that an agent saved or read a checkpoint. It does not measure context occupancy, set a compaction threshold, automatically create chats, replay side effects, enable Codex memories, or change a model. Local command hooks are surface-dependent; do not assume the same behavior in cloud orchestration or other EVZ projects. See [OpenAI's hook documentation](https://learn.chatgpt.com/docs/hooks) for supported events and trust requirements.
