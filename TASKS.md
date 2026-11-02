@@ -7,6 +7,7 @@ The owner accepted a fictional pilot of context-aware checkpoints and handoffs, 
 - [x] Freeze representative fictional cases and independent expectations before comparisons. Exercise changed decisions, stale worktree state, uncertain operations, approval holds, unavailable context signals and unnecessary handoffs.
 - [x] Compare matched continuations and inspect actual available evidence. Distinguish a prompt simulation from real compaction, a same-chat continuation or OS-level isolation; retain the outcomes, omissions and any unavailable measurements.
 - [x] Have distinct requirements and engineering reviewers assess the candidate and evidence; resolve findings and rerun affected checks. Keep live integration and broader rollout unproven until separately demonstrated.
+- [ ] Verify an actual host compaction event and checkpoint restoration before considering automatic handoff. An isolated native CLI smoke returned the right fictional facts but exposed no compaction event or plan-tool call, so the result is inconclusive.
 
 The [handoff pilot](docs/context-handoff-pilot.md) owns the experiment, limitations and resulting recommendation. Separate requirements and engineering reviewers accepted implementation head `6ea3376` after the reproduced concurrency issue was fixed; the final status-only update records that evidence. Existing [context and long-running work](WORKFLOW.md#context-and-long-running-work) remains the active policy during the pilot.
 
