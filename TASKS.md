@@ -7,7 +7,7 @@ After the native-event proof, the owner said “finish all work end to end.” I
 - [x] Provide session-bound checkpoint authoring and recovery with private local storage, bounded input, safe concurrent writes and honest failure handling. Restore task facts as untrusted evidence and reconcile current instructions, worktree, approvals and uncertain side effects.
 - [ ] Add a minimal project-scoped Codex compaction reminder, test its actual host lifecycle only under the normal hook-trust flow, and record whether the continuation uses the saved checkpoint. Do not claim automatic capture of decisions that were not recorded.
 - [x] Test fictional changed decisions, stale state, cross-session separation, malformed/unsafe input, interrupted-writer lock recovery, untrusted instructions and unresolved operations. These deterministic checks do not establish actual hook delivery or semantic recovery. Distinguish actual events from simulations and account allowance from context occupancy.
-- [ ] Obtain separate independent requirements and engineering reviews of the final change, run appropriate checks, and record limitations and the next supported handoff step.
+- [x] Obtain separate independent requirements and engineering reviews of the source increment, run appropriate checks, and record limitations and the next supported handoff step. The actual trusted-host proof remains open above.
 
 ## Context and handoff evaluation — November 1, 2026
 

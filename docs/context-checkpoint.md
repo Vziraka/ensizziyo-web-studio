@@ -8,6 +8,8 @@ The project hook sends a short reminder and the current session ID on supported 
 
 The Windows hook embeds the exact source in [context-hook-windows.ps1](../scripts/context-hook-windows.ps1); the test verifies the encoded command matches that source. It assumes the host interprets `commandWindows` with PowerShell, which has not been verified for this host. The POSIX hook searches only standard runtime locations from `/`; if Node is installed elsewhere, the hook will not run. An unavailable hook is a recovery gap, not a reason to weaken trust checks.
 
+To enable this candidate on a local Codex host, open the CLI in the intended worktree, trust the project if Codex asks, then use `/hooks` to review the project `SessionStart` definition and trust that exact definition. Review the Windows source above as well as the hook configuration. If the hook is absent, stop and investigate discovery; do not bypass the trust flow. Run the fictional lifecycle proof only after the host reports the hook as trusted.
+
 From the repository root, for a substantive decision or milestone, send a JSON object to `node scripts/context-checkpoint.mjs save SESSION_ID` on standard input. Replace the ID with the one supplied for this session. The command returns only a saved status and opaque checkpoint ID. Supply all of these fields:
 
 ```json
@@ -45,3 +47,5 @@ The hook's reminder is model-facing guidance, not a guarantee that an agent save
 On November 1, a metadata-only `hooks/list` check on this worktree did not list the project hook. A separate session-flag control appeared as untrusted, confirming that the listing surface responded; the reason for the missing project hook was not established. The sanitized private discovery record has SHA-256 `fe4bf75f2acaa1b671d9cd0df0ad63a94d787792b23fd7dc09f077043a16184b` and binds hook-config SHA-256 `fb6baed119f419a0024a290263b2407763a7baee8f412913c22fae192ef81cf8`. No hook trust was changed and no model turn was started by those checks. Actual host activation and automatic restoration remain open.
 
 The same host reported Codex's separate `memories` feature as disabled. [OpenAI's memory documentation](https://learn.chatgpt.com/docs/customization/memories) describes background cross-chat memory and its controls; it is not an immediate checkpoint for an active task. This change does not enable that machine-wide feature or change its privacy and usage settings.
+
+Independent requirements and engineering reviewers accepted implementation head `f4f4a82` against base `819348b`, after fixes for unsafe file permissions, inherited Git selection, test isolation and executable shadowing. Windows fictional checks passed with platform-specific skips; the Linux CI run covers the POSIX and symlink cases. Neither review establishes the open host lifecycle gate.
