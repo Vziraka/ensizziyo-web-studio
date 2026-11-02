@@ -11,14 +11,17 @@ import {ConditionalLifecycleStore} from './lifecycle-store.mjs';
 import {mailboxClockCapability,mailboxClockTickId,applyMailboxClockTransition} from './mailbox-clock.mjs';
 import {mailboxClockCommand,createMailboxClock,mailboxClockEntry} from './mailbox-clock-host.mjs';
 import {mailboxProfile} from './mailbox-intake.mjs';
-import {gmailScopes} from './google-hosted-transport.mjs';
+import {gmailScopes,googleHostedTransport} from './google-hosted-transport.mjs';
 
 const at='2026-11-02T14:00:00.000Z';
-async function fixture(t){
+async function fixture(t,{operation='history'}={}){
  const directory=await mkdtemp(join(tmpdir(),'evz-clock-'));t.after(()=>rm(directory,{recursive:true,force:true}));let time=Date.parse(at);const now=()=>new Date(time);
  const local=await StudioLifecycle.initialize({directory:join(directory,'local'),now});await local.apply(fixtureProspect('retained',at));const state=await local.snapshot();state.mode='production';state.run_id='clock-proof';delete state.prospects.retained.controlled;
  const mailbox={schema_version:1,account:'ensizziyo@evzdigital.studio',grant_id:'clock-grant',after:'2026-11-01T00:00:00.000Z'};
  state.mailbox_sync={policy_sha256:hash(mailbox),after:mailbox.after,phase:'history',cursor:'100',next_cursor:null,page:null,pages:[],pending:[],held_sources:{},checked_at:at,last_read_at:at,hold:null};
+ if(operation==='profile')delete state.mailbox_sync;
+ else if(operation==='list')state.mailbox_sync.phase='bootstrap';
+ else if(operation==='message')state.mailbox_sync.pending=[{id:'fictional-incoming',threadId:'fictional-thread'}];
  const backup=join(directory,'backup.json');await writeLifecycleBackup(local.directory,state,backup,at);
  const scope={schema_version:1,capability:mailboxClockCapability,workspace_id:'clock-workspace',run_id:state.run_id,mode:'production',state_schema:1,site_id:'clock-site',deploy_id:'clock-deploy',origin:'https://clock.example.invalid',namespace:'evz-manual-shared-clock-test'};
  const mailboxWork={schema_version:1,worker_id:'worker',gateway_site_id:'gateway-site',gateway_deploy_id:'gateway-deploy',gateway_origin:'https://gateway.example.invalid',recovery_generation:'worker-one',credential_sha256:hash('ab'.repeat(32)),max_tasks:3,max_claims_per_day:3,lease_minutes:20,expires_at:'2026-11-03T00:00:00.000Z'};
@@ -32,6 +35,54 @@ async function fixture(t){
  const resume=async()=>{await mailboxClockCommand(app,'allowance',{revision:(await store.snapshot()).revision,allowance:{id:'included-proof',evidence_ref:'synthetic-account-observation',observed_at:now().toISOString(),expires_at:'2026-11-02T16:00:00.000Z',included_only:true,max_steps:5}},'owner');await mailboxClockCommand(app,'pause',{revision:(await store.snapshot()).revision,paused:false,reason:'Finite fictional proof'},'friend');};
  return {packet,app,store,raw,env,context,now,invoke,resume,get calls(){return calls;},get reads(){return reads;},get writes(){return version;},readAction:fn=>{readAction=fn;},advance:ms=>{time+=ms;},lose:()=>{lose=true;},fetchAction:fn=>{fetchAction=fn;}};
 }
+
+function preflightToken(action){
+ const token={access_token:'synthetic-token',profile:mailboxProfile,account:'ensizziyo@evzdigital.studio',grant_id:'clock-grant',scopes:['openid','https://www.googleapis.com/auth/userinfo.email',...gmailScopes],expires_at:Date.parse('2026-11-04T00:00:00.000Z')};
+ return Object.assign(async()=>{await action('token');return token;},{assertCurrent:async()=>action('current'),assertGrant:async()=>action('grant')});
+}
+
+test('signed pause in each awaited token preflight prevents every incoming Gmail GET and preserves its charge',async t=>{
+ for(const operation of ['profile','list','history','message'])for(const stage of ['token','current','grant']){
+  const f=await fixture(t,{operation});await f.resume();const before=await f.store.snapshot();let gets=0,paused=false;
+  const getAccessToken=preflightToken(async point=>{if(point!==stage||paused)return;paused=true;await new Promise(setImmediate);await mailboxClockCommand(f.app,'pause',{revision:(await f.store.snapshot()).revision,paused:true,reason:'Signed pause during delayed '+stage},'friend');});
+  const response=await f.invoke({googleIncomingOptions:{getAccessToken,fetcher:async()=>{gets++;return Response.json({historyId:'101',history:[]});}}});
+  assert.equal(gets,0,operation+'/'+stage+' must stop before GET');assert.equal(response.status,503);const after=await f.store.snapshot();assert.equal(after.mailbox_clock.paused,true);assert.equal(after.mailbox_clock.tick.status,'Held');assert.equal(after.mailbox_clock.tick.pending_step,1);assert.equal(after.mailbox_clock.tick.steps_settled,0);assert.equal(after.mailbox_clock.allowances['included-proof'].used_steps,1);assert.deepEqual(after.mailbox_sync,before.mailbox_sync);assert.deepEqual(after.prospects,before.prospects);assert.deepEqual(after.events,before.events);
+ }
+});
+
+test('replaced allowance, expiry and changed sync/config/binding in preflight cannot fetch or settle a reserved step',async t=>{
+ for(const change of ['allowance','allowance expiry','policy expiry','tick expiry','sync','config','binding']){
+  const f=await fixture(t);await f.resume();const before=await f.store.snapshot();let gets=0,changed=false;
+  const getAccessToken=preflightToken(async stage=>{
+   if(stage!=='grant'||changed)return;changed=true;
+   if(change==='allowance')await mailboxClockCommand(f.app,'allowance',{revision:(await f.store.snapshot()).revision,allowance:{id:'replacement-proof',evidence_ref:'Fictional reviewed replacement',observed_at:f.now().toISOString(),expires_at:'2026-11-02T16:00:00.000Z',included_only:true,max_steps:1}},'owner');
+   else if(change==='allowance expiry')f.advance(7200000);
+   else if(change==='policy expiry')f.advance(86400000);
+   else if(change==='tick expiry')f.advance(25000);
+   else{const entry=await f.raw.getWithMetadata('workspace');if(change==='sync')entry.data.state.mailbox_sync.cursor='102';else if(change==='binding')entry.data.manual_source.binding.namespace+='-different';else entry.data.config.mailbox_clock.recovery_generation='changed';await f.raw.setJSON('workspace',entry.data,{onlyIfMatch:entry.etag});}
+  });
+  const response=await f.invoke({googleIncomingOptions:{getAccessToken,fetcher:async()=>{gets++;return Response.json({historyId:'101',history:[]});}}});
+  assert.equal(gets,0,change);assert.equal(response.status,503);const after=(await f.raw.getWithMetadata('workspace')).data.state;assert.equal(after.mailbox_clock.allowances['included-proof'].used_steps,1);assert.equal(after.mailbox_clock.tick.pending_step,1);assert.equal(after.mailbox_clock.tick.steps_settled,0);assert.deepEqual(after.events,before.events);assert.deepEqual(after.prospects,before.prospects);assert.equal(after.mailbox_sync.cursor,change==='sync'?'102':before.mailbox_sync.cursor);if(change==='allowance')assert.equal(after.mailbox_clock.allowances['replacement-proof'].used_steps,0);
+ }
+});
+
+test('clock prefetch assertion uses trusted time after its last awaited envelope read',async t=>{
+ const f=await fixture(t);await f.resume();let gets=0,armed=false;
+ const getAccessToken=preflightToken(async stage=>{if(stage!=='grant'||armed)return;armed=true;f.readAction(async()=>{f.readAction(async()=>{});f.advance(25000);});});
+ assert.equal((await f.invoke({googleIncomingOptions:{getAccessToken,fetcher:async()=>{gets++;return Response.json({historyId:'101',history:[]});}}})).status,503);assert.equal(gets,0);const s=await f.store.snapshot();assert.equal(s.mailbox_clock.allowances['included-proof'].used_steps,1);assert.equal(s.mailbox_clock.tick.pending_step,1);assert.equal(s.mailbox_sync.cursor,'100');
+});
+
+test('each incoming transport hook runs once after preflight immediately before GET, independently of response chunks',async()=>{
+ const operations=[p=>p.incomingProfile({beforeFetch}),p=>p.mailboxList(at,null,{beforeFetch}),p=>p.incomingHistory('100',null,{beforeFetch}),p=>p.mailboxMessage('fictional-incoming',{beforeFetch})];let order,hooks,posts=0;
+ async function beforeFetch(){await new Promise(setImmediate);order.push('prefetch');hooks++;}
+ for(const operation of operations){order=[];hooks=0;const getAccessToken=preflightToken(async stage=>{await new Promise(setImmediate);order.push(stage);}),provider=googleHostedTransport({getAccessToken,account:'ensizziyo@evzdigital.studio',grantId:'clock-grant',requiredProfile:mailboxProfile,now:()=>new Date(at),fetcher:async(url,options)=>{assert.equal(options.method,'GET');posts++;order.push('fetch');return new Response(new ReadableStream({start(controller){for(const chunk of ['{"history','Id":"101",','"history":','[]}'])controller.enqueue(Buffer.from(chunk));controller.close();}}));}});await operation(provider);assert.deepEqual(order.slice(0,5),['token','current','grant','prefetch','fetch']);assert.equal(hooks,1);}
+ assert.equal(posts,4);
+ const controller=new AbortController();let gets=0;const denied=googleHostedTransport({getAccessToken:preflightToken(async()=>{}),account:'ensizziyo@evzdigital.studio',grantId:'clock-grant',requiredProfile:mailboxProfile,now:()=>new Date(at),signal:controller.signal,fetcher:async()=>{gets++;return Response.json({});}});await assert.rejects(denied.incomingProfile({beforeFetch:async()=>controller.abort()}),/deadline/);assert.equal(gets,0);
+});
+
+test('multi-chunk clock response adds no whole-envelope reads and still settles exactly once',async t=>{
+ for(const chunks of [1,4]){const f=await fixture(t);await f.resume();f.fetchAction(async()=>new Response(new ReadableStream({start(controller){const bytes=Buffer.from(JSON.stringify({historyId:'101',history:[]}));for(let i=0;i<chunks;i++)controller.enqueue(bytes.subarray(Math.floor(i*bytes.length/chunks),Math.floor((i+1)*bytes.length/chunks)));controller.close();}})));const reads=f.reads,writes=f.writes;assert.equal((await f.invoke()).status,200);assert.equal(f.calls,1);assert.equal(f.reads-reads,12);assert.equal(f.writes-writes,3);const s=await f.store.snapshot();assert.equal(s.mailbox_sync.cursor,'101');assert.equal(s.mailbox_clock.tick.steps_settled,1);assert.equal(s.mailbox_clock.tick.pending_step,null);assert.equal(s.mailbox_clock.allowances['included-proof'].used_steps,1);}
+});
 test('published clock uses real transport and canonical CAS once; duplicate tick performs no second read',async t=>{
  const f=await fixture(t),before=await f.store.snapshot();await f.resume();const response=await f.invoke();assert.equal(response.status,200);assert.equal((await response.json()).read_steps,1);assert.equal(f.calls,1);
  const after=await f.store.snapshot();assert.equal(after.mailbox_sync.cursor,'101');assert.equal(after.mailbox_clock.tick.status,'Completed');assert.equal(after.mailbox_clock.allowances['included-proof'].used_steps,1);assert.deepEqual(after.prospects,before.prospects);assert.deepEqual(after.actions,before.actions);
@@ -69,7 +120,7 @@ test('paused and expired clocks need one validated workspace read and no writes 
 
 test('one caught-up read and duplicate tick avoid redundant whole-workspace loads',async t=>{
  const f=await fixture(t);await f.resume();let reads=f.reads,writes=f.writes;
- assert.equal((await f.invoke()).status,200);assert.equal(f.reads-reads,13);assert.equal(f.writes-writes,3);assert.equal(f.calls,1);
+ assert.equal((await f.invoke()).status,200);assert.equal(f.reads-reads,12);assert.equal(f.writes-writes,3);assert.equal(f.calls,1);
  reads=f.reads;writes=f.writes;assert.equal((await (await f.invoke()).json()).duplicate,true);assert.equal(f.reads-reads,4);assert.equal(f.writes,writes);assert.equal(f.calls,1);
 });
 

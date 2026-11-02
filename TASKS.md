@@ -1,5 +1,15 @@
 # Launch tasks
 
+## Mailbox clock prefetch fence — November 2, 2026
+
+Close the reproduced gap where a signed pause during awaited token/grant preflight could still be followed by a Gmail GET. Reuse the existing transport, pending-step assertion and typed clock settlement; the [clock contract](pipeline/MAILBOX-CLOCK.md) owns the source boundary and activation limits. This change is stacked on the saved-status source increment and adds no schedule or migration.
+
+- [x] Reproduce the post-pause GET with fictional actual-handler/transport boundaries, then block it for all four incoming operations after token/current/grant awaits using a once-per-request bounded pre-fetch callback.
+- [x] Validate current clock state/config from one envelope; deny pause, replaced allowance, expiry and sync/config/binding drift before GET. Keep charges, pending uncertainty, cursor and existing post-read/CAS protection intact.
+- [x] Verify callback ordering and multi-chunk behavior without per-chunk envelope reads; measured caught-up fixture uses 12 workspace reads and three writes, paused/expired one read and duplicates four.
+- [ ] Obtain distinct exact-source requirements/engineering reviews and required CI before a separately reviewed artifact or effect.
+- [ ] Separately implement/review retained paused clock-history migration/rebind and inert restore revocation, exact production OAuth wrapper/schedule allowlists and finite host-overhead proof before canonical clock activation. Keep the independent unbounded health clock off. Postal details hold commercial activation only.
+
 ## Read-only saved operations status — November 2, 2026
 
 Add explicit `saved-operations-status-v1` mode to the existing notification gateway so a separately authenticated caller can inspect saved operations incidents/digests without native subscriptions or credential storage. The [closed caller contract](pipeline/NATIVE-OPERATIONS-NOTIFICATIONS.md#saved-status-without-native-subscriptions) owns policy fields, role privacy, freshness and limits. Legacy `mcp-events-v1` and the current manual rollout remain separate.
