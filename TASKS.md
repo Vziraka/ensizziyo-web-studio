@@ -1,5 +1,14 @@
 # Launch tasks
 
+## Production mailbox clock packaging - November 3, 2026
+
+Add an explicit closed production entry around the existing clock and owner-mailbox OAuth runtime. [Package interface and limits](pipeline/MAILBOX-CLOCK.md#explicit-production-package) own immutable binding/policy/window, credential projection and emitted schedule behavior. Parent coordinates the separate private release recipe; source work authorizes no live service, send or activation.
+
+- [x] Implement default-disabled/no-schedule output and exact opt-in production generator, immutable schema2 clock/OAuth identities, finite access window and closed production secret projection; preserve generic/manual callers and history semantics.
+- [x] Exercise actual emitted bytes and default SDK/encrypted OAuth/clock handler with fictional boundaries; test mismatched context/policies, disabled/expired admission, drift and charged late reads.
+- [ ] Complete distinct independent requirements/engineering review and required CI on the exact commit.
+- [ ] Separately review compatible migration/private package and finite activation/usage/shutdown scope; no automatic health/digest clock, sends or new provider credentials are enabled.
+
 ## Clock history and restore authority — November 2, 2026
 
 Use explicit policy2 compatibility in the existing clock ledger so the first charged automatic check does not strand a future upgrade. [Clock history contract](pipeline/MAILBOX-CLOCK.md#retained-history-and-signed-rebind) owns exact identities, archival, restore revocation and capacity limits. This source change adds no schedule, production migrator, consent or provider activation.
