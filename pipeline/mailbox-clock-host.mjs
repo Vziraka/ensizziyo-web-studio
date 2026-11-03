@@ -39,9 +39,9 @@ export async function runMailboxClock(app,{readStep,deadline,initialEnvelope}={}
  }
  return {...view,read_steps:reads};
 }
-export function createMailboxClock({env=process.env,storeFactory=defaultStore,now=()=>new Date(),googleIncomingOptions={},googleOAuthOptions={}}={}){
+export function createMailboxClock({env=process.env,storeFactory=defaultStore,now=()=>new Date(),googleIncomingOptions={},googleOAuthOptions={},invocationDeadline=Infinity}={}){
  return async(request,context)=>{
-  const deadline=+now()+25000;
+  const deadline=Math.min(+now()+25000,invocationDeadline);
   if(!isMailboxClockCapability(env.EVZ_OPERATIONS_DESK_ENABLED)||env.EVZ_MAILBOX_CLOCK_RUNTIME!==env.EVZ_OPERATIONS_DESK_ENABLED||context?.deploy?.context!=='production'||context.deploy.published!==true||request.method!=='POST')return response(503,{held:true,sending:false});
   let binding;
   try{
