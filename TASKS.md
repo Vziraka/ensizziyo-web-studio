@@ -5,7 +5,7 @@
 Add an explicit closed production entry around the existing clock and owner-mailbox OAuth runtime. [Package interface and limits](pipeline/MAILBOX-CLOCK.md#explicit-production-package) own immutable binding/policy/window, credential projection and emitted schedule behavior. Parent coordinates the separate private release recipe; source work authorizes no live service, send or activation.
 
 - [x] Implement default-disabled/no-schedule output and exact opt-in production generator, immutable schema2 clock/OAuth identities, finite access window and closed production secret projection; preserve generic/manual callers and history semantics.
-- [x] Exercise actual emitted bytes and default SDK/encrypted OAuth/clock handler with fictional boundaries; test mismatched context/policies, disabled/expired admission, drift and charged late reads.
+- [x] Exercise actual emitted bytes and default SDK/encrypted OAuth/clock handler with fictional boundaries; test mismatched context/policies, disabled/expired admission, drift and charged late reads. Internal scheduler transport URLs use trusted deployment identity while canonical binding/policy/OAuth origins stay pinned.
 - [ ] Complete distinct independent requirements/engineering review and required CI on the exact commit.
 - [ ] Separately review compatible migration/private package and finite activation/usage/shutdown scope; no automatic health/digest clock, sends or new provider credentials are enabled.
 

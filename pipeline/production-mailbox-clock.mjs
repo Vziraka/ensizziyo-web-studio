@@ -33,7 +33,8 @@ export function createProductionMailboxClock({input=null,env=process.env,now=()=
    const {binding,oauth,credentialNamespace,clockPolicy,starts_at,expires_at}=pinned,b=binding.scope;
    const live=()=>{const date=now();check(date instanceof Date&&Number.isFinite(+date)&&+date>=Date.parse(starts_at)&&+date<Date.parse(expires_at),'Production clock window closed');return date;};
    live();
-   check(request.method==='POST'&&new URL(request.url).origin===b.origin&&context?.site?.id===b.site_id&&context?.deploy?.id===b.deploy_id&&context.deploy.context==='production'&&context.deploy.published===true,'Exact published production clock required');
+   // Scheduled functions are not HTTP-invokable; transport URL is not deployment authority.
+   check(request.method==='POST'&&context?.site?.id===b.site_id&&context?.deploy?.id===b.deploy_id&&context.deploy.context==='production'&&context.deploy.published===true,'Exact published production clock required');
    check(env.EVZ_PRODUCTION_MAILBOX_CLOCK==='finite-intake-v1','Production intake disabled');
    const end=Math.min(+live()+25000,Date.parse(expires_at));
    const controller=new AbortController();

@@ -17,7 +17,7 @@ async function fixture(t,{refresh=false}={}){
  let encrypted={v:1,key_id:env.EVZ_PRODUCTION_GOOGLE_CREDENTIAL_KEY_ID,grant_id:data.grant_id,iv:iv.toString('base64url'),ciphertext:Buffer.concat([cipher.update(Buffer.from(JSON.stringify(data))),cipher.final()]).toString('base64url'),tag:cipher.getAuthTag().toString('base64url')};
  let credentialReads=0,gets=0,version=0;const credentials={getWithMetadata:async()=>{credentialReads++;return {data:encrypted,etag:'credential-'+version};},setJSON:async(key,value,options)=>{assert.equal(key,'credential');assert.equal(options.onlyIfMatch,'credential-'+version);assert(!JSON.stringify(value).includes('fictional-clock-refresh'));encrypted=value;return {modified:true,etag:'credential-'+(++version)};}};
  const fetcher=async(url,options)=>{assert.equal(options.method,'GET');assert.equal(new URL(url).origin,'https://gmail.googleapis.com');assert.equal(options.headers.Authorization,'Bearer fictional-clock-access');gets++;return Response.json({historyId:'101',history:[]});};
- const request=()=>new Request(b.origin+'/.netlify/functions/mailbox-clock',{method:'POST',body:JSON.stringify({next_run:new Date(+f.now()+300000).toISOString()})});
+ const request=(origin=b.origin)=>new Request(origin+'/.netlify/functions/mailbox-clock',{method:'POST',body:JSON.stringify({next_run:new Date(+f.now()+300000).toISOString()})});
  const ready=async()=>{await f.command('allowance',{revision:await f.revision(),allowance:{id:'production-proof',evidence_ref:'Fictional included usage',observed_at:f.now().toISOString(),expires_at:input.expires_at,included_only:true,max_steps:1}});await f.command('pause',{revision:await f.revision(),paused:false,reason:'Finite fictional proof'});};
  const handler=(options={})=>createProductionMailboxClock({input,env,now:f.now,storeFactory:()=>f.raw,googleOAuthOptions:{storeFactory:n=>{assert.equal(n,input.credentialNamespace);return credentials;}},googleIncomingOptions:{fetcher},...options});
  return {...f,input,env,credentials,fetcher,request,ready,handler,get credentialReads(){return credentialReads;},get gets(){return gets;}};
@@ -37,10 +37,10 @@ test('closed immutable policy/OAuth packaging rejects drift and leaves existing 
  const source=productionMailboxClockEntry(f.input);assert.doesNotMatch(source,/\.\.\.process\.env|CLIENT_SECRET|CREDENTIAL_KEY/);assert.match(source,/\*\/5 \* \* \* \*/);
 });
 
-test('disabled, wrong context/origin, early/expired window and bad secrets deny before storage',async t=>{
+test('disabled, wrong context/method, early/expired window and bad secrets deny before storage',async t=>{
  const f=await fixture(t);let stores=0;const handler=options=>f.handler({storeFactory:()=>{stores++;throw Error('must not access storage');},...options});
  for(const context of [{}, {...f.context,site:{id:'other'}},{...f.context,deploy:{...f.context.deploy,id:'other'}},{...f.context,deploy:{...f.context.deploy,published:false}},{...f.context,deploy:{...f.context.deploy,context:'deploy-preview'}}])assert.equal((await handler()(f.request(),context)).status,503);
- assert.equal((await handler()(new Request('https://other.example.invalid',{method:'POST'}),f.context)).status,503);
+ assert.equal((await handler()(new Request(f.b.origin,{method:'GET'}),f.context)).status,503);
  for(const env of [{},{...f.env,EVZ_PRODUCTION_GOOGLE_CREDENTIAL_KEY:'bad'}])assert.equal((await handler({env})(f.request(),f.context)).status,503);
  for(const at of [Date.parse(f.input.starts_at)-1,Date.parse(f.input.expires_at)])assert.equal((await handler({now:()=>new Date(at)})(f.request(),f.context)).status,503);
  assert.equal(stores,0);
@@ -84,7 +84,7 @@ test('execute emitted bytes with actual default SDK and production OAuth; no amb
   if(method==='GET'){const v=await raw.getWithMetadata(key,{type:'json',consistency:'strong'});return new Response(JSON.stringify(v.data),{headers:{etag:v.etag}});}
   assert.equal(method,'PUT');assert(!credential);const v=await raw.setJSON(key,JSON.parse(options.body),{onlyIfMatch:new Headers(options.headers).get('if-match')});return new Response(null,{status:v.modified?200:412,headers:v.etag?{etag:v.etag}:{}});
  };
- const file=new URL('./netlify-functions/production-clock-test-'+process.pid+'.mjs',import.meta.url);await writeFile(file,productionMailboxClockEntry(f.input));t.after(()=>unlink(file));const generated=await import(file.href+'?generated');assert.deepEqual(generated.config,{schedule:'*/5 * * * *'});const response=await generated.default(f.request(),f.context);assert.equal(response.status,200,await response.text());assert.equal(f.gets,1);assert.equal((await f.store.snapshot()).mailbox_clock.tick.status,'Completed');
+ const file=new URL('./netlify-functions/production-clock-test-'+process.pid+'.mjs',import.meta.url);await writeFile(file,productionMailboxClockEntry(f.input));t.after(()=>unlink(file));const generated=await import(file.href+'?generated');assert.deepEqual(generated.config,{schedule:'*/5 * * * *'});const response=await generated.default(f.request('https://11111111-2222-4333-8444-555555555555.netlify.app'),f.context);assert.equal(response.status,200,await response.text());assert.equal(f.gets,1);assert.equal((await f.store.snapshot()).mailbox_clock.tick.status,'Completed');
  const disabled=await import('data:text/javascript,'+encodeURIComponent(productionMailboxClockEntry()));assert.equal(disabled.config,undefined);assert.equal((await disabled.default(f.request(),f.context)).status,503);assert.equal(f.gets,1);
 });
 
@@ -110,4 +110,12 @@ test('real production OAuth refresh uses only projected client credentials and e
   return Response.json({access_token:'fictional-clock-access',token_type:'Bearer',expires_in:3600,scope:googleOAuthScopes.join(' ')});
  }}})(f.request(),f.context);
  assert.equal(response.status,200,await response.text());assert.equal(refreshes,1);assert.equal(f.gets,1);
+});
+
+
+test('internal scheduler transport origin uses exact trusted deployment and pinned canonical identities',async t=>{
+ const f=await fixture(t);await f.ready();const origin='https://11111111-2222-4333-8444-555555555555.netlify.app';
+ const response=await f.handler()(f.request(origin),f.context);
+ assert.equal(response.status,200,await response.text());assert.equal(f.gets,1);assert.equal((await f.store.snapshot()).mailbox_clock.tick.status,'Completed');
+ assert.notEqual(origin,f.input.binding.scope.origin);assert.equal(f.input.oauth.origin,f.input.binding.scope.origin);assert.equal(f.input.clockPolicy.origin,f.input.binding.scope.origin);
 });
