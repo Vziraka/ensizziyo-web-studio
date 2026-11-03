@@ -41,6 +41,12 @@ test('delivery renewal fences old approvals and reservations without refunding o
  const snapshot=structuredClone(f.s);assert.throws(()=>f.allowance('second',later(2)),/identity/);assert.deepEqual(f.s,snapshot);f.c.shared_capability='shared-mailbox-delivery-v1';assert.throws(()=>f.allowance('third',later(2)),/operations capability/);
 });
 
+test('held and reserved unclaimed intents are both visible in renewal status',()=>{
+ const f=deliveryFixture();f.allowance('first');f.tr('pause',{revision:f.s.revision,paused:false,reason:'Finite test'});const {id}=f.reserve(f.approve('one'));
+ assert.equal(mailboxDeliveryStatus(f.s,f.c,at).unclaimed_reservations,1);f.tr('hold',{id,reason:'Fictional unresolved hold'},'delivery');const status=mailboxDeliveryStatus(f.s,f.c,at);
+ assert.equal(status.unclaimed_reservations,1);assert.equal(status.uncertain,0);assert.equal(f.s.mailbox_delivery.allowances.first.used_intents,1);
+});
+
 test('worker pause and allowance expiry revoke live work, preserve charges and retain accepted review for adoption',()=>{
  const {s,c}=deliveryFixture();c.mailbox_work={schema_version:2,worker_id:'worker',gateway_site_id:'gateway',gateway_deploy_id:'gateway-deploy',gateway_origin:'https://gateway.example.invalid',recovery_generation:'one',credential_sha256:hash('ef'.repeat(32)),max_open_tasks:1,max_retained_tasks:10,max_claims_per_allowance:1,max_claims_per_day:1,max_allowance_minutes:60,lease_minutes:20};
  const run=(type,input,actor='owner',time=at)=>applyMailboxWorkChange(s,c,{type,input,actor,at:time}),grant=(id,time=at)=>run('allowance',{revision:s.revision,allowance:{id,evidence_ref:'Reviewed fictional included usage',observed_at:time,expires_at:later(10),included_only:true,max_claims:1}},'owner',time),lease={worker_id:'worker',token:'ab'.repeat(32)};grant('one');run('pause',{revision:s.revision,paused:false,reason:'Finite test'});run('create',{id:'task',project_id:'one',revision:s.revision,replace_task_id:null,studio_asset_ids:[]});run('claim',{id:'task',request_id:'request',worker_id:'worker',lease_sha256:hash(lease.token)},'worker');assert.throws(()=>grant('two',later(1)),/live claimed/);const original=structuredClone(s.email_draft_tasks.task.lease);

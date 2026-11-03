@@ -135,15 +135,16 @@ function outreachReviewPanel(){
  if(!eligible.length)choose.append(el('p','Reviewed research and a verified contact are required before a draft can enter this queue.'));
  node.append(choose);
  for(const c of review.cadence??[])node.append(el('p',`${c.name}: ${c.stopped?'Outreach stopped for human handling':`call ${c.call_due?'due now':new Date(c.call_due_at).toLocaleString()} · follow-up ${c.follow_up_due?'due for exact review':new Date(c.follow_up_due_at).toLocaleString()} · ${c.follow_up_status}`}`));
- const form=el('form'),selected=new Map();
+ const form=el('form'),selected=new Map(),outreachIntentProjects=new Set(Object.values(state.mailbox_delivery?.intents??{}).filter(i=>i.package.kind==='outreach').map(i=>i.package.project_id)),draftProjects=new Set(review.items.map(d=>d.project_id));
  for(const d of review.items){
   const box=el('fieldset'),legend=el('legend',d.name??d.project_id),label=el('label',undefined,'checkbox'),select=document.createElement('input');select.type='checkbox';select.disabled=!d.approvable||d.owner!==state.current_operator;selected.set(d.project_id,{select,draft:d});
   label.append(select,document.createTextNode(` Include ${d.name??d.project_id}`));box.append(legend,label,el('p',`${d.status} · ${d.kind} · ${d.lane}`),el('p',`From ${d.from} → ${d.to}`),el('strong',d.subject),el('p',d.body,'email-copy'));
   if(d.schedule)box.append(el('p',`Scheduled ${new Date(d.schedule.at).toLocaleString('en-US',{timeZone:d.timezone})} (${d.timezone}). ${d.schedule.execution}`));
   const r=state.prospects[d.project_id];for(const o of r?.call_prep?.observations??[]){box.append(el('p',o.fact));for(const s of o.sources??[])box.append(link(s.url,s.url));}
-  if(r&&d.schedule)mailboxDeliveryPanel(r,box,'outreach');
+  if(r&&d.schedule||outreachIntentProjects.has(d.project_id))mailboxDeliveryPanel(r??{id:d.project_id},box,'outreach',!r||!d.schedule||!d.eligible);
   form.append(box);
  }
+ for(const project of outreachIntentProjects)if(!draftProjects.has(project)){const r=state.prospects[project]??{id:project},history=el('section');history.append(el('h3',`Retained outreach: ${r.name??project}`));mailboxDeliveryPanel(r,history,'outreach',true);node.append(history);}
  const facts=document.createElement('input');facts.type='checkbox';const factsLabel=el('label',undefined,'checkbox');factsLabel.append(facts,document.createTextNode(' I reviewed every selected recipient, exact message and supporting evidence.'));
  const approve=el('button','Approve selected exact messages','primary');approve.type='submit';form.append(factsLabel,approve);
  form.onsubmit=async event=>{event.preventDefault();approve.disabled=true;try{const items=[...selected.values()].filter(x=>x.select.checked&&!x.select.disabled).map(x=>({project_id:x.draft.project_id,sha256:x.draft.sha256}));await api('/api/event',{revision:state.revision,event:{id:crypto.randomUUID(),prospect_id:'outreach-batches',type:'outreach_batch_approved',at:new Date().toISOString(),data:{items,facts_checked:facts.checked}}});dirty=false;await refresh();tell('Exact selections scheduled. Live sending remains held.');}catch(error){tell(error.message,true);}finally{approve.disabled=false;}};
@@ -386,7 +387,9 @@ function review(r, node) {
   ], { call_id: call.call_id, proposal_sha256: proposal.sha256 }, 'Confirm this outcome'));
 }
 function requestedInformationPanel(r,node){
- const v=r.requested_information_view;if(!v||(!v.calls.length&&!v.draft))return;const box=panel('Information requested on a call'),assigned=r.follow_up_owner===state.current_operator;
+ const v=r.requested_information_view,retained=Object.values(state.mailbox_delivery?.intents??{}).some(i=>i.package.kind==='requested-information'&&i.package.project_id===r.id);
+ if(!v||(!v.calls.length&&!v.draft)){if(retained){const box=panel('Information requested on a call');mailboxDeliveryPanel(r,box,'requested-information',true);node.append(box);}return;}
+ const box=panel('Information requested on a call'),assigned=r.follow_up_owner===state.current_operator;
  box.append(el('p','This is an operator-reported request, not an incoming email or research qualification. Commercial sending remains subject to its address, sender and allowance gates.','notice'));
  const run=async(type,input)=>{try{await api('/api/requested-information/'+type,{revision:state.revision,id:crypto.randomUUID(),project_id:r.id,...input});dirty=false;await refresh();tell('Requested information saved. Sending requires separate exact approval.');}catch(error){tell(error.message,true);}};
  if(v.hold)box.append(el('p',v.hold,'notice'));
@@ -395,7 +398,8 @@ function requestedInformationPanel(r,node){
  if(assigned&&!r.restriction){const f=el('form'),subject=inputField(f,'Requested information subject','requested-subject',v.draft?.content.subject??'Requested information'),body=inputField(f,'Requested information body (signature added by desk)','requested-body',v.draft?.content.body??'','textarea');body.maxLength=3000;const choices=v.attachment_catalogue.items.map(a=>({a,input:inputField(f,`${a.name} · ${a.version_label} · ${a.bytes} bytes`,'requested-pdf-'+a.asset_id,Boolean(v.draft?.content.attachments.some(p=>p.asset_id===a.asset_id&&p.sha256===a.sha256)),'checkbox')}));const save=el('button','Save unapproved requested-information draft');save.type='submit';f.append(save);f.onsubmit=e=>{e.preventDefault();run('draft',{source_sha256:v.source.sha256,subject:subject.value,body:body.value,attachments:choices.filter(x=>x.input.checked).map(x=>({asset_id:x.a.asset_id,version_id:x.a.version_id,sha256:x.a.sha256}))});};box.append(f);}
  mailboxWorkPanel(r,box,'requested-information');}
  if(v.draft){const d=v.draft;box.append(el('h3',`Saved content · ${d.status}${v.current?'':' · source changed'}`),el('pre',`${d.content.to}\n${d.content.subject}\n\n${d.content.body}\n\n${d.content.signature}`));for(const a of d.content.attachments){const link=el('a',`Inspect exact PDF: ${a.name} · ${a.bytes} bytes`);link.href=deskPath(`/api/project-asset/${r.id}/${a.asset_id}/${a.version_id}?source=requested-information&preview=1`);link.target='_blank';link.rel='noreferrer';box.append(link,el('p',a.sha256,'reply-source'));}
- if(assigned&&v.current&&d.status==='Draft'){const checked=inputField(box,'I checked the exact recipient, facts, wording and original selected PDFs','requested-approve',false,'checkbox');box.append(button('Approve exact requested-information content',()=>run('approve',{draft_sha256:d.sha256,approved:checked.checked,facts_checked:checked.checked})));}mailboxDeliveryPanel(r,box,'requested-information');}
+ if(assigned&&v.current&&d.status==='Draft'){const checked=inputField(box,'I checked the exact recipient, facts, wording and original selected PDFs','requested-approve',false,'checkbox');box.append(button('Approve exact requested-information content',()=>run('approve',{draft_sha256:d.sha256,approved:checked.checked,facts_checked:checked.checked})));}}
+ if(v.draft||retained)mailboxDeliveryPanel(r,box,'requested-information',!v.current||v.draft?.status!=='Approved'||Boolean(r.restriction));
  node.append(box);
 }
 function mailboxWorkPanel(r,node,sourceKind=null){
@@ -430,12 +434,14 @@ function mailboxWorkControls(){
  const form=el('form'),evidence=inputField(form,'Included AI usage evidence reference','worker-evidence'),limit=inputField(form,'Maximum model claims','worker-limit','1','number'),expiry=inputField(form,'AI allowance expiry','worker-expiry','','datetime-local'),confirmed=inputField(form,'I manually checked included usage and the applicable reserve for this finite allowance','worker-confirmed',false,'checkbox');limit.min='1';limit.max=String(work.limits.max_claims_per_allowance);evidence.required=true;expiry.required=true;box.append(el('p',`Maximum allowance duration: ${work.limits.max_allowance_minutes} minutes. Renewal does not invoke a model or unpause work. The ordinary reserve is 30%; record any explicitly authorized task override in the evidence reference. A live claim must complete or be explicitly cancelled before renewal.`, 'muted'));
  const save=el('button','Save reviewed AI allowance');save.type='submit';save.disabled=work.status==='Policy changed'||work.allowance_history_remaining===0;form.append(save);form.onsubmit=async event=>{event.preventDefault();if(!confirmed.checked){tell('Check included usage before authorizing model claims.',true);return;}save.disabled=true;try{await api('/api/mailbox-work/allowance',{revision:state.revision,allowance:{id:'work-allowance-'+crypto.randomUUID(),evidence_ref:evidence.value.trim(),observed_at:new Date().toISOString(),expires_at:new Date(expiry.value).toISOString(),included_only:true,max_claims:Number(limit.value)}});await refresh();tell('Finite AI allowance saved. No model was invoked.');}catch(error){tell(error.message,true);}finally{save.disabled=false;}};box.append(form);if(work.status==='Policy changed')appendMailboxRebind(box,'mailbox-work',state.mailbox_work?.policy_sha256);return box;
 }
-function mailboxDeliveryPanel(r,node,kind='reply'){
+function mailboxDeliveryPanel(r,node,kind='reply',historyOnly=false){
  if(!['shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(state.shared_workspace?.capability))return;
- const box=panel('Exact message delivery'),owned=r.follow_up_owner===state.current_operator,enabled=state.mailbox_delivery_status?.runtime_enabled;
+ const box=panel('Exact message delivery'),owned=r.follow_up_owner===state.current_operator,enabled=state.mailbox_delivery_status?.runtime_enabled,intents=Object.values(state.mailbox_delivery?.intents??{}),unsettled=intents.some(i=>i.package.project_id===r.id&&i.status!=='Verified');
+ const unclaimedNotice='At the last check no claim was recorded. Another writer may still claim this reservation. It remains unresolved and its charge is retained; do not resend. Original sender readback requires a recorded claim.';
  box.append(el('p',`${state.mailbox_delivery_status?.status??'Held'} · ${enabled?'Delivery runtime configured':'Delivery runtime disabled'}. Sender verification does not establish recipient delivery.`,'notice'));
- const run=async(action,input)=>{try{const result=await api('/api/mailbox-delivery/'+action,input);await refresh();tell(result.readback_required?'Outcome requires original sender readback. Do not resend.':`Delivery ${result.status??'decision saved'}.`);}catch(error){tell(error.message+' Refresh the saved intent before retrying.',true);}};
- if(owned)box.append(button('Review exact send package',async()=>{
+ const run=async(action,input)=>{try{const result=await api('/api/mailbox-delivery/'+action,input);await refresh();tell(result.unclaimed?unclaimedNotice:result.readback_required?'Outcome requires original sender readback. Do not resend.':`Delivery ${result.status??'decision saved'}.`);}catch(error){tell(error.message+(action==='dispatch'?' Refresh the saved intent; do not resend while its outcome is unresolved.':' Refresh the saved intent before trying again.'),true);}};
+ if(unsettled)box.append(el('p','An earlier delivery on this project remains unresolved. Review its saved intent; do not resend or approve a replacement.','notice'));
+ if(owned&&!unsettled&&!historyOnly)box.append(button('Review exact send package',async()=>{
   try{
    const packet=await api('/api/mailbox-delivery/package',{kind,project_id:r.id}),review=panel('Review before send approval');
    review.append(el('pre',`${packet.from} → ${packet.to}\nSubject: ${packet.subject}\nThread: ${packet.thread_id??'New conversation'}\n\n${packet.body}`,'reply-source'));
@@ -444,15 +450,16 @@ function mailboxDeliveryPanel(r,node,kind='reply'){
    const approve=button('Approve this exact send package',async()=>{if(!checked.checked){tell('Review the exact package before approving.',true);return;}approve.disabled=true;await run('approve',{revision:state.revision,kind,project_id:r.id,package_sha256:packet.sha256});});review.append(approve);box.append(review);
   }catch(error){tell(error.message,true);}
  }));
- const approvals=Object.values(state.mailbox_delivery?.approvals??{}).filter(a=>a.package.project_id===r.id&&a.package.kind===kind),intents=Object.values(state.mailbox_delivery?.intents??{});
+ const approvals=Object.values(state.mailbox_delivery?.approvals??{}).filter(a=>a.package.project_id===r.id&&a.package.kind===kind);
  for(const a of approvals){
-  const i=intents.find(i=>i.approval_id===a.id);if(i){box.append(el('p',`Saved delivery: ${i.status}${i.hold?' · '+i.hold:''}`,'notice'));if(i.receipt)box.append(el('p',`Sender verified ${new Date(i.receipt.sent_at).toLocaleString()} · ${i.receipt.message_id}`));if(i.package.owner===state.current_operator&&i.claimed_at&&i.status!=='Verified'){const reconcile=button('Read original sender receipt',()=>run('reconcile',{id:i.id}));reconcile.disabled=!enabled;box.append(reconcile);}}
-  else if(owned&&a.epoch===state.mailbox_delivery.epoch){const send=button(kind==='reply'?'Send this approved reply':kind==='requested-information'?'Send this approved requested information':'Send in its approved time slot',()=>run('dispatch',{approval_id:a.id}));send.disabled=!enabled||state.mailbox_delivery_status?.status!=='Ready';box.append(send);}
+  const i=intents.find(i=>i.approval_id===a.id);if(i){const hold=i.hold==='Backup restored; original reservation cannot dispatch'?'Restored copy cannot dispatch; reconcile other writers.':i.hold;box.append(el('p',`Saved delivery: ${i.status}${hold?' · '+hold:''}`,'notice'));if(i.claimed_at===null)box.append(el('p',unclaimedNotice,'notice'));if(i.receipt)box.append(el('p',`Sender verified ${new Date(i.receipt.sent_at).toLocaleString()} · ${i.receipt.message_id}`));if(i.package.owner===state.current_operator&&i.claimed_at&&i.status!=='Verified'){const reconcile=button('Read original sender receipt',()=>run('reconcile',{id:i.id}));reconcile.disabled=!enabled;box.append(reconcile);}}
+  else if(owned&&!unsettled&&!historyOnly&&a.epoch===state.mailbox_delivery.epoch){const send=button(kind==='reply'?'Send this approved reply':kind==='requested-information'?'Send this approved requested information':'Send in its approved time slot',()=>run('dispatch',{approval_id:a.id}));send.disabled=!enabled||state.mailbox_delivery_status?.status!=='Ready';box.append(send);}
  }
  node.append(box);
 }
 function replyForms(r,node){
-  if (r.reply && (['Reply review','Discovery','Information requested','Hold'].includes(r.stage)||state.email_task_proof?.content_review_available&&r.reply_draft)) {
+  const replyView=Boolean(r.reply && (['Reply review','Discovery','Information requested','Hold'].includes(r.stage)||state.email_task_proof?.content_review_available&&r.reply_draft));
+  if (replyView) {
     node.append(el('p',r.follow_up_owner?`Client lead: ${r.follow_up_owner}`:'Client lead: unassigned','notice'));
     if(state.operator_auth_enabled&&(!state.shared_workspace||(state.shared_workspace.allowed_edits.includes('conversation_claimed')||state.shared_workspace.allowed_edits.includes('follow_up_handed_off')))&&!r.restriction&&['Reply review','Discovery','Information requested'].includes(r.stage)){
       if(!r.follow_up_owner&&(!state.shared_workspace||state.shared_workspace.allowed_edits.includes('conversation_claimed')))node.append(eventForm(r,'Assign the next conversation review','conversation_claimed',[],{reason:'Operator explicitly claimed the existing conversation.'},'Claim this conversation'));
@@ -478,7 +485,7 @@ function replyForms(r,node){
     if(state.incoming_sync_enabled)history.append(button('Refresh registered conversation source',async()=>{try{const result=await api('/api/incoming-mail/sync',{});await refresh();tell(`Registered source: ${result.status}. Continue any retained catch-up work before preparing a current conversation draft.`);}catch(error){tell(error.message,true);}}));node.append(history);
     if(suggestion?.hold)node.append(el('p',suggestion.hold,'notice'));
     const editable=!r.follow_up_owner||r.follow_up_owner===state.current_operator;if(!editable)node.append(el('p',state.email_task_proof?`Assigned to ${r.follow_up_owner}. You can review this saved proposal; only the assigned operator can prepare a replacement.`:`Assigned to ${r.follow_up_owner}. Use the existing conversation handoff before editing or approving.`, 'notice'));
-    mailboxWorkPanel(r,node);mailboxDeliveryPanel(r,node);
+    mailboxWorkPanel(r,node);mailboxDeliveryPanel(r,node,'reply',Boolean(r.restriction)||!['Reply review','Discovery','Information requested'].includes(r.stage)||!draft?.current||draft.status!=='Approved; sending held');
     if(state.email_task_proof&&state.operator_auth_enabled&&r.controlled&&(r.follow_up_owner===state.current_operator||r.email_draft_task_id))renderEmailDraftTask(r,node);
     if((state.email_task_proof?.content_review_available||['shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(state.shared_workspace?.capability))&&draft&&(!editable||!['Reply review','Discovery','Information requested'].includes(r.stage))){node.append(el('h3','Saved exact reply'),el('p',`${draftStatus} · ${draft.current?'Current bundle':'Stale or held; fresh review is required'}`,'notice'));renderSavedReplyBundle(r,draft,node);}
     if((!state.email_task_proof||state.email_task_proof.content_review_available&&draft)&&editable&&(suggestion?.body||state.email_task_proof?.content_review_available&&draft)&&['Reply review','Discovery','Information requested'].includes(r.stage)){
@@ -503,6 +510,7 @@ function replyForms(r,node){
       }else if(draft)node.append(el('p','The old draft is stale. Save and review a new revision for the current reply and assignment.','notice'));
     }
   }
+  if(!replyView&&Object.values(state.mailbox_delivery?.intents??{}).some(i=>i.package.kind==='reply'&&i.package.project_id===r.id))mailboxDeliveryPanel(r,node,'reply',true);
   if(state.email_task_proof?.composed_mail&&r.reply_draft&&(!r.reply_draft.current||r.follow_up_owner!==state.current_operator))node.append(exactReplyMailPanel(r));
   if (!state.email_task_proof&&(['shared-mailbox-review-v1','shared-mailbox-work-v1','shared-mailbox-clock-v1','shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(state.shared_workspace?.capability)?r.follow_up_owner===state.current_operator:!state.shared_workspace?.mail||!r.follow_up_owner||r.follow_up_owner===state.current_operator)&&(r.stage === 'Reply review'||r.reply&&['Discovery','Information requested'].includes(r.stage)&&r.reply_review&&(!r.reply_review.focus||r.reply_review.focus==='unspecified'||r.reply_review.reply_sha256!==r.reply_sha256))) {
     if(r.stage!=='Reply review')node.append(el('p','Confirm which service the business wants before preparing project work.','notice'));
@@ -719,6 +727,11 @@ function detail(r) {
   }
   history.append(list); node.append(history); return node;
 }
+function recordsForView(state,view,lane){
+  const replyHistory=view==='reviews'&&['shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(state.shared_workspace?.capability)?new Set(Object.values(state.mailbox_delivery?.intents??{}).filter(i=>i.package.kind==='reply').map(i=>i.package.project_id)):new Set();
+  return Object.values(state.prospects).filter(r=>view==='reviews'?['Connected review','Verification review','Reply review'].includes(r.stage)||state.shared_workspace?.mail&&r.reply&&['Discovery','Information requested','Hold'].includes(r.stage)||replyHistory.has(r.id):view==='clients'?r.origin==='workspace'||Object.keys(r.project_work??{}).length||r.handover||r.quote||['Discovery','Information requested','Proposal','Preview','Delivery','Client review','Onboarding'].includes(r.stage):lane==='all'||(r.call_lane==='verification'?lane==='verification':lane==='research'));
+}
+function selectedRecord(records,current){return records.some(r=>r.id===current)?current:records[0]?.id;}
 function render() {
   if (!state) return;
   document.body.classList.toggle('desk-view',['today','businesses'].includes(view));
@@ -803,6 +816,7 @@ function render() {
     if(state.mailbox_delivery_status){
       const delivery=state.mailbox_delivery_status,box=panel('Email delivery controls');
       box.append(el('p',`${delivery.status} · ${delivery.runtime_enabled?'Delivery runtime configured':'Delivery runtime disabled'} · ${delivery.uncertain} uncertain messages need original sender readback.`,'notice'),el('p',delivery.allowance?`${delivery.allowance.used_intents} of ${delivery.allowance.max_intents} reviewed sends reserved.`:'No finite send allowance saved.'));
+      if(delivery.renewable&&delivery.unclaimed_reservations>0)box.append(el('p',`${delivery.unclaimed_reservations} reservations have no recorded claim. They remain unresolved; another writer may still claim them. Do not resend.`, 'notice'));
       if(delivery.renewable){box.append(el('p',`${delivery.allowance_remaining} allowance sends remain · ${delivery.remaining_today} daily slots · ${delivery.history_remaining} retained-history slots. Maximum allowance duration: ${delivery.limits.max_allowance_minutes} minutes. Renewing requires fresh send approvals.`, 'muted'));if(delivery.allowance)box.append(el('p',`Allowance expires ${new Date(delivery.allowance.expires_at).toLocaleString()}.`, 'muted'));}
       const pause=button(delivery.paused?'Resume approved delivery':'Pause delivery',async()=>{pause.disabled=true;try{await api('/api/mailbox-delivery/pause',{revision:state.revision,paused:!delivery.paused,reason:delivery.paused?'Operator resumed approved delivery':'Operator paused delivery'});await refresh();tell('Delivery control saved. Pausing invalidates previous send approvals.');}catch(error){tell(error.message,true);}finally{pause.disabled=false;}});if(delivery.renewable&&delivery.paused&&delivery.status==='Policy changed')pause.disabled=true;box.append(pause);
       const form=el('form'),evidence=inputField(form,'Included usage evidence reference','evidence'),limit=inputField(form,'Maximum approved sends','limit','1','number'),expiry=inputField(form,'Send allowance expiry','expiry','','datetime-local'),confirmed=inputField(form,delivery.renewable?'I manually checked included usage and the applicable reserve for this finite allowance':'I checked included hosting and email usage for this finite allowance','confirmed',false,'checkbox');limit.min='1';limit.max=String(delivery.renewable?delivery.limits.max_intents_per_allowance:10000);evidence.required=true;expiry.required=true;
@@ -879,9 +893,9 @@ function render() {
   if(view==='meetings'){const node=panel('Meetings');const page=state.follow_up_settings?.follow_up?.booking_url;if(page)node.append(link('Open EVZ booking page ↗',page));const meetings=Object.values(state.prospects).filter(r=>r.meeting);for(const r of meetings)node.append(el('h3',r.name),el('p',`${new Date(r.meeting.start).toLocaleString()} · ${r.meeting.current_status??'Verified'}`));for(const b of state.pending_bookings??[])node.append(el('h3',state.prospects[b.prospect_id]?.name??'Pending invitation'),el('p',`${new Date(b.start).toLocaleString()} · ${b.status}`));if(!meetings.length&&!state.pending_bookings?.length)node.append(el('p','No meetings booked yet. You can also book an agreed discovery time from the calling desk.','empty'));content.append(node);return;}
   if (['today','businesses'].includes(view)&&!state.email_task_proof) { renderCallDesk(content,state,{api,refresh,tell,requestedInformation:requestedInformationPanel,evidence:callPrep,clearDirty:()=>{dirty=false;},uploadAudio:uploadCallAudio,openReviews:id=>{dirty=false;selected=id;view='reviews';tell('');render();},openAttention:()=>{dirty=false;view='exceptions';tell('');render();},allBusinesses:view==='businesses'}); return; }
   if (view === 'today') content.append(stats(), el('p', `Prepared due call cards: ${state.daily.prepared.research} research-reviewed · ${state.daily.prepared.verification} verification only. These are prepared records, not calls made or accepted detailed assessments.`, 'notice'));
-  const grid = el('div', undefined, 'grid'), records = Object.values(state.prospects).filter(r => view === 'reviews' ? ['Connected review', 'Verification review', 'Reply review'].includes(r.stage)||state.shared_workspace?.mail&&r.reply&&['Discovery','Information requested','Hold'].includes(r.stage) : view === 'clients' ? r.origin==='workspace' || Object.keys(r.project_work??{}).length || r.handover || r.quote || ['Discovery','Information requested','Proposal','Preview', 'Delivery', 'Client review', 'Onboarding'].includes(r.stage) : lane === 'all' || (r.call_lane === 'verification' ? lane === 'verification' : lane === 'research'));
+  const grid = el('div', undefined, 'grid'), records = recordsForView(state,view,lane);
   if (view === 'today') { const order = new Map(state.daily.due.map((a, i) => [a.prospect_id, i])); records.sort((a, b) => (order.get(a.id) ?? 10000) - (order.get(b.id) ?? 10000)); }
-  const left = panel(view === 'reviews' ? 'Awaiting your review' : view === 'clients' ? 'Client work' : state.controls.mode === 'controlled' ? 'Controlled working records' : 'Daily call queue & prospects');
+  const left = panel(view === 'reviews' ? ['shared-mailbox-delivery-v1','shared-operations-desk-v1'].includes(state.shared_workspace?.capability)?'Reviews and retained reply history':'Awaiting your review' : view === 'clients' ? 'Client work' : state.controls.mode === 'controlled' ? 'Controlled working records' : 'Daily call queue & prospects');
   left.append(el('p', view === 'today' ? 'Review the purpose and evidence before calling, then record the actual outcome in the desk. Completing a task is never evidence that a call occurred.' : 'Select a record to review its current step.', 'muted'));
   if (view === 'today') {
     const filter = inputField(left, 'Call lane', 'lane', lane, 'text', [{ value: 'all', label: 'All call cards' }, { value: 'research', label: 'Research reviewed' }, { value: 'verification', label: 'Verification calls only' }]);
@@ -891,7 +905,7 @@ function render() {
   for (const r of records) recordList.append(summary(r));
   left.append(recordList);
   if (!records.length) left.append(el('p', state.controls.mode === 'production' ? 'No reviewed prospects imported yet. Fictional test records stay in the separate rehearsal workspace.' : 'No records at this step.', 'empty'));
-  if (!records.some(r => r.id === selected)) selected = records[0]?.id;
+  selected = selectedRecord(records,selected);
   grid.append(left); if (selected && state.prospects[selected]) grid.append(detail(state.prospects[selected])); content.append(grid);
 }
 document.addEventListener('input', e => { if (e.target.closest('form')) dirty = true; });

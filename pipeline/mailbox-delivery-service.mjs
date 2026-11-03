@@ -45,7 +45,7 @@ export async function reconcileMailboxDelivery(app,id,{transport,actor,deadline}
 }
 export async function dispatchMailboxDelivery(app,approvalId,{transport,actor,deadline}={}){
  boundary(app);const b=budget(app,deadline),initial=await app.store.envelope(),{data}=initial,read=deliveryEnvelopeReader(app,initial,b),c=data.config,a=data.state.mailbox_delivery?.approvals[approvalId];check(a,'Exact saved send approval required');requireActor(a,actor);
- const id=mailboxDeliveryIntentId(data.state,a),prior=data.state.mailbox_delivery.intents[id];if(prior)return {id,status:prior.status,readback_required:prior.status!=='Verified'};
+ const id=mailboxDeliveryIntentId(data.state,a),prior=data.state.mailbox_delivery.intents[id];if(prior)return {id,status:prior.status,unclaimed:prior.claimed_at===null,unresolved:prior.status!=='Verified',readback_required:prior.claimed_at!==null&&prior.status!=='Verified',retry_permitted:false};
  const fingerprint=hash(c),guard=async()=>{
   b.alive();const {data:current}=await read();check(hash(current.config)===fingerprint,'Delivery configuration changed');
   const i=current.state.mailbox_delivery?.intents[id];
@@ -69,7 +69,7 @@ export async function dispatchMailboxDelivery(app,approvalId,{transport,actor,de
   return await reconcileMailboxDelivery(app,id,{transport,actor,deadline:b.end});
  }catch{
   const saved=(await app.snapshot()).mailbox_delivery.intents[id];if(saved.status==='Verified')return {id,status:'Verified',receipt:saved.receipt};
-  try{await change(app,'hold',{id,reason:'Delivery outcome requires original sender readback; no automatic resend'},'delivery',c);}catch{}
+  try{await change(app,'hold',{id,reason:'Delivery outcome requires original sender readback; no automatic resend'},'delivery',c,b.end);}catch{}
   return {id,status:'Uncertain',readback_required:true};
  }
 }

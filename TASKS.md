@@ -1,5 +1,9 @@
 # Launch tasks
 
+## Delivery recovery guard - November 3, 2026
+
+Source-only work keeps unclaimed reservations and all same-project replacement packages held. It reports when no claim was recorded and records a post-claim hold when a lost provider response leaves time for the conditional write. Fictional tests cover same-key races, a copied namespace, a lost response and a provider response arriving after the local deadline. An independent fictional reproduction showed that a stale backup can omit a later reservation, allowing two namespaces to send the same reply. A safe release requires independently established retirement, complete current ledger and no rollback of earlier authority; a snapshot, rebind or generic Held status alone is insufficient. No live send, worker change or deployment follows from these source checks.
+
 ## Checkpoint revision uncertainty — November 3, 2026
 
 The owner asked to continue the workflow reliability work without the usual included-usage reserve for this continuation. No paid overage, account-setting change or live desk operation follows. The separate handover chat continues to own its active cutover.
