@@ -1,5 +1,15 @@
 # Launch tasks
 
+## Delivery OAuth workspace scope - November 3, 2026
+
+A controlled internal reply reached separate content/send approval but expired during delivery preflight before creating an intent. Repeated immutable workspace validation inside token/grant checks amplified full-envelope reads. Reuse one operation-local OAuth workspace scope while preserving fresh credentials, mutable source/approval/pause guards and the permanent send claim. [Delivery contract](pipeline/MAILBOX-DELIVERY.md#bounded-oauth-workspace-validation) owns the boundary and limits.
+
+- [x] Reproduce the preflight deadline through the actual hosted/encrypted OAuth path using fictional provider/storage boundaries; implement bounded immutable-only scope for manual delivery/reconciliation and the existing delivery-clock caller.
+- [x] Verify complete exact delivery/readback at representative retained-state size and synthetic timing, pause/grant/config changes and scope-exit failures without duplicate delivery.
+- [x] Include OAuth scope entry in the hosted delivery deadline and exercise a delayed-entry denial; scope-exit validation remains awaited after the operation.
+- [ ] Complete separate independent requirements/engineering reviews and required CI on the final revision.
+- [ ] Publish through the existing reviewed migration path and verify the controlled production journey after applicable reconnect/test authority. Source tests do not prove live delivery. Keep delivery and worker paused meanwhile; no new recurring activation.
+
 ## Production mailbox clock packaging - November 3, 2026
 
 Add an explicit closed production entry around the existing clock and owner-mailbox OAuth runtime. [Package interface and limits](pipeline/MAILBOX-CLOCK.md#explicit-production-package) own immutable binding/policy/window, credential projection and emitted schedule behavior. Parent coordinates the separate private release recipe; source work authorizes no live service, send or activation.

@@ -38,9 +38,9 @@ export function createMailboxDeliveryClock({env=process.env,storeFactory=default
    if(!approval)return response(200,{status:'Idle',attempted:0});
    const app=await StudioLifecycle.fromStore({store,now});check(+now()<deadline,'Invocation expired before provider access');
    const options={...googleMailOptions};
-   if(!options.getAccessToken)options.getAccessToken=createGoogleOAuth({...googleOAuthOptions,env,profile:mailboxProfile,dispatchApp:app,grantId:p.grant_id,now:()=>+now()}).getAccessToken;
-   const signal=AbortSignal.timeout(Math.max(1,deadline-+now())),transport=googleHostedTransport({...options,signal,account:p.account,grantId:p.grant_id,requiredProfile:mailboxProfile,now});
-   const result=await dispatchMailboxDelivery(app,approval.id,{transport,actor:'delivery',deadline});
+   const signal=AbortSignal.timeout(Math.max(1,deadline-+now()));
+   const run=getAccessToken=>dispatchMailboxDelivery(app,approval.id,{transport:googleHostedTransport({...options,getAccessToken,signal,account:p.account,grantId:p.grant_id,requiredProfile:mailboxProfile,now}),actor:'delivery',deadline});
+   const result=options.getAccessToken?await run(options.getAccessToken):await createGoogleOAuth({...googleOAuthOptions,env,profile:mailboxProfile,dispatchApp:app,grantId:p.grant_id,now:()=>+now()}).withMailboxOperation(run);
    return response(200,{...result,attempted:1});
   }catch(error){return response(error.code==='STATE_CONFLICT'?409:503,{held:true,readback_required:true});}
  };

@@ -228,10 +228,13 @@ export function createHostedDesk({env=process.env,storeFactory=defaultStore,now=
      if(!['dispatch','reconcile'].includes(action))return json(200,await mailboxDeliveryCommand(app,action,input,actor));
      check(env.CONTEXT==='production'&&env.EVZ_MAILBOX_DELIVERY_RUNTIME===env.EVZ_OPERATIONS_DESK_ENABLED,'Mailbox delivery runtime is disabled');
      const field=action==='dispatch'?'approval_id':'id';check(input&&Object.keys(input).join(',')===field&&typeof input[field]==='string','One exact saved delivery identity required');
-     const p=app.config.mailbox_delivery,options={...googleIncomingOptions};
-     if(!options.getAccessToken)options.getAccessToken=createGoogleOAuth({...googleOAuthOptions,env,now:()=>+now(),profile:mailboxProfile,dispatchApp:app,grantId:p.grant_id}).getAccessToken;
-     const transport=googleHostedTransport({...options,account:p.account,grantId:p.grant_id,requiredProfile:mailboxProfile,rawResponseMax:38_000_000,now});
-     return json(200,await (action==='dispatch'?dispatchMailboxDelivery:reconcileMailboxDelivery)(app,input[field],{transport,actor}));
+     const deadline=+now()+25000,p=app.config.mailbox_delivery,options={...googleIncomingOptions};
+     const run=getAccessToken=>{
+      const transport=googleHostedTransport({...options,getAccessToken,account:p.account,grantId:p.grant_id,requiredProfile:mailboxProfile,rawResponseMax:38_000_000,now});
+      return (action==='dispatch'?dispatchMailboxDelivery:reconcileMailboxDelivery)(app,input[field],{transport,actor,deadline});
+     };
+     const result=options.getAccessToken?await run(options.getAccessToken):await createGoogleOAuth({...googleOAuthOptions,env,now:()=>+now(),profile:mailboxProfile,dispatchApp:app,grantId:p.grant_id}).withMailboxOperation(run);
+     return json(200,result);
     }
     if(post&&/^\/api\/requested-information\/(confirm|draft|approve)$/.test(path))return json(200,await requestedInformationCommand(app,path.split('/').at(-1),await inputBody(request),actor));
     if(post&&path==='/api/operations-notifications/prepare'){check(settings.manualBinding?.scope.capability===cloudDiscoveryCapability,'Exact operations notification capability required');return json(200,await operationsNotificationCommand(app,await inputBody(request),actor));}
