@@ -1,6 +1,6 @@
 # Development workflow
 
-Updated October 12, 2026. This is a continuing project. The first website is an initial milestone, not a permanent feature ceiling.
+Updated November 3, 2026. This is a continuing project. The first website is an initial milestone, not a permanent feature ceiling.
 
 ## From request to reviewed change
 

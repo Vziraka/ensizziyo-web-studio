@@ -1,5 +1,15 @@
 # Launch tasks
 
+## Delivery OAuth workspace scope - November 3, 2026
+
+A controlled internal reply reached separate content/send approval but expired during delivery preflight before creating an intent. Repeated immutable workspace validation inside token/grant checks amplified full-envelope reads. Reuse one operation-local OAuth workspace scope while preserving fresh credentials, mutable source/approval/pause guards and the permanent send claim. [Delivery contract](pipeline/MAILBOX-DELIVERY.md#bounded-oauth-workspace-validation) owns the boundary and limits.
+
+- [x] Reproduce the preflight deadline through the actual hosted/encrypted OAuth path using fictional provider/storage boundaries; implement bounded immutable-only scope for manual delivery/reconciliation and the existing delivery-clock caller.
+- [x] Verify complete exact delivery/readback at representative retained-state size and synthetic timing, pause/grant/config changes and scope-exit failures without duplicate delivery.
+- [x] Include OAuth scope entry in the hosted delivery deadline and exercise a delayed-entry denial; scope-exit validation remains awaited after the operation.
+- [ ] Complete separate independent requirements/engineering reviews and required CI on the final revision.
+- [ ] Publish through the existing reviewed migration path and verify the controlled production journey after applicable reconnect/test authority. Source tests do not prove live delivery. Keep delivery and worker paused meanwhile; no new recurring activation.
+
 ## Workflow reliability and handoffs — November 3, 2026
 
 The owner approved implementing the reviewed improvements and asked that existing skills and instructions be tested against independent evidence rather than treated as proof. The goal is a dependable, economical workflow across EVZ projects, starting here, while preserving the full operations-desk scope, existing work and all client/provider restrictions.
@@ -20,6 +30,8 @@ Review evidence: the November 2 recorded release checkpoint still calls for a co
 Independent first review of `df1ea44`: requirements reviewer `/root/independent_requirements` identified outdated "current" labels in older workspace entries; engineering reviewer `/root/independent_engineering` reproduced unnecessary full CI runs when the base changed after a documentation branch diverged. Both used fresh context and Sol High. The follow-up dates those entries and compares the base with the tested merge commit; a temporary divergent-branch test passes. Both reviewers rechecked source revision `3d8a656` and reported their findings resolved. Historical CI timings show some individual integration scenarios taking roughly 25–45 seconds, but timing alone does not establish duplication or safe removal. Hosted CI remains open.
 
 Hosted Windows check: PR167 run `41587194950` exposed a checkpoint save failure; an isolated empty-file diagnostic, run `41587636335`, confirmed the runner's default new-file owner differed from the current user while the inherited grants were restricted. The follow-up initializes ownership only for the new empty temporary file and retains strict rejection for existing checkpoint files. A local Windows run passed 17 checks with four platform/host skips. The exact changed source and test blobs passed isolated hosted run `41587882097`: 19 passed and two platform skips, including a pass for rejecting an existing file with the wrong owner. Two independent reviewers checked `0f8c568`; recheck the final PR's actual hosted jobs before closing this gate.
+
+PR167 hosted run `41588236739` passed all five jobs at `da49eed` against base `ad91e8f`. Main then advanced to `db5e1b9`; both task entries are retained and checks must run again on the combined source.
 
 ## Production mailbox clock packaging - November 3, 2026
 
