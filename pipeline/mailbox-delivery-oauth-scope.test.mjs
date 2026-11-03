@@ -51,6 +51,14 @@ test('mutable pause observed after provider preflight prevents the Gmail POST',a
  const response=await f.dispatch();assert.equal(response.status,400);assert.equal(f.sent.length,0);assert.equal((await f.store.snapshot()).mailbox_delivery.allowances['send-one'].used_intents,0);
 });
 
+test('hosted delivery budget includes the OAuth scope entry read',async t=>{
+ const f=await fixture(t);let delayed=false;
+ // The first two reads open the app; the third is OAuth scope entry.
+ f.control.beforeWorkspace=()=>{if(f.control.workspaceReads===3){delayed=true;f.advance(25001);}};
+ const response=await f.dispatch();assert.equal(delayed,true);assert.notEqual(response.status,200);assert.equal(f.paths.length,0);assert.equal(f.sent.length,0);
+ const state=await f.store.snapshot();assert.equal(Object.keys(state.mailbox_delivery.intents).length,0);assert.equal(state.mailbox_delivery.allowances['send-one'].used_intents,0);
+});
+
 for(const drift of ['credential','configuration'])test('fresh '+drift+' drift during preflight prevents the Gmail POST',async t=>{
  const f=await fixture(t);let changed=false;f.control.beforeProvider=async url=>{if(url.pathname.endsWith('/profile')&&!changed){changed=true;if(drift==='credential')f.credential.status='Reauthorization required';else{const entry=f.objects.get('workspace'),data=JSON.parse(entry.bytes);data.config.sender.postal_address='Synthetic changed address';f.objects.set('workspace',{bytes:Buffer.from(JSON.stringify(data)),etag:'synthetic-config-change'});}}};
  const response=await f.dispatch();assert.equal(response.status,400);assert.equal(f.sent.length,0);assert.equal(JSON.parse(f.objects.get('workspace').bytes).state.mailbox_delivery.allowances['send-one'].used_intents,0);

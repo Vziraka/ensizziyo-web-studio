@@ -6,6 +6,7 @@ A controlled internal reply reached separate content/send approval but expired d
 
 - [x] Reproduce the preflight deadline through the actual hosted/encrypted OAuth path using fictional provider/storage boundaries; implement bounded immutable-only scope for manual delivery/reconciliation and the existing delivery-clock caller.
 - [x] Verify complete exact delivery/readback at representative retained-state size and synthetic timing, pause/grant/config changes and scope-exit failures without duplicate delivery.
+- [x] Include OAuth scope entry in the hosted delivery deadline and exercise a delayed-entry denial; scope-exit validation remains awaited after the operation.
 - [ ] Complete separate independent requirements/engineering reviews and required CI on the final revision.
 - [ ] Publish through the existing reviewed migration path and verify the controlled production journey after applicable reconnect/test authority. Source tests do not prove live delivery. Keep delivery and worker paused meanwhile; no new recurring activation.
 
