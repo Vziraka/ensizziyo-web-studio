@@ -26,6 +26,7 @@ test('desk, bundle, dependency, deployment and workflow changes select the desk 
     assert.deepEqual(scopeForPaths([path]), { pipeline: true, windows: true }, path);
   }
   assert.deepEqual(scopeForPaths(['scripts/context-checkpoint.mjs']), { pipeline: false, windows: true });
+  assert.deepEqual(scopeForPaths(['scripts/fixtures/verify-fixture-temp.mjs']), { pipeline: false, windows: true });
   assert.deepEqual(scopeForPaths(['.codex/hooks.json']), { pipeline: false, windows: true });
 });
 

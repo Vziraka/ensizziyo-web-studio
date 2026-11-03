@@ -8,7 +8,8 @@ export function scopeForPaths(paths) {
     || path.startsWith('scripts/prepare-protected-staging')
     || path.startsWith('scripts/ci-gate') || path.startsWith('.github/workflows/')
     || path === 'docs/design-references.json' || path === 'netlify.toml');
-  const windows = pipeline || paths.some(path => path.startsWith('scripts/context-') || path === '.codex/hooks.json');
+  const windows = pipeline || paths.some(path => path.startsWith('scripts/context-')
+    || path === 'scripts/fixtures/verify-fixture-temp.mjs' || path === '.codex/hooks.json');
   return { pipeline, windows };
 }
 

@@ -83,6 +83,52 @@ test('a missing record is explicit and a saved record retains the decision and r
   assert.equal(read.worktreeChanges, 'not checked');
 });
 
+test('status reports missing or available metadata without exposing checkpoint content', async () => {
+  const absentDirectory = join(base, 'absent-status-directory');
+  assert.deepEqual(parsed(run(projectA, ['status', 'session-a'], undefined, absentDirectory)), { status: 'missing' });
+  await assert.rejects(lstat(absentDirectory), { code: 'ENOENT' });
+  assert.deepEqual(parsed(run(projectB, ['status', 'session-a'])), { status: 'missing' });
+  const result = run(projectA, ['status', 'session-a']);
+  const status = parsed(result);
+  assert.equal(status.status, 'available');
+  assert.ok(Number.isFinite(Date.parse(status.savedAt)));
+  assert.ok(status.ageMinutes >= 0 && status.ageMinutes < 30);
+  assert.equal(status.refreshSuggested, false);
+  assert.equal(status.revisionChanged, false);
+  assert.equal(status.worktreeChanges, 'not checked');
+  assert.equal('checkpoint' in status, false);
+  assert.equal('recorded' in status, false);
+  assert.equal('current' in status, false);
+  assert.equal(result.stdout.includes(fixture.decisions[0].reason), false);
+  assert.notEqual(run(projectA, ['status', '../session-a']).status, 0);
+});
+
+test('status suggests checking an older checkpoint and treats a future clock as unknown', async () => {
+  const path = join(directory, `${checkpointId}.json`);
+  const original = await readFile(path);
+  try {
+    const record = JSON.parse(original);
+    record.savedAt = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+    await writeFile(path, JSON.stringify(record));
+    const older = parsed(run(projectA, ['status', 'session-a']));
+    assert.ok(older.ageMinutes >= 31);
+    assert.equal(older.refreshSuggested, true);
+    record.savedAt = new Date(Date.now() + 60 * 1000).toISOString();
+    await writeFile(path, JSON.stringify(record));
+    const future = parsed(run(projectA, ['status', 'session-a']));
+    assert.equal(future.ageMinutes, null);
+    assert.equal(future.refreshSuggested, null);
+  } finally { await writeFile(path, original); }
+});
+
+test('status reports an unavailable Git revision comparison as unknown', async () => {
+  const unborn = join(base, 'project without a commit');
+  await mkdir(unborn);
+  git(unborn, ['init', '-q']);
+  assert.equal(parsed(run(unborn, ['save', 'unborn-session'], fixture)).status, 'saved');
+  assert.equal(parsed(run(unborn, ['status', 'unborn-session'])).revisionChanged, null);
+});
+
 test('different sessions and worktrees cannot select each other’s record', () => {
   assert.equal(parsed(run(projectA, ['read', 'session-b'])).status, 'missing');
   assert.equal(parsed(run(projectB, ['read', 'session-a'])).status, 'missing');
@@ -142,6 +188,9 @@ test('a changed revision is reported without assuming the worktree is clean', ()
   assert.equal(read.revisionChanged, true);
   assert.equal(read.worktreeChanges, 'not checked');
   assert.notEqual(read.recorded.head, read.current.head);
+  const status = parsed(run(projectA, ['status', 'session-a']));
+  assert.equal(status.revisionChanged, true);
+  assert.equal(status.worktreeChanges, 'not checked');
 });
 
 test('invalid and oversized writes leave the previous complete record intact', () => {
@@ -175,6 +224,10 @@ test('malformed records are reported rather than presented as recovered', async 
   try {
     await writeFile(path, '{');
     assert.match(run(projectA, ['read', 'session-a']).stderr, /malformed/);
+    const status = run(projectA, ['status', 'session-a']);
+    assert.notEqual(status.status, 0);
+    assert.equal(status.stdout, '');
+    assert.match(status.stderr, /malformed/);
     assert.match(run(projectA, ['save', 'session-a'], fixture).stderr, /malformed/);
     assert.equal(await readFile(path, 'utf8'), '{');
   } finally { await writeFile(path, original); }
@@ -190,14 +243,20 @@ test('a linked state directory is rejected', async t => {
   const link = join(base, 'linked-state');
   try { await symlink(directory, link, 'dir'); }
   catch (error) { if (['EPERM', 'EACCES', 'ENOSYS'].includes(error.code)) return t.skip('Symlink creation is unavailable'); throw error; }
-  try { assert.notEqual(run(projectA, ['read', 'session-a'], undefined, link).status, 0); }
+  try {
+    assert.notEqual(run(projectA, ['read', 'session-a'], undefined, link).status, 0);
+    assert.notEqual(run(projectA, ['status', 'session-a'], undefined, link).status, 0);
+  }
   finally { await unlink(link); }
 });
 
 test('relaxed POSIX permissions are rejected', async t => {
   if (process.platform === 'win32') return t.skip('Windows ACLs are checked separately');
   await chmod(directory, 0o755);
-  try { assert.match(run(projectA, ['read', 'session-a']).stderr, /not private/); }
+  try {
+    assert.match(run(projectA, ['read', 'session-a']).stderr, /not private/);
+    assert.match(run(projectA, ['status', 'session-a']).stderr, /not private/);
+  }
   finally { await chmod(directory, 0o700); }
 });
 

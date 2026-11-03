@@ -74,6 +74,16 @@ jobs:
       - run: npm ci --ignore-scripts
         working-directory: pipeline
       - run: node --test scripts/context-checkpoint.test.mjs pipeline/service-host.test.mjs
+      - name: Verify desk fixtures use the runner's temporary directory
+        env:
+          EVZ_TEST_TEMP_EXPECTED: ${{ runner.temp }}
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        run: >-
+          node --import ./scripts/fixtures/verify-fixture-temp.mjs --test
+          '--test-name-pattern=^owner fresh task/PDF/result/adoption|^new exact mail source uses|^P1/P2 current signed owner permission|^Calendar successor prepares'
+          pipeline/shared-email-draft-dispatch.test.mjs pipeline/shared-operations-exact-mail.test.mjs
+          pipeline/shared-operations-pdf-mail.test.mjs pipeline/shared-operations-calendar.test.mjs
 
   # Keep the existing required check name. Failure, cancellation and unintended skips fail closed.
   site-checks:

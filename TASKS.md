@@ -1,5 +1,22 @@
 # Launch tasks
 
+## Checkpoint visibility and learning follow-up — November 3, 2026
+
+The owner authorized completing the workflow improvements and a temporary exception to the normal 30% included-usage reserve for this task; the normal reserve resumes afterward. Preserve existing account settings and do not use paid overage. The separate operations-handover chat owns its active cutover; inspect its reported outcome and evidence without competing writes.
+
+- [x] Make the exact-session checkpoint's availability, age and revision comparison visible without printing its contents; keep missing, invalid, unknown and unverified worktree state explicit.
+- [x] Exercise the status and handoff paths with fictional records, including privacy and failure cases. Keep model-based recovery testing held until [the isolation protocol](docs/recovery-isolation-protocol.md) is satisfied.
+- [ ] Make the existing skill-improvement route actionable from observed repeated problems and retain evidence of what changed, its tests and review; avoid claiming automatic learning or adding a second knowledge store.
+- [ ] Verify the four corrected Windows temporary-directory fixtures in hosted CI, and preserve the linked workspace archive and its references.
+- [ ] Reconcile the active desk chat's reported progress against the controlled-journey and broader release gates; preserve its approvals and avoid repeating an uncertain live effect.
+- [ ] Complete proportionate independent review, affected checks and the protected PR workflow. Record actual results and remaining limitations.
+
+Implementation checkpoint: `codex/checkpoint-visibility` started from `cd555d1`. A read-only Luna High evidence reviewer confirmed the original hook only gives a reminder and that `read` prints the full record. The new fictional status checks first failed because the command did not exist; the local Windows checkpoint/CI-gate run then passed 26 cases with four platform/host skips. Existing handoff-pilot checks passed 16; no recovery inference ran. CLI remains 0.166.0, the version previously inspected for the unmet recovery-isolation gate. Check the actual branch, revision and worktree before continuing; this paragraph is recorded evidence, not a live worktree status.
+
+Observed improvement: a checkpoint's age and revision could not be inspected without emitting its content. The focused correction extends the existing executable and records its outcome here rather than creating another skill or store. It requires the exact supplied session ID and an agent-initiated check; host delivery and automatic restoration remain unverified. Four fictional desk tests initially ignored a selected alternate Windows temporary folder; all four passed after preserving the host-selected temp path. A Windows CI check now exercises those paths. Eight dated workspace snapshots were moved to the linked archive with their text and local link targets verified. Continue with hosted checks and independent review; no hook or live desk setting has changed.
+
+Desk handover snapshot, November 3 at 16:08 UTC: the separate active chat reported that its approved successor installation was in progress, with the controlled test not yet activated. It also reported that the private worker connection lacked an endpoint-edit control. This is the other chat's in-progress report, not a verified final release or current-state claim; use its final evidence and existing release gates before acting.
+
 ## Delivery OAuth workspace scope - November 3, 2026
 
 A controlled internal reply reached separate content/send approval but expired during delivery preflight before creating an intent. Repeated immutable workspace validation inside token/grant checks amplified full-envelope reads. Reuse one operation-local OAuth workspace scope while preserving fresh credentials, mutable source/approval/pause guards and the permanent send claim. [Delivery contract](pipeline/MAILBOX-DELIVERY.md#bounded-oauth-workspace-validation) owns the boundary and limits.

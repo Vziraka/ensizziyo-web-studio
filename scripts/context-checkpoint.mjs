@@ -264,10 +264,23 @@ export async function readCheckpoint(session, cwd = process.cwd()) {
     worktreeChanges: 'not checked', checkpoint: record.checkpoint };
 }
 
+export async function checkpointStatus(session, cwd = process.cwd()) {
+  const read = await readCheckpoint(session, cwd);
+  if (read.status === 'missing') return read;
+  const age = Date.now() - Date.parse(read.savedAt);
+  const comparable = [read.recorded.branch, read.recorded.head, read.current.branch, read.current.head]
+    .every(value => value !== null);
+  return { status: 'available', savedAt: read.savedAt,
+    ageMinutes: age >= 0 ? Math.floor(age / 60000) : null,
+    refreshSuggested: age >= 0 ? age >= 30 * 60000 : null,
+    revisionChanged: comparable ? read.revisionChanged : null, worktreeChanges: 'not checked' };
+}
+
 async function main() {
   const [command, session, ...extra] = process.argv.slice(2);
-  if (extra.length || !['save', 'read'].includes(command)) fail('Use save or read with one session ID');
+  if (extra.length || !['save', 'read', 'status'].includes(command)) fail('Use save, read or status with one session ID');
   if (command === 'read') return readCheckpoint(session);
+  if (command === 'status') return checkpointStatus(session);
   process.stdin.setEncoding('utf8');
   let input = '';
   for await (const chunk of process.stdin) {

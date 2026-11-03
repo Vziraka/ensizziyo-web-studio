@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 // Install throwing guards before any project/SDK import; runtime uses literal fictional boundaries only.
-process.env={...(process.argv[2]?{}:{NODE_TEST_CONTEXT:'child-v8'}),SystemRoot:'C:\\Windows',TEMP:process.platform==='win32'?'C:\\Users\\zvent\\AppData\\Local\\Temp':'/tmp',TMP:process.platform==='win32'?'C:\\Users\\zvent\\AppData\\Local\\Temp':'/tmp'};
+const testTemp=(await import('node:os')).tmpdir();
+process.env={...(process.argv[2]?{}:{NODE_TEST_CONTEXT:'child-v8'}),SystemRoot:'C:\\Windows',TEMP:testTemp,TMP:testTemp};
 const denied=[];const deny=name=>(...args)=>{denied.push(name);throw Error('Unexpected real IO: '+name);};globalThis.fetch=deny('fetch');
 for(const name of ['http','https']){const m=(await import('node:'+name)).default;m.request=deny(name);m.get=deny(name+' GET');}
 const net=(await import('node:net')).default,tls=(await import('node:tls')).default,dgram=(await import('node:dgram')).default,dns=(await import('node:dns')).default,cp=(await import('node:child_process')).default;
