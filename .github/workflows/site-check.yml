@@ -24,7 +24,7 @@ jobs:
       - id: changes
         env:
           CI_BASE_REVISION: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          CI_HEAD_REVISION: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          CI_HEAD_REVISION: ${{ github.sha }}
         run: node scripts/ci-gate.mjs scope >> "$GITHUB_OUTPUT"
 
   site:

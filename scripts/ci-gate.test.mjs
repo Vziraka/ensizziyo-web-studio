@@ -8,6 +8,12 @@ import { fileURLToPath } from 'node:url';
 import { scopeForPaths, scopeFromRevisions, gatePassed } from './ci-gate.mjs';
 
 const script = fileURLToPath(new URL('./ci-gate.mjs', import.meta.url));
+const gitIn = (dir, ...args) => {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !/^GIT_/i.test(name)));
+  const run = spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8', env });
+  assert.equal(run.status, 0, run.stderr);
+  return run.stdout.trim();
+};
 
 test('unrelated documentation needs only the site checks', () => {
   assert.deepEqual(scopeForPaths(['WORKFLOW.md', 'docs/notes.md']), { pipeline: false, windows: false });
@@ -25,12 +31,7 @@ test('desk, bundle, dependency, deployment and workflow changes select the desk 
 
 test('revision detection includes removed and renamed files and falls back safely', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'evz-ci-scope-'));
-  const git = (...args) => {
-    const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !/^GIT_/i.test(name)));
-    const run = spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8', env });
-    assert.equal(run.status, 0, run.stderr);
-    return run.stdout.trim();
-  };
+  const git = (...args) => gitIn(dir, ...args);
   try {
     git('init', '-q');
     await writeFile(join(dir, 'netlify.toml'), 'old');
@@ -47,6 +48,33 @@ test('revision detection includes removed and renamed files and falls back safel
     assert.equal(cli.stdout, 'pipeline=true\nwindows=true\n');
     assert.deepEqual(scopeFromRevisions('0'.repeat(40), head, dir), { pipeline: true, windows: true });
     assert.deepEqual(scopeFromRevisions('f'.repeat(40), head, dir), { pipeline: true, windows: true });
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('a PR merge excludes unrelated changes already added to the base', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'evz-ci-merge-'));
+  const git = (...args) => gitIn(dir, ...args);
+  const identity = ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'commit.gpgsign=false'];
+  try {
+    git('init', '-q');
+    await writeFile(join(dir, 'README.md'), 'initial');
+    git('add', 'README.md');
+    git(...identity, 'commit', '-qm', 'initial');
+    const baseBranch = git('branch', '--show-current');
+    git('checkout', '-qb', 'task');
+    await writeFile(join(dir, 'README.md'), 'documentation update');
+    git('add', 'README.md');
+    git(...identity, 'commit', '-qm', 'docs');
+    const topic = git('rev-parse', 'HEAD');
+    git('checkout', '-q', baseBranch);
+    await writeFile(join(dir, 'netlify.toml'), 'unrelated base change');
+    git('add', 'netlify.toml');
+    git(...identity, 'commit', '-qm', 'base update');
+    const base = git('rev-parse', 'HEAD');
+    git(...identity, 'merge', '--no-ff', '--no-edit', 'task');
+    const merge = git('rev-parse', 'HEAD');
+    assert.deepEqual(scopeFromRevisions(base, topic, dir), { pipeline: true, windows: true });
+    assert.deepEqual(scopeFromRevisions(base, merge, dir), { pipeline: false, windows: false });
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
