@@ -81,13 +81,13 @@ export function applyMailboxFailure(state,config,f){
  state.mailbox_failure=structuredClone(f);state.revision++;state.updated_at=f.at;return {held:true,reason:f.reason};
 }
 export function mailboxCoverageComplete(state){const s=state.mailbox_sync;return Boolean(s?.phase==='history'&&s.checked_at&&s.pending.length===0&&s.page===null&&s.next_cursor===null&&!s.hold&&!state.mailbox_failure);}
-export async function syncMailboxStep(app,{transport,clockStep}={}){
+export async function syncMailboxStep(app,{transport,clockStep,deadline}={}){
  check(isMailboxCapability(app.store?.manualBinding?.scope.capability),'Exact shared mailbox store required');
  const config=await app.loadConfig(),policy=validateMailboxPolicy(config.mailbox),state=await app.snapshot(),sync=state.mailbox_sync??null;
  const request=expected(sync),before=hash(sync),configuration=hash(config),guard=async()=>{const current=clockStep?(await app.store.envelope()).data:{state:await app.snapshot(),config:await app.loadConfig()};check(hash(current.config)===configuration&&hash(current.state.mailbox_sync??null)===before,'Mailbox source changed during provider read');if(clockStep)assertMailboxClockStep(current.state,current.config,clockStep,app.now().toISOString());};
  const commit=(kind,evidence)=>{
   const options={configFingerprint:configuration,[kind]:evidence};
-  if(clockStep){options.mailboxClockStep=clockStep;options.mailboxClock={type:'settle',actor:'clock',at:evidence.at,input:{...clockStep,outcome:'Held'}};}
+  if(clockStep){options.mailboxClockStep=clockStep;options.mailboxClockDeadline=deadline??Date.parse(state.mailbox_clock?.tick?.deadline_at);options.mailboxClock={type:'settle',actor:'clock',at:evidence.at,input:{...clockStep,outcome:'Held'}};}
   return app.change((s,c)=>{
    if(clockStep)assertMailboxClockStep(s,c,clockStep,app.now().toISOString());
    const result=kind==='mailboxFailure'?applyMailboxFailure(s,c,evidence):applyMailboxObservation(s,c,evidence);
