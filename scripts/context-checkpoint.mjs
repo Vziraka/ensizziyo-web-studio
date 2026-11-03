@@ -258,9 +258,10 @@ export async function readCheckpoint(session, cwd = process.cwd()) {
   try { raw = await regularFile(join(directory, `${current.id}.json`)); }
   catch (error) { if (error.code === 'ENOENT') return { status: 'missing' }; throw error; }
   const record = parseRecord(raw, current);
+  const comparable = [record.branch, record.head, current.branch, current.head].every(value => value !== null);
   return { status: 'available', savedAt: record.savedAt,
     recorded: { branch: record.branch, head: record.head }, current: { branch: current.branch, head: current.head },
-    revisionChanged: record.branch !== current.branch || record.head !== current.head,
+    revisionChanged: comparable ? record.branch !== current.branch || record.head !== current.head : null,
     worktreeChanges: 'not checked', checkpoint: record.checkpoint };
 }
 
@@ -268,12 +269,10 @@ export async function checkpointStatus(session, cwd = process.cwd()) {
   const read = await readCheckpoint(session, cwd);
   if (read.status === 'missing') return read;
   const age = Date.now() - Date.parse(read.savedAt);
-  const comparable = [read.recorded.branch, read.recorded.head, read.current.branch, read.current.head]
-    .every(value => value !== null);
   return { status: 'available', savedAt: read.savedAt,
     ageMinutes: age >= 0 ? Math.floor(age / 60000) : null,
     refreshSuggested: age >= 0 ? age >= 30 * 60000 : null,
-    revisionChanged: comparable ? read.revisionChanged : null, worktreeChanges: 'not checked' };
+    revisionChanged: read.revisionChanged, worktreeChanges: 'not checked' };
 }
 
 async function main() {

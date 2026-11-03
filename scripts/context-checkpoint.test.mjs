@@ -1,6 +1,6 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, unlink, utimes, writeFile } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { basename, delimiter, join, relative } from 'node:path';
@@ -127,6 +127,33 @@ test('status reports an unavailable Git revision comparison as unknown', async (
   git(unborn, ['init', '-q']);
   assert.equal(parsed(run(unborn, ['save', 'unborn-session'], fixture)).status, 'saved');
   assert.equal(parsed(run(unborn, ['status', 'unborn-session'])).revisionChanged, null);
+  assert.equal(parsed(run(unborn, ['read', 'unborn-session'])).revisionChanged, null);
+});
+
+test('checkpoint reads do not run configured Git clean filters', async () => {
+  const project = join(base, 'filter status project');
+  await mkdir(project);
+  git(project, ['init', '-q']);
+  const filter = join(project, '.git', 'hooks', 'fictional-filter.cjs');
+  const marker = join(project, 'fictional-filter-marker');
+  await writeFile(filter, "const fs = require('node:fs'); const content = fs.readFileSync(0); fs.writeFileSync('fictional-filter-marker', content); process.stdout.write(content);\n");
+  git(project, ['config', 'filter.fictional.clean', `"${process.execPath.replaceAll('\\', '/')}" .git/hooks/fictional-filter.cjs`]);
+  await writeFile(join(project, '.gitattributes'), 'tracked.txt filter=fictional\n');
+  const tracked = join(project, 'tracked.txt');
+  await writeFile(tracked, 'original fictional content\n');
+  git(project, ['add', '.gitattributes', 'tracked.txt']);
+  git(project, ['-c', 'user.name=Fictional Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'initial']);
+  await unlink(marker);
+  parsed(run(project, ['save', 'filter-session'], fixture));
+  await writeFile(tracked, 'modified fictional content\n');
+  const later = new Date(Date.now() + 5000);
+  await utimes(tracked, later, later);
+  git(project, ['status', '--porcelain=v1']);
+  assert.equal(await readFile(marker, 'utf8'), 'modified fictional content\n');
+  await unlink(marker);
+  parsed(run(project, ['read', 'filter-session']));
+  parsed(run(project, ['status', 'filter-session']));
+  await assert.rejects(lstat(marker), { code: 'ENOENT' });
 });
 
 test('different sessions and worktrees cannot select each other’s record', () => {
