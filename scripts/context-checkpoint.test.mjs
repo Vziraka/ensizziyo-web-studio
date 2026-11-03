@@ -1,6 +1,6 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, unlink, utimes, writeFile } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { basename, delimiter, join, relative } from 'node:path';
@@ -130,63 +130,29 @@ test('status reports an unavailable Git revision comparison as unknown', async (
   assert.equal(parsed(run(unborn, ['read', 'unborn-session'])).revisionChanged, null);
 });
 
-test('checkpoint read and status expose current worktree state without names or contents', async () => {
-  const project = join(base, 'worktree status project');
+test('checkpoint reads do not run configured Git clean filters', async () => {
+  const project = join(base, 'filter status project');
   await mkdir(project);
   git(project, ['init', '-q']);
-  git(project, ['-c', 'user.name=Fictional Test', '-c', 'user.email=test@example.invalid', 'commit', '--allow-empty', '-qm', 'initial']);
-  parsed(run(project, ['save', 'status-session'], fixture));
-  assert.equal(parsed(run(project, ['status', 'status-session'])).currentWorktree, 'no-visible-changes');
-  assert.equal(parsed(run(project, ['read', 'status-session'])).currentWorktree, 'no-visible-changes');
-
-  const filename = 'fictional-private-filename.txt';
-  const contents = 'fictional-private-file-contents';
-  await writeFile(join(project, filename), contents);
-  for (const command of ['status', 'read']) {
-    const result = run(project, [command, 'status-session']);
-    const state = parsed(result);
-    assert.equal(state.currentWorktree, 'changes-present');
-    assert.equal(state.revisionChanged, false);
-    assert.equal(state.worktreeChanges, 'not checked');
-    assert.equal(result.stdout.includes(filename), false);
-    assert.equal(result.stdout.includes(contents), false);
-  }
-  git(project, ['add', filename]);
-  assert.equal(parsed(run(project, ['status', 'status-session'])).currentWorktree, 'changes-present');
-  git(project, ['-c', 'user.name=Fictional Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'tracked']);
-  await writeFile(join(project, filename), 'modified fictional file');
-  assert.equal(parsed(run(project, ['status', 'status-session'])).currentWorktree, 'changes-present');
-});
-
-test('checkpoint status reports unknown if the worktree cannot be inspected', async () => {
-  const project = join(base, 'unreadable worktree status');
-  await mkdir(project);
-  git(project, ['init', '-q']);
-  git(project, ['-c', 'user.name=Fictional Test', '-c', 'user.email=test@example.invalid', 'commit', '--allow-empty', '-qm', 'initial']);
-  parsed(run(project, ['save', 'status-error-session'], fixture));
-  await writeFile(join(project, '.git', 'index'), 'fictional corrupt index');
-  assert.equal(parsed(run(project, ['status', 'status-error-session'])).currentWorktree, 'unknown');
-  assert.equal(parsed(run(project, ['read', 'status-error-session'])).currentWorktree, 'unknown');
-});
-
-test('worktree status ignores ignored files and does not run a configured fsmonitor hook', async () => {
-  const project = join(base, 'ignored worktree status');
-  await mkdir(project);
-  git(project, ['init', '-q']);
-  await writeFile(join(project, '.gitignore'), 'ignored-fictional.txt\n');
-  git(project, ['add', '.gitignore']);
+  const filter = join(project, '.git', 'hooks', 'fictional-filter.cjs');
+  const marker = join(project, 'fictional-filter-marker');
+  await writeFile(filter, "const fs = require('node:fs'); const content = fs.readFileSync(0); fs.writeFileSync('fictional-filter-marker', content); process.stdout.write(content);\n");
+  git(project, ['config', 'filter.fictional.clean', `"${process.execPath.replaceAll('\\', '/')}" .git/hooks/fictional-filter.cjs`]);
+  await writeFile(join(project, '.gitattributes'), 'tracked.txt filter=fictional\n');
+  const tracked = join(project, 'tracked.txt');
+  await writeFile(tracked, 'original fictional content\n');
+  git(project, ['add', '.gitattributes', 'tracked.txt']);
   git(project, ['-c', 'user.name=Fictional Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'initial']);
-  parsed(run(project, ['save', 'ignored-status-session'], fixture));
-  await writeFile(join(project, 'ignored-fictional.txt'), 'ignored fictional content');
-  const hook = join(project, '.git', 'hooks', 'fictional-fsmonitor');
-  const marker = join(project, 'fsmonitor-was-invoked');
-  await writeFile(hook, '#!/bin/sh\nprintf invoked > fsmonitor-was-invoked\n');
-  await chmod(hook, 0o700);
-  git(project, ['config', 'core.fsmonitor', '.git/hooks/fictional-fsmonitor']);
-  git(project, ['status', '--porcelain']);
-  assert.equal(await readFile(marker, 'utf8'), 'invoked');
   await unlink(marker);
-  assert.equal(parsed(run(project, ['status', 'ignored-status-session'])).currentWorktree, 'no-visible-changes');
+  parsed(run(project, ['save', 'filter-session'], fixture));
+  await writeFile(tracked, 'modified fictional content\n');
+  const later = new Date(Date.now() + 5000);
+  await utimes(tracked, later, later);
+  git(project, ['status', '--porcelain=v1']);
+  assert.equal(await readFile(marker, 'utf8'), 'modified fictional content\n');
+  await unlink(marker);
+  parsed(run(project, ['read', 'filter-session']));
+  parsed(run(project, ['status', 'filter-session']));
   await assert.rejects(lstat(marker), { code: 'ENOENT' });
 });
 

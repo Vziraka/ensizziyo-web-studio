@@ -146,18 +146,12 @@ async function privateDirectory(create) {
   return directory;
 }
 
-function git(cwd, args, timeout) {
+function git(cwd, args) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !/^GIT_/i.test(name)));
   const result = spawnSync(gitExecutable(), ['-C', cwd, ...args], {
-    encoding: 'utf8', windowsHide: true, env, cwd: trustedWorkingDirectory(), timeout,
+    encoding: 'utf8', windowsHide: true, env, cwd: trustedWorkingDirectory(),
   });
   return result.status === 0 ? result.stdout.trim() : null;
-}
-
-function currentWorktree(cwd) {
-  const status = git(cwd, ['--no-optional-locks', '--no-lazy-fetch', '-c', 'core.fsmonitor=false',
-    'status', '--porcelain=v1', '--untracked-files=normal', '--ignore-submodules=none'], 10000);
-  return status === null ? 'unknown' : status ? 'changes-present' : 'no-visible-changes';
 }
 
 async function identity(session, cwd) {
@@ -268,7 +262,7 @@ export async function readCheckpoint(session, cwd = process.cwd()) {
   return { status: 'available', savedAt: record.savedAt,
     recorded: { branch: record.branch, head: record.head }, current: { branch: current.branch, head: current.head },
     revisionChanged: comparable ? record.branch !== current.branch || record.head !== current.head : null,
-    currentWorktree: currentWorktree(cwd), worktreeChanges: 'not checked', checkpoint: record.checkpoint };
+    worktreeChanges: 'not checked', checkpoint: record.checkpoint };
 }
 
 export async function checkpointStatus(session, cwd = process.cwd()) {
@@ -278,8 +272,7 @@ export async function checkpointStatus(session, cwd = process.cwd()) {
   return { status: 'available', savedAt: read.savedAt,
     ageMinutes: age >= 0 ? Math.floor(age / 60000) : null,
     refreshSuggested: age >= 0 ? age >= 30 * 60000 : null,
-    revisionChanged: read.revisionChanged,
-    currentWorktree: read.currentWorktree, worktreeChanges: 'not checked' };
+    revisionChanged: read.revisionChanged, worktreeChanges: 'not checked' };
 }
 
 async function main() {

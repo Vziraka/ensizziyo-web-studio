@@ -1,13 +1,13 @@
 # Launch tasks
 
-## Checkpoint worktree visibility — November 3, 2026
+## Checkpoint revision uncertainty — November 3, 2026
 
 The owner asked to continue the workflow reliability work without the usual included-usage reserve for this continuation. No paid overage, account-setting change or live desk operation follows. The separate handover chat continues to own its active cutover.
 
-- [ ] Report the present Git-visible worktree state on checkpoint read and metadata-only status without exposing file names or contents. Distinguish an unavailable status from a clean result and do not imply comparison with the state at save time.
-- [ ] Make both read and status report an unknown revision comparison when the recorded or current revision cannot be checked.
-- [ ] Test clean, untracked, staged, modified and unavailable states with fictional repositories; preserve existing checkpoint privacy and identity checks.
+- [x] Make both read and status report an unknown revision comparison when the recorded or current revision cannot be checked; preserve existing checkpoint privacy and identity checks.
 - [ ] Review the exact change independently, run affected checks and required CI, and record its limitations. Model-based recovery remains held by the separate isolation protocol.
+
+The fictional missing-revision case first reproduced `read` reporting an unchanged revision when the comparison was unavailable; the corrected read and existing status now both return null. An initial candidate also ran Git status to expose present worktree changes. Independent engineering review reproduced a configured clean filter receiving a fictional modified file's contents during that status call. The candidate was withdrawn; checkpoint reads and status still do not inspect the working tree, and a fictional filter regression protects that limit. Manually reconcile existing changes as the workflow requires. The finding does not establish that this repository has such a filter configured.
 
 ## Checkpoint visibility and learning follow-up — November 3, 2026
 
