@@ -42,6 +42,8 @@ The checkpoint tool uses Git from standard system locations and the Windows syst
 
 Records are bound to the canonical worktree and session and written through an exclusive lock and same-directory temporary file. A failure before replacement leaves the previous complete record in place; an interruption after replacement may leave the new record. Power-loss durability is not established. If a process stops while holding a lock, verify that all potential writers are stopped and recheck the same lock and token before removing it. A PID is only a clue and the lock may be empty or incomplete if creation was interrupted. The tool never deletes a competing or stale lock automatically. Disable the hook through normal controls when rolling back. To remove the workflow entirely, remove its workflow pointer and the verified hook definition from the actual discovery source, including any separate primary-checkout copy; preserve unrelated files. Saved checkpoints remain.
 
+On Windows, an elevated process can create files with a default owner different from the current user. Before writing checkpoint content, the tool initializes the owner of its newly and exclusively created empty temporary file to the current user, then applies the same strict ownership and ACL checks. It never repairs an existing checkpoint's owner or accepts an extra grant. This addresses the default-owner behavior observed in a synthetic GitHub-hosted Windows diagnostic; it does not change the recovery isolation hold.
+
 ## Verification and limits
 
 The [current recovery isolation protocol](recovery-isolation-protocol.md) owns the next-test gates and November 2 host inspection. Recovery inference is held until prevention is established; the historical outcomes below remain unchanged.

@@ -1,4 +1,4 @@
-name: Studio site checks
+name: Studio checks
 
 on:
   pull_request:
@@ -9,7 +9,25 @@ permissions:
   contents: read
 
 jobs:
-  site-checks:
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      pipeline: ${{ steps.changes.outputs.pipeline }}
+      windows: ${{ steps.changes.outputs.windows }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - id: changes
+        env:
+          CI_BASE_REVISION: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          CI_HEAD_REVISION: ${{ github.sha }}
+        run: node scripts/ci-gate.mjs scope >> "$GITHUB_OUTPUT"
+
+  site:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -20,5 +38,58 @@ jobs:
       - run: node --check scripts/fixtures/voice-widget.js
       - run: node scripts/build-site.mjs
       - run: node scripts/verify-site.mjs
-      - run: node --test scripts/inquiry.test.mjs scripts/voice-demo.test.mjs
+      - run: node --test scripts/inquiry.test.mjs scripts/voice-demo.test.mjs scripts/ci-gate.test.mjs
       - run: node --test scripts/context-handoff-pilot.test.mjs scripts/context-handoff-evidence.test.mjs scripts/context-checkpoint.test.mjs
+
+  pipeline:
+    needs: scope
+    if: needs.scope.outputs.pipeline == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: pipeline/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run check
+      - run: node --test ../scripts/studio-context.test.mjs ../scripts/build-desk-assets.test.mjs
+      - run: npm test
+
+  windows:
+    needs: scope
+    if: needs.scope.outputs.windows == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: pipeline/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: pipeline
+      - run: node --test scripts/context-checkpoint.test.mjs pipeline/service-host.test.mjs
+
+  # Keep the existing required check name. Failure, cancellation and unintended skips fail closed.
+  site-checks:
+    if: ${{ always() }}
+    needs: [scope, site, pipeline, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          SITE_RESULT: ${{ needs.site.result }}
+          PIPELINE_REQUIRED: ${{ needs.scope.outputs.pipeline }}
+          PIPELINE_RESULT: ${{ needs.pipeline.result }}
+          WINDOWS_REQUIRED: ${{ needs.scope.outputs.windows }}
+          WINDOWS_RESULT: ${{ needs.windows.result }}
+        run: node scripts/ci-gate.mjs verify
