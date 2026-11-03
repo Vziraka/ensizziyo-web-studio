@@ -1,5 +1,22 @@
 # Launch tasks
 
+## Workflow reliability and handoffs — November 3, 2026
+
+The owner approved implementing the reviewed improvements and asked that existing skills and instructions be tested against independent evidence rather than treated as proof. The goal is a dependable, economical workflow across EVZ projects, starting here, while preserving the full operations-desk scope, existing work and all client/provider restrictions.
+
+- [ ] Make current status, authoritative sources and handoff instructions easy to find; preserve dated history and distinguish recorded from freshly verified state.
+- [ ] Improve milestone checkpoints and task-based skill/tool routing; verify real behavior where supported and state recovery/discovery limitations honestly.
+- [x] Review the desk's critical journey and release/recovery process for evidence-backed simplifications without duplicating the active handover work.
+- [ ] Close identified CI gaps, evaluate test redundancy and keep checks proportional to the affected behavior.
+- [x] Evaluate model and subagent selection using the existing task-matched policy, retaining user-selected defaults and the existing allowance reserve.
+- [ ] Obtain the applicable independent reviews, run affected checks and record exact results and remaining limitations.
+
+Use one integration owner for this change. The separate operations-handover chat has its own task and may continue independently; reconcile live state and avoid competing writes. No new customer action, deployment, purchase or model-default change follows from this workflow task.
+
+Checkpoint, November 3, 05:50 UTC: integration is in `C:\Users\zvent\.codex\worktrees\evz-workflow-reliability\ensizziyo-web-studio` on `codex/workflow-reliability`, based on `ad91e8f`; the working tree has uncommitted workflow, CI and documentation changes. Two read-only evidence reviewers inspected CI and handoff behavior. Local Windows checks passed for the checkpoint, service lock and hosted bundle; the new CI gate's initial cases passed. The required hosted check, full affected checks and independent final reviews remain open. The session checkpoint is manual and automatic recovery is not established. Continue by checking the CI design and remaining task criteria, then obtain the required reviews; reconcile the separate active handover's live state before making any claim about it.
+
+Review evidence: the November 2 recorded release checkpoint still calls for a controlled task-to-approved-reply journey and teammate/device verification; a separate active handover may have advanced it. Fictional tests cover proposal adoption, exact approvals and uncertain or duplicate delivery, but do not prove that hosted journey. At base `ad91e8f`, the pipeline has 140 test files; the last reviewed CI run reported 1,541 cases and took about 19 minutes. The sampled cases protect different failure modes, so no test was removed without evidence of equivalent coverage. The central lifecycle module is large (about 93 KiB), which warrants focused review as changes touch it, not an unverified rewrite. The candidate CI narrows expensive checks by affected paths while retaining the full suite for relevant changes. No model default, route or budget was changed; the CLI discovery preview and its limits are in [the evaluation record](docs/agent-workflow-evaluation.md).
+
 ## Production mailbox clock packaging - November 3, 2026
 
 Add an explicit closed production entry around the existing clock and owner-mailbox OAuth runtime. [Package interface and limits](pipeline/MAILBOX-CLOCK.md#explicit-production-package) own immutable binding/policy/window, credential projection and emitted schedule behavior. Parent coordinates the separate private release recipe; source work authorizes no live service, send or activation.

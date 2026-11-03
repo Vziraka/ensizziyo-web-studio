@@ -157,7 +157,7 @@ Avoid deleting or combining tests based only on overlap in source names. Retire 
 
 From `pipeline/`, the documented repository checks are `npm run check` and `npm test`. Focused current contracts include `node --test project-work.test.mjs shared-operations-records.test.mjs shared-manual-internal-dispatch.test.mjs shared-operations-exact-mail.test.mjs`; add `shared-operations-pdf-mail.test.mjs` only if that separate caller is in scope. These commands are recommendations for implementation verification, not results claimed here.
 
-`.github/workflows/research-proof.yml` uses Node 24, installs locked dependencies with `npm ci --ignore-scripts`, then runs `npm run check` and `npm test` in `pipeline/`. `.github/workflows/site-check.yml` covers the public site build/checks separately. Update executable docs/CI only if the actual test command or affected behavior changes.
+`.github/workflows/site-check.yml` runs the public site checks and, for relevant changes, the pipeline's Node 24 `npm ci --ignore-scripts`, `npm run check` and `npm test`, plus the hosted-bundle and Windows-specific checks. Its `site-checks` aggregate reports the applicable results under the existing required-check name. The former `research-proof.yml` ran the pipeline separately and was not required by branch protection. Update executable docs/CI when the actual test command or affected behavior changes.
 
 ## Later-stage gates
 

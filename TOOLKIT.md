@@ -1,5 +1,22 @@
 # Task-based tool catalog
 
+## Quick routing
+
+Start with the row that matches the task, then read only its relevant guidance and check which tools actually exist in this session. The [selection guide](#selection-guide) and [detailed references](#detailed-workflow-references) below retain the wider catalog and adoption history.
+
+Skills are testable instructions, not evidence that a method improved the result. Compare material recommendations with the task, observed behavior and independent sources. Prefer an existing focused capability; evaluate a change before relying on it, including a nearby case where it should not activate. Do not infer automatic discovery from a link or self-reported use.
+
+| Task | Start here |
+| --- | --- |
+| Substantial planning or design | [Studio grilling](.agents/skills/studio-grilling/SKILL.md), current task/brief and affected work. |
+| Implementation, bug or runtime check | [WORKFLOW.md](WORKFLOW.md) and the relevant selection-guide row; use available tools suited to the change. |
+| Substantial operations change or broad audit | [Review and PR evidence](WORKFLOW.md#review-and-pr-evidence); choose available reviewers and task-specific tools. |
+| Create, improve or evaluate an EVZ skill | [Skill lifecycle](docs/studio-workflow.md#model-updates-and-learned-procedures), the installed `skill-creator` when available, and [skill evaluation cases](docs/agent-workflow-evaluation.md). |
+| Context, compaction or handoff | [Context and long-running work](WORKFLOW.md#context-and-long-running-work), [session checkpoints](docs/context-checkpoint.md), and [handoff](WORKSPACE.md#work-and-codex-handoff). |
+| Model selection or releases | [Subagent routing pilot](docs/model-review.md#subagent-routing-pilot) and [studio model review](.agents/skills/studio-model-review/SKILL.md); use evaluated, task-appropriate choices where the host supports them. |
+
+## Dated task checkpoints
+
 November 3 production clock packaging: reuse Node24, the existing Blobs11.1.6 SDK, typed clock/CAS and encrypted Google OAuth handler. Read installed Netlify Functions guidance for emitted scheduled-handler/context semantics and the existing frozen production desk wrapper for closed OAuth identity/environment projection; do not alter that private recipe. No dependency, service, credential or schedule installation. Fictional emitted-byte/default-SDK tests and activation limits are in [the clock contract](pipeline/MAILBOX-CLOCK.md#explicit-production-package).
 
 November 2 clock history: reuse the current clock ledger, signed manual handlers, typed conditional store, complete backup/inert snapshot and the work/delivery rebind UI pattern. Explicit [policy2 history](pipeline/MAILBOX-CLOCK.md#retained-history-and-signed-rebind) preserves charges and retired receipts; no new service, database, dependency or schedule is introduced. Read installed Netlify Blobs guidance/coding context and the official [conditional-write/strong-read API](https://docs.netlify.com/build/data-and-storage/netlify-blobs/) before the final SDK guard tests. Existing namespace isolation and no-retry CAS remain authoritative; actual production migration, finite hosting and activation require separate review.
@@ -11,21 +28,6 @@ November 1 native notification source: reuse the signed manual workspace/CAS, sa
 November 1 existing PDFs: reuse signed sessions, the existing original manifest/chunk store, closed manual replay, reply catalogue and complete G1. Read the [bounded contract](pipeline/OPERATIONS-EXISTING-PDFS.md), installed Ponytail/frontend-testing/PDF guidance and the linked upstream integration/TDD references. No dependency, provider grant, authoring or runtime activation is added. Browser plugin absent; bundled Playwright and Poppler verify synthetic owner/friend access and rendering.
 
 November 1 discovery context repair: reuse the existing source/verification/opening validators, emitted worker context, immutable artifacts and typed canonical submit/review/import transitions. The [caller contract](pipeline/CLOUD-DISCOVERY.md#worker-context-contract) exposes matching shapes/enums/bounds and truthful unspecified-engine provenance. Existing installed dependencies are reused; no installation, provider, role, quota, claim or runtime activation changes.
-
-## Quick routing
-
-Start with the row that matches the task, then read only its relevant guidance and check which tools actually exist in this session. The [selection guide](#selection-guide) and [detailed references](#detailed-workflow-references) below retain the wider catalog and adoption history.
-
-| Task | Start here |
-| --- | --- |
-| Substantial planning or design | [Studio grilling](.agents/skills/studio-grilling/SKILL.md), current task/brief and affected work. |
-| Implementation, bug or runtime check | [WORKFLOW.md](WORKFLOW.md) and the relevant selection-guide row; use available tools suited to the change. |
-| Substantial operations change or broad audit | [Review and PR evidence](WORKFLOW.md#review-and-pr-evidence); choose available reviewers and task-specific tools. |
-| Create, improve or evaluate an EVZ skill | [Skill lifecycle](docs/studio-workflow.md#model-updates-and-learned-procedures), the installed `skill-creator` when available, and [skill evaluation cases](docs/agent-workflow-evaluation.md). |
-| Context, compaction or handoff | [Context and long-running work](WORKFLOW.md#context-and-long-running-work), [session checkpoints](docs/context-checkpoint.md), and [handoff](WORKSPACE.md#work-and-codex-handoff). |
-| Model selection or releases | [Subagent routing pilot](docs/model-review.md#subagent-routing-pilot) and [studio model review](.agents/skills/studio-model-review/SKILL.md); use evaluated, task-appropriate choices where the host supports them. |
-
-## Historical checkpoints
 
 November 1 fictional Sites evaluation: used bundled Sites 1.1.2 guidance and its Vinext starter in an isolated proof directory, with starter-locked dependencies, D1 storage, trusted ChatGPT identity and a narrowly scoped MCP writer. No runtime inference or paid API was added. Hosted deployment and owner/browser/MCP readback passed; [current release gates](TASKS.md#operations-release--november-1-2026) distinguish pending second-user, cloud-run, provider and capacity evidence. Native Gmail and Drive tools now verify the business identity. Gmail supports an explicit from_address, but exposes no send-as settings reader in this session; a historical alias header is not fresh delivery acceptance. The proof's tool cannot send mail, edit drafts or grant approval.
 
