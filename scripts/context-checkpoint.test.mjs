@@ -127,6 +127,67 @@ test('status reports an unavailable Git revision comparison as unknown', async (
   git(unborn, ['init', '-q']);
   assert.equal(parsed(run(unborn, ['save', 'unborn-session'], fixture)).status, 'saved');
   assert.equal(parsed(run(unborn, ['status', 'unborn-session'])).revisionChanged, null);
+  assert.equal(parsed(run(unborn, ['read', 'unborn-session'])).revisionChanged, null);
+});
+
+test('checkpoint read and status expose current worktree state without names or contents', async () => {
+  const project = join(base, 'worktree status project');
+  await mkdir(project);
+  git(project, ['init', '-q']);
+  git(project, ['-c', 'user.name=Fictional Test', '-c', 'user.email=test@example.invalid', 'commit', '--allow-empty', '-qm', 'initial']);
+  parsed(run(project, ['save', 'status-session'], fixture));
+  assert.equal(parsed(run(project, ['status', 'status-session'])).currentWorktree, 'no-visible-changes');
+  assert.equal(parsed(run(project, ['read', 'status-session'])).currentWorktree, 'no-visible-changes');
+
+  const filename = 'fictional-private-filename.txt';
+  const contents = 'fictional-private-file-contents';
+  await writeFile(join(project, filename), contents);
+  for (const command of ['status', 'read']) {
+    const result = run(project, [command, 'status-session']);
+    const state = parsed(result);
+    assert.equal(state.currentWorktree, 'changes-present');
+    assert.equal(state.revisionChanged, false);
+    assert.equal(state.worktreeChanges, 'not checked');
+    assert.equal(result.stdout.includes(filename), false);
+    assert.equal(result.stdout.includes(contents), false);
+  }
+  git(project, ['add', filename]);
+  assert.equal(parsed(run(project, ['status', 'status-session'])).currentWorktree, 'changes-present');
+  git(project, ['-c', 'user.name=Fictional Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'tracked']);
+  await writeFile(join(project, filename), 'modified fictional file');
+  assert.equal(parsed(run(project, ['status', 'status-session'])).currentWorktree, 'changes-present');
+});
+
+test('checkpoint status reports unknown if the worktree cannot be inspected', async () => {
+  const project = join(base, 'unreadable worktree status');
+  await mkdir(project);
+  git(project, ['init', '-q']);
+  git(project, ['-c', 'user.name=Fictional Test', '-c', 'user.email=test@example.invalid', 'commit', '--allow-empty', '-qm', 'initial']);
+  parsed(run(project, ['save', 'status-error-session'], fixture));
+  await writeFile(join(project, '.git', 'index'), 'fictional corrupt index');
+  assert.equal(parsed(run(project, ['status', 'status-error-session'])).currentWorktree, 'unknown');
+  assert.equal(parsed(run(project, ['read', 'status-error-session'])).currentWorktree, 'unknown');
+});
+
+test('worktree status ignores ignored files and does not run a configured fsmonitor hook', async () => {
+  const project = join(base, 'ignored worktree status');
+  await mkdir(project);
+  git(project, ['init', '-q']);
+  await writeFile(join(project, '.gitignore'), 'ignored-fictional.txt\n');
+  git(project, ['add', '.gitignore']);
+  git(project, ['-c', 'user.name=Fictional Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'initial']);
+  parsed(run(project, ['save', 'ignored-status-session'], fixture));
+  await writeFile(join(project, 'ignored-fictional.txt'), 'ignored fictional content');
+  const hook = join(project, '.git', 'hooks', 'fictional-fsmonitor');
+  const marker = join(project, 'fsmonitor-was-invoked');
+  await writeFile(hook, '#!/bin/sh\nprintf invoked > fsmonitor-was-invoked\n');
+  await chmod(hook, 0o700);
+  git(project, ['config', 'core.fsmonitor', '.git/hooks/fictional-fsmonitor']);
+  git(project, ['status', '--porcelain']);
+  assert.equal(await readFile(marker, 'utf8'), 'invoked');
+  await unlink(marker);
+  assert.equal(parsed(run(project, ['status', 'ignored-status-session'])).currentWorktree, 'no-visible-changes');
+  await assert.rejects(lstat(marker), { code: 'ENOENT' });
 });
 
 test('different sessions and worktrees cannot select each other’s record', () => {

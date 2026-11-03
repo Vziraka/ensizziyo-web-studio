@@ -1,5 +1,14 @@
 # Launch tasks
 
+## Checkpoint worktree visibility — November 3, 2026
+
+The owner asked to continue the workflow reliability work without the usual included-usage reserve for this continuation. No paid overage, account-setting change or live desk operation follows. The separate handover chat continues to own its active cutover.
+
+- [ ] Report the present Git-visible worktree state on checkpoint read and metadata-only status without exposing file names or contents. Distinguish an unavailable status from a clean result and do not imply comparison with the state at save time.
+- [ ] Make both read and status report an unknown revision comparison when the recorded or current revision cannot be checked.
+- [ ] Test clean, untracked, staged, modified and unavailable states with fictional repositories; preserve existing checkpoint privacy and identity checks.
+- [ ] Review the exact change independently, run affected checks and required CI, and record its limitations. Model-based recovery remains held by the separate isolation protocol.
+
 ## Checkpoint visibility and learning follow-up — November 3, 2026
 
 The owner authorized completing the workflow improvements and a temporary exception to the normal 30% included-usage reserve for this task; the normal reserve resumes afterward. Preserve existing account settings and do not use paid overage. The separate operations-handover chat owns its active cutover; inspect its reported outcome and evidence without competing writes.
