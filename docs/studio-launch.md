@@ -71,6 +71,8 @@ This is practical CI/CD and Git-managed deployment configuration. A Kubernetes p
 3. Name.com web DNS, `www` redirect and HTTPS passed without changing Google's MX/SPF. The apex and Netlify production URL return 200 without login; the reviewed PR preview returns 401. `X-Robots-Tag: noindex, nofollow` remains. The published and prior deploy permalinks above are rollback references.
 4. Netlify shows **production Public** and **Deploy Previews Private**. A synthetic inquiry submitted from an unauthenticated browser reached the completion page and matching Verified fields. The owner approved permanent deletion of all synthetic submissions. If the live site fails, return production to Private or restore the recorded previous deploy; recheck URLs and form storage afterward.
 
+<a id="public-release-checks"></a>
+
 ## Full indexed launch and inbox cutover checks
 
 1. The approved domain is registered, its contact verified and its processed invoice confirms a $0.00 first-year total. Website DNS and HTTPS work. Workspace domain verification, Gmail activation and public MX/SPF resolution passed. Enable two-step verification for the Name.com account; verify the business inbox, set up DKIM after Google's 24–72-hour key-generation window, then introduce DMARC after SPF/DKIM have authenticated mail for at least 48 hours ([DKIM](https://support.google.com/a/answer/174124), [DMARC rollout](https://support.google.com/a/answer/10032473)). Monitor the displayed $74.99 renewal price before auto-renewal. The preliminary name screen above is not comprehensive trademark clearance.

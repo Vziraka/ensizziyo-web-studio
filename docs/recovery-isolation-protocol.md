@@ -10,6 +10,8 @@ Keep the current reminder hook unchanged. It neither authors a checkpoint nor es
 
 The previous harness's dynamic-tool callback could reject an unexpected client-handled request, but the built-in resource listing executed inside the server before the observer could stop it. Therefore, more prompt instructions, an empty returned list, disabled configured MCP servers, or faster observation cannot repair that boundary. Do not use `mcpServerStatus/list` to prove isolation: it may initiate discovery and its filtered results do not describe every possible connection.
 
+November 3 follow-up: the installed CLI still reports 0.166.0. Current [official permission documentation](https://learn.chatgpt.com/docs/permissions) says local command sandbox profiles do not by themselves govern connectors, MCP servers, hosted search or browser/computer-use surfaces. This does not establish the preventive boundary required below. No new recovery inference ran, and the current reminder hook remains unchanged.
+
 ## Gates before another model call
 
 1. **Freeze a new candidate.** Bind the executable/version, harness and contract hashes, effective process/session configuration, actual hook discovery source and hash, permitted tool identity/arguments, fictional fixture and expected outcomes. Preserve old artifacts. Reconcile the current worktree and instructions. Use a fresh output location with exclusive creation and private permissions. Require separate independent requirements and engineering reviews of this exact candidate, including source evidence for enforcement.
