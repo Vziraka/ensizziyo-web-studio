@@ -13,7 +13,9 @@ import {gmailScopes} from './google-hosted-transport.mjs';
 import {mailboxProfile} from './mailbox-intake.mjs';
 import {exportManualBackup,prepareManualWorkspace,installManualWorkspace} from './shared-manual-records.mjs';
 import {readLifecycleBackup,restoreLifecycleBackup} from './lifecycle-backup.mjs';
-import {applyMailboxDeliveryTransition,mailboxDeliveryIntentId} from './mailbox-delivery.mjs';
+import {applyMailboxDeliveryTransition,mailboxDeliveryIntentId,mailboxDeliveryPackage} from './mailbox-delivery.mjs';
+import {replyDraftContent} from './reply-content.mjs';
+import {emailDraftReviewBinding} from './email-draft-policy.mjs';
 import {mailboxDeliveryCommand,dispatchMailboxDelivery,reconcileMailboxDelivery} from './mailbox-delivery-service.mjs';
 import {mailboxMimeStore} from './mailbox-mime-store.mjs';
 import {composeExactMail,googleHostedTransport} from './google-hosted-transport.mjs';
@@ -25,6 +27,73 @@ const credential='ab'.repeat(32),leaseSecret='cd'.repeat(32),gateway={site:{id:'
 function memory(){const objects=new Map();let version=0;return {objects,async getWithMetadata(k,o){const e=objects.get(k);return e?{data:o.type==='json'?JSON.parse(e.bytes):Uint8Array.from(e.bytes).buffer,etag:e.etag}:null;},async set(k,bytes,o){const prior=objects.get(k);if(o.onlyIfNew&&prior||o.onlyIfMatch!==undefined&&o.onlyIfMatch!==prior?.etag)return {modified:false};const etag=String(++version);objects.set(k,{bytes:Buffer.from(bytes),etag});return {modified:true,etag};},async setJSON(k,value,o){return this.set(k,Buffer.from(JSON.stringify(value)),o);}};}
 
 async function approve(f,project){const r=(await f.store.snapshot()).prospects[project];await f.okay(await f.owner('/api/event',{revision:await f.revision(),event:{id:'draft-'+project,type:'reply_draft_saved',prospect_id:project,at:f.now().toISOString(),data:{source_id:r.reply.source_id,reply_sha256:hash(r.reply),source_sha256:r.reply.content.source_sha256,body:'Thanks for this controlled inquiry.'}}}));const draft=(await f.store.snapshot()).prospects[project].reply_draft;await f.okay(await f.owner('/api/event',{revision:await f.revision(),event:{id:'content-'+project,type:'reply_draft_approved',prospect_id:project,at:f.now().toISOString(),data:{sha256:draft.sha256,approved:true,facts_checked:true}}}));const p=await f.command('mailbox-delivery','package',{kind:'reply',project_id:project});return f.command('mailbox-delivery','approve',{revision:await f.revision(),kind:'reply',project_id:project,package_sha256:p.sha256});}
+
+async function reserveUnclaimed(f){
+ await f.grant('mailbox-delivery','one-send');await f.command('mailbox-delivery','pause',{revision:await f.revision(),paused:false,reason:'Fictional delivery proof'});
+ const approval=await approve(f,'one'),state=await f.store.snapshot(),a=state.mailbox_delivery.approvals[approval.approval_id],id=mailboxDeliveryIntentId(state,a),wire=composeExactMail(a.package,id,f.now().toISOString()),mime=await mailboxMimeStore(f.raw).put(wire.raw);
+ const tr={type:'reserve',actor:'delivery',at:f.now().toISOString(),input:{revision:state.revision,approval_id:a.id,mime:{reference:'mailbox-mime/'+mime.sha256,...mime,message_id:wire.message_id}}};
+ await f.app.change((s,c)=>applyMailboxDeliveryTransition(s,c,tr),{mailboxDelivery:tr,configFingerprint:hash(f.app.config),mailboxDeliveryDeadline:+f.now()+25000});
+ return {approval,id};
+}
+
+test('an unclaimed permanent reservation reports that no claim is recorded and remains unresolved',async t=>{
+ const f=await fixture(t),{approval,id}=await reserveUnclaimed(f),result=await dispatchMailboxDelivery(f.app,approval.approval_id,{actor:'owner'});
+ assert.equal(result.id,id);assert.equal(result.status,'Reserved');assert.equal(result.unclaimed,true);assert.equal(result.unresolved,true);assert.equal(result.readback_required,false);assert.equal(result.retry_permitted,false);
+ await assert.rejects(reconcileMailboxDelivery(f.app,id,{actor:'owner'}),/claimed intent/);
+ const state=await f.store.snapshot();assert.equal(state.mailbox_delivery.intents[id].claimed_at,null);assert.equal(state.mailbox_delivery.allowances['one-send'].used_intents,1);assert.equal(f.sent.length,0);
+});
+
+test('renewable delivery records a post-claim hold when its provider response is lost before the deadline',async t=>{
+ const f=await fixture(t);await f.grant('mailbox-delivery','one-send');await f.command('mailbox-delivery','pause',{revision:await f.revision(),paused:false,reason:'Fictional delivery proof'});const approval=await approve(f,'one');
+ f.control.sendLoss=true;const result=await f.command('mailbox-delivery','dispatch',{approval_id:approval.approval_id});assert.equal(result.status,'Uncertain');assert.equal(result.readback_required,true);
+ let state=await f.store.snapshot(),intent=state.mailbox_delivery.intents[result.id];assert.equal(intent.status,'Held');assert(intent.claimed_at);assert.equal(state.mailbox_delivery.allowances['one-send'].used_intents,1);assert.equal(f.sent.length,1);
+ const prior=await dispatchMailboxDelivery(f.app,approval.approval_id,{actor:'owner'});assert.equal(prior.unclaimed,false);assert.equal(prior.unresolved,true);assert.equal(prior.readback_required,true);assert.equal(prior.retry_permitted,false);assert.equal(f.sent.length,1);
+ f.control.sendLoss=false;assert.equal((await f.command('mailbox-delivery','reconcile',{id:result.id})).status,'Verified');state=await f.store.snapshot();assert.equal(state.mailbox_delivery.intents[result.id].status,'Verified');assert.equal(f.sent.length,1);
+ const verified=await dispatchMailboxDelivery(f.app,approval.approval_id,{actor:'owner'});assert.equal(verified.unresolved,false);assert.equal(verified.readback_required,false);assert.equal(verified.retry_permitted,false);
+});
+
+test('a same-key hold and a stale claim cannot both win their conditional writes',async t=>{
+ for(const first of ['hold','claim']){
+  const f=await fixture(t),{id}=await reserveUnclaimed(f),delayedType=first==='hold'?'claim':'hold',original=f.raw.setJSON.bind(f.raw);let release,arrive;
+  const waiting=new Promise(resolve=>{arrive=resolve;}),gate=new Promise(resolve=>{release=resolve;});
+  f.raw.setJSON=async(key,value,options)=>{const intent=value.state?.mailbox_delivery?.intents[id],isDelayed=key==='workspace'&&(delayedType==='claim'?Boolean(intent?.claimed_at):intent?.status==='Held');if(isDelayed){arrive();await gate;}return original(key,value,options);};
+  const change=async(type)=>{const tr={type,actor:'delivery',at:f.now().toISOString(),input:type==='claim'?{id}:{id,reason:'Fictional hold'}};return f.app.change((s,c)=>applyMailboxDeliveryTransition(s,c,tr),{mailboxDelivery:tr,configFingerprint:hash(f.app.config),mailboxDeliveryDeadline:+f.now()+25000});};
+  const delayed=change(delayedType);await waiting;if(first==='hold')f.advance(26000);await change(first);release();await assert.rejects(delayed,error=>error.code==='STATE_CONFLICT');
+  const state=await f.store.snapshot(),intent=state.mailbox_delivery.intents[id];assert.equal(intent.status,first==='hold'?'Held':'Uncertain');assert.equal(Boolean(intent.claimed_at),first==='claim');assert.equal(state.mailbox_delivery.allowances['one-send'].used_intents,1);assert.equal(f.sent.length,0);
+ }
+});
+
+test('a forked namespace can still claim an original that a different namespace held',async t=>{
+ const f=await fixture(t),{id}=await reserveUnclaimed(f),before=await f.store.snapshot(),config=structuredClone(f.app.config),backup=join(f.directory,'forked-before-retirement.json');
+ await exportManualBackup(f.app,f.directory,backup);
+ const scope={...f.b,deploy_id:'forked-production',namespace:'evz-manual-shared-forked-proof'},mailboxDelivery={...config.mailbox_delivery,deploy_id:scope.deploy_id,recovery_generation:'forked'},mailboxClock={...config.mailbox_clock,deploy_id:scope.deploy_id},cloudDiscovery={...config.cloud_discovery,deploy_id:scope.deploy_id};
+ const packet=await prepareManualWorkspace({backup,sourceConfig:config,scope,mailbox:config.mailbox,mailboxWork:config.mailbox_work,mailboxDelivery,mailboxClock,cloudDiscovery});
+ assert.deepEqual(packet.envelope.state,before);const raw=memory(),store=new ConditionalLifecycleStore(raw,{manualBinding:packet.binding,now:f.now});await installManualWorkspace(store,packet,{commit:true});const next=await StudioLifecycle.fromStore({store,now:f.now});
+ const change=async(app,type,input)=>{const tr={type,actor:'delivery',at:f.now().toISOString(),input};return app.change((s,c)=>applyMailboxDeliveryTransition(s,c,tr),{mailboxDelivery:tr,configFingerprint:hash(app.config),mailboxDeliveryDeadline:+f.now()+25000});};
+ await change(next,'hold',{id,reason:'Fictional hold in a separate namespace'});await change(f.app,'claim',{id});
+ const old=await f.store.snapshot(),fork=await store.snapshot();assert(old.mailbox_delivery.intents[id].claimed_at);assert.equal(fork.mailbox_delivery.intents[id].claimed_at,null);assert.equal(fork.mailbox_delivery.intents[id].status,'Held');
+ const r=fork.prospects.one;r.reply={...fixtureReply('source-new','thread-new',r.contact.email),at:f.now().toISOString()};const content=replyDraftContent(r,'A separately reviewed reply.','owner',next.config,true);content.review_binding_sha256=emailDraftReviewBinding(next.config);
+ r.reply_draft={source_id:r.reply.source_id,source_sha256:r.reply.content.source_sha256,reply_sha256:hash(r.reply),body:content.body,content,sha256:hash(content),owner:'owner',actor:'owner',status:'Approved; sending held',approved_by:'owner',approval_event:'content-new'};fork.events['content-new']={id:'content-new',type:'reply_draft_approved',prospect_id:r.id,actor:'owner',data:{sha256:r.reply_draft.sha256,approved:true,facts_checked:true}};
+ assert.throws(()=>mailboxDeliveryPackage(fork,next.config,{kind:'reply',project_id:'one'},'owner',f.now().toISOString()),/Reconcile the original unsettled delivery/);
+ assert.equal(old.mailbox_delivery.allowances['one-send'].used_intents,1);assert.equal(fork.mailbox_delivery.allowances['one-send'].used_intents,1);assert.equal(f.sent.length,0);
+});
+
+test('a restored reservation warns only about the restored copy and preserves the old writer and charge',async t=>{
+ const f=await fixture(t),{id}=await reserveUnclaimed(f),backup=join(f.directory,'unclaimed-before-restore.json');await exportManualBackup(f.app,f.directory,backup);
+ const destination=join(f.directory,'unclaimed-restored');await restoreLifecycleBackup(backup,destination);const restored=JSON.parse(await readFile(join(destination,'lifecycle-state.json'),'utf8')),copy=restored.mailbox_delivery.intents[id];
+ assert.equal(copy.status,'Held');assert.equal(copy.claimed_at,null);assert.match(copy.hold,/this copy cannot dispatch/i);assert.match(copy.hold,/other writers/i);assert.equal(restored.mailbox_delivery.allowances['one-send'].used_intents,1);
+ const tr={type:'claim',actor:'delivery',at:f.now().toISOString(),input:{id}};await f.app.change((s,c)=>applyMailboxDeliveryTransition(s,c,tr),{mailboxDelivery:tr,configFingerprint:hash(f.app.config),mailboxDeliveryDeadline:+f.now()+25000});
+ const original=await f.store.snapshot();assert(original.mailbox_delivery.intents[id].claimed_at);assert.equal(original.mailbox_delivery.allowances['one-send'].used_intents,1);assert.equal(f.sent.length,0);
+});
+
+test('a response arriving after the deadline stays uncertain and can only be reconciled',async t=>{
+ const f=await fixture(t);await f.grant('mailbox-delivery','one-send');await f.command('mailbox-delivery','pause',{revision:await f.revision(),paused:false,reason:'Fictional delivery proof'});const approval=await approve(f,'one');
+ const options={getAccessToken:f.getAccessToken,account:f.token.account,grantId:f.token.grant_id,requiredProfile:mailboxProfile,rawResponseMax:38_000_000,now:f.now};
+ const delayed=googleHostedTransport({...options,fetcher:async(url,request)=>{const response=await f.fetcher(url,request);if(new URL(url).pathname.endsWith('/messages/send'))f.advance(26000);return response;}});
+ const result=await dispatchMailboxDelivery(f.app,approval.approval_id,{transport:delayed,actor:'owner'}),intent=(await f.store.snapshot()).mailbox_delivery.intents[result.id];
+ assert.equal(result.status,'Uncertain');assert(intent.claimed_at);assert.equal(intent.status,'Uncertain');assert.equal(f.sent.length,1);assert.equal((await f.store.snapshot()).mailbox_delivery.allowances['one-send'].used_intents,1);
+ const transport=googleHostedTransport({...options,fetcher:f.fetcher});assert.equal((await reconcileMailboxDelivery(f.app,result.id,{transport,actor:'owner'})).status,'Verified');assert.equal(f.sent.length,1);
+});
 
 test('signed typed CAS serves two proposals and two exact replies with renewed finite authority on one binding',async t=>{
  const f=await fixture(t),binding=hash(f.packet.binding),config=hash(f.app.config);assert.equal((await f.owner('/api/mailbox-work/allowance',{revision:await f.revision(),allowance:{}},{'x-studio-token':'wrong'})).status,403);

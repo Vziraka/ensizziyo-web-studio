@@ -234,7 +234,7 @@ export async function restoreLifecycleBackup(input,destination){
    state.mailbox_delivery.paused=true;
    check(Number.isSafeInteger(state.mailbox_delivery.epoch)&&state.mailbox_delivery.epoch<Number.MAX_SAFE_INTEGER,'Invalid delivery recovery epoch');state.mailbox_delivery.epoch++;
    if(state.mailbox_delivery.schema_version===2)state.mailbox_delivery.allowance_id=null;
-   for(const intent of Object.values(state.mailbox_delivery.intents??{}))if(intent.status==='Reserved'){intent.status='Held';intent.hold='Backup restored; original reservation cannot dispatch';}
+   for(const intent of Object.values(state.mailbox_delivery.intents??{}))if(intent.status==='Reserved'){intent.status='Held';intent.hold='Backup restored; this copy cannot dispatch. Reconcile other writers before resuming.';}
   }
   // Retained charges and leases remain evidence; a restored allowance can never resume them.
   if(state.mailbox_work){const n=state.mailbox_work;check(n.schema_version===2&&Number.isSafeInteger(n.epoch)&&n.epoch<Number.MAX_SAFE_INTEGER,'Invalid worker recovery epoch');n.paused=true;n.epoch++;n.allowance_id=null;}
