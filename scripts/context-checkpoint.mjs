@@ -51,7 +51,12 @@ if ($env:EVZ_CHECKPOINT_ACL_ACTION -eq 'create') {
   }
   [System.IO.Directory]::SetAccessControl($path, $acl)
 }
-$isFile = $env:EVZ_CHECKPOINT_ACL_ACTION -eq 'file'
+if ($env:EVZ_CHECKPOINT_ACL_ACTION -eq 'initialize-file') {
+  $acl = [System.IO.File]::GetAccessControl($path)
+  $acl.SetOwner($owner)
+  [System.IO.File]::SetAccessControl($path, $acl)
+}
+$isFile = $env:EVZ_CHECKPOINT_ACL_ACTION -in @('file', 'initialize-file')
 $acl = if ($isFile) { [System.IO.File]::GetAccessControl($path) } else { [System.IO.Directory]::GetAccessControl($path) }
 $rules = @($acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]))
 if ((-not $isFile -and -not $acl.AreAccessRulesProtected) -or $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -ne $owner.Value) { exit 1 }
@@ -222,6 +227,9 @@ export async function saveCheckpoint(session, value, cwd = process.cwd()) {
       head: current.head, savedAt: new Date().toISOString(), checkpoint: value };
     const handle = await open(temporary, 'wx', 0o600);
     try {
+      // An elevated Windows token can default to a group owner. Initialize only this new,
+      // still-empty file; existing checkpoints must pass the original ownership checks.
+      if (process.platform === 'win32') checkWindowsAcl(temporary, 'initialize-file');
       checkFilePrivacy(temporary, await handle.stat());
       await handle.writeFile(`${JSON.stringify(record)}\n`);
       await handle.sync();

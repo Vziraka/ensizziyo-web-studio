@@ -235,6 +235,43 @@ test('a checkpoint file with broader read access is rejected', async () => {
   }
 });
 
+test('an existing Windows checkpoint with a different owner is rejected without repair', async t => {
+  if (process.platform !== 'win32') return t.skip('Windows file ownership test');
+  const path = join(directory, `${checkpointId}.json`);
+  const probe = join(base, 'default-owner-probe');
+  await writeFile(probe, 'fictional');
+  const script = `
+$ErrorActionPreference = 'Stop'
+$user = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+$other = [System.IO.File]::GetAccessControl($env:EVZ_TEST_OWNER_PROBE).GetOwner([System.Security.Principal.SecurityIdentifier])
+if ($other.Value -eq $user.Value) { exit 77 }
+$acl = [System.IO.File]::GetAccessControl($env:EVZ_TEST_CHECKPOINT_FILE)
+if ($env:EVZ_TEST_OWNER_ACTION -eq 'check') {
+  if ($acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -ne $other.Value) { exit 1 }
+} else {
+  $acl.SetOwner($(if ($env:EVZ_TEST_OWNER_ACTION -eq 'restore') { $user } else { $other }))
+  [System.IO.File]::SetAccessControl($env:EVZ_TEST_CHECKPOINT_FILE, $acl)
+}
+`;
+  const ownerAction = action => spawnSync(join(safeCwd, 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+    ['-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8', windowsHide: true,
+      env: { ...process.env, EVZ_TEST_OWNER_PROBE: probe, EVZ_TEST_CHECKPOINT_FILE: path, EVZ_TEST_OWNER_ACTION: action } });
+  try {
+    const changed = ownerAction('change');
+    if (changed.status === 77) return t.skip('Host default file owner is the current user');
+    assert.equal(changed.status, 0, changed.stderr);
+    try {
+      assert.match(run(projectA, ['read', 'session-a']).stderr, /permissions could not be verified/);
+      assert.match(run(projectA, ['save', 'session-a'], fixture).stderr, /permissions could not be verified/);
+      const checked = ownerAction('check');
+      assert.equal(checked.status, 0, checked.stderr);
+    } finally {
+      const restored = ownerAction('restore');
+      assert.equal(restored.status, 0, restored.stderr);
+    }
+  } finally { await unlink(probe); }
+});
+
 test('the session hook emits only bounded guidance and a validated session identifier', async () => {
   const configuration = JSON.parse(await readFile(new URL('../.codex/hooks.json', import.meta.url), 'utf8'));
   const group = configuration.hooks.SessionStart[0];

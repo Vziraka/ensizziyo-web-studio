@@ -1,49 +1,15 @@
-name: Temporary checkpoint ACL diagnostic
+name: Temporary checkpoint ownership regression
 on:
   push:
     branches: [codex/checkpoint-acl-diagnostic-20261103]
 permissions:
   contents: read
 jobs:
-  diagnostic:
+  checkpoint:
     runs-on: windows-latest
     steps:
-      - name: Compare ownership on an empty synthetic file
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $path = Join-Path $env:RUNNER_TEMP ("evz-acl-probe-" + [guid]::NewGuid().ToString("N"))
-          [void][System.IO.Directory]::CreateDirectory($path)
-          $owner = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
-          $system = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18')
-          $acl = [System.Security.AccessControl.DirectorySecurity]::new()
-          $acl.SetOwner($owner)
-          $acl.SetAccessRuleProtection($true, $false)
-          $inherit = [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
-          foreach ($identity in @($owner, $system)) {
-            $rule = [System.Security.AccessControl.FileSystemAccessRule]::new($identity, 'FullControl', $inherit, 'None', 'Allow')
-            $acl.AddAccessRule($rule)
-          }
-          [System.IO.Directory]::SetAccessControl($path, $acl)
-          $directoryAcl = [System.IO.Directory]::GetAccessControl($path)
-          Write-Output ("directory_owner_is_user=" + ($directoryAcl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -eq $owner.Value))
-          Write-Output ("directory_acl_is_protected=" + $directoryAcl.AreAccessRulesProtected)
-          $file = Join-Path $path 'empty.tmp'
-          $share = [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete
-          $stream = [System.IO.File]::Open($file, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::ReadWrite, $share)
-          try {
-            $fileAcl = [System.IO.File]::GetAccessControl($file)
-            $rules = @($fileAcl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]))
-            $onlyExpected = @($rules | Where-Object { $_.IdentityReference.Value -notin @($owner.Value, $system.Value) -or $_.AccessControlType -ne 'Allow' }).Count -eq 0
-            Write-Output ("new_file_owner_is_user=" + ($fileAcl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -eq $owner.Value))
-            Write-Output ("new_file_has_only_expected_grants=" + $onlyExpected)
-            foreach ($identity in @($owner, $system)) {
-              $hasFull = @($rules | Where-Object { $_.IdentityReference.Value -eq $identity.Value -and ($_.FileSystemRights -band [System.Security.AccessControl.FileSystemRights]::FullControl) -eq [System.Security.AccessControl.FileSystemRights]::FullControl }).Count -gt 0
-              if ($identity.Value -eq $owner.Value) { Write-Output ("new_file_user_full_control=" + $hasFull) }
-              else { Write-Output ("new_file_system_full_control=" + $hasFull) }
-            }
-            $fileAcl.SetOwner($owner)
-            [System.IO.File]::SetAccessControl($file, $fileAcl)
-            $rechecked = [System.IO.File]::GetAccessControl($file)
-            Write-Output ("initialized_file_owner_is_user=" + ($rechecked.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -eq $owner.Value))
-          } finally { $stream.Close() }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 24
+      - run: node --test scripts/context-checkpoint.test.mjs
