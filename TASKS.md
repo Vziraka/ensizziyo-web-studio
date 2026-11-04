@@ -1,5 +1,14 @@
 # Launch tasks
 
+## Public research lead-pool follow-up — November 4, 2026
+
+Source-only follow-up against the November 1 operations release. Adding remodeling to the shared taxonomy, first-party verification matcher and explicit discovery-policy choices preserves existing records and policy bindings. Daily queued work rotates its starting approved trade and area by Eastern date; it cannot widen the configured scope. Existing policies must explicitly include remodeling through their normal reviewed update before it can be queued. No provider work, schedule, credential, deployment or outreach is enabled by this change.
+
+- [x] Reproduce the omitted remodeling subtype and deterministic daily starvation of later trades; exercise reviewed fictional call-only and email-qualified remodeling imports, renovation evidence, missing-offering holds and a week of daily selections.
+- [x] Run 31 account-free business-type and cloud-discovery checks. Seven of eight verification-call tests passed with a workspace-local temporary folder; the dispatch test and backup-backed discovery integration fixtures could not finish because this Windows sandbox denied the required hard-link operation. These are not hosted acceptance or capacity evidence.
+- [ ] Implement and independently verify a shared Call first / Email first / Hold classification. Today the approach is stored only on an outreach draft: a Hold or Email first draft does not remove the business from the first-contact call queue, and verification-only cards cannot select it without an eligible email draft. Preserve manual call history and existing restrictions.
+- [ ] Complete final independent requirements and engineering review and required hosted CI for the exact change. Actual scheduled research, independently connected search/review workers, fresh usage evidence, sustainable supply and computer-off operation remain separate release gates.
+
 ## Delivery recovery guard - November 3, 2026
 
 Source-only work keeps unclaimed reservations and all same-project replacement packages held. It reports when no claim was recorded and records a post-claim hold when a lost provider response leaves time for the conditional write. Fictional tests cover same-key races, a copied namespace, a lost response and a provider response arriving after the local deadline. An independent fictional reproduction showed that a stale backup can omit a later reservation, allowing two namespaces to send the same reply. A safe release requires independently established retirement, complete current ledger and no rollback of earlier authority; a snapshot, rebind or generic Held status alone is insufficient. No live send, worker change or deployment follows from these source checks.

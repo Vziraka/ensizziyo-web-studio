@@ -6,6 +6,9 @@ test('saved categories classify without changing source evidence; unknowns stay 
   const original={category:'Food / beverage: home bakery',verification:{packet:{sources:['untouched']}}},before=structuredClone(original);
   assert.equal(businessType(original).category,'food-and-beverage');assert.deepEqual(original,before);
   assert.equal(businessType({category:'Plumbing contractor'}).subtype,'Plumbing');
+  assert.equal(businessType({category:'Kitchen remodeling contractor'}).subtype,'Remodeling');
+  assert.equal(businessType({category:'Home renovations'}).subtype,'Remodeling');
+  assert.ok(businessTypes.find(t=>t.id==='home-services').subtypes.includes('Remodeling'));
   assert.equal(businessType({category:'Unclear category'}).unclassified,true);
   assert.equal(businessTypes.length,6);
   assert.equal(matchesBusiness({category:'HVAC contractor'},'home-services',['Roofing']),false);
