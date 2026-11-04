@@ -25,3 +25,11 @@ For fictional filesystem tests, use a writable temporary directory. In a restric
 | Same scenario for friend | 40.56s | Separate operator authority; the owner's pass does not establish it. |
 
 Durations are individual observations, can overlap, and must not be summed into a promised wall-time saving. The next optimization experiment should profile setup versus awaited work in a bounded fictional case, preserve both roles and failure assertions, then compare repeated runs on the same host/revision conditions. No test was removed, skipped, or combined in this documentation increment; no runtime saving is claimed. Avoid rerunning a 20-minute suite just to reproduce a documented baseline when a relevant hosted result already exists.
+
+## Local reserve-check experiment, November 4, 2026
+
+On branch `codex/test-validation-profile`, source candidate `9675026` (base `099b790`) reuses the state JSON string only within one synchronous PDF storage-reserve check. The backup-size and state-size calculations previously serialized the same state separately. All three size limits remain; each invocation still reads its supplied current state. There is no cross-call cache, skipped validation or concurrency/recovery change.
+
+Node 24.13.0 on Windows, an 11 MB synthetic state, three warmups per variant and 12 alternating measurements in one process gave median 101.76 ms for the original function versus 92.11 ms for the candidate (9.5% lower). Ranges overlapped substantially (72.23–157.20 ms and 59.90–141.89 ms). This is a noisy function-level experiment, not a suite-speed or cost claim. The original helper was copied from the base source; the candidate was imported from the edited module.
+
+Two reserve tests passed before and after the edit: subsequent state/config mutations remain checked, UTF-8 bytes count correctly, and escaped backup size remains independently bounded. Both existing P3/P5/P9 exact-PDF journeys passed locally (Owner 37.61s, Friend 42.53s; runner 81.17s). These unprofiled times are not directly comparable to the earlier profiled run. Independent requirements and engineering reviews found no source findings; engineering also confirmed identical baseline/candidate outcomes for seven boundary fixtures, syntax and the two tests. Full pipeline and hosted Windows checks remain unrun; this is a local candidate, not release acceptance.
