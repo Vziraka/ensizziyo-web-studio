@@ -12,13 +12,13 @@ function fixture(){
  const config={...structuredClone(initialConfig),mode:'production',shared_capability:cloudDiscoveryCapability,cloud_discovery:p},state={schema_version:1,run_id:config.run_id,mode:'production',revision:0,updated_at:at,prospects:{},events:{},actions:{},exceptions:[]};let time=at;
  const apply=(type,input,actor='owner')=>applyCloudDiscoveryTransition(state,config,{type,actor,at:time,input:{revision:state.revision,...input}});
  const allowance=(id='allowance',remaining_percent=80)=>apply('allowance',{allowance:{id,evidence_ref:'Synthetic independently read included usage',observed_at:time,expires_at:new Date(Date.parse(time)+15*60000).toISOString(),included_only:true,remaining_percent,max_attempts:100,max_candidates:200}});
- const create=(id='task',lane='call-first',count=1)=>apply('create',{id,lane,count,assigned_to:'owner',area:p.areas[0],subtypes:['HVAC']});
+ const create=(id='task',lane='call-first',count=1,subtype='HVAC')=>apply('create',{id,lane,count,assigned_to:'owner',area:p.areas[0],subtypes:[subtype]});
  const ready=()=>{allowance();apply('pause',{paused:false,reason:'Finite synthetic scope'});};
  return {p,config,state,apply,allowance,create,ready,setTime:v=>time=v,time:()=>time};
 }
-function candidate(n=0,lane='call-first'){
- const identity={name:'SYNTHETIC HVAC '+n,website:'https://business'+n+'.example.com/',category:'home-services',subtype:'HVAC'},phone='(703) 555-'+String(1000+n).padStart(4,'0'),email='office@business'+n+'.example.com',basis='Emergency enquiries require voicemail; we return these calls the next business day.';
- const s={url:identity.website,text:identity.name+'. HVAC services in Fairfax, VA. Call '+phone+'. Email '+email+'. Now accepting service appointments. '+basis,kind:'business',capture_method:'http',coverage:'full',identity_note:'Synthetic business-controlled first-party page, no real requests.',fetched_at:at,checked_at:at.slice(0,10)};s.content_sha256=sourceContentHash(s);
+function candidate(n=0,lane='call-first',subtype='HVAC'){
+ const identity={name:'SYNTHETIC '+subtype.toUpperCase()+' '+n,website:'https://business'+n+'.example.com/',category:'home-services',subtype},phone='(703) 555-'+String(1000+n).padStart(4,'0'),email='office@business'+n+'.example.com',basis='Emergency enquiries require voicemail; we return these calls the next business day.';
+ const s={url:identity.website,text:identity.name+'. '+subtype+' services in Fairfax, VA. Call '+phone+'. Email '+email+'. Now accepting service appointments. '+basis,kind:'business',capture_method:'http',coverage:'full',identity_note:'Synthetic business-controlled first-party page, no real requests.',fetched_at:at,checked_at:at.slice(0,10)};s.content_sha256=sourceContentHash(s);
  if(lane==='call-first')return {id:'candidate-'+n,identity,packet:candidatePacket(identity,[s],{id:'batch'},new Date(at))};
  const job={id:'research-'+n,business_name:identity.name,website:identity.website,seed_urls:[identity.website],purpose:'Prospect discovery; review required; no outreach.',as_of:at.slice(0,10),research_version:3},snapshots={sources:[s],failures:[]};
  const report={schema_version:3,job_id:job.id,business_name:job.business_name,sources:[{url:s.url,checked_at:s.checked_at,content_sha256:s.content_sha256,facts:[basis]}],unknowns:['Owner priorities and budget remain unknown.'],checkpoint_reused:true,observations:[{fact:basis,source_urls:[s.url],evidence:[{url:s.url,excerpt:basis,context_id:''}]}],journey_checks:['discovery','offer','enquiry_or_ordering','trust_and_activity','follow_up'].map(area=>({area,status:area==='enquiry_or_ordering'?'Observed':'Unknown',finding:area==='enquiry_or_ordering'?basis:'This bounded capture does not establish this part of the customer journey.',observation_indexes:area==='enquiry_or_ordering'?[0]:[],owner_question:'How is this part of the customer journey handled today?'})),opportunities:[{observed_basis:basis,possible_effect:'A request tracker might support callback preparation if useful to the owner.',proposed_solution:'Enhancement: discuss an optional request tracker alongside voicemail.',service_area:'systems',confidence:'hypothesis',owner_question:'How are voicemail callbacks tracked today?',existing_alternatives:['Existing voicemail and callback process'],validation_needed:'Confirm existing tools and owner goals before recommending changes.'}],public_contact_routes:[s.url],recommendation:'Suitable to discuss'};
@@ -29,8 +29,8 @@ function decision(c,lane,claim_id){
  const {job,snapshots,report}=c.research,s=snapshots.sources[0],d={schema_version:1,job_id:job.id,attempt_id:claim_id,report_sha256:hash(report),sources_sha256:hash(snapshots),reviewed_by:'reviewer',decision:'Research-qualified',identity_note:'Exact first-party identity and Fairfax locality match the candidate.',operating_status:'Active',operating_evidence:{url:s.url,excerpt:'Now accepting service appointments.',context_id:''},opportunity_index:0,contact:{url:s.url,email:'office@'+new URL(c.identity.website).hostname,phone:s.text.match(/\(703\) 555-\d{4}/)[0]},observations:[{index:0,supported:true,note:'The entire claim is the retained literal callback statement.'}],journey_checks:report.journey_checks.map((x,index)=>({index,area:x.area,supported:true,note:'Exact observed callback route or explicit unknown coverage limit.'})),opportunity_checks:[{index:0,supported:true,note:'Tentative complement acknowledges voicemail and unknown owner priorities.'}],other_claims_supported:true,other_claims_note:'Contact and activity are first-party, and uncertainty is retained.',rationale:'Specific callback step supports discussion without assuming a defect.',next_action:'Ask the owner how callbacks are tracked before recommending a change.'};return {candidate_id:c.id,accepted:true,reason:'Detailed evidence and every claim independently accepted.',review:{verdict:'Accepted',corrections:[],decision:d}};
 }
 function research(f,id='task',lane='call-first',cs=[candidate()]){
- f.create(id,lane,cs.length||1);f.apply('claim',{id,claim_id:id+'-author',context_id:id+'-author-context'},'researcher');
- const payload={schema_version:1,task_id:id,claim_id:id+'-author',context_id:id+'-author-context',queries:[{query:'independent HVAC Fairfax official business website',checked_at:f.time(),urls:cs.map(c=>c.identity.website)}],candidates:cs};f.apply('submit',{id,claim_id:id+'-author',artifact:ref(payload),payload},'researcher');return payload;
+ f.create(id,lane,cs.length||1,cs[0]?.identity.subtype);f.apply('claim',{id,claim_id:id+'-author',context_id:id+'-author-context'},'researcher');
+ const payload={schema_version:1,task_id:id,claim_id:id+'-author',context_id:id+'-author-context',queries:[{query:'independent '+(cs[0]?.identity.subtype??'HVAC')+' Fairfax official business website',checked_at:f.time(),urls:cs.map(c=>c.identity.website)}],candidates:cs};f.apply('submit',{id,claim_id:id+'-author',artifact:ref(payload),payload},'researcher');return payload;
 }
 function reviewed(f,id='task',lane='call-first',cs=[candidate()]){const submission=research(f,id,lane,cs);f.apply('claim-review',{id,claim_id:id+'-reviewer',context_id:id+'-review-context'},'reviewer');const review={schema_version:1,task_id:id,claim_id:id+'-reviewer',context_id:id+'-review-context',submission_sha256:hash(submission),decisions:cs.map(c=>decision(c,lane,id+'-author'))};f.apply('review',{id,claim_id:id+'-reviewer',artifact:ref(review),payload:review,submission},'reviewer');return {submission,review};}
 
@@ -43,6 +43,30 @@ test('separate worker/reviewer claims import a call-only card while preserving h
 });
 test('email qualification uses detailed report and independent evidence review, not call verification',()=>{
  const f=fixture();f.ready();const input=reviewed(f,'email','email-qualified',[candidate(1,'email-qualified')]),out=f.apply('import',{id:'email',...input}),r=f.state.prospects[out.imports[0].prospect_id];assert.equal(r.qualification.verdict,'Research-qualified');assert.equal(r.stage,'Ready to contact');assert.equal(r.contact.email,'office@business1.example.com');assert.equal(out.email_qualified,1);assert.equal(out.call_first,0);assert.equal(out.email_shortfall,99);
+});
+test('reviewed remodeling businesses can enter both call-only and email-qualified discovery',()=>{
+ const f=fixture();f.p.trades.push('Remodeling');f.ready();
+ for(const [lane,n] of [['call-first',1],['email-qualified',2]]){
+  const id='remodel-'+n,input=reviewed(f,id,lane,[candidate(n,lane,'Remodeling')]),out=f.apply('import',{id,...input}),r=f.state.prospects[out.imports[0].prospect_id];
+  assert.equal(out.imports[0].status,'Imported');assert.deepEqual(r.business_type,{category:'home-services',subtype:'Remodeling'});
+  assert.equal(r.qualification.verdict,lane==='call-first'?'Verification call only':'Research-qualified');
+ }
+});
+test('remodeling call evidence accepts a renovation offering and holds a source without one',()=>{
+ const c=candidate(3,'call-first','Remodeling'),identity={...c.identity,name:'SYNTHETIC BUILDERS'},source=structuredClone(c.packet.sources[0]);
+ source.text=source.text.replace(c.identity.name,identity.name).replace('Remodeling services','Home renovation services');source.content_sha256=sourceContentHash(source);
+ assert.match(candidatePacket(identity,[source],{id:'renovation'},new Date(at)).offering.excerpt,/renovat/i);
+ source.text=source.text.replace('Home renovation services','Property services');source.content_sha256=sourceContentHash(source);
+ assert.throws(()=>candidatePacket(identity,[source],{id:'no-offering'},new Date(at)),/evidence was not found/);
+});
+test('daily chunks rotate across every approved trade and area over a week',()=>{
+ const trades=['HVAC','Plumbing','Roofing','Electrical','Cleaning','Landscaping','Remodeling'],areas=['Washington DC','Montgomery County Maryland','Prince George County Maryland','Fairfax Arlington Alexandria Virginia','Loudoun Prince William County Virginia'];
+ const seenTrades=new Set(),seenAreas=new Set();
+ for(let n=0;n<7;n++){
+  const f=fixture();f.p.trades=trades;f.p.areas=areas;f.p.expires_at='2026-11-20T00:00:00.000Z';f.setTime(new Date(Date.parse(at)+n*86400000).toISOString());f.ready();
+  for(let i=0;i<4;i++){const {id}=f.apply('queue-daily',{},'discovery'),task=f.state.cloud_discovery.tasks[id];seenTrades.add(task.subtypes[0]);seenAreas.add(task.area);}
+ }
+ assert.deepEqual([...seenTrades].sort(),[...trades].sort());assert.deepEqual([...seenAreas].sort(),[...areas].sort());
 });
 test('claims cannot be replayed, change identity or reuse research context for review',()=>{
  const f=fixture();f.ready();f.create();f.apply('claim',{id:'task',claim_id:'claim',context_id:'context'},'researcher');const before=structuredClone(f.state);for(const actor of ['owner','reviewer','researcher'])assert.throws(()=>f.apply('claim',{id:'task',claim_id:'retry',context_id:'retry'},actor));assert.deepEqual(f.state,before);

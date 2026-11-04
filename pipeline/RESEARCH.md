@@ -14,7 +14,7 @@ The completed ten-business comparison covered four residential cleaners, three f
 
 ## Selected categories and on-demand discovery
 
-Use the owner's selected group and optional subtypes: Home Services (HVAC, plumbing, roofing, electrical, cleaning, landscaping); Health & Wellness (dental, med spas, clinics); Food & Beverage; Real Estate & Property; Professional Services; Other Local Businesses. The first new batch is Home Services. Retain useful food/beverage records and keep category results distinguishable.
+Use the owner's selected group and optional subtypes: Home Services (HVAC, plumbing, roofing, electrical, cleaning, landscaping, remodeling); Health & Wellness (dental, med spas, clinics); Food & Beverage; Real Estate & Property; Professional Services; Other Local Businesses. The November 1 operations release adds remodeling to the approved home-service trades. The first new batch is Home Services. Retain useful food/beverage records and keep category results distinguishable.
 
 Selecting a filter only displays saved records. A separate Find more businesses action authorizes one bounded batch of 25 candidate businesses total across the selected groups, not 25 per type. Preserve prior sources, jobs, costs, exhausted attempts, restrictions and provider bindings. The initial trial shares 25 new candidates/imports per Eastern day across both operators, with callbacks separate. No automatic stocking or fresh retry is implied. Report usable cards, duplicates and held candidates separately; do not keep searching indefinitely to fill 25 usable cards.
 

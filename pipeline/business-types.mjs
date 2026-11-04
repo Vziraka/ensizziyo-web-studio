@@ -1,5 +1,5 @@
 export const businessTypes = [
-  {id:'home-services',label:'Home Services',subtypes:['HVAC','Plumbing','Roofing','Electrical','Cleaning','Landscaping']},
+  {id:'home-services',label:'Home Services',subtypes:['HVAC','Plumbing','Roofing','Electrical','Cleaning','Landscaping','Remodeling']},
   {id:'health-wellness',label:'Health & Wellness',subtypes:['Dental','Med spas','Clinics']},
   {id:'food-and-beverage',label:'Food & Beverage',subtypes:['Restaurants','Cafés','Bakeries','Catering','Beverage vendors','Food trucks']},
   {id:'real-estate-property',label:'Real Estate & Property',subtypes:['Agents / teams','Brokerages','Property management']},
@@ -7,7 +7,7 @@ export const businessTypes = [
   {id:'other-local',label:'Other Local Businesses',subtypes:['Other local services']}
 ];
 const patterns = [
-  ['home-services',[/\bhvac\b|heating|cooling|air conditioning/i,/plumb/i,/roof/i,/electric/i,/clean/i,/landscap|lawn|tree service/i]],
+  ['home-services',[/\bhvac\b|heating|cooling|air conditioning/i,/plumb/i,/roof/i,/electric/i,/clean/i,/landscap|lawn|tree service/i,/remodel|renovat/i]],
   ['health-wellness',[/dent/i,/med\s*spa|medical spa/i,/clinic|health|wellness|therapy|optometr/i]],
   ['food-and-beverage',[/restaurant/i,/caf[eé]|coffee/i,/bake|baker|cake|pastr/i,/cater/i,/beverage|drink|juice|matcha|tea vendor/i,/food truck/i]],
   ['real-estate-property',[/real estate|realtor|agent/i,/broker/i,/property manag/i]],
