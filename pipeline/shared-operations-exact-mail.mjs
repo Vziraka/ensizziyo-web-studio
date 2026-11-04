@@ -97,10 +97,11 @@ export function validatePDFMailImport(state){
   check(q.status==='Verified'&&q.receipt&&q.incoming_pdf?.route&&(q.incoming_pdf.status==='Ready'||q.incoming_pdf.status==='Held'&&q.incoming_pdf.hold?.code==='COLLISION'),'Unresolved or uncovered old PDF effect holds the whole shared installation; retain its local inert recovery');
  }
 }
-function g1Bytes(data,at){const body=JSON.stringify(data.state),files=(data.dispatch_source?.dependencies??[]).map(({path,bytes,sha256})=>({path,bytes,sha256}));return Buffer.byteLength(JSON.stringify({schema_version:2,created_at:at,sha256:hash(body),body,files,files_sha256:hash(files)}));}
+function g1Bytes(data,at,body){const files=(data.dispatch_source?.dependencies??[]).map(({path,bytes,sha256})=>({path,bytes,sha256}));return Buffer.byteLength(JSON.stringify({schema_version:2,created_at:at,sha256:hash(body),body,files,files_sha256:hash(files)}));}
 export function pdfIncomingStorageAllowance(data){
  const bytes=data.config.internal_dispatch.limits.bytes_tick,I=2*bytes+64000;
- check(Buffer.byteLength(JSON.stringify(data))+I<=20000000&&g1Bytes(data,data.state.updated_at)+I<=25000000&&Buffer.byteLength(JSON.stringify(data.state))+I<=14000000,'Next full PDF incoming observation/state/G1 exceeds the existing finite storage reserve');
+ const body=JSON.stringify(data.state); // Reuse only within this synchronous check; never across reads or mutations.
+ check(Buffer.byteLength(JSON.stringify(data))+I<=20000000&&g1Bytes(data,data.state.updated_at,body)+I<=25000000&&Buffer.byteLength(body)+I<=14000000,'Next full PDF incoming observation/state/G1 exceeds the existing finite storage reserve');
 }
 function pdfScopeBytes(data,q){
  const p=data.state.actions[q.logical.slice(0,-7)].payload.package,n=data.state.operations?.gmail_incoming,route={project_id:p.project_id,thread_id:'t'.repeat(100),original_id:'m'.repeat(100),from:p.from,to:p.to,subject:p.subject,rfc_message_id:q.rfc_message_id,contact_sha256:p.contact_sha256};
